@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabaseClient.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap
 } from "lucide-react";
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
@@ -14,6 +14,14 @@ async function uploadPhoto(userId, file) {
   const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
   if (error) throw error;
   return supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+}
+
+async function uploadChatFile(roomId, file) {
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+  const path = `${roomId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const { error } = await supabase.storage.from("chat").upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  return supabase.storage.from("chat").getPublicUrl(path).data.publicUrl;
 }
 
 export default function App() {
@@ -287,17 +295,22 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
   const sRef = useRef({});
   const headRef = useRef(null);
   const [headPad, setHeadPad] = useState(112);
+  const camRef = useRef(null);
+  const fileRef = useRef(null);
+  const [qrs, setQrs] = useState([]);
+  const [showQR, setShowQR] = useState(false);
+  const [newQR, setNewQR] = useState("");
 
   useEffect(() => {
     let channel;
     (async () => {
       const { data } = await supabase.from("messages")
-        .select("id, body, sender_id, created_at, sender:profiles(full_name, avatar_url)")
+        .select("id, body, media_url, media_type, file_name, sender_id, created_at, sender:profiles(full_name, avatar_url)")
         .eq("group_type", "room").eq("group_id", room.id)
         .order("created_at", { ascending: true });
       const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url || sm[m.sender_id]?.avatar }; });
       sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url || sm[user.id]?.avatar }; sRef.current = sm; setSenders(sm);
-      setMsgs((data || []).map(m => ({ id: m.id, body: m.body, sender_id: m.sender_id, created_at: m.created_at })));
+      setMsgs((data || []).map(m => ({ id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, sender_id: m.sender_id, created_at: m.created_at })));
       channel = supabase.channel("room-" + room.id)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${room.id}` }, async (payload) => {
           const m = payload.new;
@@ -305,20 +318,32 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
             const { data: p } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", m.sender_id).single();
             sRef.current = { ...sRef.current, [m.sender_id]: { name: p?.full_name || "Member", avatar: p?.avatar_url } }; setSenders(sRef.current);
           }
-          setMsgs(prev => (prev && prev.some(x => x.id === m.id)) ? prev : [...(prev || []), { id: m.id, body: m.body, sender_id: m.sender_id, created_at: m.created_at }]);
+          setMsgs(prev => (prev && prev.some(x => x.id === m.id)) ? prev : [...(prev || []), { id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, sender_id: m.sender_id, created_at: m.created_at }]);
         }).subscribe();
     })();
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [room.id]);
   useEffect(() => { endRef.current?.scrollIntoView(); }, [msgs]);
   useEffect(() => { if (headRef.current) setHeadPad(headRef.current.offsetHeight); }, [room.pinned, isAdmin, editPin, msgs === null]);
+  useEffect(() => { if (isAdmin) supabase.from("quick_replies").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).then(({ data }) => setQrs(data || [])); }, [isAdmin]);
 
   const send = async () => {
     const body = text.trim(); if (!body) return; setText("");
-    const { data, error } = await supabase.from("messages").insert({ group_type: "room", group_id: room.id, sender_id: user.id, body }).select("id, body, sender_id, created_at").single();
+    const { data, error } = await supabase.from("messages").insert({ group_type: "room", group_id: room.id, sender_id: user.id, body }).select("id, body, media_url, media_type, file_name, sender_id, created_at").single();
     if (error) { setText(body); return; }
     setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
   };
+  const sendFile = async (file, kind) => {
+    if (!file) return;
+    try {
+      const url = await uploadChatFile(room.id, file);
+      const { data, error } = await supabase.from("messages").insert({ group_type: "room", group_id: room.id, sender_id: user.id, body: "", media_url: url, media_type: kind, file_name: file.name }).select("id, body, media_url, media_type, file_name, sender_id, created_at").single();
+      if (error) throw error;
+      setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
+    } catch (x) { alert("Upload failed: " + x.message); }
+  };
+  const addQR = async () => { const t = newQR.trim(); if (!t) return; const { data, error } = await supabase.from("quick_replies").insert({ owner_id: user.id, text: t }).select().single(); if (!error) { setQrs(p => [...p, data]); setNewQR(""); } };
+  const delQR = async (id) => { await supabase.from("quick_replies").delete().eq("id", id); setQrs(p => p.filter(q => q.id !== id)); };
   const savePin = async () => { await onUpdateRoom(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
 
   return (
@@ -357,7 +382,9 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
                 <div style={{ maxWidth: "78%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)" }}>
                   {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 700, color: W.teal, marginBottom: 1 }}>{s.name || "Member"}</div>}
-                  <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35 }}>{m.body}</div>
+                  {m.media_url && m.media_type === "image" && <img src={m.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block", marginBottom: m.body ? 4 : 0 }} />}
+                  {m.media_url && m.media_type === "file" && <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: W.ink, background: "#F0F2F5", borderRadius: 8, padding: "8px 10px", marginBottom: m.body ? 4 : 0 }}><Paperclip size={16} color={W.teal} /><span style={{ fontSize: 13.5, wordBreak: "break-all" }}>{m.file_name || "file"}</span></a>}
+                  {m.body && <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35 }}>{m.body}</div>}
                   <div style={{ fontSize: 11, color: W.soft, textAlign: "right", marginTop: 2 }}>{fmtTime(m.created_at)}</div>
                 </div>
                 {mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
@@ -366,13 +393,36 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
           })}
         <div ref={endRef} />
       </div>
+      {isAdmin && showQR && (
+        <div style={{ position: "fixed", bottom: 63, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 25, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -4px 16px rgba(0,0,0,.08)", maxHeight: "45vh", overflowY: "auto", padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>Quick replies</span>
+            <X size={18} style={{ cursor: "pointer" }} onClick={() => setShowQR(false)} />
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <input value={newQR} onChange={e => setNewQR(e.target.value)} placeholder="Save a new quick reply…" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
+            <button onClick={addQR} style={btn(W.teal, "#fff")}>Save</button>
+          </div>
+          {qrs.length === 0 ? <div style={{ color: W.soft, fontSize: 13, padding: "6px 0" }}>No saved replies yet. Type one above and Save.</div> :
+            qrs.map(q => (
+              <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
+                <div onClick={() => { setText(q.text); setShowQR(false); }} style={{ flex: 1, minWidth: 0, fontSize: 14, color: W.ink, cursor: "pointer" }}>{q.text}</div>
+                <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => delQR(q.id)} />
+              </div>
+            ))}
+        </div>
+      )}
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7 }}>
-        <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px" }}>
+        <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px" }}>
           <Smile size={21} color={W.soft} style={{ flexShrink: 0 }} />
           <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Message" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink }} />
-          <Paperclip size={20} color={W.soft} style={{ flexShrink: 0 }} /><Camera size={20} color={W.soft} style={{ flexShrink: 0 }} />
+          {isAdmin && <Zap size={20} color={showQR ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => setShowQR(v => !v)} />}
+          <Paperclip size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => fileRef.current?.click()} />
+          <Camera size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => camRef.current?.click()} />
         </div>
         <button onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: W.teal, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Send size={20} /></button>
+        <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={e => { sendFile(e.target.files?.[0], "image"); e.target.value = ""; }} style={{ display: "none" }} />
+        <input ref={fileRef} type="file" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
       </div>
     </div>
   );
