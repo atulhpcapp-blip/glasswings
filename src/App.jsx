@@ -8,6 +8,14 @@ import {
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
 const WALL = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='none' stroke='%23000' stroke-opacity='0.03' stroke-width='2'><circle cx='20' cy='20' r='6'/><path d='M50 14 l8 8 M58 14 l-8 8'/><rect x='48' y='48' width='14' height='14' rx='3'/><path d='M14 54 q8 -10 16 0'/></g></svg>`);
 
+async function uploadPhoto(userId, file) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${userId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+  if (error) throw error;
+  return supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
@@ -80,20 +88,29 @@ function Auth() {
   );
 }
 
-/* ---------------- profile completion gate ---------------- */
+/* ---------------- profile completion (with photo) ---------------- */
 function ProfileGate({ user, profile, reload }) {
   const [name, setName] = useState(profile.full_name || "");
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState("");
-  const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const [avatar, setAvatar] = useState(profile.avatar_url || "");
+  const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
+  const fileRef = useRef(null);
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { if (data) { setPhone(data.phone || ""); setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); } });
   }, [user.id]);
+  const pick = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setErr(""); setUploading(true);
+    try { setAvatar(await uploadPhoto(user.id, file)); } catch (x) { setErr("Photo upload failed: " + x.message); }
+    setUploading(false);
+  };
   const save = async () => {
     setErr(""); if (!name || !phone || !age || !area || !prof) return setErr("Please complete every field.");
+    if (!avatar) return setErr("Please add a profile photo.");
     setBusy(true);
     const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, phone, age: Number(age) || null, area, profession: prof });
-    const { error: e2 } = await supabase.from("profiles").update({ full_name: name, profile_completed: true }).eq("id", user.id);
+    const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     setBusy(false);
     if (e1 || e2) return setErr((e1 || e2).message);
     reload();
@@ -103,8 +120,14 @@ function ProfileGate({ user, profile, reload }) {
     <div style={{ minHeight: "100vh", background: W.bg }}>
       <TopBar title="Complete your profile" />
       <div style={{ padding: 18 }}>
-        <div style={{ color: W.soft, fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
-          Welcome to Glasswings! Tell us a bit about yourself to join rooms and events. Your phone number stays private — only the organiser can see it.
+        <div style={{ color: W.soft, fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>Welcome to Glasswings! Add your photo and details to join rooms and events. Your phone number stays private — only the organiser can see it.</div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+          <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer" }}>
+            <PersonAvatar url={avatar} name={name} size={96} />
+            <div style={{ position: "absolute", bottom: 0, right: 0, width: 30, height: 30, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}><Camera size={16} /></div>
+            {uploading && <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,.4)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>…</div>}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           {inp("Full name", name, setName)}
@@ -113,7 +136,7 @@ function ProfileGate({ user, profile, reload }) {
           {inp("Area / locality", area, setArea)}
           {inp("Profession", prof, setProf)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
-          <button onClick={save} disabled={busy} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "Save & continue"}</button>
+          <button onClick={save} disabled={busy || uploading} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: (busy || uploading) ? .6 : 1 }}>{busy ? "Saving…" : "Save & continue"}</button>
         </div>
       </div>
     </div>
@@ -174,7 +197,7 @@ function Main({ user }) {
         {tab === "chats" && <Chats rooms={myChats} counts={counts} onOpen={setOpenId} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
         {tab === "admin" && isAdmin && <Admin rooms={rooms} counts={counts} onCreate={createRoom} onUpdate={updateRoom} onDelete={deleteRoom} />}
-        {tab === "profile" && <Profile user={user} profile={profile} />}
+        {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </>
@@ -256,29 +279,29 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
 /* ---------------- chat room ---------------- */
 function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateRoom }) {
   const [msgs, setMsgs] = useState(null);
-  const [names, setNames] = useState({});
+  const [senders, setSenders] = useState({});
   const [text, setText] = useState("");
   const [editPin, setEditPin] = useState(false);
   const [pinText, setPinText] = useState(room.pinned || "");
   const endRef = useRef(null);
-  const namesRef = useRef({});
+  const sRef = useRef({});
 
   useEffect(() => {
     let channel;
     (async () => {
       const { data } = await supabase.from("messages")
-        .select("id, body, sender_id, created_at, sender:profiles(full_name)")
+        .select("id, body, sender_id, created_at, sender:profiles(full_name, avatar_url)")
         .eq("group_type", "room").eq("group_id", room.id)
         .order("created_at", { ascending: true });
-      const nm = {}; (data || []).forEach(m => { if (m.sender) nm[m.sender_id] = m.sender.full_name; });
-      nm[user.id] = profile.full_name; namesRef.current = nm; setNames(nm);
+      const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url }; });
+      sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url }; sRef.current = sm; setSenders(sm);
       setMsgs((data || []).map(m => ({ id: m.id, body: m.body, sender_id: m.sender_id, created_at: m.created_at })));
       channel = supabase.channel("room-" + room.id)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${room.id}` }, async (payload) => {
           const m = payload.new;
-          if (!namesRef.current[m.sender_id]) {
-            const { data: p } = await supabase.from("profiles").select("full_name").eq("id", m.sender_id).single();
-            namesRef.current = { ...namesRef.current, [m.sender_id]: p?.full_name || "Member" }; setNames(namesRef.current);
+          if (!sRef.current[m.sender_id]) {
+            const { data: p } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", m.sender_id).single();
+            sRef.current = { ...sRef.current, [m.sender_id]: { name: p?.full_name || "Member", avatar: p?.avatar_url } }; setSenders(sRef.current);
           }
           setMsgs(prev => (prev && prev.some(x => x.id === m.id)) ? prev : [...(prev || []), { id: m.id, body: m.body, sender_id: m.sender_id, created_at: m.created_at }]);
         }).subscribe();
@@ -317,16 +340,18 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
           </>)}
         </div>
       )}
-      <div style={{ flex: 1, overflowY: "auto", padding: "14px 10px", background: W.wall, backgroundImage: `url("${WALL}")` }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 8px", background: W.wall, backgroundImage: `url("${WALL}")` }}>
         <div style={{ textAlign: "center", margin: "6px 0 16px" }}><span style={{ background: "#FBF1C7", color: "#54656F", fontSize: 12, padding: "5px 12px", borderRadius: 8 }}>🔒 Only members can see these messages</span></div>
         {msgs === null ? <Center>loading…</Center> : msgs.length === 0 ? <Center>No messages yet — say hello 👋</Center> :
           msgs.map((m, i) => {
             const mine = m.sender_id === user.id;
-            const showName = !mine && (i === 0 || msgs[i - 1].sender_id !== m.sender_id);
+            const first = (i === 0 || msgs[i - 1].sender_id !== m.sender_id);
+            const s = senders[m.sender_id] || {};
             return (
-              <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", margin: "2px 4px" }}>
-                <div style={{ maxWidth: "80%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)" }}>
-                  {showName && <div style={{ fontSize: 12.5, fontWeight: 700, color: W.teal, marginBottom: 1 }}>{names[m.sender_id] || "Member"}</div>}
+              <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
+                {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
+                <div style={{ maxWidth: "78%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)" }}>
+                  {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 700, color: W.teal, marginBottom: 1 }}>{s.name || "Member"}</div>}
                   <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35 }}>{m.body}</div>
                   <div style={{ fontSize: 11, color: W.soft, textAlign: "right", marginTop: 2 }}>{fmtTime(m.created_at)}</div>
                 </div>
@@ -347,7 +372,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
   );
 }
 
-/* ---------------- admin (rooms + members) ---------------- */
+/* ---------------- admin ---------------- */
 function Admin({ rooms, counts, onCreate, onUpdate, onDelete }) {
   const [seg, setSeg] = useState("rooms");
   return (
@@ -426,7 +451,7 @@ function PinEditor({ room, onUpdate }) {
 function AdminMembers() {
   const [list, setList] = useState(null);
   useEffect(() => {
-    supabase.from("profiles").select("id, full_name, gender, role, member_details(phone, age, area, profession)").order("created_at", { ascending: false })
+    supabase.from("profiles").select("id, full_name, gender, role, avatar_url, member_details(phone, age, area, profession)").order("created_at", { ascending: false })
       .then(({ data }) => setList(data || []));
   }, []);
   if (list === null) return <Center>loading members…</Center>;
@@ -439,7 +464,7 @@ function AdminMembers() {
           return (
             <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                <div style={{ width: 42, height: 42, borderRadius: "50%", background: W.teal, color: "#fff", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{(m.full_name || "?")[0].toUpperCase()}</div>
+                <PersonAvatar url={m.avatar_url} name={m.full_name} size={42} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, color: W.ink }}>{m.full_name || "—"} {m.role !== "member" && <span style={{ fontSize: 11, color: W.teal }}>· {m.role}</span>}</div>
                   <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{d.phone || "no phone"}</div>
@@ -461,14 +486,26 @@ function AdminMembers() {
 }
 
 /* ---------------- profile ---------------- */
-function Profile({ user, profile }) {
+function Profile({ user, profile, reload }) {
   const roleLabel = { admin: "Admin (Owner)", subadmin: "Sub-admin", member: "Member" }[profile?.role] || "Member";
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const change = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setBusy(true);
+    try { const url = await uploadPhoto(user.id, file); await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id); reload(); } catch (x) { alert("Upload failed: " + x.message); }
+    setBusy(false);
+  };
   return (
     <div>
       <TopBar title="Profile" />
       <div style={{ padding: 16 }}>
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 20, display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 64, height: 64, borderRadius: "50%", background: W.teal, color: "#fff", fontSize: 27, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{(profile?.full_name || "?")[0].toUpperCase()}</div>
+          <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", flexShrink: 0 }}>
+            <PersonAvatar url={profile?.avatar_url} name={profile?.full_name} size={64} />
+            <div style={{ position: "absolute", bottom: -2, right: -2, width: 24, height: 24, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>{busy ? "…" : <Camera size={12} />}</div>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={change} style={{ display: "none" }} />
           <div>
             <div style={{ fontSize: 21, fontWeight: 700, color: W.ink }}>{profile?.full_name || "—"}</div>
             <div style={{ color: W.soft, fontSize: 14 }}>{user.email}</div>
@@ -486,6 +523,10 @@ function TopBar({ title }) { return <div style={{ background: W.teal, color: "#f
 function Avatar({ room, size }) {
   if (room?.logo_url) return <img src={room.logo_url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />;
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, fontSize: size * .5, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#7AD6C0,#008069)" }}>{room?.emoji || "💬"}</div>;
+}
+function PersonAvatar({ url, name, size }) {
+  if (url) return <img src={url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />;
+  return <div style={{ width: size, height: size, borderRadius: "50%", background: "#9DB2AC", color: "#fff", fontWeight: 700, fontSize: size * .42, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{(name || "?")[0].toUpperCase()}</div>;
 }
 const Center = ({ children }) => <div style={{ textAlign: "center", color: W.soft, fontSize: 14, padding: "26px 0" }}>{children}</div>;
 const btn = (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 });
