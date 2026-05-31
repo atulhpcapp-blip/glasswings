@@ -426,6 +426,7 @@ function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
             </div>
             {manage === r.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                <RoomPhoto room={r} onUpdate={onUpdate} />
                 <PinEditor room={r} onUpdate={onUpdate} />
                 <button onClick={() => { if (confirm("Delete this room and all its messages?")) onDelete(r.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete room</button>
               </div>
@@ -445,6 +446,27 @@ function PinEditor({ room, onUpdate }) {
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
         <input value={pin} onChange={e => setPin(e.target.value)} placeholder="e.g. Next meetup Friday 7PM" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
         <button onClick={() => onUpdate(room.id, { pinned: pin.trim() })} style={btn(W.teal, "#fff")}>Pin</button>
+      </div>
+    </div>
+  );
+}
+function RoomPhoto({ room, onUpdate }) {
+  const ref = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const pick = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    setBusy(true);
+    try { const url = await uploadPhoto(room.id, f); await onUpdate(room.id, { logo_url: url }); }
+    catch (x) { alert("Upload failed: " + x.message); }
+    setBusy(false);
+  };
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Room photo / icon</label>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
+        <Avatar room={room} size={48} />
+        <button onClick={() => ref.current?.click()} style={btn(W.teal, "#fff")}><Camera size={15} />{busy ? "Uploading…" : "Change photo"}</button>
+        <input ref={ref} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
       </div>
     </div>
   );
