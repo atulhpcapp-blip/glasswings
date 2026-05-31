@@ -30,7 +30,7 @@ export default function App() {
 function Shell({ children }) {
   return (
     <div style={{ fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", background: "#d9d9d9", display: "flex", justifyContent: "center", minHeight: "100vh", width: "100%", overflowX: "hidden" }}>
-      <style>{`html,body,#root{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}`}</style>
+      <style>{`html,body,#root{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}.chatscreen{height:100vh;height:100dvh;}`}</style>
       <div style={{ width: "100%", maxWidth: 430, minHeight: "100vh", background: W.bg, boxShadow: "0 0 60px rgba(0,0,0,.15)", position: "relative", overflowX: "hidden" }}>{children}</div>
     </div>
   );
@@ -319,8 +319,8 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
   const savePin = async () => { await onUpdateRoom(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
 
   return (
-    <div style={{ height: "100vh", width: "100%", display: "flex", flexDirection: "column", overflowX: "hidden" }}>
-      <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
+    <div className="chatscreen" style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, display: "flex", flexDirection: "column", overflow: "hidden", background: W.bg, zIndex: 40 }}>
+      <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px", flexShrink: 0 }}>
         <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
         <Avatar room={room} size={38} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -329,7 +329,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
         </div>
       </div>
       {(room.pinned || isAdmin) && (
-        <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9 }}>
+        <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
           <Pin size={15} color={W.teal} style={{ flexShrink: 0 }} />
           {editPin ? (<>
             <input value={pinText} onChange={e => setPinText(e.target.value)} placeholder="Pin an announcement…" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, outline: "none" }} />
@@ -340,7 +340,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
           </>)}
         </div>
       )}
-      <div style={{ flex: 1, overflowY: "auto", padding: "14px 8px", background: W.wall, backgroundImage: `url("${WALL}")` }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 8px", background: W.wall, backgroundImage: `url("${WALL}")` }}>
         <div style={{ textAlign: "center", margin: "6px 0 16px" }}><span style={{ background: "#FBF1C7", color: "#54656F", fontSize: 12, padding: "5px 12px", borderRadius: 8 }}>🔒 Only members can see these messages</span></div>
         {msgs === null ? <Center>loading…</Center> : msgs.length === 0 ? <Center>No messages yet — say hello 👋</Center> :
           msgs.map((m, i) => {
@@ -361,7 +361,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
           })}
         <div ref={endRef} />
       </div>
-      <div style={{ background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7 }}>
+      <div style={{ background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7, flexShrink: 0 }}>
         <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px" }}>
           <Smile size={21} color={W.soft} style={{ flexShrink: 0 }} />
           <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Message" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink }} />
@@ -426,6 +426,7 @@ function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
             </div>
             {manage === r.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                <RoomPhoto room={r} onUpdate={onUpdate} />
                 <PinEditor room={r} onUpdate={onUpdate} />
                 <button onClick={() => { if (confirm("Delete this room and all its messages?")) onDelete(r.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete room</button>
               </div>
@@ -445,6 +446,27 @@ function PinEditor({ room, onUpdate }) {
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
         <input value={pin} onChange={e => setPin(e.target.value)} placeholder="e.g. Next meetup Friday 7PM" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
         <button onClick={() => onUpdate(room.id, { pinned: pin.trim() })} style={btn(W.teal, "#fff")}>Pin</button>
+      </div>
+    </div>
+  );
+}
+function RoomPhoto({ room, onUpdate }) {
+  const ref = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const pick = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    setBusy(true);
+    try { const url = await uploadPhoto(room.id, f); await onUpdate(room.id, { logo_url: url }); }
+    catch (x) { alert("Upload failed: " + x.message); }
+    setBusy(false);
+  };
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Room photo / icon</label>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
+        <Avatar room={room} size={48} />
+        <button onClick={() => ref.current?.click()} style={btn(W.teal, "#fff")}><Camera size={15} />{busy ? "Uploading…" : "Change photo"}</button>
+        <input ref={ref} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
       </div>
     </div>
   );
