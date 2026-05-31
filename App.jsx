@@ -293,8 +293,8 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
         .select("id, body, sender_id, created_at, sender:profiles(full_name, avatar_url)")
         .eq("group_type", "room").eq("group_id", room.id)
         .order("created_at", { ascending: true });
-      const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url }; });
-      sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url }; sRef.current = sm; setSenders(sm);
+      const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url || sm[m.sender_id]?.avatar }; });
+      sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url || sm[user.id]?.avatar }; sRef.current = sm; setSenders(sm);
       setMsgs((data || []).map(m => ({ id: m.id, body: m.body, sender_id: m.sender_id, created_at: m.created_at })));
       channel = supabase.channel("room-" + room.id)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${room.id}` }, async (payload) => {
