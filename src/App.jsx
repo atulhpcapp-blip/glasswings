@@ -2,13 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabaseClient.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone
 } from "lucide-react";
 
-const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", bg: "#F0F2F5", blue: "#53BDEB", pink: "#D81B7A" };
+const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
 const WALL = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='none' stroke='%23000' stroke-opacity='0.03' stroke-width='2'><circle cx='20' cy='20' r='6'/><path d='M50 14 l8 8 M58 14 l-8 8'/><rect x='48' y='48' width='14' height='14' rx='3'/><path d='M14 54 q8 -10 16 0'/></g></svg>`);
 
-/* ---------------- root ---------------- */
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
@@ -81,55 +80,100 @@ function Auth() {
   );
 }
 
-/* ---------------- main (logged in) ---------------- */
+/* ---------------- profile completion gate ---------------- */
+function ProfileGate({ user, profile, reload }) {
+  const [name, setName] = useState(profile.full_name || "");
+  const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState("");
+  const [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  useEffect(() => {
+    supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => { if (data) { setPhone(data.phone || ""); setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); } });
+  }, [user.id]);
+  const save = async () => {
+    setErr(""); if (!name || !phone || !age || !area || !prof) return setErr("Please complete every field.");
+    setBusy(true);
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, phone, age: Number(age) || null, area, profession: prof });
+    const { error: e2 } = await supabase.from("profiles").update({ full_name: name, profile_completed: true }).eq("id", user.id);
+    setBusy(false);
+    if (e1 || e2) return setErr((e1 || e2).message);
+    reload();
+  };
+  const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
+  return (
+    <div style={{ minHeight: "100vh", background: W.bg }}>
+      <TopBar title="Complete your profile" />
+      <div style={{ padding: 18 }}>
+        <div style={{ color: W.soft, fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>
+          Welcome to Glasswings! Tell us a bit about yourself to join rooms and events. Your phone number stays private — only the organiser can see it.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          {inp("Full name", name, setName)}
+          {inp("Phone number", phone, setPhone, "tel")}
+          {inp("Age", age, setAge, "number")}
+          {inp("Area / locality", area, setArea)}
+          {inp("Profession", prof, setProf)}
+          {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
+          <button onClick={save} disabled={busy} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "Save & continue"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- main ---------------- */
 function Main({ user }) {
   const [profile, setProfile] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [subs, setSubs] = useState([]);
   const [mods, setMods] = useState([]);
+  const [counts, setCounts] = useState({});
   const [tab, setTab] = useState("chats");
   const [openId, setOpenId] = useState(null);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: sb }, { data: md }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: sb }, { data: md }, { data: cnt }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("room_subscriptions").select("room_id").eq("user_id", user.id),
       supabase.from("room_moderators").select("room_id").eq("user_id", user.id),
+      supabase.rpc("room_member_counts"),
     ]);
-    setProfile(prof); setRooms(rm || []); setSubs((sb || []).map(x => x.room_id)); setMods((md || []).map(x => x.room_id)); setReady(true);
+    setProfile(prof); setRooms(rm || []); setSubs((sb || []).map(x => x.room_id)); setMods((md || []).map(x => x.room_id));
+    const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
+    setReady(true);
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
 
   const isAdmin = profile?.role === "admin";
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
-
   const joinRoom = async (r) => {
     if (canAccess(r)) return setOpenId(r.id);
-    if (!freeForUser(r)) return setNotice("Online payments are being set up — paid subscriptions for men are coming in the next step.");
+    if (!freeForUser(r)) return setNotice("Online payments are being set up — paid subscriptions for men are coming next.");
     const { error } = await supabase.from("room_subscriptions").insert({ room_id: r.id, user_id: user.id });
     if (error) return setNotice(error.message);
-    setSubs(p => [...p, r.id]); setOpenId(r.id);
+    setSubs(p => [...p, r.id]); setCounts(c => ({ ...c, [r.id]: (c[r.id] || 0) + 1 })); setOpenId(r.id);
   };
   const createRoom = async (d) => { const { error } = await supabase.from("rooms").insert(d); if (error) return setNotice(error.message); await load(); };
   const updateRoom = async (id, p) => { const { error } = await supabase.from("rooms").update(p).eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.map(r => r.id === id ? { ...r, ...p } : r)); };
   const deleteRoom = async (id) => { const { error } = await supabase.from("rooms").delete().eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.filter(r => r.id !== id)); setOpenId(null); };
 
   if (!ready) return <Splash />;
+  if (profile && !profile.profile_completed) return <ProfileGate user={user} profile={profile} reload={load} />;
+
   const open = openId ? rooms.find(r => r.id === openId) : null;
-  if (open) return <RoomChat room={open} user={user} profile={profile} isAdmin={isAdmin} onBack={() => setOpenId(null)} onUpdateRoom={updateRoom} />;
+  if (open) return <RoomChat room={open} user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[open.id] || 0} onBack={() => setOpenId(null)} onUpdateRoom={updateRoom} />;
   const myChats = rooms.filter(canAccess);
 
   return (
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
-        {tab === "chats" && <Chats rooms={myChats} onOpen={setOpenId} onExplore={() => setTab("explore")} />}
-        {tab === "explore" && <Explore rooms={rooms} profile={profile} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-        {tab === "admin" && isAdmin && <Admin rooms={rooms} onCreate={createRoom} onUpdate={updateRoom} onDelete={deleteRoom} />}
+        {tab === "chats" && <Chats rooms={myChats} counts={counts} onOpen={setOpenId} onExplore={() => setTab("explore")} />}
+        {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
+        {tab === "admin" && isAdmin && <Admin rooms={rooms} counts={counts} onCreate={createRoom} onUpdate={updateRoom} onDelete={deleteRoom} />}
         {tab === "profile" && <Profile user={user} profile={profile} />}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
@@ -147,7 +191,7 @@ function Notice({ text, onClose }) {
 }
 
 /* ---------------- chats ---------------- */
-function Chats({ rooms, onOpen, onExplore }) {
+function Chats({ rooms, counts, onOpen, onExplore }) {
   return (
     <div>
       <TopBar title="Glasswings" />
@@ -160,10 +204,10 @@ function Chats({ rooms, onOpen, onExplore }) {
         </div>
       ) : rooms.map(r => (
         <div key={r.id} onClick={() => onOpen(r.id)} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
-          <Avatar emoji={r.emoji} size={52} />
+          <Avatar room={r} size={52} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{r.name}</div>
-            <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.description || "Tap to open chat"}</div>
+            <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(counts[r.id] || 0)} members · tap to open</div>
           </div>
         </div>
       ))}
@@ -172,7 +216,7 @@ function Chats({ rooms, onOpen, onExplore }) {
 }
 
 /* ---------------- explore ---------------- */
-function Explore({ rooms, profile, canAccess, freeForUser, onJoin }) {
+function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
   return (
     <div>
       <TopBar title="Explore Rooms" />
@@ -184,10 +228,11 @@ function Explore({ rooms, profile, canAccess, freeForUser, onJoin }) {
           return (
             <div key={r.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16 }}>
               <div style={{ display: "flex", gap: 13 }}>
-                <Avatar emoji={r.emoji} size={50} />
-                <div style={{ flex: 1 }}>
+                <Avatar room={r} size={50} />
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{r.name}</div>
                   <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{r.description}</div>
+                  <div style={{ color: W.soft, fontSize: 12.5, marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}><Users size={13} />{counts[r.id] || 0} members</div>
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
@@ -208,8 +253,8 @@ function Explore({ rooms, profile, canAccess, freeForUser, onJoin }) {
   );
 }
 
-/* ---------------- chat room (realtime) ---------------- */
-function RoomChat({ room, user, profile, isAdmin, onBack, onUpdateRoom }) {
+/* ---------------- chat room ---------------- */
+function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateRoom }) {
   const [msgs, setMsgs] = useState(null);
   const [names, setNames] = useState({});
   const [text, setText] = useState("");
@@ -240,7 +285,6 @@ function RoomChat({ room, user, profile, isAdmin, onBack, onUpdateRoom }) {
     })();
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [room.id]);
-
   useEffect(() => { endRef.current?.scrollIntoView(); }, [msgs]);
 
   const send = async () => {
@@ -255,21 +299,21 @@ function RoomChat({ room, user, profile, isAdmin, onBack, onUpdateRoom }) {
     <div style={{ height: "100vh", width: "100%", display: "flex", flexDirection: "column", overflowX: "hidden" }}>
       <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
         <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
-        <Avatar emoji={room.emoji} size={38} />
+        <Avatar room={room} size={38} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
-          <div style={{ fontSize: 12, opacity: .85 }}>group chat</div>
+          <div style={{ fontSize: 12, opacity: .85 }}>{memberCount} members</div>
         </div>
       </div>
       {(room.pinned || isAdmin) && (
         <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9 }}>
           <Pin size={15} color={W.teal} style={{ flexShrink: 0 }} />
           {editPin ? (<>
-            <input value={pinText} onChange={e => setPinText(e.target.value)} placeholder="Pin an announcement…" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, outline: "none" }} />
+            <input value={pinText} onChange={e => setPinText(e.target.value)} placeholder="Pin an announcement…" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, outline: "none" }} />
             <button onClick={savePin} style={{ ...btn(W.teal, "#fff"), padding: "6px 12px" }}>Save</button>
           </>) : (<>
-            <div style={{ flex: 1, fontSize: 13.5, color: room.pinned ? W.ink : W.soft }}>{room.pinned || "No announcement pinned"}</div>
-            {isAdmin && <Settings size={16} color={W.soft} style={{ cursor: "pointer" }} onClick={() => { setPinText(room.pinned || ""); setEditPin(true); }} />}
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: room.pinned ? W.ink : W.soft }}>{room.pinned || "No announcement pinned"}</div>
+            {isAdmin && <Settings size={16} color={W.soft} style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => { setPinText(room.pinned || ""); setEditPin(true); }} />}
           </>)}
         </div>
       )}
@@ -303,67 +347,115 @@ function RoomChat({ room, user, profile, isAdmin, onBack, onUpdateRoom }) {
   );
 }
 
-/* ---------------- admin ---------------- */
-function Admin({ rooms, onCreate, onUpdate, onDelete }) {
-  const [creating, setCreating] = useState(false);
-  const [manage, setManage] = useState(null);
+/* ---------------- admin (rooms + members) ---------------- */
+function Admin({ rooms, counts, onCreate, onUpdate, onDelete }) {
+  const [seg, setSeg] = useState("rooms");
+  return (
+    <div>
+      <TopBar title="Admin Panel" />
+      <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9 }}>
+        {[["rooms", "Rooms"], ["members", "Members"]].map(([v, l]) => (
+          <button key={v} onClick={() => setSeg(v)} style={{ flex: 1, padding: "13px 0", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 14, color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
+        ))}
+      </div>
+      {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} /> : <AdminMembers />}
+    </div>
+  );
+}
+function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
+  const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [f, setF] = useState({ emoji: "💬", name: "", price: "", desc: "" });
   const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "" });
   const create = async () => { if (!f.name) return; await onCreate({ name: f.name, emoji: f.emoji || "💬", price_monthly: Number(f.price) || 0, description: f.desc }); reset(); setCreating(false); };
   return (
-    <div>
-      <TopBar title="Admin Panel" />
-      <div style={{ padding: 14 }}>
-        {creating ? (
-          <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
-            <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New subscription room</div>
-            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-              <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
-              <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Room name" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
-            </div>
-            <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-              <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
-              <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
-              <span style={{ color: W.soft, fontSize: 14 }}>per month</span>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-              <button onClick={create} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Create</button>
-            </div>
+    <div style={{ padding: 14 }}>
+      {creating ? (
+        <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New subscription room</div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+            <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
+            <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Room name" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
           </div>
-        ) : (
-          <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}><Plus size={18} />Create subscription room</button>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {rooms.map(r => (
-            <div key={r.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <Avatar emoji={r.emoji} size={44} />
-                <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{r.name}</div><div style={{ fontSize: 13, color: W.soft }}>{r.price_monthly === 0 ? "Free room" : `₹${r.price_monthly}/mo`}</div></div>
-                <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === r.id ? null : r.id)} />
-              </div>
-              {manage === r.id && <ManageRoom room={r} onUpdate={onUpdate} onDelete={onDelete} />}
-            </div>
-          ))}
-          {rooms.length === 0 && <Center>No rooms yet.</Center>}
+          <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
+            <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
+            <span style={{ color: W.soft, fontSize: 14 }}>per month</span>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+            <button onClick={create} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Create</button>
+          </div>
         </div>
+      ) : (
+        <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}><Plus size={18} />Create subscription room</button>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {rooms.map(r => (
+          <div key={r.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Avatar room={r} size={44} />
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{r.name}</div><div style={{ fontSize: 13, color: W.soft }}>{r.price_monthly === 0 ? "Free" : `₹${r.price_monthly}/mo`}</div></div>
+              <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === r.id ? null : r.id)} />
+            </div>
+            {manage === r.id && (
+              <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                <PinEditor room={r} onUpdate={onUpdate} />
+                <button onClick={() => { if (confirm("Delete this room and all its messages?")) onDelete(r.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete room</button>
+              </div>
+            )}
+          </div>
+        ))}
+        {rooms.length === 0 && <Center>No rooms yet.</Center>}
       </div>
     </div>
   );
 }
-function ManageRoom({ room, onUpdate, onDelete }) {
+function PinEditor({ room, onUpdate }) {
   const [pin, setPin] = useState(room.pinned || "");
   return (
-    <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-      <div>
-        <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Pinned announcement</label>
-        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-          <input value={pin} onChange={e => setPin(e.target.value)} placeholder="e.g. Next meetup Friday 7PM" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
-          <button onClick={() => onUpdate(room.id, { pinned: pin.trim() })} style={btn(W.teal, "#fff")}>Pin</button>
-        </div>
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Pinned announcement</label>
+      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+        <input value={pin} onChange={e => setPin(e.target.value)} placeholder="e.g. Next meetup Friday 7PM" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
+        <button onClick={() => onUpdate(room.id, { pinned: pin.trim() })} style={btn(W.teal, "#fff")}>Pin</button>
       </div>
-      <button onClick={() => { if (confirm("Delete this room and all its messages?")) onDelete(room.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete room</button>
+    </div>
+  );
+}
+function AdminMembers() {
+  const [list, setList] = useState(null);
+  useEffect(() => {
+    supabase.from("profiles").select("id, full_name, gender, role, member_details(phone, age, area, profession)").order("created_at", { ascending: false })
+      .then(({ data }) => setList(data || []));
+  }, []);
+  if (list === null) return <Center>loading members…</Center>;
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ fontSize: 13.5, color: W.soft, marginBottom: 12 }}>{list.length} total members · only you can see these details</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {list.map(m => {
+          const d = m.member_details || {};
+          return (
+            <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                <div style={{ width: 42, height: 42, borderRadius: "50%", background: W.teal, color: "#fff", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{(m.full_name || "?")[0].toUpperCase()}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: W.ink }}>{m.full_name || "—"} {m.role !== "member" && <span style={{ fontSize: 11, color: W.teal }}>· {m.role}</span>}</div>
+                  <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{d.phone || "no phone"}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 13, color: W.soft }}>
+                <span>Sex: {{ male: "M", female: "F", other: "—" }[m.gender] || "—"}</span>
+                <span>Age: {d.age || "—"}</span>
+                <span>Area: {d.area || "—"}</span>
+                <span>Work: {d.profession || "—"}</span>
+              </div>
+            </div>
+          );
+        })}
+        {list.length === 0 && <Center>No members yet.</Center>}
+      </div>
     </div>
   );
 }
@@ -391,7 +483,10 @@ function Profile({ user, profile }) {
 
 /* ---------------- shared ---------------- */
 function TopBar({ title }) { return <div style={{ background: W.teal, color: "#fff", padding: "16px 18px", fontSize: 21, fontWeight: 700, position: "sticky", top: 0, zIndex: 10 }}>{title}</div>; }
-function Avatar({ emoji, size }) { return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, fontSize: size * .5, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#7AD6C0,#008069)" }}>{emoji}</div>; }
+function Avatar({ room, size }) {
+  if (room?.logo_url) return <img src={room.logo_url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />;
+  return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, fontSize: size * .5, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#7AD6C0,#008069)" }}>{room?.emoji || "💬"}</div>;
+}
 const Center = ({ children }) => <div style={{ textAlign: "center", color: W.soft, fontSize: 14, padding: "26px 0" }}>{children}</div>;
 const btn = (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 });
 function fmtTime(t) { return new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
