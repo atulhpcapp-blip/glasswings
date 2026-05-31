@@ -319,28 +319,30 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
   const savePin = async () => { await onUpdateRoom(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
 
   return (
-    <div className="chatscreen" style={{ width: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px", flexShrink: 0 }}>
-        <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
-        <Avatar room={room} size={38} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
-          <div style={{ fontSize: 12, opacity: .85 }}>{memberCount} members</div>
+    <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 20 }}>
+        <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
+          <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
+          <Avatar room={room} size={38} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
+            <div style={{ fontSize: 12, opacity: .85 }}>{memberCount} members</div>
+          </div>
         </div>
+        {(room.pinned || isAdmin) && (
+          <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9 }}>
+            <Pin size={15} color={W.teal} style={{ flexShrink: 0 }} />
+            {editPin ? (<>
+              <input value={pinText} onChange={e => setPinText(e.target.value)} placeholder="Pin an announcement…" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, outline: "none" }} />
+              <button onClick={savePin} style={{ ...btn(W.teal, "#fff"), padding: "6px 12px" }}>Save</button>
+            </>) : (<>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: room.pinned ? W.ink : W.soft }}>{room.pinned || "No announcement pinned"}</div>
+              {isAdmin && <Settings size={16} color={W.soft} style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => { setPinText(room.pinned || ""); setEditPin(true); }} />}
+            </>)}
+          </div>
+        )}
       </div>
-      {(room.pinned || isAdmin) && (
-        <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
-          <Pin size={15} color={W.teal} style={{ flexShrink: 0 }} />
-          {editPin ? (<>
-            <input value={pinText} onChange={e => setPinText(e.target.value)} placeholder="Pin an announcement…" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, outline: "none" }} />
-            <button onClick={savePin} style={{ ...btn(W.teal, "#fff"), padding: "6px 12px" }}>Save</button>
-          </>) : (<>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: room.pinned ? W.ink : W.soft }}>{room.pinned || "No announcement pinned"}</div>
-            {isAdmin && <Settings size={16} color={W.soft} style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => { setPinText(room.pinned || ""); setEditPin(true); }} />}
-          </>)}
-        </div>
-      )}
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 8px", background: W.wall, backgroundImage: `url("${WALL}")` }}>
+      <div style={{ padding: "14px 8px" }}>
         <div style={{ textAlign: "center", margin: "6px 0 16px" }}><span style={{ background: "#FBF1C7", color: "#54656F", fontSize: 12, padding: "5px 12px", borderRadius: 8 }}>🔒 Only members can see these messages</span></div>
         {msgs === null ? <Center>loading…</Center> : msgs.length === 0 ? <Center>No messages yet — say hello 👋</Center> :
           msgs.map((m, i) => {
@@ -361,7 +363,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
           })}
         <div ref={endRef} />
       </div>
-      <div style={{ background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7, flexShrink: 0 }}>
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7 }}>
         <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px" }}>
           <Smile size={21} color={W.soft} style={{ flexShrink: 0 }} />
           <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Message" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink }} />
