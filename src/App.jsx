@@ -285,6 +285,8 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
   const [pinText, setPinText] = useState(room.pinned || "");
   const endRef = useRef(null);
   const sRef = useRef({});
+  const headRef = useRef(null);
+  const [headPad, setHeadPad] = useState(112);
 
   useEffect(() => {
     let channel;
@@ -309,6 +311,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [room.id]);
   useEffect(() => { endRef.current?.scrollIntoView(); }, [msgs]);
+  useEffect(() => { if (headRef.current) setHeadPad(headRef.current.offsetHeight); }, [room.pinned, isAdmin, editPin, msgs === null]);
 
   const send = async () => {
     const body = text.trim(); if (!body) return; setText("");
@@ -320,7 +323,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
 
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
-      <div style={{ position: "sticky", top: 0, zIndex: 20 }}>
+      <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30 }}>
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
           <Avatar room={room} size={38} />
@@ -342,8 +345,8 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
           </div>
         )}
       </div>
-      <div style={{ padding: "14px 8px" }}>
-        <div style={{ textAlign: "center", margin: "6px 0 16px" }}><span style={{ background: "#FBF1C7", color: "#54656F", fontSize: 12, padding: "5px 12px", borderRadius: 8 }}>🔒 Only members can see these messages</span></div>
+      <div style={{ paddingTop: headPad + 8, paddingLeft: 8, paddingRight: 8, paddingBottom: 8 }}>
+        <div style={{ textAlign: "center", margin: "0 0 16px" }}><span style={{ background: "#FBF1C7", color: "#54656F", fontSize: 12, padding: "5px 12px", borderRadius: 8 }}>🔒 Only members can see these messages</span></div>
         {msgs === null ? <Center>loading…</Center> : msgs.length === 0 ? <Center>No messages yet — say hello 👋</Center> :
           msgs.map((m, i) => {
             const mine = m.sender_id === user.id;
