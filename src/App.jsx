@@ -30,7 +30,7 @@ export default function App() {
 function Shell({ children }) {
   return (
     <div style={{ fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", background: "#d9d9d9", display: "flex", justifyContent: "center", minHeight: "100vh", width: "100%", overflowX: "hidden" }}>
-      <style>{`html,body,#root{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}`}</style>
+      <style>{`html,body,#root{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}.chatscreen{height:100vh;height:100dvh;}`}</style>
       <div style={{ width: "100%", maxWidth: 430, minHeight: "100vh", background: W.bg, boxShadow: "0 0 60px rgba(0,0,0,.15)", position: "relative", overflowX: "hidden" }}>{children}</div>
     </div>
   );
@@ -293,8 +293,8 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
         .select("id, body, sender_id, created_at, sender:profiles(full_name, avatar_url)")
         .eq("group_type", "room").eq("group_id", room.id)
         .order("created_at", { ascending: true });
-      const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url }; });
-      sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url }; sRef.current = sm; setSenders(sm);
+      const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url || sm[m.sender_id]?.avatar }; });
+      sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url || sm[user.id]?.avatar }; sRef.current = sm; setSenders(sm);
       setMsgs((data || []).map(m => ({ id: m.id, body: m.body, sender_id: m.sender_id, created_at: m.created_at })));
       channel = supabase.channel("room-" + room.id)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${room.id}` }, async (payload) => {
@@ -319,8 +319,8 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
   const savePin = async () => { await onUpdateRoom(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
 
   return (
-    <div style={{ height: "100vh", width: "100%", display: "flex", flexDirection: "column", overflowX: "hidden" }}>
-      <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
+    <div className="chatscreen" style={{ width: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px", flexShrink: 0 }}>
         <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
         <Avatar room={room} size={38} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -329,7 +329,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
         </div>
       </div>
       {(room.pinned || isAdmin) && (
-        <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9 }}>
+        <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
           <Pin size={15} color={W.teal} style={{ flexShrink: 0 }} />
           {editPin ? (<>
             <input value={pinText} onChange={e => setPinText(e.target.value)} placeholder="Pin an announcement…" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, outline: "none" }} />
@@ -340,7 +340,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
           </>)}
         </div>
       )}
-      <div style={{ flex: 1, overflowY: "auto", padding: "14px 8px", background: W.wall, backgroundImage: `url("${WALL}")` }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 8px", background: W.wall, backgroundImage: `url("${WALL}")` }}>
         <div style={{ textAlign: "center", margin: "6px 0 16px" }}><span style={{ background: "#FBF1C7", color: "#54656F", fontSize: 12, padding: "5px 12px", borderRadius: 8 }}>🔒 Only members can see these messages</span></div>
         {msgs === null ? <Center>loading…</Center> : msgs.length === 0 ? <Center>No messages yet — say hello 👋</Center> :
           msgs.map((m, i) => {
@@ -355,12 +355,13 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
                   <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35 }}>{m.body}</div>
                   <div style={{ fontSize: 11, color: W.soft, textAlign: "right", marginTop: 2 }}>{fmtTime(m.created_at)}</div>
                 </div>
+                {mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
               </div>
             );
           })}
         <div ref={endRef} />
       </div>
-      <div style={{ background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7 }}>
+      <div style={{ background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7, flexShrink: 0 }}>
         <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px" }}>
           <Smile size={21} color={W.soft} style={{ flexShrink: 0 }} />
           <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Message" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink }} />
