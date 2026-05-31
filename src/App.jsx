@@ -22,9 +22,9 @@ export default function App() {
 
 function Shell({ children }) {
   return (
-    <div style={{ fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", background: "#d9d9d9", display: "flex", justifyContent: "center", minHeight: "100vh" }}>
-      <style>{`*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}`}</style>
-      <div style={{ width: "100%", maxWidth: 430, minHeight: "100vh", background: W.bg, boxShadow: "0 0 60px rgba(0,0,0,.15)", position: "relative" }}>{children}</div>
+    <div style={{ fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", background: "#d9d9d9", display: "flex", justifyContent: "center", minHeight: "100vh", width: "100%", overflowX: "hidden" }}>
+      <style>{`html,body,#root{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}`}</style>
+      <div style={{ width: "100%", maxWidth: 430, minHeight: "100vh", background: W.bg, boxShadow: "0 0 60px rgba(0,0,0,.15)", position: "relative", overflowX: "hidden" }}>{children}</div>
     </div>
   );
 }
@@ -252,7 +252,7 @@ function RoomChat({ room, user, profile, isAdmin, onBack, onUpdateRoom }) {
   const savePin = async () => { await onUpdateRoom(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100vh", width: "100%", display: "flex", flexDirection: "column", overflowX: "hidden" }}>
       <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
         <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
         <Avatar emoji={room.emoji} size={38} />
@@ -292,10 +292,10 @@ function RoomChat({ room, user, profile, isAdmin, onBack, onUpdateRoom }) {
         <div ref={endRef} />
       </div>
       <div style={{ background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7 }}>
-        <div style={{ flex: 1, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px" }}>
-          <Smile size={21} color={W.soft} />
-          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Message" style={{ flex: 1, border: "none", outline: "none", fontSize: 15.5, color: W.ink }} />
-          <Paperclip size={20} color={W.soft} /><Camera size={20} color={W.soft} />
+        <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px" }}>
+          <Smile size={21} color={W.soft} style={{ flexShrink: 0 }} />
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Message" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink }} />
+          <Paperclip size={20} color={W.soft} style={{ flexShrink: 0 }} /><Camera size={20} color={W.soft} style={{ flexShrink: 0 }} />
         </div>
         <button onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: W.teal, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Send size={20} /></button>
       </div>
