@@ -164,20 +164,20 @@ function useWide(bp = 1000) {
   return w >= bp;
 }
 function Shell({ children }) {
-  const wide = useWide(1000);
+  const wide = useWide(900);
   return (
-    <div style={{ fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", display: "flex", justifyContent: "center", minHeight: "100vh", width: "100%", overflowX: "hidden", position: "relative", background: wide ? "linear-gradient(135deg,#0E5C54 0%,#0A3B36 55%,#061f1c 100%)" : "#d9d9d9" }}>
+    <div style={{ fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", display: "flex", justifyContent: "center", minHeight: "100vh", width: "100%", overflowX: "hidden", position: "relative", background: wide ? W.bg : "#d9d9d9" }}>
       <style>{`html,body,#root{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}.chatscreen{height:100vh;height:100dvh;}`}</style>
-      {wide && <img src="/hero.jpg" alt="" style={{ position: "fixed", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.16, zIndex: 0 }} />}
-      {wide && (
-        <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width: "calc(50% - 215px)", zIndex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 5% 0 6%", color: "#fff", gap: 18 }}>
-          <img src="/logo-white.png" alt="Glasswings Events" style={{ width: 230, maxWidth: "70%", objectFit: "contain" }} />
-          <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.08, letterSpacing: 0.3 }}>Your events.<br />Your community.<br />Your chat.</div>
-          <div style={{ fontSize: 16, opacity: 0.85, maxWidth: 430, lineHeight: 1.55 }}>Join the rooms, grab tickets to meetups, and stay in the loop with the Glasswings community — all in one place.</div>
-          <img src="/hero.jpg" alt="" style={{ width: "88%", maxWidth: 460, borderRadius: 18, marginTop: 6, boxShadow: "0 24px 60px rgba(0,0,0,.45)" }} />
-        </div>
-      )}
-      <div style={{ width: "100%", maxWidth: 430, minHeight: "100vh", background: W.bg, boxShadow: wide ? "0 0 90px rgba(0,0,0,.45)" : "0 0 60px rgba(0,0,0,.15)", position: "relative", zIndex: 2, overflowX: "hidden" }}>{children}</div>
+      <div style={{ width: "100%", maxWidth: wide ? "none" : 430, minHeight: "100vh", background: W.bg, boxShadow: wide ? "none" : "0 0 60px rgba(0,0,0,.15)", position: "relative", zIndex: 2, overflowX: "hidden" }}>{children}</div>
+    </div>
+  );
+}
+function DesktopSidebar({ tab, setTab, isAdmin, width }) {
+  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  return (
+    <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
+      <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
+      {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: on ? W.teal : "transparent", color: on ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on ? 700 : 600, fontSize: 15 }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}</button>; })}
     </div>
   );
 }
@@ -374,6 +374,8 @@ function ProfileGate({ user, profile, reload }) {
 
 /* ---------------- main ---------------- */
 function Main({ user }) {
+  const wide = useWide(900);
+  const SW = 248;
   const [profile, setProfile] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [events, setEvents] = useState([]);
@@ -509,18 +511,24 @@ function Main({ user }) {
   if (!ready) return <Splash />;
   if (profile && !profile.profile_completed) return <ProfileGate user={user} profile={profile} reload={load} />;
 
+  const listW = 340;
+  const twoPane = wide && (tab === "chats" || !!open);
+  const convoLeft = wide ? (twoPane ? SW + listW : SW) : 0;
+
+  let chatEl = null;
   if (open) {
     if (open.type === "dm") {
       const isOwn = open.id === user.id;
-      return <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} />;
+      chatEl = <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
+    } else if (open.type === "room") {
+      const r = rooms.find(x => x.id === open.id);
+      if (r) chatEl = <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
+    } else {
+      const e = events.find(x => x.id === open.id);
+      if (e) chatEl = <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
     }
-    if (open.type === "room") {
-      const r = rooms.find(x => x.id === open.id); if (!r) { setOpen(null); return null; }
-      return <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} />;
-    }
-    const e = events.find(x => x.id === open.id); if (!e) { setOpen(null); return null; }
-    return <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} />;
   }
+  if (chatEl && !wide) return chatEl;
 
   const myChats = [
     ...(hasDM ? [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Messages from the organiser" }] : []),
@@ -528,18 +536,47 @@ function Main({ user }) {
     ...events.filter(canAccessEvent).map(e => ({ id: e.id, type: "event", name: e.title, emoji: e.emoji, logo_url: null, sub: e.event_date || ((eventCounts[e.id] || 0) + " going") })),
   ];
 
+  const screen = (
+    <>
+      {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
+      {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
+      {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
+      {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
+    </>
+  );
+
+  if (wide) {
+    return (
+      <>
+        {notice && <Notice text={notice} onClose={() => setNotice("")} />}
+        {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
+        {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
+        <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
+          <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isAdmin} width={SW} />
+          <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
+            {twoPane ? (
+              <>
+                <ChatListPane chats={myChats} open={open} onOpen={setOpen} width={listW} />
+                <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
+              </>
+            ) : (
+              <div style={{ maxWidth: 1100, margin: "0 auto", width: "100%" }}>{screen}</div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
       {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
       {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
-        {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
-        {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-        {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
-        {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
-        {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
+        {screen}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
     </>
@@ -722,7 +759,8 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
 }
 
 /* ---------------- chat room ---------------- */
-function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, readOnly = false }) {
+function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, readOnly = false, wide = false, sidebar = 0 }) {
+  const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
   const [senders, setSenders] = useState({});
   const [text, setText] = useState("");
@@ -785,7 +823,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
-      <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30 }}>
+      <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30, ...bar }}>
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
           <Avatar room={room} size={38} />
@@ -845,7 +883,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         <div ref={endRef} />
       </div>
       {showQR && (
-        <div style={{ position: "fixed", bottom: 63, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 25, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -4px 16px rgba(0,0,0,.08)", maxHeight: "45vh", overflowY: "auto", padding: 12 }}>
+        <div style={{ position: "fixed", bottom: 63, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 25, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -4px 16px rgba(0,0,0,.08)", maxHeight: "45vh", overflowY: "auto", padding: 12, ...bar }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>Quick replies</span>
             <X size={18} style={{ cursor: "pointer" }} onClick={() => setShowQR(false)} />
@@ -864,9 +902,9 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         </div>
       )}
       {readOnly ? (
-        <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "12px", textAlign: "center", color: W.soft, fontSize: 12.5 }}>📣 Announcements from Glasswings</div>
+        <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "12px", textAlign: "center", color: W.soft, fontSize: 12.5, ...bar }}>📣 Announcements from Glasswings</div>
       ) : (
-      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7 }}>
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7, ...bar }}>
         <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px" }}>
           <Zap size={21} color={showQR ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => setShowQR(v => !v)} />
           <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Message" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink }} />
@@ -1626,7 +1664,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • gallery-and-web ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • desktop-app ✅</div>
       </div>
     </div>
   );
