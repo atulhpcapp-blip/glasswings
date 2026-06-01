@@ -232,16 +232,16 @@ function Main({ user }) {
   const createRoom = async (d) => { const { error } = await supabase.from("rooms").insert(d); if (error) return setNotice(error.message); await load(); };
   const updateRoom = async (id, p) => { const { error } = await supabase.from("rooms").update(p).eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.map(r => r.id === id ? { ...r, ...p } : r)); };
   const deleteRoom = async (id) => { const { error } = await supabase.from("rooms").delete().eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.filter(r => r.id !== id)); setOpen(null); };
-  const announceToRooms = async (body, media_type) => {
+  const announceToRooms = async (body, media_type, extra = {}) => {
     if (!rooms.length) return;
-    const rows = rooms.map(r => ({ group_type: "room", group_id: r.id, sender_id: user.id, body, media_type }));
+    const rows = rooms.map(r => ({ group_type: "room", group_id: r.id, sender_id: user.id, body, media_type, ...extra }));
     await supabase.from("messages").insert(rows);
   };
   const createEvent = async (d) => {
     const { error } = await supabase.from("events").insert(d);
     if (error) return setNotice(error.message);
     const line = [d.event_date, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-    await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`, "event");
+    await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image" });
     await load();
   };
   const broadcast = async (text) => {
@@ -541,8 +541,9 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
               const isEvent = m.media_type === "event";
               return (
                 <div key={m.id} style={{ display: "flex", justifyContent: "center", margin: "8px 4px" }}>
-                  <div style={{ maxWidth: "90%", background: isEvent ? "#E7F6EF" : "#FFF6E0", border: `1px solid ${isEvent ? "#BFE6D8" : "#F0DDA8"}`, borderRadius: 12, padding: "11px 14px", textAlign: "center" }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .5, color: isEvent ? W.teal : "#B8860B", marginBottom: 4 }}>{isEvent ? "NEW EVENT" : "📢 ANNOUNCEMENT"}</div>
+                  <div style={{ maxWidth: "90%", width: m.media_url ? "90%" : "auto", background: isEvent ? "#E7F6EF" : "#FFF6E0", border: `1px solid ${isEvent ? "#BFE6D8" : "#F0DDA8"}`, borderRadius: 12, padding: "11px 14px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .5, color: isEvent ? W.teal : "#B8860B", marginBottom: 6 }}>{isEvent ? "NEW EVENT" : "📢 ANNOUNCEMENT"}</div>
+                    {isEvent && m.media_url && <BannerMedia url={m.media_url} type={m.file_name === "video" ? "video" : "image"} style={{ width: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 8, display: "block", marginBottom: 8 }} />}
                     <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>{m.body}</div>
                     <div style={{ fontSize: 11, color: W.soft, marginTop: 5 }}>{fmtTime(m.created_at)}</div>
                   </div>
@@ -1028,7 +1029,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • announce-broadcast ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • announce-banner ✅</div>
       </div>
     </div>
   );
