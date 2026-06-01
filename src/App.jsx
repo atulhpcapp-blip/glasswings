@@ -249,6 +249,11 @@ function Main({ user }) {
     await announceToRooms(t, "broadcast");
     setNotice("Broadcast sent to all group chats.");
   };
+  const broadcastEvent = async (e) => {
+    const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+    await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`, "event", { media_url: e.banner_url || null, file_name: e.banner_type || "image" });
+    setNotice("Event sent to all group chats.");
+  };
   const updateEvent = async (id, p) => { const { error } = await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
   const deleteEvent = async (id) => { const { error } = await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
   const addOption = async (kind, name) => { const n = name.trim(); if (!n) return; const { error } = await supabase.from("event_options").insert({ kind, name: n }); if (error) return setNotice(error.message); await load(); };
@@ -282,7 +287,7 @@ function Main({ user }) {
         {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
         {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} />}
-        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} />}
+        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
@@ -601,7 +606,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 }
 
 /* ---------------- admin ---------------- */
-function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast }) {
+function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent }) {
   const [seg, setSeg] = useState("rooms");
   return (
     <div>
@@ -612,7 +617,7 @@ function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreat
         ))}
       </div>
       {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
-        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} />
+        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} />
           : seg === "broadcast" ? <AdminBroadcast onBroadcast={onBroadcast} />
             : <AdminMembers />}
     </div>
@@ -854,7 +859,7 @@ function OptionList({ label, kind, items, onAdd, onDel }) {
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType }) {
+function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
   const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image", terms: "" });
   const [up, setUp] = useState(false);
@@ -925,6 +930,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpda
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div></div>
+              <button onClick={() => onBroadcastEvent(e)} title="Send to all group chats" style={{ ...btn(W.teal, "#fff"), padding: "7px 11px", fontSize: 12.5 }}><Zap size={14} />Send</button>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === e.id ? null : e.id)} />
             </div>
             {manage === e.id && (
@@ -1029,7 +1035,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • announce-banner ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • event-send ✅</div>
       </div>
     </div>
   );
