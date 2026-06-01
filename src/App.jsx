@@ -127,13 +127,13 @@ function Auth() {
 /* ---------------- profile completion (with photo) ---------------- */
 function ProfileGate({ user, profile, reload }) {
   const [name, setName] = useState(profile.full_name || "");
-  const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState("");
+  const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");
   const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const fileRef = useRef(null);
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => { if (data) { setPhone(data.phone || ""); setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); } });
+      .then(({ data }) => { if (data) { setPhone(data.phone || ""); setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); } });
   }, [user.id]);
   const pick = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -142,10 +142,10 @@ function ProfileGate({ user, profile, reload }) {
     setUploading(false);
   };
   const save = async () => {
-    setErr(""); if (!name || !phone || !age || !area || !prof) return setErr("Please complete every field.");
+    setErr(""); if (!name || !phone || !age || !area || !prof || !city) return setErr("Please complete every field.");
     if (!avatar) return setErr("Please add a profile photo.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, phone, age: Number(age) || null, area, profession: prof });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, phone, age: Number(age) || null, area, profession: prof, city });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     setBusy(false);
     if (e1 || e2) return setErr((e1 || e2).message);
@@ -170,6 +170,7 @@ function ProfileGate({ user, profile, reload }) {
           {inp("Phone number", phone, setPhone, "tel")}
           {inp("Age", age, setAge, "number")}
           {inp("Area / locality", area, setArea)}
+          {inp("City", city, setCity)}
           {inp("Profession", prof, setProf)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
           <button onClick={save} disabled={busy || uploading} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: (busy || uploading) ? .6 : 1 }}>{busy ? "Saving…" : "Save & continue"}</button>
@@ -196,13 +197,14 @@ function Main({ user }) {
   const [myTickets, setMyTickets] = useState({});
   const [buyTarget, setBuyTarget] = useState(null);
   const [ticketView, setTicketView] = useState(null);
+  const [hasDM, setHasDM] = useState(false);
   const [tab, setTab] = useState("chats");
   const [open, setOpen] = useState(null); // { id, type }
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -214,6 +216,7 @@ function Main({ user }) {
       supabase.rpc("event_ticket_counts"),
       supabase.from("event_options").select("*").order("name", { ascending: true }),
       supabase.from("event_ticket_types").select("*").order("sort", { ascending: true }),
+      supabase.from("messages").select("id").eq("group_type", "dm").eq("group_id", user.id).limit(1),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     setSubs((sb || []).map(x => x.room_id)); setTickets([...new Set((tk || []).map(x => x.event_id))]);
@@ -224,6 +227,7 @@ function Main({ user }) {
     setCategories((opts || []).filter(o => o.kind === "category"));
     setCities((opts || []).filter(o => o.kind === "city"));
     const tm = {}; (tt || []).forEach(t => { if (!tm[t.event_id]) tm[t.event_id] = []; tm[t.event_id].push(t); }); setTicketTypes(tm);
+    setHasDM((dm || []).length > 0);
     setReady(true);
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
@@ -280,6 +284,25 @@ function Main({ user }) {
     await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`, "event", { media_url: e.banner_url || null, file_name: e.banner_type || "image" });
     setNotice("Event sent to all group chats.");
   };
+  const sendDM = async (ids, text) => {
+    const t = (text || "").trim(); if (!t || !ids.length) return;
+    const rows = ids.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body: t }));
+    const { error } = await supabase.from("messages").insert(rows);
+    if (error) return setNotice(error.message);
+    setNotice(`Message sent to ${ids.length} member${ids.length === 1 ? "" : "s"}.`);
+  };
+  const sendEventDM = async (e, ids = null) => {
+    let target = ids;
+    if (!target) { const { data } = await supabase.from("profiles").select("id"); target = (data || []).map(p => p.id); }
+    target = target.filter(id => id !== user.id);
+    if (!target.length) return setNotice("No members to send to.");
+    const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+    const body = `${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`;
+    const rows = target.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body, media_type: "event", media_url: e.banner_url || null, file_name: e.banner_type || "image" }));
+    const { error } = await supabase.from("messages").insert(rows);
+    if (error) return setNotice(error.message);
+    setNotice(`Event sent privately to ${target.length} member${target.length === 1 ? "" : "s"}.`);
+  };
   const updateEvent = async (id, p) => { const { error } = await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
   const deleteEvent = async (id) => { const { error } = await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
   const addOption = async (kind, name) => { const n = name.trim(); if (!n) return; const { error } = await supabase.from("event_options").insert({ kind, name: n }); if (error) return setNotice(error.message); await load(); };
@@ -291,6 +314,10 @@ function Main({ user }) {
   if (profile && !profile.profile_completed) return <ProfileGate user={user} profile={profile} reload={load} />;
 
   if (open) {
+    if (open.type === "dm") {
+      const isOwn = open.id === user.id;
+      return <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} />;
+    }
     if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id); if (!r) { setOpen(null); return null; }
       return <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} />;
@@ -300,6 +327,7 @@ function Main({ user }) {
   }
 
   const myChats = [
+    ...(hasDM ? [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Messages from the organiser" }] : []),
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
     ...events.filter(canAccessEvent).map(e => ({ id: e.id, type: "event", name: e.title, emoji: e.emoji, logo_url: null, sub: e.event_date || ((eventCounts[e.id] || 0) + " going") })),
   ];
@@ -313,7 +341,7 @@ function Main({ user }) {
         {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
         {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} />}
-        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} />}
+        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
@@ -476,7 +504,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
 }
 
 /* ---------------- chat room ---------------- */
-function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned }) {
+function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, readOnly = false }) {
   const [msgs, setMsgs] = useState(null);
   const [senders, setSenders] = useState({});
   const [text, setText] = useState("");
@@ -545,7 +573,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           <Avatar room={room} size={38} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
-            <div style={{ fontSize: 12, opacity: .85 }}>{memberCount} members</div>
+            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Messages from the organiser" : `${memberCount} members`}</div>
           </div>
         </div>
         {(room.pinned || isAdmin) && (
@@ -616,6 +644,9 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             ))}
         </div>
       )}
+      {readOnly ? (
+        <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "12px", textAlign: "center", color: W.soft, fontSize: 12.5 }}>📣 Announcements from Glasswings</div>
+      ) : (
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7 }}>
         <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px" }}>
           <Zap size={21} color={showQR ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => setShowQR(v => !v)} />
@@ -627,38 +658,121 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={e => { sendFile(e.target.files?.[0], "image"); e.target.value = ""; }} style={{ display: "none" }} />
         <input ref={fileRef} type="file" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
       </div>
+      )}
     </div>
   );
 }
 
 /* ---------------- admin ---------------- */
-function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent }) {
+function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onOpenThread }) {
   const [seg, setSeg] = useState("rooms");
   return (
     <div>
       <TopBar title="Admin Panel" />
-      <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9 }}>
-        {[["rooms", "Rooms"], ["events", "Events"], ["broadcast", "Broadcast"], ["members", "Members"]].map(([v, l]) => (
-          <button key={v} onClick={() => setSeg(v)} style={{ flex: 1, padding: "13px 0", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
+      <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9, overflowX: "auto" }}>
+        {[["rooms", "Rooms"], ["events", "Events"], ["broadcast", "Send"], ["inbox", "Inbox"], ["members", "Members"]].map(([v, l]) => (
+          <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
       {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
-        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} />
-          : seg === "broadcast" ? <AdminBroadcast onBroadcast={onBroadcast} />
-            : <AdminMembers />}
+        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+          : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
+            : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
+              : <AdminMembers onSendDM={onSendDM} />}
     </div>
   );
 }
-function AdminBroadcast({ onBroadcast }) {
+function AdminInbox({ onOpenThread }) {
+  const [threads, setThreads] = useState(null);
+  useEffect(() => {
+    (async () => {
+      const { data: msgs } = await supabase.from("messages").select("group_id, body, created_at, sender_id, media_type").eq("group_type", "dm").order("created_at", { ascending: false });
+      const seen = {}; const order = [];
+      (msgs || []).forEach(m => { if (!seen[m.group_id]) { seen[m.group_id] = m; order.push(m.group_id); } });
+      const ids = order;
+      let profById = {};
+      if (ids.length) { const { data: profs } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids); (profs || []).forEach(p => { profById[p.id] = p; }); }
+      setThreads(order.map(id => ({ id, last: seen[id], p: profById[id] || {} })));
+    })();
+  }, []);
+  if (threads === null) return <Center>loading inbox…</Center>;
+  if (!threads.length) return <Center>No member messages yet. Send one from Send or Members.</Center>;
+  return (
+    <div>
+      {threads.map(t => {
+        const preview = t.last.media_type === "event" ? "🎟️ Event card" : (t.last.body || "");
+        return (
+          <div key={t.id} onClick={() => onOpenThread(t.id, t.p.full_name || "Member")} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
+            <PersonAvatar url={t.p.avatar_url} name={t.p.full_name} size={46} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: W.ink }}>{t.p.full_name || "Member"}</div>
+              <div style={{ fontSize: 13.5, color: W.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{preview}</div>
+            </div>
+            <span style={{ fontSize: 11, color: W.soft, flexShrink: 0 }}>{fmtTime(t.last.created_at)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+function AdminBroadcast({ events, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM }) {
   const [t, setT] = useState(""); const [sending, setSending] = useState(false);
+  const [evId, setEvId] = useState(""); const [members, setMembers] = useState(null);
+  const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [city, setCity] = useState("all");
+  useEffect(() => {
+    supabase.from("profiles").select("id, gender, member_details(age, profession, city)").then(({ data }) => setMembers(data || []));
+  }, []);
   const send = async () => { if (!t.trim()) return; setSending(true); await onBroadcast(t); setT(""); setSending(false); };
+  const sendEvent = async () => { const e = (events || []).find(x => x.id === evId); if (e) await onBroadcastEvent(e); };
+
+  const det = m => m.member_details || {};
+  const ageBand = a => { a = Number(a); if (!a) return null; if (a < 25) return "18-24"; if (a < 35) return "25-34"; if (a < 45) return "35-44"; return "45+"; };
+  const ms = members || [];
+  const profs = Array.from(new Set(ms.map(m => det(m).profession).filter(Boolean))).sort();
+  const cities = Array.from(new Set(ms.map(m => det(m).city).filter(Boolean))).sort();
+  const seg = ms.filter(m => {
+    const d = det(m);
+    if (g !== "all" && m.gender !== g) return false;
+    if (age !== "all" && ageBand(d.age) !== age) return false;
+    if (prof !== "all" && d.profession !== prof) return false;
+    if (city !== "all" && d.city !== city) return false;
+    return true;
+  });
+  const sendSegment = async () => { if (!t.trim() || !seg.length) return; setSending(true); await onSendDM(seg.map(m => m.id), t); setT(""); setSending(false); };
+  const sel = { padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
+  const chip = (v, label) => <button key={v} onClick={() => setG(v)} style={{ padding: "7px 13px", borderRadius: 18, border: `1px solid ${g === v ? W.teal : W.line}`, background: g === v ? W.teal : "#fff", color: g === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{label}</button>;
+  const card = { background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 16, marginBottom: 12 };
+
   return (
     <div style={{ padding: 14 }}>
-      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 16 }}>
-        <div style={{ fontWeight: 700, color: W.ink, marginBottom: 6 }}>Broadcast to all groups</div>
-        <div style={{ fontSize: 13, color: W.soft, marginBottom: 12, lineHeight: 1.45 }}>This message is posted into every room's chat as an announcement, so all members in your groups see it.</div>
-        <textarea value={t} onChange={e => setT(e.target.value)} rows={4} placeholder="Type your announcement…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
-        <button onClick={send} disabled={sending || !t.trim()} style={{ ...btn(W.teal, "#fff"), marginTop: 10, width: "100%", justifyContent: "center", opacity: (sending || !t.trim()) ? .6 : 1 }}><Zap size={16} />{sending ? "Sending…" : "Send to everyone"}</button>
+      <div style={card}>
+        <div style={{ fontWeight: 700, color: W.ink, marginBottom: 6 }}>Send an event to all groups</div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 12, lineHeight: 1.45 }}>Posts the event's card (with its banner/video) into every room chat.</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <select value={evId} onChange={e => setEvId(e.target.value)} style={{ ...sel, flex: 1, minWidth: 0 }}>
+            <option value="">Choose an event…</option>
+            {(events || []).map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+          </select>
+          <button onClick={sendEvent} disabled={!evId} style={{ ...btn(W.teal, "#fff"), opacity: evId ? 1 : .5 }}><Zap size={15} />Groups</button>
+        </div>
+        <button onClick={() => { const e = (events || []).find(x => x.id === evId); if (e) onSendEventDM(e, seg.map(m => m.id)); }} disabled={!evId || !seg.length} style={{ ...btn(W.ink, "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: (!evId || !seg.length) ? .5 : 1 }}><Send size={15} />Send privately to {seg.length} member{seg.length === 1 ? "" : "s"} (uses filters below)</button>
+      </div>
+
+      <div style={card}>
+        <div style={{ fontWeight: 700, color: W.ink, marginBottom: 6 }}>Message your members</div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 12, lineHeight: 1.45 }}>Type your message, then either post it to every group chat or send it as a private in-app message to a filtered set of members.</div>
+        <textarea value={t} onChange={e => setT(e.target.value)} rows={4} placeholder="Type your message…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
+        <button onClick={send} disabled={sending || !t.trim()} style={{ ...btn(W.teal, "#fff"), marginTop: 10, width: "100%", justifyContent: "center", opacity: (sending || !t.trim()) ? .6 : 1 }}><Zap size={16} />{sending ? "Working…" : "Post to all group chats"}</button>
+
+        <div style={{ borderTop: `1px solid ${W.line}`, margin: "14px 0" }} />
+        <div style={{ fontWeight: 700, color: W.ink, marginBottom: 8, fontSize: 14 }}>Or send privately to a segment</div>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 }}>{chip("all", "Everyone")}{chip("male", "Men")}{chip("female", "Women")}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <select value={age} onChange={e => setAge(e.target.value)} style={sel}><option value="all">All ages</option><option>18-24</option><option>25-34</option><option>35-44</option><option>45+</option></select>
+          <select value={prof} onChange={e => setProf(e.target.value)} style={sel}><option value="all">All work</option>{profs.map(p => <option key={p} value={p}>{p}</option>)}</select>
+          <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{cities.map(c => <option key={c} value={c}>{c}</option>)}</select>
+        </div>
+        <button onClick={sendSegment} disabled={sending || !t.trim() || !seg.length} style={{ ...btn(W.ink, "#fff"), width: "100%", justifyContent: "center", opacity: (sending || !t.trim() || !seg.length) ? .5 : 1 }}><Send size={15} />Send in-app to {seg.length} member{seg.length === 1 ? "" : "s"}</button>
       </div>
     </div>
   );
@@ -939,7 +1053,7 @@ function OptionList({ label, kind, items, onAdd, onDel }) {
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent }) {
+function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
   const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image", terms: "" });
   const [up, setUp] = useState(false);
@@ -1010,7 +1124,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpda
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div></div>
-              <button onClick={() => onBroadcastEvent(e)} title="Send to all group chats" style={{ ...btn(W.teal, "#fff"), padding: "7px 11px", fontSize: 12.5 }}><Zap size={14} />Send</button>
+              <button onClick={() => onBroadcastEvent(e)} title="Post to all group chats" style={{ ...btn(W.teal, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Zap size={13} />Groups</button>
+              <button onClick={() => onSendEventDM(e)} title="Send privately to all members" style={{ ...btn(W.ink, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Send size={13} />Members</button>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === e.id ? null : e.id)} />
             </div>
             {manage === e.id && (
@@ -1050,11 +1165,11 @@ function RoomPhoto({ room, onUpdate }) {
     </div>
   );
 }
-function AdminMembers() {
+function AdminMembers({ onSendDM }) {
   const [list, setList] = useState(null);
-  const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all");
+  const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all");
   useEffect(() => {
-    supabase.from("profiles").select("id, full_name, gender, role, avatar_url, member_details(phone, age, area, profession)").order("created_at", { ascending: false })
+    supabase.from("profiles").select("id, full_name, gender, role, avatar_url, member_details(phone, age, area, profession, city)").order("created_at", { ascending: false })
       .then(({ data }) => setList(data || []));
   }, []);
   if (list === null) return <Center>loading members…</Center>;
@@ -1062,20 +1177,18 @@ function AdminMembers() {
   const ageBand = a => { a = Number(a); if (!a) return null; if (a < 25) return "18-24"; if (a < 35) return "25-34"; if (a < 45) return "35-44"; return "45+"; };
   const profs = Array.from(new Set(list.map(m => det(m).profession).filter(Boolean))).sort();
   const areas = Array.from(new Set(list.map(m => det(m).area).filter(Boolean))).sort();
+  const cities = Array.from(new Set(list.map(m => det(m).city).filter(Boolean))).sort();
   const filtered = list.filter(m => {
     const d = det(m);
     if (g !== "all" && m.gender !== g) return false;
     if (age !== "all" && ageBand(d.age) !== age) return false;
     if (prof !== "all" && d.profession !== prof) return false;
     if (area !== "all" && d.area !== area) return false;
+    if (city !== "all" && d.city !== city) return false;
     return true;
   });
   const phones = filtered.map(m => det(m).phone).filter(Boolean);
-  const copyNumbers = async () => {
-    const text = phones.join("\n");
-    try { await navigator.clipboard.writeText(text); alert(`Copied ${phones.length} phone numbers. Paste them into a WhatsApp Broadcast list (or a group) to message everyone at once.`); }
-    catch (e) { window.prompt("Copy these numbers:", text); }
-  };
+  const messageAll = () => { if (!filtered.length) return; const text = window.prompt(`Send an in-app message to ${filtered.length} member${filtered.length === 1 ? "" : "s"}:`); if (text && text.trim()) onSendDM(filtered.map(m => m.id), text); };
   const sel = { padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
   const chip = (v, label) => <button key={v} onClick={() => setG(v)} style={{ padding: "7px 13px", borderRadius: 18, border: `1px solid ${g === v ? W.teal : W.line}`, background: g === v ? W.teal : "#fff", color: g === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{label}</button>;
   return (
@@ -1088,15 +1201,16 @@ function AdminMembers() {
           <select value={age} onChange={e => setAge(e.target.value)} style={sel}><option value="all">All ages</option><option>18-24</option><option>25-34</option><option>35-44</option><option>45+</option></select>
           <select value={prof} onChange={e => setProf(e.target.value)} style={sel}><option value="all">All work</option>{profs.map(p => <option key={p} value={p}>{p}</option>)}</select>
           <select value={area} onChange={e => setArea(e.target.value)} style={sel}><option value="all">All areas</option>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select>
+          <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{cities.map(c => <option key={c} value={c}>{c}</option>)}</select>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
-        <span style={{ fontSize: 13.5, color: W.soft }}><b style={{ color: W.ink }}>{filtered.length}</b> member{filtered.length === 1 ? "" : "s"} · {phones.length} with phone</span>
-        <button onClick={copyNumbers} disabled={!phones.length} style={{ ...btn(W.teal, "#fff"), opacity: phones.length ? 1 : .5 }}><Share2 size={15} />Copy numbers</button>
+        <span style={{ fontSize: 13.5, color: W.soft }}><b style={{ color: W.ink }}>{filtered.length}</b> member{filtered.length === 1 ? "" : "s"} match</span>
+        <button onClick={messageAll} disabled={!filtered.length} style={{ ...btn(W.teal, "#fff"), opacity: filtered.length ? 1 : .5 }}><Send size={15} />Message {filtered.length}</button>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {filtered.map(m => {
-          const d = det(m); const wn = waNum(d.phone);
+          const d = det(m);
           return (
             <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -1105,12 +1219,13 @@ function AdminMembers() {
                   <div style={{ fontWeight: 700, color: W.ink }}>{m.full_name || "—"} {m.role !== "member" && <span style={{ fontSize: 11, color: W.teal }}>· {m.role}</span>}</div>
                   <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{d.phone || "no phone"}</div>
                 </div>
-                {wn && <a href={`https://wa.me/${wn}`} target="_blank" rel="noreferrer" style={{ ...btn(W.teal, "#fff"), padding: "7px 11px", fontSize: 12.5, textDecoration: "none" }}><Share2 size={14} />Chat</a>}
+                <button onClick={() => { const text = window.prompt(`Send an in-app message to ${m.full_name || "this member"}:`); if (text && text.trim()) onSendDM([m.id], text); }} style={{ ...btn(W.teal, "#fff"), padding: "7px 11px", fontSize: 12.5 }}><Send size={14} />Message</button>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 13, color: W.soft }}>
                 <span>Sex: {{ male: "M", female: "F", other: "—" }[m.gender] || "—"}</span>
                 <span>Age: {d.age || "—"}</span>
                 <span>Area: {d.area || "—"}</span>
+                <span>City: {d.city || "—"}</span>
                 <span>Work: {d.profession || "—"}</span>
               </div>
             </div>
@@ -1150,7 +1265,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • ticket-design-member-filters ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • dm-replies-event-dm ✅</div>
       </div>
     </div>
   );
