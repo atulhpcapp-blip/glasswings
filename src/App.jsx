@@ -9,6 +9,32 @@ const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink
 const WALL = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='none' stroke='%23000' stroke-opacity='0.03' stroke-width='2'><circle cx='20' cy='20' r='6'/><path d='M50 14 l8 8 M58 14 l-8 8'/><rect x='48' y='48' width='14' height='14' rx='3'/><path d='M14 54 q8 -10 16 0'/></g></svg>`);
 const EVENT_CATS = ["Music", "Comedy", "Sports", "Workshop", "Social", "Food & Drink", "Other"];
 function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function waNum(p) { const d = String(p || "").replace(/\D/g, ""); if (!d) return ""; return d.length === 10 ? "91" + d : d; }
+function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
+function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
+function fitText(x, t, max) { let s = String(t || ""); if (x.measureText(s).width <= max) return s; while (s.length > 1 && x.measureText(s + "X").width > max) s = s.slice(0, -1); return s + "…"; }
+async function makeTicketBlob(d) {
+  const Wd = 1000, Ht = 600, s = 2;
+  const c = document.createElement("canvas"); c.width = Wd * s; c.height = Ht * s;
+  const x = c.getContext("2d"); x.scale(s, s);
+  x.fillStyle = "#ffffff"; rr(x, 0, 0, Wd, Ht, 30); x.fill();
+  const g = x.createLinearGradient(0, 0, Wd, 200); g.addColorStop(0, "#0E8C7F"); g.addColorStop(1, "#13B3A0");
+  x.save(); rr(x, 0, 0, Wd, 200, 30); x.clip(); x.fillStyle = g; x.fillRect(0, 0, Wd, 200); x.restore();
+  x.fillStyle = "rgba(255,255,255,.85)"; x.font = "700 20px system-ui,Arial"; x.fillText("G L A S S W I N G S", 44, 54);
+  x.fillStyle = "#fff"; x.font = "800 42px system-ui,Arial"; x.fillText(fitText(x, ((d.emoji ? d.emoji + " " : "") + d.title), Wd - 88), 44, 120);
+  x.fillStyle = "rgba(255,255,255,.95)"; x.font = "500 24px system-ui,Arial";
+  const meta = [d.dateStr, d.place].filter(Boolean).join("   -   "); if (meta) x.fillText(fitText(x, meta, Wd - 88), 44, 165);
+  x.fillStyle = "#5a6b67"; x.font = "600 22px system-ui,Arial"; x.fillText("ATTENDEE", 44, 282);
+  x.fillStyle = "#0b1f1c"; x.font = "800 34px system-ui,Arial"; x.fillText(fitText(x, d.name || "", 600), 44, 324);
+  x.fillStyle = "#5a6b67"; x.font = "600 22px system-ui,Arial"; x.fillText("TICKETS", 44, 388);
+  x.fillStyle = "#0b1f1c"; x.font = "800 34px system-ui,Arial"; x.fillText(String(d.qty), 44, 430);
+  x.fillStyle = "#5a6b67"; x.font = "600 22px system-ui,Arial"; x.fillText("TICKET CODE", 44, 494);
+  x.fillStyle = "#0E8C7F"; x.font = "800 40px ui-monospace,monospace"; x.fillText(d.code, 44, 538);
+  x.strokeStyle = "#d9e2df"; x.setLineDash([12, 10]); x.beginPath(); x.moveTo(Wd - 300, 240); x.lineTo(Wd - 300, Ht - 40); x.stroke(); x.setLineDash([]);
+  try { const qr = await loadImg("https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=" + encodeURIComponent(d.code)); x.drawImage(qr, Wd - 258, 300, 200, 200); } catch (e) { }
+  x.fillStyle = "#5a6b67"; x.font = "500 18px system-ui,Arial"; x.fillText("Show at entry", Wd - 244, 528);
+  return await new Promise(res => c.toBlob(res, "image/png"));
+}
 
 async function uploadPhoto(userId, file) {
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
@@ -755,31 +781,85 @@ function TicketSheet({ target, profile, onConfirm, onClose }) {
   );
 }
 function MyTicket({ event: e, profile, rows, onClose }) {
+  const [busy, setBusy] = useState(false);
   const qty = rows.reduce((s, r) => s + (r.quantity || 1), 0);
   const code = "GW-" + ((rows[0]?.id || "").replace(/-/g, "").slice(0, 8).toUpperCase());
   const place = [e.venue, e.city].filter(Boolean).join(", ");
+  const qr = "https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=" + encodeURIComponent(code);
   const summary = `🎟️ Glasswings Ticket\n${e.title}\n${e.event_date || ""}${place ? `\n${place}` : ""}\nName: ${profile?.name || ""}\nTickets: ${qty}\nCode: ${code}`;
   const wa = "https://wa.me/?text=" + encodeURIComponent(summary);
   const print = () => {
-    const w = window.open("", "_blank", "width=420,height=640");
-    if (!w) return;
-    w.document.write(`<html><head><title>Ticket</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,Arial,sans-serif;padding:24px;color:#0b1f1c}.t{border:2px dashed #0E8C7F;border-radius:16px;padding:22px}.h{font-size:22px;font-weight:800}.m{color:#5a6b67;margin-top:4px}.r{display:flex;justify-content:space-between;margin-top:14px;font-size:15px}.lbl{margin-top:18px;font-size:13px;color:#5a6b67}.code{font-size:22px;font-weight:800;letter-spacing:3px;margin-top:4px}</style></head><body><div class="t"><div class="h">${escapeHtml((e.emoji || "🎟️") + " " + e.title)}</div><div class="m">${escapeHtml(e.event_date || "")}</div><div class="m">${escapeHtml(place)}</div><div class="r"><span>Name</span><b>${escapeHtml(profile?.name || "")}</b></div><div class="r"><span>Tickets</span><b>${qty}</b></div><div class="lbl">Ticket code</div><div class="code">${code}</div><div class="lbl">Glasswings community</div></div><script>window.onload=function(){window.print()}</script></body></html>`);
+    const w = window.open("", "_blank", "width=460,height=720"); if (!w) return;
+    w.document.write(`<!doctype html><html><head><title>Glasswings Ticket</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+      *{box-sizing:border-box} body{font-family:system-ui,Arial,sans-serif;margin:0;padding:24px;background:#eef2f1;color:#0b1f1c}
+      .t{max-width:420px;margin:0 auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+      .hd{background:linear-gradient(135deg,#0E8C7F,#13B3A0);color:#fff;padding:22px 22px 26px}
+      .br{font-size:11px;letter-spacing:3px;font-weight:700;opacity:.85}
+      .ti{font-size:24px;font-weight:800;margin-top:8px;line-height:1.2}
+      .mt{font-size:13.5px;opacity:.95;margin-top:8px}
+      .bd{padding:22px;position:relative}
+      .tear{border-top:2px dashed #d9e2df;margin:0 -22px 18px}
+      .row{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
+      .lbl{font-size:11px;letter-spacing:1px;color:#5a6b67;text-transform:uppercase;margin-top:12px}
+      .val{font-size:18px;font-weight:800;color:#0b1f1c}
+      .code{font-size:24px;font-weight:800;letter-spacing:3px;color:#0E8C7F;font-family:ui-monospace,monospace}
+      .qr{width:120px;height:120px;border:1px solid #e6ebe9;border-radius:12px}
+      .ft{text-align:center;font-size:12px;color:#5a6b67;margin-top:16px}
+    </style></head><body><div class="t">
+      <div class="hd"><div class="br">G L A S S W I N G S</div><div class="ti">${escapeHtml((e.emoji || "🎟️") + " " + e.title)}</div>${e.event_date ? `<div class="mt">📅 ${escapeHtml(e.event_date)}</div>` : ""}${place ? `<div class="mt">📍 ${escapeHtml(place)}</div>` : ""}</div>
+      <div class="bd"><div class="tear"></div>
+        <div class="row"><div>
+          <div class="lbl">Attendee</div><div class="val">${escapeHtml(profile?.name || "")}</div>
+          <div class="lbl">Tickets</div><div class="val">${qty}</div>
+          <div class="lbl">Ticket code</div><div class="code">${code}</div>
+        </div><img class="qr" src="${qr}" alt="QR"/></div>
+        <div class="ft">Show this ticket at entry · Glasswings community</div>
+      </div></div>
+      <script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`);
     w.document.close();
+  };
+  const shareWhatsApp = async () => {
+    setBusy(true);
+    try {
+      const blob = await makeTicketBlob({ emoji: e.emoji, title: e.title, dateStr: e.event_date, place, name: profile?.name, qty, code });
+      const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: e.title, text: summary });
+      } else {
+        const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "glasswings-ticket.png"; a.click(); URL.revokeObjectURL(url);
+        window.open(wa, "_blank");
+      }
+    } catch (err) { window.open(wa, "_blank"); }
+    setBusy(false);
   };
   return (
     <Sheet onClose={onClose}>
-      <div style={{ border: `2px dashed ${W.teal}`, borderRadius: 16, padding: 18, marginBottom: 16 }}>
-        <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{e.emoji} {e.title}</div>
-        {e.event_date && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}><Calendar size={14} />{e.event_date}</div>}
-        {place && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 4, display: "flex", gap: 6, alignItems: "center" }}><MapPin size={14} />{place}</div>}
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, fontSize: 14 }}><span style={{ color: W.soft }}>Name</span><b style={{ color: W.ink }}>{profile?.name}</b></div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 14 }}><span style={{ color: W.soft }}>Tickets</span><b style={{ color: W.ink }}>{qty}</b></div>
-        <div style={{ marginTop: 14, fontSize: 12, color: W.soft }}>Ticket code</div>
-        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 3, color: W.ink }}>{code}</div>
+      <div style={{ borderRadius: 18, overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,.14)", marginBottom: 16, background: "#fff" }}>
+        <div style={{ background: "linear-gradient(135deg,#0E8C7F,#13B3A0)", color: "#fff", padding: "18px 18px 22px" }}>
+          <div style={{ fontSize: 10.5, letterSpacing: 3, fontWeight: 700, opacity: .85 }}>G L A S S W I N G S</div>
+          <div style={{ fontSize: 21, fontWeight: 800, marginTop: 7, lineHeight: 1.2 }}>{e.emoji} {e.title}</div>
+          {e.event_date && <div style={{ fontSize: 13, marginTop: 8, opacity: .96, display: "flex", gap: 6, alignItems: "center" }}><Calendar size={14} />{e.event_date}</div>}
+          {place && <div style={{ fontSize: 13, marginTop: 4, opacity: .96, display: "flex", gap: 6, alignItems: "center" }}><MapPin size={14} />{place}</div>}
+        </div>
+        <div style={{ padding: 18 }}>
+          <div style={{ borderTop: `2px dashed ${W.line}`, margin: "0 -18px 16px" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 14 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, letterSpacing: 1, color: W.soft, textTransform: "uppercase" }}>Attendee</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: W.ink }}>{profile?.name}</div>
+              <div style={{ fontSize: 10.5, letterSpacing: 1, color: W.soft, textTransform: "uppercase", marginTop: 10 }}>Tickets</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: W.ink }}>{qty}</div>
+              <div style={{ fontSize: 10.5, letterSpacing: 1, color: W.soft, textTransform: "uppercase", marginTop: 10 }}>Ticket code</div>
+              <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: 2, color: W.teal, fontFamily: "ui-monospace,monospace" }}>{code}</div>
+            </div>
+            <img src={qr} alt="QR" width={112} height={112} style={{ borderRadius: 10, border: `1px solid ${W.line}`, flexShrink: 0 }} />
+          </div>
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 14, textAlign: "center" }}>Show this ticket at entry</div>
+        </div>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={print} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}><Printer size={16} />Print</button>
-        <a href={wa} target="_blank" rel="noreferrer" style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", textDecoration: "none" }}><Share2 size={16} />WhatsApp</a>
+        <button onClick={shareWhatsApp} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}><Share2 size={16} />{busy ? "Preparing…" : "WhatsApp"}</button>
       </div>
       <button onClick={onClose} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 10 }}>Close</button>
     </Sheet>
@@ -972,17 +1052,51 @@ function RoomPhoto({ room, onUpdate }) {
 }
 function AdminMembers() {
   const [list, setList] = useState(null);
+  const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all");
   useEffect(() => {
     supabase.from("profiles").select("id, full_name, gender, role, avatar_url, member_details(phone, age, area, profession)").order("created_at", { ascending: false })
       .then(({ data }) => setList(data || []));
   }, []);
   if (list === null) return <Center>loading members…</Center>;
+  const det = m => m.member_details || {};
+  const ageBand = a => { a = Number(a); if (!a) return null; if (a < 25) return "18-24"; if (a < 35) return "25-34"; if (a < 45) return "35-44"; return "45+"; };
+  const profs = Array.from(new Set(list.map(m => det(m).profession).filter(Boolean))).sort();
+  const areas = Array.from(new Set(list.map(m => det(m).area).filter(Boolean))).sort();
+  const filtered = list.filter(m => {
+    const d = det(m);
+    if (g !== "all" && m.gender !== g) return false;
+    if (age !== "all" && ageBand(d.age) !== age) return false;
+    if (prof !== "all" && d.profession !== prof) return false;
+    if (area !== "all" && d.area !== area) return false;
+    return true;
+  });
+  const phones = filtered.map(m => det(m).phone).filter(Boolean);
+  const copyNumbers = async () => {
+    const text = phones.join("\n");
+    try { await navigator.clipboard.writeText(text); alert(`Copied ${phones.length} phone numbers. Paste them into a WhatsApp Broadcast list (or a group) to message everyone at once.`); }
+    catch (e) { window.prompt("Copy these numbers:", text); }
+  };
+  const sel = { padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
+  const chip = (v, label) => <button key={v} onClick={() => setG(v)} style={{ padding: "7px 13px", borderRadius: 18, border: `1px solid ${g === v ? W.teal : W.line}`, background: g === v ? W.teal : "#fff", color: g === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{label}</button>;
   return (
     <div style={{ padding: 14 }}>
-      <div style={{ fontSize: 13.5, color: W.soft, marginBottom: 12 }}>{list.length} total members · only you can see these details</div>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 12, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
+          {chip("all", "Everyone")}{chip("male", "Men")}{chip("female", "Women")}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select value={age} onChange={e => setAge(e.target.value)} style={sel}><option value="all">All ages</option><option>18-24</option><option>25-34</option><option>35-44</option><option>45+</option></select>
+          <select value={prof} onChange={e => setProf(e.target.value)} style={sel}><option value="all">All work</option>{profs.map(p => <option key={p} value={p}>{p}</option>)}</select>
+          <select value={area} onChange={e => setArea(e.target.value)} style={sel}><option value="all">All areas</option>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
+        <span style={{ fontSize: 13.5, color: W.soft }}><b style={{ color: W.ink }}>{filtered.length}</b> member{filtered.length === 1 ? "" : "s"} · {phones.length} with phone</span>
+        <button onClick={copyNumbers} disabled={!phones.length} style={{ ...btn(W.teal, "#fff"), opacity: phones.length ? 1 : .5 }}><Share2 size={15} />Copy numbers</button>
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {list.map(m => {
-          const d = m.member_details || {};
+        {filtered.map(m => {
+          const d = det(m); const wn = waNum(d.phone);
           return (
             <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -991,6 +1105,7 @@ function AdminMembers() {
                   <div style={{ fontWeight: 700, color: W.ink }}>{m.full_name || "—"} {m.role !== "member" && <span style={{ fontSize: 11, color: W.teal }}>· {m.role}</span>}</div>
                   <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{d.phone || "no phone"}</div>
                 </div>
+                {wn && <a href={`https://wa.me/${wn}`} target="_blank" rel="noreferrer" style={{ ...btn(W.teal, "#fff"), padding: "7px 11px", fontSize: 12.5, textDecoration: "none" }}><Share2 size={14} />Chat</a>}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 13, color: W.soft }}>
                 <span>Sex: {{ male: "M", female: "F", other: "—" }[m.gender] || "—"}</span>
@@ -1001,7 +1116,7 @@ function AdminMembers() {
             </div>
           );
         })}
-        {list.length === 0 && <Center>No members yet.</Center>}
+        {filtered.length === 0 && <Center>No members match these filters.</Center>}
       </div>
     </div>
   );
@@ -1035,7 +1150,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • event-send ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • ticket-design-member-filters ✅</div>
       </div>
     </div>
   );
