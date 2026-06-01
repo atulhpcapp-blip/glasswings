@@ -198,6 +198,8 @@ function Main({ user }) {
   const [buyTarget, setBuyTarget] = useState(null);
   const [ticketView, setTicketView] = useState(null);
   const [hasDM, setHasDM] = useState(false);
+  const [focusEvent, setFocusEvent] = useState(null);
+  const openEvent = (id) => { setOpen(null); setTab("events"); setFocusEvent(id); };
   const [tab, setTab] = useState("chats");
   const [open, setOpen] = useState(null); // { id, type }
   const [ready, setReady] = useState(false);
@@ -268,10 +270,10 @@ function Main({ user }) {
     await supabase.from("messages").insert(rows);
   };
   const createEvent = async (d) => {
-    const { error } = await supabase.from("events").insert(d);
+    const { data: ins, error } = await supabase.from("events").insert(d).select("id").single();
     if (error) return setNotice(error.message);
     const line = [d.event_date, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-    await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image" });
+    await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${line ? "\n" + line : ""}`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image", event_ref: ins?.id || null });
     await load();
   };
   const broadcast = async (text) => {
@@ -281,7 +283,7 @@ function Main({ user }) {
   };
   const broadcastEvent = async (e) => {
     const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-    await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`, "event", { media_url: e.banner_url || null, file_name: e.banner_type || "image" });
+    await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}`, "event", { media_url: e.banner_url || null, file_name: e.banner_type || "image", event_ref: e.id });
     setNotice("Event sent to all group chats.");
   };
   const sendDM = async (ids, text) => {
@@ -297,8 +299,8 @@ function Main({ user }) {
     target = target.filter(id => id !== user.id);
     if (!target.length) return setNotice("No members to send to.");
     const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-    const body = `${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`;
-    const rows = target.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body, media_type: "event", media_url: e.banner_url || null, file_name: e.banner_type || "image" }));
+    const body = `${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}`;
+    const rows = target.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body, media_type: "event", media_url: e.banner_url || null, file_name: e.banner_type || "image", event_ref: e.id }));
     const { error } = await supabase.from("messages").insert(rows);
     if (error) return setNotice(error.message);
     setNotice(`Event sent privately to ${target.length} member${target.length === 1 ? "" : "s"}.`);
@@ -316,14 +318,14 @@ function Main({ user }) {
   if (open) {
     if (open.type === "dm") {
       const isOwn = open.id === user.id;
-      return <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} />;
+      return <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} />;
     }
     if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id); if (!r) { setOpen(null); return null; }
-      return <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} />;
+      return <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} />;
     }
     const e = events.find(x => x.id === open.id); if (!e) { setOpen(null); return null; }
-    return <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} />;
+    return <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} />;
   }
 
   const myChats = [
@@ -340,7 +342,7 @@ function Main({ user }) {
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-        {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} />}
+        {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
         {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
@@ -384,9 +386,19 @@ function Chats({ chats, onOpen, onExplore }) {
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, canAccessEvent, counts, onJoin, onTicket }) {
+function Events({ events, categories, cities, profile, ticketTypes, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
   const [cat, setCat] = useState("All");
   const [city, setCity] = useState("All");
+  const [hl, setHl] = useState(null);
+  useEffect(() => {
+    if (!focus) return;
+    setCat("All"); setCity("All"); setHl(focus);
+    const el = document.getElementById("ev-" + focus);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const t1 = setTimeout(() => setHl(null), 2600);
+    const t2 = setTimeout(() => onFocusDone && onFocusDone(), 800);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [focus]);
   const catNames = (categories && categories.length) ? categories.map(c => c.name) : Array.from(new Set(events.map(e => e.category).filter(Boolean)));
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city));
@@ -410,7 +422,7 @@ function Events({ events, categories, cities, profile, ticketTypes, canAccessEve
           const types = ticketTypes[e.id] || [];
           const avail = types.filter(t => t.gender_restrict === "any" || t.gender_restrict === profile?.gender);
           return (
-            <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden" }}>
+            <div key={e.id} id={"ev-" + e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${hl === e.id ? W.teal : W.line}`, overflow: "hidden", boxShadow: hl === e.id ? `0 0 0 3px ${W.teal}33` : "none", transition: "box-shadow .3s, border-color .3s" }}>
               {e.banner_url && <BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: "auto", display: "block" }} />}
               <div style={{ padding: 16 }}>
                 <div style={{ display: "flex", gap: 13 }}>
@@ -504,7 +516,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
 }
 
 /* ---------------- chat room ---------------- */
-function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, readOnly = false }) {
+function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, readOnly = false }) {
   const [msgs, setMsgs] = useState(null);
   const [senders, setSenders] = useState({});
   const [text, setText] = useState("");
@@ -524,12 +536,12 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
     let channel;
     (async () => {
       const { data } = await supabase.from("messages")
-        .select("id, body, media_url, media_type, file_name, sender_id, created_at, sender:profiles(full_name, avatar_url)")
+        .select("id, body, media_url, media_type, file_name, event_ref, sender_id, created_at, sender:profiles(full_name, avatar_url)")
         .eq("group_type", groupType).eq("group_id", room.id)
         .order("created_at", { ascending: true });
       const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url || sm[m.sender_id]?.avatar }; });
       sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url || sm[user.id]?.avatar }; sRef.current = sm; setSenders(sm);
-      setMsgs((data || []).map(m => ({ id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, sender_id: m.sender_id, created_at: m.created_at })));
+      setMsgs((data || []).map(m => ({ id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, event_ref: m.event_ref, sender_id: m.sender_id, created_at: m.created_at })));
       channel = supabase.channel(groupType + "-" + room.id)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${room.id}` }, async (payload) => {
           const m = payload.new;
@@ -537,7 +549,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             const { data: p } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", m.sender_id).single();
             sRef.current = { ...sRef.current, [m.sender_id]: { name: p?.full_name || "Member", avatar: p?.avatar_url } }; setSenders(sRef.current);
           }
-          setMsgs(prev => (prev && prev.some(x => x.id === m.id)) ? prev : [...(prev || []), { id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, sender_id: m.sender_id, created_at: m.created_at }]);
+          setMsgs(prev => (prev && prev.some(x => x.id === m.id)) ? prev : [...(prev || []), { id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, event_ref: m.event_ref, sender_id: m.sender_id, created_at: m.created_at }]);
         }).subscribe();
     })();
     return () => { if (channel) supabase.removeChannel(channel); };
@@ -604,6 +616,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
                     <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .5, color: isEvent ? W.teal : "#B8860B", marginBottom: 6 }}>{isEvent ? "NEW EVENT" : "📢 ANNOUNCEMENT"}</div>
                     {isEvent && m.media_url && <BannerMedia url={m.media_url} type={m.file_name === "video" ? "video" : "image"} style={{ width: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 8, display: "block", marginBottom: 8 }} />}
                     <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>{m.body}</div>
+                    {isEvent && m.event_ref && <button onClick={() => onOpenEvent && onOpenEvent(m.event_ref)} style={{ ...btn(W.teal, "#fff"), marginTop: 10, width: "100%", justifyContent: "center" }}><Ticket size={15} />RSVP / Buy ticket</button>}
                     <div style={{ fontSize: 11, color: W.soft, marginTop: 5 }}>{fmtTime(m.created_at)}</div>
                   </div>
                 </div>
@@ -1265,7 +1278,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • dm-replies-event-dm ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • event-card-rsvp ✅</div>
       </div>
     </div>
   );
