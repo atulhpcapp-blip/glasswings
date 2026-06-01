@@ -17,6 +17,21 @@ function netPrice(t, subs) {
   const d = t.discount_kind === "flat" ? t.discount_value : Math.round(base * t.discount_value / 100);
   return Math.max(0, base - d);
 }
+// Availability for a ticket type: capacity sell-out + men-released-as-women-join rule
+function ticketStatus(t, e, stats, typeSold) {
+  const sold = (typeSold && typeSold[t.id]) || 0;
+  const hasCap = t.capacity != null && t.capacity !== "";
+  if (hasCap && t.capacity - sold <= 0) return { ok: false, label: "Sold out" };
+  if (t.gender_restrict === "male" && e && e.balance_on === true) {
+    const s = (stats && stats[e.id]) || { male: 0, female: 0 };
+    const ratio = e.men_per_woman == null ? 2 : Number(e.men_per_woman);
+    const budget = (Number(e.men_open_start) || 0) + Math.floor((s.female || 0) * ratio);
+    const menLeft = budget - (s.male || 0);
+    if (menLeft <= 0) return { ok: false, label: "Opens as more women join" };
+    return { ok: true, label: hasCap ? `${Math.min(t.capacity - sold, menLeft)} left` : `${menLeft} left` };
+  }
+  return { ok: true, label: hasCap ? `${t.capacity - sold} left` : null };
+}
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
 function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
 function fitText(x, t, max) { let s = String(t || ""); if (x.measureText(s).width <= max) return s; while (s.length > 1 && x.measureText(s + "X").width > max) s = s.slice(0, -1); return s + "…"; }
@@ -416,8 +431,9 @@ function Main({ user }) {
   const [eventCounts, setEventCounts] = useState({});
   const [categories, setCategories] = useState([]);
   const [cities, setCities] = useState([]);
-  const [ticketTypes, setTicketTypes] = useState({});
-  const [myTickets, setMyTickets] = useState({});
+  const [ticketTypes, setTicketTypes] = useState({});  const [myTickets, setMyTickets] = useState({});
+  const [eventStats, setEventStats] = useState({});
+  const [typeSold, setTypeSold] = useState({});
   const [buyTarget, setBuyTarget] = useState(null);
   const [ticketView, setTicketView] = useState(null);
   const [hasDM, setHasDM] = useState(false);
@@ -429,7 +445,7 @@ function Main({ user }) {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -442,6 +458,8 @@ function Main({ user }) {
       supabase.from("event_options").select("*").order("name", { ascending: true }),
       supabase.from("event_ticket_types").select("*").order("sort", { ascending: true }),
       supabase.from("messages").select("id").eq("group_type", "dm").eq("group_id", user.id).limit(1),
+      supabase.rpc("event_ticket_stats"),
+      supabase.rpc("ticket_type_sold"),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     setSubs((sb || []).map(x => x.room_id)); setTickets([...new Set((tk || []).map(x => x.event_id))]);
@@ -449,6 +467,8 @@ function Main({ user }) {
     setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
     const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
+    const es = {}; (estat || []).forEach(x => { es[x.event_id] = { male: Number(x.male_sold), female: Number(x.female_sold) }; }); setEventStats(es);
+    const ts = {}; (tsold || []).forEach(x => { ts[x.ticket_type_id] = Number(x.sold); }); setTypeSold(ts);
     setCategories((opts || []).filter(o => o.kind === "category"));
     setCities((opts || []).filter(o => o.kind === "city"));
     const tm = {}; (tt || []).forEach(t => { if (!tm[t.event_id]) tm[t.event_id] = []; tm[t.event_id].push(t); }); setTicketTypes(tm);
@@ -477,6 +497,7 @@ function Main({ user }) {
   };
   const confirmPurchase = async (qty) => {
     const { event: e, type } = buyTarget;
+    if (type) { const st = ticketStatus(type, e, eventStats, typeSold); if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? "These tickets are sold out." : "Men's tickets aren't open yet — they release as more women join."); } }
     const unit = type ? netPrice(type, subs) : e.ticket_price;
     if (unit > 0) { setBuyTarget(null); return setNotice("Online payments are being set up — paid tickets go live with the payments step."); }
     const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty });
@@ -569,7 +590,7 @@ function Main({ user }) {
     <>
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-      {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
@@ -647,7 +668,7 @@ function Chats({ chats, onOpen, onExplore }) {
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, subs, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
   const [cat, setCat] = useState("All");
   const [city, setCity] = useState("All");
   const [hl, setHl] = useState(null);
@@ -713,10 +734,11 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, canAcc
                       {avail.map(t => {
                         const net = netPrice(t, subs);
                         const disc = net < t.price;
+                        const st = ticketStatus(t, e, stats, typeSold);
                         return (
-                          <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: `1px solid ${disc ? W.teal : W.line}`, borderRadius: 10, padding: "8px 12px" }}>
+                          <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: `1px solid ${disc ? W.teal : W.line}`, borderRadius: 10, padding: "8px 12px", opacity: st.ok ? 1 : 0.75 }}>
                             <div style={{ minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, color: W.ink, fontSize: 14 }}>{t.name}</div>
+                              <div style={{ fontWeight: 600, color: W.ink, fontSize: 14, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>{t.name}{st.label && <span style={{ background: st.ok ? "#EFF6F4" : "#FBEEE6", color: st.ok ? W.soft : "#B8651B", fontSize: 10.5, fontWeight: 700, padding: "1px 7px", borderRadius: 10 }}>{st.label}</span>}</div>
                               <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
                                 {net === 0 ? <span style={{ color: W.teal }}>Free</span>
                                   : <span style={{ color: W.ink }}>₹{net}</span>}
@@ -724,7 +746,9 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, canAcc
                                 {disc && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "1px 6px", borderRadius: 10 }}>ROOM OFFER</span>}
                               </div>
                             </div>
-                            <button onClick={() => onJoin(e, t)} style={btn(net === 0 ? W.teal : W.ink, "#fff")}><Ticket size={14} />{net === 0 ? "Get" : "Buy"}</button>
+                            {st.ok
+                              ? <button onClick={() => onJoin(e, t)} style={btn(net === 0 ? W.teal : W.ink, "#fff")}><Ticket size={14} />{net === 0 ? "Get" : "Buy"}</button>
+                              : <button disabled style={{ ...btn(W.line, W.soft), cursor: "default" }}>{st.label === "Sold out" ? "Sold out" : "Not open"}</button>}
                           </div>
                         );
                       })}
@@ -1288,14 +1312,14 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   );
 }
 function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
-  const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [g, setG] = useState("any");
+  const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [g, setG] = useState("any"); const [cap, setCap] = useState("");
   const [dRoom, setDRoom] = useState(""); const [dKind, setDKind] = useState("percent"); const [dVal, setDVal] = useState("");
   const gl = { any: "Anyone", male: "Men", female: "Women" };
   const roomName = id => ((rooms || []).find(r => r.id === id) || {}).name || "room";
   const add = async () => {
     if (!name.trim()) return;
-    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: g, discount_room_id: dRoom || null, discount_kind: dKind, discount_value: Number(dVal) || 0 });
-    setName(""); setPrice(""); setG("any"); setDRoom(""); setDKind("percent"); setDVal("");
+    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: g, capacity: cap === "" ? null : Number(cap), discount_room_id: dRoom || null, discount_kind: dKind, discount_value: Number(dVal) || 0 });
+    setName(""); setPrice(""); setG("any"); setCap(""); setDRoom(""); setDKind("percent"); setDVal("");
   };
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
   return (
@@ -1304,7 +1328,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map(t => (
           <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 9, padding: "7px 10px" }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink }}><b>{t.name}</b> · {t.price === 0 ? "Free" : `₹${t.price}`} · {gl[t.gender_restrict]}{t.discount_room_id ? <span style={{ color: W.teal }}> · {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {roomName(t.discount_room_id)}</span> : ""}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink }}><b>{t.name}</b> · {t.price === 0 ? "Free" : `₹${t.price}`} · {gl[t.gender_restrict]}{t.capacity != null ? <span style={{ color: W.soft }}> · cap {t.capacity}</span> : ""}{t.discount_room_id ? <span style={{ color: W.teal }}> · {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {roomName(t.discount_room_id)}</span> : ""}</span>
             <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(t.id)} />
           </div>
         ))}
@@ -1318,6 +1342,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
           <option value="male">Men</option>
           <option value="female">Women</option>
         </select>
+        <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
       </div>
       <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Discount for room members (optional)</div>
@@ -1335,6 +1360,33 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Members of that room get this off. 100% (or ₹ ≥ price) makes it free for them.</div>
       </div>
       <button onClick={add} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}><Plus size={15} />Add ticket type</button>
+    </div>
+  );
+}
+function GenderBalance({ ev, onUpdate }) {
+  const on = ev.balance_on !== false;
+  const [ratio, setRatio] = useState(ev.men_per_woman == null ? "2" : String(ev.men_per_woman));
+  const [start, setStart] = useState(String(ev.men_open_start || 0));
+  const [saved, setSaved] = useState(false);
+  const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
+  return (
+    <div style={{ background: W.bg, borderRadius: 10, padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Men : Women balance</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: W.soft, cursor: "pointer" }}>
+          <input type="checkbox" checked={on} onChange={e => onUpdate(ev.id, { balance_on: e.target.checked })} /> On
+        </label>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, margin: "4px 0 8px", lineHeight: 1.5 }}>Men's tickets open as women join — e.g. 2 per woman means 4 women joining opens 8 men's tickets. Women's tickets are never limited by this.</div>
+      {on && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 12.5, color: W.soft }}>Men per woman</span>
+          <input value={ratio} onChange={e => { setRatio(e.target.value.replace(/[^\d.]/g, "")); setSaved(false); }} inputMode="decimal" style={{ ...ip, width: 54 }} />
+          <span style={{ fontSize: 12.5, color: W.soft }}>Men open at start</span>
+          <input value={start} onChange={e => { setStart(e.target.value.replace(/\D/g, "")); setSaved(false); }} inputMode="numeric" style={{ ...ip, width: 54 }} />
+          <button onClick={async () => { await onUpdate(ev.id, { men_per_woman: Number(ratio) || 0, men_open_start: Number(start) || 0 }); setSaved(true); }} style={btn(W.teal, "#fff")}>{saved ? "Saved ✓" : "Save"}</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1497,6 +1549,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onCreate,
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <EventBanner ev={e} onUpdate={onUpdate} />
                 <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
+                <GenderBalance ev={e} onUpdate={onUpdate} />
                 <EventTerms ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
                 <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
@@ -1693,7 +1746,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • desktop-2pane ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • ticket-balance ✅</div>
       </div>
     </div>
   );
