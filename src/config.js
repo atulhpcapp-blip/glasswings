@@ -1,3 +1,4 @@
 // Glasswings Supabase config
 export const SUPABASE_URL = "https://deobmxuwevuzxvtkbtpo.supabase.co";
 export const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlb2JteHV3ZXZ1enh2dGtidHBvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNTQwMjQsImV4cCI6MjA5NTgzMDAyNH0.ATf1mLLaCcuI1bmtVN8PQuvpbdbMjSBjgWerFYOgthk";
+export const VAPID_PUBLIC_KEY = "BHzf-ZDquMGsTyO-FNQqWnrq7FjKWKgVVK-57JkrDCws08QjTZAtLU65qu201yRVvFV8DtMvvgIW8y1-UTVdsbk";
