@@ -13,6 +13,8 @@ self.addEventListener("push", (event) => {
     tag: data.tag || undefined,
     data: { url: data.url || "/" },
     renotify: !!data.tag,
+    vibrate: [200, 100, 200],
+    requireInteraction: false,
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
