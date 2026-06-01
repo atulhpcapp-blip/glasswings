@@ -315,7 +315,7 @@ function Events({ events, categories, cities, canAccessEvent, counts, onJoin }) 
           const has = canAccessEvent(e);
           return (
             <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden" }}>
-              {e.banner_url && <img src={e.banner_url} alt="" style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }} />}
+              {e.banner_url && <BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: "auto", display: "block" }} />}
               <div style={{ padding: 16 }}>
                 <div style={{ display: "flex", gap: 13 }}>
                   <Avatar room={{ emoji: e.emoji }} size={46} />
@@ -608,16 +608,21 @@ function PinEditor({ room, onUpdate }) {
     </div>
   );
 }
+function BannerMedia({ url, type, style }) {
+  if (!url) return null;
+  if (type === "video") return <video src={url} style={style} autoPlay loop muted playsInline />;
+  return <img src={url} alt="" style={style} />;
+}
 function EventBanner({ ev, onUpdate }) {
   const ref = useRef(null); const [busy, setBusy] = useState(false);
-  const pick = async (e) => { const f = e.target.files?.[0]; if (!f) return; setBusy(true); try { const url = await uploadChatFile("banners", f); await onUpdate(ev.id, { banner_url: url }); } catch (x) { alert("Upload failed: " + x.message); } setBusy(false); };
+  const pick = async (e) => { const f = e.target.files?.[0]; if (!f) return; setBusy(true); try { const url = await uploadChatFile("banners", f); const banner_type = f.type.startsWith("video") ? "video" : "image"; await onUpdate(ev.id, { banner_url: url, banner_type }); } catch (x) { alert("Upload failed: " + x.message); } setBusy(false); };
   return (
     <div>
-      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Event banner</label>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Event banner (image or video)</label>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-        {ev.banner_url ? <img src={ev.banner_url} alt="" style={{ width: 84, height: 50, borderRadius: 8, objectFit: "cover" }} /> : <div style={{ width: 84, height: 50, borderRadius: 8, background: W.bg }} />}
+        {ev.banner_url ? <BannerMedia url={ev.banner_url} type={ev.banner_type} style={{ width: 84, height: 50, borderRadius: 8, objectFit: "cover" }} /> : <div style={{ width: 84, height: 50, borderRadius: 8, background: W.bg }} />}
         <button onClick={() => ref.current?.click()} style={btn(W.teal, "#fff")}><Camera size={15} />{busy ? "Uploading…" : "Change banner"}</button>
-        <input ref={ref} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+        <input ref={ref} type="file" accept="image/*,video/*" onChange={pick} style={{ display: "none" }} />
       </div>
     </div>
   );
@@ -644,12 +649,12 @@ function OptionList({ label, kind, items, onAdd, onDel }) {
 }
 function AdminEvents({ events, categories, cities, onCreate, onUpdate, onDelete, onAddOption, onDelOption }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
-  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "" });
+  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image" });
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
-  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "" });
-  const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
-  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, city: f.city, banner_url: f.banner }); reset(); setCreating(false); };
+  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image" });
+  const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
+  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, city: f.city, banner_url: f.banner, banner_type: f.bannerType }); reset(); setCreating(false); };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
   return (
     <div style={{ padding: 14 }}>
@@ -668,10 +673,16 @@ function AdminEvents({ events, categories, cities, onCreate, onUpdate, onDelete,
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New ticketed event</div>
-          <div onClick={() => bRef.current?.click()} style={{ height: 120, borderRadius: 12, border: `1.5px dashed ${W.line}`, background: f.banner ? `center/cover no-repeat url(${f.banner})` : W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft, cursor: "pointer", marginBottom: 12, fontSize: 13, fontWeight: 600 }}>
-            {up ? "Uploading…" : f.banner ? "" : "+ Add banner image"}
-          </div>
-          <input ref={bRef} type="file" accept="image/*" onChange={pickBanner} style={{ display: "none" }} />
+          {f.banner ? (
+            <div onClick={() => bRef.current?.click()} style={{ borderRadius: 12, overflow: "hidden", marginBottom: 12, cursor: "pointer", border: `1px solid ${W.line}` }}>
+              <BannerMedia url={f.banner} type={f.bannerType} style={{ width: "100%", height: "auto", display: "block" }} />
+            </div>
+          ) : (
+            <div onClick={() => bRef.current?.click()} style={{ height: 120, borderRadius: 12, border: `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft, cursor: "pointer", marginBottom: 12, fontSize: 13, fontWeight: 600 }}>
+              {up ? "Uploading…" : "+ Add banner image or video"}
+            </div>
+          )}
+          <input ref={bRef} type="file" accept="image/*,video/*" onChange={pickBanner} style={{ display: "none" }} />
           <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
             <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Event title" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
@@ -808,7 +819,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • categories-cities-filters ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • video-banners ✅</div>
       </div>
     </div>
   );
