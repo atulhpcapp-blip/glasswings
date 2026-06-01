@@ -66,6 +66,7 @@ export default async function handler(req, res) {
 
   // Don't notify the sender; de-dupe
   recipientIds = [...new Set(recipientIds.filter((id) => id && id !== m.sender_id))];
+  console.log("PUSH recipients", m.group_type, "count=", recipientIds.length);
   if (!recipientIds.length) return res.status(200).json({ recipients: 0 });
 
   // ---- Notification body ----
@@ -80,17 +81,20 @@ export default async function handler(req, res) {
 
   // ---- Fetch subscriptions and send ----
   const { data: subs } = await sb.from("push_subscriptions").select("*").in("user_id", recipientIds);
+  console.log("PUSH subs found", (subs || []).length);
   let sent = 0;
   await Promise.all((subs || []).map(async (s) => {
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
       sent++;
     } catch (err) {
+      console.error("PUSH send error", err && err.statusCode, err && (err.body || err.message));
       if (err && (err.statusCode === 404 || err.statusCode === 410)) {
         await sb.from("push_subscriptions").delete().eq("endpoint", s.endpoint);
       }
     }
   }));
 
+  console.log("PUSH done sent", sent, "of", (subs || []).length);
   return res.status(200).json({ recipients: recipientIds.length, sent });
 }
