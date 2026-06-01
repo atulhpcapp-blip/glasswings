@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient.js";
 import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Image as ImageIcon
 } from "lucide-react";
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
@@ -153,7 +153,9 @@ export default function App() {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     return () => sub.subscription.unsubscribe();
   }, []);
-  return <Shell>{loading ? <Splash /> : session ? <Main user={session.user} /> : <PublicLanding />}</Shell>;
+  if (loading) return <Shell><Splash /></Shell>;
+  if (!session) return <PublicLanding />;
+  return <Shell><Main user={session.user} /></Shell>;
 }
 
 function useWide(bp = 1000) {
@@ -235,6 +237,7 @@ function Auth({ initialMode = "login", onClose }) {
 
 /* ---------------- profile completion (with photo) ---------------- */
 function PublicLanding() {
+  const wide = useWide(820);
   const [authMode, setAuthMode] = useState(null);
   const [events, setEvents] = useState([]);
   const [types, setTypes] = useState({});
@@ -254,6 +257,7 @@ function PublicLanding() {
     const m = Math.min(...prices);
     return m === 0 ? "Free" : `From ₹${m}`;
   };
+  const chip = (on) => ({ flexShrink: 0, padding: "7px 14px", borderRadius: 20, border: `1px solid ${on ? W.teal : W.line}`, background: on ? W.teal : "#fff", color: on ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" });
   const Chips = ({ label, opts, val, set }) => opts.length ? (
     <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}`, alignItems: "center" }}>
       <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{label}</span>
@@ -261,44 +265,55 @@ function PublicLanding() {
     </div>
   ) : null;
   return (
-    <div style={{ minHeight: "100vh", background: W.bg }}>
-      <div style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(8,20,26,.94)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 15px" }}>
-        <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 28, objectFit: "contain" }} />
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setAuthMode("login")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.45)", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Log in</button>
-          <button onClick={() => setAuthMode("signup")} style={{ background: W.teal, color: "#fff", border: "none", borderRadius: 9, padding: "8px 15px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Sign up</button>
+    <div style={{ minHeight: "100vh", background: W.bg, fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif" }}>
+      <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}`}</style>
+      <div style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(8,18,24,.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "14px 7%" : "11px 15px" }}>
+        <img src="/logo-white.png" alt="Glasswings Events" style={{ height: wide ? 34 : 28, objectFit: "contain" }} />
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => setAuthMode("login")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.45)", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Log in</button>
+          <button onClick={() => setAuthMode("signup")} style={{ background: W.teal, color: "#fff", border: "none", borderRadius: 9, padding: "9px 17px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Sign up</button>
         </div>
       </div>
-      <div style={{ backgroundImage: "linear-gradient(rgba(6,22,28,.55),rgba(6,18,26,.85)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center", padding: "34px 20px 30px", textAlign: "center", color: "#fff" }}>
-        <div style={{ fontSize: 25, fontWeight: 800, lineHeight: 1.2 }}>Discover top events in your city</div>
-        <div style={{ fontSize: 14, opacity: 0.86, marginTop: 8 }}>Browse upcoming meetups & parties — sign up free to grab your tickets.</div>
+      <div style={{ backgroundImage: "linear-gradient(rgba(6,18,26,.5),rgba(6,14,22,.82)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center", padding: wide ? "96px 7%" : "40px 20px 34px", color: "#fff" }}>
+        <div style={{ maxWidth: 1180, margin: "0 auto", textAlign: wide ? "left" : "center" }}>
+          <div style={{ fontSize: wide ? 50 : 26, fontWeight: 800, lineHeight: 1.1, maxWidth: 720, margin: wide ? "0" : "0 auto" }}>Discover top events &amp; meetups in your city</div>
+          <div style={{ fontSize: wide ? 18 : 14, opacity: 0.9, maxWidth: 560, margin: wide ? "14px 0 0" : "8px auto 0" }}>Parties, socials and community meetups — see what's on and grab your tickets in seconds.</div>
+          <button onClick={() => setAuthMode("signup")} style={{ ...btn(W.teal, "#fff"), marginTop: 22, padding: "13px 24px", fontSize: 15 }}><Ticket size={17} />Join free</button>
+        </div>
       </div>
-      <Chips label="Type" opts={cats} val={cat} set={setCat} />
-      <Chips label="City" opts={cityList} val={city} set={setCity} />
-      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-        {list.length === 0 && <Center>No events yet — check back soon!</Center>}
-        {list.map(e => (
-          <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden" }}>
-            {e.banner_url && <BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: "auto", display: "block" }} />}
-            <div style={{ padding: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.emoji} {e.title}</span>
-                {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>{e.category}</span>}
-              </div>
-              {e.description && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 4, lineHeight: 1.4 }}>{e.description}</div>}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
-                {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
-                {(e.venue || e.city) && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
-                <span style={{ fontWeight: 800, color: W.teal, fontSize: 15 }}>{priceFrom(e)}</span>
-                <button onClick={() => setAuthMode("signup")} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
+        <div style={{ fontWeight: 800, fontSize: wide ? 26 : 19, color: W.ink, padding: wide ? "0 0 8px" : "18px 16px 4px" }}>Upcoming events</div>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "8px 0 4px" : "8px 14px", alignItems: "center" }}>
+          {["All", ...cats].map(o => <button key={o} onClick={() => setCat(o)} style={chip(cat === o)}>{o}</button>)}
+        </div>
+        {cityList.length > 0 && <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "4px 0 8px" : "0 14px 8px", alignItems: "center" }}>
+          {["All", ...cityList].map(o => <button key={o} onClick={() => setCity(o)} style={chip(city === o)}>{o}</button>)}
+        </div>}
+        <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(330px,1fr))" : "1fr", gap: 16, padding: wide ? "8px 0 0" : "6px 14px" }}>
+          {list.length === 0 && <Center>No events yet — check back soon!</Center>}
+          {list.map(e => (
+            <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+              {e.banner_url && <BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 180 : "auto", objectFit: "cover", display: "block" }} />}
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.emoji} {e.title}</span>
+                  {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>{e.category}</span>}
+                </div>
+                {e.description && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 4, lineHeight: 1.4 }}>{e.description}</div>}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
+                  {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
+                  {(e.venue || e.city) && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 14 }}>
+                  <span style={{ fontWeight: 800, color: W.teal, fontSize: 15 }}>{priceFrom(e)}</span>
+                  <button onClick={() => setAuthMode("signup")} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-      <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "16px 20px 30px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
+      <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 34px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
     </div>
   );
 }
@@ -523,6 +538,7 @@ function Main({ user }) {
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
         {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
         {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+        {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
@@ -1520,6 +1536,68 @@ function AdminMembers({ onSendDM }) {
 }
 
 /* ---------------- profile ---------------- */
+function Gallery({ isAdmin }) {
+  const [albums, setAlbums] = useState([]);
+  const [photos, setPhotos] = useState({});
+  const [open, setOpen] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  const load = async () => {
+    const [{ data: al }, { data: ph }] = await Promise.all([
+      supabase.from("gallery_albums").select("*").order("created_at", { ascending: false }),
+      supabase.from("gallery_photos").select("*").order("created_at", { ascending: false }),
+    ]);
+    const m = {}; (ph || []).forEach(p => { (m[p.album_id] = m[p.album_id] || []).push(p); });
+    setAlbums(al || []); setPhotos(m);
+  };
+  useEffect(() => { load(); }, []);
+  const newAlbum = async () => { const title = prompt("Album name (e.g. Pub Social — May 2026)"); if (!title || !title.trim()) return; await supabase.from("gallery_albums").insert({ title: title.trim() }); load(); };
+  const addPhotos = async (e) => {
+    const files = Array.from(e.target.files || []); if (!files.length || !open) return;
+    setBusy(true);
+    for (const f of files) { try { const url = await uploadChatFile("gallery", f); await supabase.from("gallery_photos").insert({ album_id: open.id, url }); } catch (x) {} }
+    setBusy(false); if (fileRef.current) fileRef.current.value = ""; load();
+  };
+  const delAlbum = async (a) => { if (!confirm("Delete this album and its photos?")) return; await supabase.from("gallery_albums").delete().eq("id", a.id); setOpen(null); load(); };
+  if (lightbox) return <div onClick={() => setLightbox(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.93)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}><img src={lightbox} alt="" style={{ maxWidth: "96%", maxHeight: "90%", borderRadius: 8 }} /></div>;
+  if (open) {
+    const ph = photos[open.id] || [];
+    return (
+      <div>
+        <div style={{ background: W.teal, color: "#fff", padding: "14px 16px", position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => setOpen(null)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", display: "flex" }}><ArrowLeft size={22} /></button>
+          <div style={{ fontWeight: 700, fontSize: 18, flex: 1, minWidth: 0 }}>{open.title}</div>
+          {isAdmin && <button onClick={() => fileRef.current?.click()} style={{ ...btn("#fff", W.teal), padding: "6px 11px" }}><Plus size={15} />Add</button>}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={addPhotos} />
+        {busy && <div style={{ padding: 12, textAlign: "center", color: W.soft, fontSize: 13 }}>Uploading…</div>}
+        <div style={{ padding: 10, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6 }}>
+          {ph.map(p => <img key={p.id} src={p.url} alt="" onClick={() => setLightbox(p.url)} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, cursor: "pointer" }} />)}
+        </div>
+        {ph.length === 0 && <Center>No photos yet{isAdmin ? " — tap Add to upload." : "."}</Center>}
+        {isAdmin && <div style={{ padding: 16 }}><button onClick={() => delAlbum(open)} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", width: "100%", justifyContent: "center" }}><Trash2 size={15} />Delete album</button></div>}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <TopBar title="Gallery" />
+      <div style={{ padding: 14 }}>
+        {isAdmin && <button onClick={newAlbum} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}><Plus size={18} />New album</button>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
+          {albums.map(a => { const cover = (photos[a.id] || [])[0]; const n = (photos[a.id] || []).length; return (
+            <div key={a.id} onClick={() => setOpen(a)} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden", cursor: "pointer" }}>
+              <div style={{ width: "100%", aspectRatio: "4/3", background: W.bg }}>{cover ? <img src={cover.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}><ImageIcon size={28} /></div>}</div>
+              <div style={{ padding: "10px 12px" }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{a.title}</div><div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{n} photo{n === 1 ? "" : "s"}</div></div>
+            </div>
+          ); })}
+        </div>
+        {albums.length === 0 && <Center>No galleries yet.{isAdmin ? " Create your first album above." : ""}</Center>}
+      </div>
+    </div>
+  );
+}
 function Profile({ user, profile, reload }) {
   const roleLabel = { admin: "Admin (Owner)", subadmin: "Sub-admin", member: "Member" }[profile?.role] || "Member";
   const fileRef = useRef(null);
@@ -1548,7 +1626,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • public-events ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • gallery-and-web ✅</div>
       </div>
     </div>
   );
@@ -1568,7 +1646,7 @@ const Center = ({ children }) => <div style={{ textAlign: "center", color: W.sof
 const btn = (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 });
 function fmtTime(t) { return new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
 function Nav({ tab, setTab, isAdmin }) {
-  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", padding: "8px 0 11px" }}>
       {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft }}><I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span></button>; })}
