@@ -68,13 +68,14 @@ function urlBase64ToUint8Array(base64String) {
   for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
   return arr;
 }
-async function subscribeToPush(userId) {
+async function subscribeToPush(userId, force) {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("This browser doesn't support notifications.");
   if (!VAPID_PUBLIC_KEY) throw new Error("Notifications aren't configured yet (missing VAPID key).");
   const perm = await Notification.requestPermission();
   if (perm !== "granted") throw new Error("Notifications were blocked. Enable them in your browser settings.");
   const reg = await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
+  if (sub && force) { try { await sub.unsubscribe(); } catch (e) {} sub = null; }
   if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
   const j = sub.toJSON();
   const { error } = await supabase.from("push_subscriptions").upsert(
@@ -86,14 +87,23 @@ async function subscribeToPush(userId) {
 
 function PushToggle({ user }) {
   const supported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-  const [state, setState] = useState(supported ? (Notification.permission === "granted" ? "on" : "off") : "no");
+  const [state, setState] = useState(supported ? "checking" : "no");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const isStandalone = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone);
   const isIOS = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const enable = async () => {
+  useEffect(() => {
+    if (!supported) return;
+    (async () => {
+      try {
+        if (Notification.permission === "granted") { await subscribeToPush(user.id); setState("on"); }
+        else { setState("off"); }
+      } catch (e) { setState("off"); setMsg(e.message || String(e)); }
+    })();
+  }, []);
+  const enable = async (force) => {
     setBusy(true); setMsg("");
-    try { await subscribeToPush(user.id); setState("on"); setMsg("Notifications are on for this device."); }
+    try { await subscribeToPush(user.id, force); setState("on"); setMsg(force ? "Device re-registered." : "Notifications are on for this device."); }
     catch (e) { setMsg(e.message || String(e)); }
     setBusy(false);
   };
@@ -104,8 +114,13 @@ function PushToggle({ user }) {
         <MessageCircle size={18} color={W.teal} />
         <span style={{ fontWeight: 700, color: W.ink, fontSize: 15 }}>Notifications</span>
       </div>
-      {state === "on" ? (
-        <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 600 }}>✅ On for this device.</div>
+      {state === "checking" ? (
+        <div style={{ fontSize: 13.5, color: W.soft }}>Checking…</div>
+      ) : state === "on" ? (
+        <>
+          <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 600 }}>✅ On for this device.</div>
+          <button onClick={() => enable(true)} disabled={busy} style={{ marginTop: 8, background: "none", border: "none", color: W.soft, fontSize: 12.5, textDecoration: "underline", cursor: "pointer", padding: 0 }}>{busy ? "Working…" : "Re-register this device"}</button>
+        </>
       ) : (
         <>
           <div style={{ fontSize: 13, color: W.soft, marginBottom: 12 }}>Get notified of new messages and announcements, even when Glasswings is closed.</div>
@@ -114,7 +129,7 @@ function PushToggle({ user }) {
               On iPhone: tap the <b>Share</b> icon → <b>Add to Home Screen</b>, open Glasswings from that icon, then turn this on.
             </div>
           )}
-          <button onClick={enable} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: busy ? .6 : 1 }}>
+          <button onClick={() => enable(false)} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: busy ? .6 : 1 }}>
             {busy ? "Enabling…" : "Turn on notifications"}
           </button>
         </>
@@ -1419,7 +1434,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • push-notifications ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • push-reregister ✅</div>
       </div>
     </div>
   );
