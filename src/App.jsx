@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabaseClient.js";
+import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
   Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2
@@ -58,12 +59,78 @@ async function uploadChatFile(roomId, file) {
   return supabase.storage.from("chat").getPublicUrl(path).data.publicUrl;
 }
 
+const VAPID_PUBLIC_KEY = appCfg.VAPID_PUBLIC_KEY || "";
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+async function subscribeToPush(userId) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("This browser doesn't support notifications.");
+  if (!VAPID_PUBLIC_KEY) throw new Error("Notifications aren't configured yet (missing VAPID key).");
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("Notifications were blocked. Enable them in your browser settings.");
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+  const j = sub.toJSON();
+  const { error } = await supabase.from("push_subscriptions").upsert(
+    { user_id: userId, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth },
+    { onConflict: "endpoint" }
+  );
+  if (error) throw error;
+}
+
+function PushToggle({ user }) {
+  const supported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const [state, setState] = useState(supported ? (Notification.permission === "granted" ? "on" : "off") : "no");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const isStandalone = typeof window !== "undefined" && (window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone);
+  const isIOS = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const enable = async () => {
+    setBusy(true); setMsg("");
+    try { await subscribeToPush(user.id); setState("on"); setMsg("Notifications are on for this device."); }
+    catch (e) { setMsg(e.message || String(e)); }
+    setBusy(false);
+  };
+  if (state === "no") return null;
+  return (
+    <div style={{ marginTop: 18, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+        <MessageCircle size={18} color={W.teal} />
+        <span style={{ fontWeight: 700, color: W.ink, fontSize: 15 }}>Notifications</span>
+      </div>
+      {state === "on" ? (
+        <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 600 }}>✅ On for this device.</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 13, color: W.soft, marginBottom: 12 }}>Get notified of new messages and announcements, even when Glasswings is closed.</div>
+          {isIOS && !isStandalone && (
+            <div style={{ fontSize: 12.5, color: "#9a6b00", background: "#FFF6E6", borderRadius: 9, padding: 10, marginBottom: 12 }}>
+              On iPhone: tap the <b>Share</b> icon → <b>Add to Home Screen</b>, open Glasswings from that icon, then turn this on.
+            </div>
+          )}
+          <button onClick={enable} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: busy ? .6 : 1 }}>
+            {busy ? "Enabling…" : "Turn on notifications"}
+          </button>
+        </>
+      )}
+      {msg && <div style={{ fontSize: 12.5, color: state === "on" ? W.teal : "#C0392B", marginTop: 10 }}>{msg}</div>}
+    </div>
+  );
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     return () => sub.subscription.unsubscribe();
   }, []);
   return <Shell>{loading ? <Splash /> : session ? <Main user={session.user} /> : <Auth />}</Shell>;
@@ -1350,8 +1417,9 @@ function Profile({ user, profile, reload }) {
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 7, background: "#E7F6EF", color: W.teal, fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{profile?.role !== "member" && <Crown size={13} />}{roleLabel}</span>
           </div>
         </div>
+        <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • ticket-discounts ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • push-notifications ✅</div>
       </div>
     </div>
   );
