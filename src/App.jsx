@@ -153,7 +153,7 @@ export default function App() {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     return () => sub.subscription.unsubscribe();
   }, []);
-  return <Shell>{loading ? <Splash /> : session ? <Main user={session.user} /> : <Auth />}</Shell>;
+  return <Shell>{loading ? <Splash /> : session ? <Main user={session.user} /> : <PublicLanding />}</Shell>;
 }
 
 function useWide(bp = 1000) {
@@ -182,8 +182,8 @@ function Shell({ children }) {
 function Splash() { return <div style={{ height: "100vh", background: "linear-gradient(135deg,#0E5C54,#061f1c)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}><img src="/logo-white.png" alt="" style={{ width: 200, maxWidth: "60%" }} /></div>; }
 
 /* ---------------- auth ---------------- */
-function Auth() {
-  const [mode, setMode] = useState("login");
+function Auth({ initialMode = "login", onClose }) {
+  const [mode, setMode] = useState(initialMode);
   const [name, setName] = useState(""), [email, setEmail] = useState(""), [pass, setPass] = useState(""), [gender, setGender] = useState("male");
   const [err, setErr] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
   const go = async () => {
@@ -201,7 +201,8 @@ function Auth() {
   };
   const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
   return (
-    <div style={{ minHeight: "100vh", padding: "0 22px 44px", display: "flex", flexDirection: "column", alignItems: "center", backgroundImage: "linear-gradient(rgba(6,22,28,.72), rgba(6,18,26,.93)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center" }}>
+    <div style={{ minHeight: "100vh", padding: "0 22px 44px", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", backgroundImage: "linear-gradient(rgba(6,22,28,.72), rgba(6,18,26,.93)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center" }}>
+      {onClose && <button onClick={onClose} style={{ position: "absolute", top: 14, left: 14, background: "rgba(255,255,255,.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer", zIndex: 3 }}>‹ Events</button>}
       <div style={{ textAlign: "center", paddingTop: 56 }}>
         <img src="/logo-white.png" alt="Glasswings Events" style={{ width: 200, maxWidth: "66%", objectFit: "contain" }} />
         <div style={{ fontSize: 29, fontWeight: 800, color: "#fff", marginTop: 18, lineHeight: 1.18, letterSpacing: 0.3 }}>Discover the best<br />events &amp; meetups</div>
@@ -233,6 +234,74 @@ function Auth() {
 }
 
 /* ---------------- profile completion (with photo) ---------------- */
+function PublicLanding() {
+  const [authMode, setAuthMode] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [types, setTypes] = useState({});
+  const [cat, setCat] = useState("All");
+  const [city, setCity] = useState("All");
+  useEffect(() => {
+    supabase.from("events").select("*").order("created_at", { ascending: false }).then(({ data }) => setEvents(data || []));
+    supabase.from("event_ticket_types").select("*").then(({ data }) => { const m = {}; (data || []).forEach(t => { (m[t.event_id] = m[t.event_id] || []).push(t); }); setTypes(m); });
+  }, []);
+  if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
+  const cats = Array.from(new Set(events.map(e => e.category).filter(Boolean)));
+  const cityList = Array.from(new Set(events.map(e => e.city).filter(Boolean)));
+  const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city));
+  const priceFrom = (e) => {
+    const ts = types[e.id] || [];
+    const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
+    const m = Math.min(...prices);
+    return m === 0 ? "Free" : `From ₹${m}`;
+  };
+  const Chips = ({ label, opts, val, set }) => opts.length ? (
+    <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}`, alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{label}</span>
+      {["All", ...opts].map(o => <button key={o} onClick={() => set(o)} style={{ flexShrink: 0, padding: "6px 13px", borderRadius: 20, border: `1px solid ${val === o ? W.teal : W.line}`, background: val === o ? W.teal : "#fff", color: val === o ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{o}</button>)}
+    </div>
+  ) : null;
+  return (
+    <div style={{ minHeight: "100vh", background: W.bg }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(8,20,26,.94)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 15px" }}>
+        <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 28, objectFit: "contain" }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setAuthMode("login")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.45)", borderRadius: 9, padding: "8px 14px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Log in</button>
+          <button onClick={() => setAuthMode("signup")} style={{ background: W.teal, color: "#fff", border: "none", borderRadius: 9, padding: "8px 15px", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Sign up</button>
+        </div>
+      </div>
+      <div style={{ backgroundImage: "linear-gradient(rgba(6,22,28,.55),rgba(6,18,26,.85)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center", padding: "34px 20px 30px", textAlign: "center", color: "#fff" }}>
+        <div style={{ fontSize: 25, fontWeight: 800, lineHeight: 1.2 }}>Discover top events in your city</div>
+        <div style={{ fontSize: 14, opacity: 0.86, marginTop: 8 }}>Browse upcoming meetups & parties — sign up free to grab your tickets.</div>
+      </div>
+      <Chips label="Type" opts={cats} val={cat} set={setCat} />
+      <Chips label="City" opts={cityList} val={city} set={setCity} />
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+        {list.length === 0 && <Center>No events yet — check back soon!</Center>}
+        {list.map(e => (
+          <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden" }}>
+            {e.banner_url && <BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: "auto", display: "block" }} />}
+            <div style={{ padding: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.emoji} {e.title}</span>
+                {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>{e.category}</span>}
+              </div>
+              {e.description && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 4, lineHeight: 1.4 }}>{e.description}</div>}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
+                {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
+                {(e.venue || e.city) && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
+                <span style={{ fontWeight: 800, color: W.teal, fontSize: 15 }}>{priceFrom(e)}</span>
+                <button onClick={() => setAuthMode("signup")} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "16px 20px 30px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
+    </div>
+  );
+}
 function ProfileGate({ user, profile, reload }) {
   const [name, setName] = useState(profile.full_name || "");
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");
@@ -1479,7 +1548,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • landing-v2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • public-events ✅</div>
       </div>
     </div>
   );
