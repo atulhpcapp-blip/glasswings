@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabaseClient.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket
 } from "lucide-react";
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
@@ -155,56 +155,91 @@ function ProfileGate({ user, profile, reload }) {
 function Main({ user }) {
   const [profile, setProfile] = useState(null);
   const [rooms, setRooms] = useState([]);
+  const [events, setEvents] = useState([]);
   const [subs, setSubs] = useState([]);
+  const [tickets, setTickets] = useState([]);
   const [mods, setMods] = useState([]);
+  const [eventMods, setEventMods] = useState([]);
   const [counts, setCounts] = useState({});
+  const [eventCounts, setEventCounts] = useState({});
   const [tab, setTab] = useState("chats");
-  const [openId, setOpenId] = useState(null);
+  const [open, setOpen] = useState(null); // { id, type }
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: sb }, { data: md }, { data: cnt }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
+      supabase.from("events").select("*").order("created_at", { ascending: true }),
       supabase.from("room_subscriptions").select("room_id").eq("user_id", user.id),
+      supabase.from("event_tickets").select("event_id").eq("user_id", user.id),
       supabase.from("room_moderators").select("room_id").eq("user_id", user.id),
+      supabase.from("event_moderators").select("event_id").eq("user_id", user.id),
       supabase.rpc("room_member_counts"),
+      supabase.rpc("event_ticket_counts"),
     ]);
-    setProfile(prof); setRooms(rm || []); setSubs((sb || []).map(x => x.room_id)); setMods((md || []).map(x => x.room_id));
+    setProfile(prof); setRooms(rm || []); setEvents(ev || []);
+    setSubs((sb || []).map(x => x.room_id)); setTickets((tk || []).map(x => x.event_id));
+    setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
+    const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
     setReady(true);
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
 
   const isAdmin = profile?.role === "admin";
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id);
+  const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
+
   const joinRoom = async (r) => {
-    if (canAccess(r)) return setOpenId(r.id);
+    if (canAccess(r)) return setOpen({ id: r.id, type: "room" });
     if (!freeForUser(r)) return setNotice("Online payments are being set up — paid subscriptions for men are coming next.");
     const { error } = await supabase.from("room_subscriptions").insert({ room_id: r.id, user_id: user.id });
     if (error) return setNotice(error.message);
-    setSubs(p => [...p, r.id]); setCounts(c => ({ ...c, [r.id]: (c[r.id] || 0) + 1 })); setOpenId(r.id);
+    setSubs(p => [...p, r.id]); setCounts(c => ({ ...c, [r.id]: (c[r.id] || 0) + 1 })); setOpen({ id: r.id, type: "room" });
   };
+  const joinEvent = async (e) => {
+    if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
+    if (e.ticket_price > 0) return setNotice("Online payments are being set up — paid tickets are coming with the payments step.");
+    const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id });
+    if (error) return setNotice(error.message);
+    setTickets(p => [...p, e.id]); setEventCounts(c => ({ ...c, [e.id]: (c[e.id] || 0) + 1 })); setOpen({ id: e.id, type: "event" });
+  };
+
   const createRoom = async (d) => { const { error } = await supabase.from("rooms").insert(d); if (error) return setNotice(error.message); await load(); };
   const updateRoom = async (id, p) => { const { error } = await supabase.from("rooms").update(p).eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.map(r => r.id === id ? { ...r, ...p } : r)); };
-  const deleteRoom = async (id) => { const { error } = await supabase.from("rooms").delete().eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.filter(r => r.id !== id)); setOpenId(null); };
+  const deleteRoom = async (id) => { const { error } = await supabase.from("rooms").delete().eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.filter(r => r.id !== id)); setOpen(null); };
+  const createEvent = async (d) => { const { error } = await supabase.from("events").insert(d); if (error) return setNotice(error.message); await load(); };
+  const updateEvent = async (id, p) => { const { error } = await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
+  const deleteEvent = async (id) => { const { error } = await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
 
   if (!ready) return <Splash />;
   if (profile && !profile.profile_completed) return <ProfileGate user={user} profile={profile} reload={load} />;
 
-  const open = openId ? rooms.find(r => r.id === openId) : null;
-  if (open) return <RoomChat room={open} user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[open.id] || 0} onBack={() => setOpenId(null)} onUpdateRoom={updateRoom} />;
-  const myChats = rooms.filter(canAccess);
+  if (open) {
+    if (open.type === "room") {
+      const r = rooms.find(x => x.id === open.id); if (!r) { setOpen(null); return null; }
+      return <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} />;
+    }
+    const e = events.find(x => x.id === open.id); if (!e) { setOpen(null); return null; }
+    return <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} />;
+  }
+
+  const myChats = [
+    ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
+    ...events.filter(canAccessEvent).map(e => ({ id: e.id, type: "event", name: e.title, emoji: e.emoji, logo_url: null, sub: e.event_date || ((eventCounts[e.id] || 0) + " going") })),
+  ];
 
   return (
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
-        {tab === "chats" && <Chats rooms={myChats} counts={counts} onOpen={setOpenId} onExplore={() => setTab("explore")} />}
+        {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-        {tab === "admin" && isAdmin && <Admin rooms={rooms} counts={counts} onCreate={createRoom} onUpdate={updateRoom} onDelete={deleteRoom} />}
+        {tab === "events" && <Events events={events} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} />}
+        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
@@ -222,26 +257,64 @@ function Notice({ text, onClose }) {
 }
 
 /* ---------------- chats ---------------- */
-function Chats({ rooms, counts, onOpen, onExplore }) {
+function Chats({ chats, onOpen, onExplore }) {
   return (
     <div>
       <TopBar title="Glasswings" />
-      {rooms.length === 0 ? (
+      {chats.length === 0 ? (
         <div style={{ textAlign: "center", padding: "80px 30px", color: W.soft }}>
           <MessageCircle size={42} color={W.teal} style={{ marginBottom: 14 }} />
           <div style={{ fontWeight: 700, color: W.ink, fontSize: 17 }}>No chats yet</div>
-          <div style={{ fontSize: 14, marginTop: 6 }}>Join a room to start chatting.</div>
-          <button onClick={onExplore} style={{ marginTop: 16, padding: "11px 20px", border: "none", borderRadius: 22, background: W.teal, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Explore rooms</button>
+          <div style={{ fontSize: 14, marginTop: 6 }}>Join a room or grab an event ticket to start chatting.</div>
+          <button onClick={onExplore} style={{ marginTop: 16, padding: "11px 20px", border: "none", borderRadius: 22, background: W.teal, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Explore</button>
         </div>
-      ) : rooms.map(r => (
-        <div key={r.id} onClick={() => onOpen(r.id)} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
-          <Avatar room={r} size={52} />
+      ) : chats.map(c => (
+        <div key={c.type + c.id} onClick={() => onOpen({ id: c.id, type: c.type })} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
+          <Avatar room={{ emoji: c.emoji, logo_url: c.logo_url }} size={52} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{r.name}</div>
-            <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(counts[r.id] || 0)} members · tap to open</div>
+            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}</div>
+            <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.sub} · tap to open</div>
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ---------------- events ---------------- */
+function Events({ events, canAccessEvent, counts, onJoin }) {
+  return (
+    <div>
+      <TopBar title="Events" />
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+        {events.length === 0 && <Center>No events yet. Create one from the Admin tab.</Center>}
+        {events.map(e => {
+          const has = canAccessEvent(e);
+          return (
+            <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16 }}>
+              <div style={{ display: "flex", gap: 13 }}>
+                <Avatar room={{ emoji: e.emoji }} size={50} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.title}</div>
+                  <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{e.description}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
+                {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
+                {e.venue && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{e.venue}</span>}
+                <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Users size={13} />{counts[e.id] || 0} going</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
+                {e.ticket_price === 0 ? <span style={{ fontWeight: 700, color: W.teal, fontSize: 15 }}>Free</span>
+                  : <span style={{ fontWeight: 700, color: W.ink, fontSize: 15, display: "flex", alignItems: "center" }}><IndianRupee size={14} />{e.ticket_price}<span style={{ color: W.soft, fontWeight: 500, fontSize: 13 }}> / ticket</span></span>}
+                {has ? <button onClick={() => onJoin(e)} style={btn(W.teal, "#fff")}><MessageCircle size={15} />Open chat</button>
+                  : <button onClick={() => onJoin(e)} style={btn(W.ink, "#fff")}><Ticket size={15} />{e.ticket_price === 0 ? "Get ticket" : "Buy ticket"}</button>}
+              </div>
+              {has && <div style={{ fontSize: 12, color: W.teal, marginTop: 8 }}>✓ You're in — chat unlocked</div>}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -285,7 +358,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
 }
 
 /* ---------------- chat room ---------------- */
-function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateRoom }) {
+function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned }) {
   const [msgs, setMsgs] = useState(null);
   const [senders, setSenders] = useState({});
   const [text, setText] = useState("");
@@ -306,12 +379,12 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
     (async () => {
       const { data } = await supabase.from("messages")
         .select("id, body, media_url, media_type, file_name, sender_id, created_at, sender:profiles(full_name, avatar_url)")
-        .eq("group_type", "room").eq("group_id", room.id)
+        .eq("group_type", groupType).eq("group_id", room.id)
         .order("created_at", { ascending: true });
       const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url || sm[m.sender_id]?.avatar }; });
       sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url || sm[user.id]?.avatar }; sRef.current = sm; setSenders(sm);
       setMsgs((data || []).map(m => ({ id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, sender_id: m.sender_id, created_at: m.created_at })));
-      channel = supabase.channel("room-" + room.id)
+      channel = supabase.channel(groupType + "-" + room.id)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${room.id}` }, async (payload) => {
           const m = payload.new;
           if (!sRef.current[m.sender_id]) {
@@ -329,7 +402,7 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
 
   const send = async () => {
     const body = text.trim(); if (!body) return; setText("");
-    const { data, error } = await supabase.from("messages").insert({ group_type: "room", group_id: room.id, sender_id: user.id, body }).select("id, body, media_url, media_type, file_name, sender_id, created_at").single();
+    const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, body }).select("id, body, media_url, media_type, file_name, sender_id, created_at").single();
     if (error) { setText(body); return; }
     setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
   };
@@ -337,14 +410,14 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
     if (!file) return;
     try {
       const url = await uploadChatFile(room.id, file);
-      const { data, error } = await supabase.from("messages").insert({ group_type: "room", group_id: room.id, sender_id: user.id, body: "", media_url: url, media_type: kind, file_name: file.name }).select("id, body, media_url, media_type, file_name, sender_id, created_at").single();
+      const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, body: "", media_url: url, media_type: kind, file_name: file.name }).select("id, body, media_url, media_type, file_name, sender_id, created_at").single();
       if (error) throw error;
       setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
     } catch (x) { alert("Upload failed: " + x.message); }
   };
   const addQR = async () => { const t = newQR.trim(); if (!t) return; const { data, error } = await supabase.from("quick_replies").insert({ owner_id: user.id, text: t }).select().single(); if (!error) { setQrs(p => [...p, data]); setNewQR(""); } };
   const delQR = async (id) => { await supabase.from("quick_replies").delete().eq("id", id); setQrs(p => p.filter(q => q.id !== id)); };
-  const savePin = async () => { await onUpdateRoom(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
+  const savePin = async () => { await onUpdatePinned(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
 
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
@@ -428,17 +501,19 @@ function RoomChat({ room, user, profile, isAdmin, memberCount, onBack, onUpdateR
 }
 
 /* ---------------- admin ---------------- */
-function Admin({ rooms, counts, onCreate, onUpdate, onDelete }) {
+function Admin({ rooms, events, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent }) {
   const [seg, setSeg] = useState("rooms");
   return (
     <div>
       <TopBar title="Admin Panel" />
       <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9 }}>
-        {[["rooms", "Rooms"], ["members", "Members"]].map(([v, l]) => (
+        {[["rooms", "Rooms"], ["events", "Events"], ["members", "Members"]].map(([v, l]) => (
           <button key={v} onClick={() => setSeg(v)} style={{ flex: 1, padding: "13px 0", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 14, color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} /> : <AdminMembers />}
+      {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
+        : seg === "events" ? <AdminEvents events={events} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} />
+          : <AdminMembers />}
     </div>
   );
 }
@@ -500,6 +575,57 @@ function PinEditor({ room, onUpdate }) {
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
         <input value={pin} onChange={e => setPin(e.target.value)} placeholder="e.g. Next meetup Friday 7PM" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
         <button onClick={() => onUpdate(room.id, { pinned: pin.trim() })} style={btn(W.teal, "#fff")}>Pin</button>
+      </div>
+    </div>
+  );
+}
+function AdminEvents({ events, onCreate, onUpdate, onDelete }) {
+  const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
+  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "" });
+  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "" });
+  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue }); reset(); setCreating(false); };
+  return (
+    <div style={{ padding: 14 }}>
+      {creating ? (
+        <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New ticketed event</div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+            <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
+            <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Event title" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
+          </div>
+          <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <input value={f.date} onChange={e => setF({ ...f, date: e.target.value })} placeholder="Date & time (e.g. Sat 14 Jun · 8PM)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <input value={f.venue} onChange={e => setF({ ...f, venue: e.target.value })} placeholder="Venue" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
+            <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
+            <span style={{ color: W.soft, fontSize: 14 }}>per ticket</span>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+            <button onClick={create} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Create</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 }}><Plus size={18} />Create ticketed event</button>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {events.map(e => (
+          <div key={e.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Avatar room={{ emoji: e.emoji }} size={44} />
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.event_date ? ` · ${e.event_date}` : ""}</div></div>
+              <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === e.id ? null : e.id)} />
+            </div>
+            {manage === e.id && (
+              <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                <PinEditor room={e} onUpdate={onUpdate} />
+                <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
+              </div>
+            )}
+          </div>
+        ))}
+        {events.length === 0 && <Center>No events yet.</Center>}
       </div>
     </div>
   );
@@ -609,7 +735,7 @@ const Center = ({ children }) => <div style={{ textAlign: "center", color: W.sof
 const btn = (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 });
 function fmtTime(t) { return new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
 function Nav({ tab, setTab, isAdmin }) {
-  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", padding: "8px 0 11px" }}>
       {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft }}><I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span></button>; })}
