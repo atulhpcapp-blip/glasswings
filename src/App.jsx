@@ -95,16 +95,21 @@ function PushToggle({ user }) {
   useEffect(() => {
     if (!supported) return;
     (async () => {
+      if (Notification.permission !== "granted") { setState("off"); return; }
       try {
-        if (Notification.permission === "granted") { await subscribeToPush(user.id); setState("on"); }
-        else { setState("off"); }
+        try { await subscribeToPush(user.id, false); }
+        catch (e1) { await subscribeToPush(user.id, true); }
+        setState("on");
       } catch (e) { setState("off"); setMsg(e.message || String(e)); }
     })();
   }, []);
   const enable = async (force) => {
     setBusy(true); setMsg("");
-    try { await subscribeToPush(user.id, force); setState("on"); setMsg(force ? "Device re-registered." : "Notifications are on for this device."); }
-    catch (e) { setMsg(e.message || String(e)); }
+    try { await subscribeToPush(user.id, force); setState("on"); setMsg(force ? "Device registered." : "Notifications are on for this device."); }
+    catch (e) {
+      try { await subscribeToPush(user.id, true); setState("on"); setMsg("Device registered."); }
+      catch (e2) { setMsg(e2.message || String(e2)); }
+    }
     setBusy(false);
   };
   if (state === "no") return null;
@@ -129,7 +134,7 @@ function PushToggle({ user }) {
               On iPhone: tap the <b>Share</b> icon → <b>Add to Home Screen</b>, open Glasswings from that icon, then turn this on.
             </div>
           )}
-          <button onClick={() => enable(false)} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: busy ? .6 : 1 }}>
+          <button onClick={() => enable(true)} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: busy ? .6 : 1 }}>
             {busy ? "Enabling…" : "Turn on notifications"}
           </button>
         </>
@@ -1434,7 +1439,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • push-reregister ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • push-takeover ✅</div>
       </div>
     </div>
   );
