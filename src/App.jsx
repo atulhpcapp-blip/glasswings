@@ -162,13 +162,15 @@ function PushToggle({ user }) {
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
+  const [recovery, setRecovery] = useState(false);
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     return () => sub.subscription.unsubscribe();
   }, []);
   if (loading) return <Shell><Splash /></Shell>;
+  if (recovery) return <Shell><RecoverPassword onDone={() => setRecovery(false)} /></Shell>;
   if (!session) return <PublicLanding />;
   return <Shell><Main user={session.user} /></Shell>;
 }
@@ -234,6 +236,13 @@ function Auth({ initialMode = "login", onClose }) {
   const [err, setErr] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
   const go = async () => {
     setErr(""); setNote("");
+    if (mode === "reset") {
+      if (!email) return setErr("Enter your email and we'll send a reset link.");
+      setBusy(true);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      if (error) setErr(error.message); else setNote("If that email has an account, a password-reset link is on its way. Check your inbox (and spam).");
+      setBusy(false); return;
+    }
     if (!email || !pass || (mode === "signup" && !name)) return setErr("Please fill in all fields.");
     setBusy(true);
     if (mode === "signup") {
@@ -261,7 +270,9 @@ function Auth({ initialMode = "login", onClose }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           {mode === "signup" && inp("Full name", name, setName)}
           {inp("Email", email, setEmail, "email")}
-          {inp("Password (min 6 characters)", pass, setPass, "password")}
+          {mode !== "reset" && inp("Password (min 6 characters)", pass, setPass, "password")}
+          {mode === "login" && <div style={{ textAlign: "right", marginTop: -4 }}><span onClick={() => { setMode("reset"); setErr(""); setNote(""); }} style={{ color: W.teal, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Forgot password?</span></div>}
+          {mode === "reset" && <div style={{ fontSize: 13, color: W.soft, lineHeight: 1.5 }}>Enter your account email and we'll send you a link to set a new password.</div>}
           {mode === "signup" && (
             <div>
               <div style={{ fontSize: 13, color: W.soft, marginBottom: 7, fontWeight: 600 }}>I am</div>
@@ -272,7 +283,8 @@ function Auth({ initialMode = "login", onClose }) {
           )}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
           {note && <div style={{ color: W.teal, fontSize: 13 }}>{note}</div>}
-          <button onClick={go} disabled={busy} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}</button>
+          <button onClick={go} disabled={busy} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Please wait…" : mode === "login" ? "Log in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
+          {mode === "reset" && <div style={{ textAlign: "center" }}><span onClick={() => { setMode("login"); setErr(""); setNote(""); }} style={{ color: W.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>‹ Back to log in</span></div>}
         </div>
       </div>
     </div>
@@ -280,6 +292,46 @@ function Auth({ initialMode = "login", onClose }) {
 }
 
 /* ---------------- profile completion (with photo) ---------------- */
+function RecoverPassword({ onDone }) {
+  const [p1, setP1] = useState(""), [p2, setP2] = useState(""), [err, setErr] = useState(""), [busy, setBusy] = useState(false), [done, setDone] = useState(false);
+  const save = async () => {
+    setErr("");
+    if (p1.length < 6) return setErr("Password must be at least 6 characters.");
+    if (p1 !== p2) return setErr("Those passwords don't match.");
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: p1 });
+    setBusy(false);
+    if (error) return setErr(error.message);
+    setDone(true);
+  };
+  const ip = { width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink };
+  return (
+    <div style={{ minHeight: "100vh", padding: "0 22px 44px", display: "flex", flexDirection: "column", alignItems: "center", backgroundImage: "linear-gradient(rgba(6,22,28,.72), rgba(6,18,26,.93)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center" }}>
+      <div style={{ textAlign: "center", paddingTop: 56 }}>
+        <img src="/logo-white.png" alt="Glasswings Events" style={{ width: 200, maxWidth: "66%", objectFit: "contain" }} />
+      </div>
+      <div style={{ background: "#fff", borderRadius: 18, padding: 22, marginTop: 30, width: "100%", maxWidth: 384, boxShadow: "0 24px 60px rgba(0,0,0,.4)" }}>
+        <div style={{ fontWeight: 800, fontSize: 19, color: W.ink, marginBottom: 4 }}>Set a new password</div>
+        {done ? (
+          <>
+            <div style={{ color: W.teal, fontSize: 14, marginTop: 10, lineHeight: 1.5 }}>Your password has been updated. You're all set.</div>
+            <button onClick={onDone} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 16 }}>Continue</button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>Pick a new password for your account.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+              <input value={p1} onChange={e => setP1(e.target.value)} type="password" placeholder="New password (min 6 characters)" style={ip} />
+              <input value={p2} onChange={e => setP2(e.target.value)} type="password" placeholder="Confirm new password" style={ip} />
+              {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
+              <button onClick={save} disabled={busy} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "Update password"}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 function PublicLanding() {
   const wide = useWide(820);
   const [authMode, setAuthMode] = useState(null);
@@ -1131,6 +1183,7 @@ function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
             </div>
             {manage === r.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                <RoomName room={r} onUpdate={onUpdate} />
                 <RoomPhoto room={r} onUpdate={onUpdate} />
                 <PinEditor room={r} onUpdate={onUpdate} />
                 <div>
@@ -1562,6 +1615,19 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onCreate,
     </div>
   );
 }
+function RoomName({ room, onUpdate }) {
+  const [n, setN] = useState(room.name || "");
+  const [saved, setSaved] = useState(false);
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Room name</label>
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <input value={n} onChange={e => { setN(e.target.value); setSaved(false); }} placeholder="Room name" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink }} />
+        <button onClick={async () => { const t = n.trim(); if (!t) return; await onUpdate(room.id, { name: t }); room.name = t; setSaved(true); }} style={btn(W.teal, "#fff")}>{saved ? "Saved ✓" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
 function RoomPhoto({ room, onUpdate }) {
   const ref = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -1746,7 +1812,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • ticket-balance ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • rename-reset ✅</div>
       </div>
     </div>
   );
