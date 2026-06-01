@@ -622,6 +622,17 @@ function Main({ user }) {
     setNotice("Member added to the room.");
     await load();
   };
+  const removeRoom = async (userId, roomId) => {
+    if (!window.confirm("Remove this member from the room? If they were on a paid subscription, billing will be cancelled too.")) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    try {
+      const r = await fetch("/api/razorpay/admin-remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, user_id: userId, room_id: roomId }) });
+      const d = await r.json();
+      if (!r.ok || !d.ok) return setNotice(d.error || "Could not remove — please try again.");
+    } catch { return setNotice("Could not remove — please try again."); }
+    setNotice("Member removed from the room.");
+    await load();
+  };
   const cancelSub = async (roomId) => {
     if (!window.confirm("Cancel this subscription? You'll stop being charged and leave the room.")) return;
     const { data: { session } } = await supabase.auth.getSession();
@@ -730,7 +741,7 @@ function Main({ user }) {
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
       {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-      {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
@@ -1113,7 +1124,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 }
 
 /* ---------------- admin ---------------- */
-function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onOpenThread }) {
+function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
   const [seg, setSeg] = useState("rooms");
   return (
     <div>
@@ -1127,7 +1138,7 @@ function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreat
         : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
-              : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} />}
+              : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} />}
     </div>
   );
 }
@@ -1736,7 +1747,7 @@ function RoomPhoto({ room, onUpdate }) {
     </div>
   );
 }
-function AdminMembers({ onSendDM, rooms, onGrantRoom }) {
+function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
   const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all");
@@ -1803,10 +1814,11 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom }) {
               {rooms && rooms.length > 0 && onGrantRoom && (
                 <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                   <select value={pick[m.id] || ""} onChange={e => setPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: 1, minWidth: 0 }}>
-                    <option value="">Add to a room (free)…</option>
+                    <option value="">Pick a room…</option>
                     {rooms.map(r => <option key={r.id} value={r.id}>{r.name}{r.price_monthly ? ` · ₹${r.price_monthly}/mo` : ""}</option>)}
                   </select>
                   <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onGrantRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn(W.ink, "#fff"), opacity: pick[m.id] ? 1 : .5 }}><Plus size={14} />Add</button>
+                  {onRemoveRoom && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onRemoveRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", opacity: pick[m.id] ? 1 : .5 }}>Remove</button>}
                 </div>
               )}
             </div>
@@ -1921,7 +1933,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         )}
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • sub-manage ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • room-remove ✅</div>
       </div>
     </div>
   );
