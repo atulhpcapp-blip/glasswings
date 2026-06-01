@@ -10,6 +10,12 @@ const WALL = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http:/
 const EVENT_CATS = ["Music", "Comedy", "Sports", "Workshop", "Social", "Food & Drink", "Other"];
 function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 function waNum(p) { const d = String(p || "").replace(/\D/g, ""); if (!d) return ""; return d.length === 10 ? "91" + d : d; }
+function netPrice(t, subs) {
+  const base = t.price || 0;
+  if (!t.discount_room_id || !t.discount_value || !(subs || []).includes(t.discount_room_id)) return base;
+  const d = t.discount_kind === "flat" ? t.discount_value : Math.round(base * t.discount_value / 100);
+  return Math.max(0, base - d);
+}
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
 function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
 function fitText(x, t, max) { let s = String(t || ""); if (x.measureText(s).width <= max) return s; while (s.length > 1 && x.measureText(s + "X").width > max) s = s.slice(0, -1); return s + "…"; }
@@ -252,7 +258,7 @@ function Main({ user }) {
   };
   const confirmPurchase = async (qty) => {
     const { event: e, type } = buyTarget;
-    const unit = type ? type.price : e.ticket_price;
+    const unit = type ? netPrice(type, subs) : e.ticket_price;
     if (unit > 0) { setBuyTarget(null); return setNotice("Online payments are being set up — paid tickets go live with the payments step."); }
     const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty });
     setBuyTarget(null);
@@ -337,12 +343,12 @@ function Main({ user }) {
   return (
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
-      {buyTarget && <TicketSheet target={buyTarget} profile={profile} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
+      {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
       {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-        {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+        {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
         {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
@@ -386,7 +392,7 @@ function Chats({ chats, onOpen, onExplore }) {
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
   const [cat, setCat] = useState("All");
   const [city, setCity] = useState("All");
   const [hl, setHl] = useState(null);
@@ -449,15 +455,24 @@ function Events({ events, categories, cities, profile, ticketTypes, canAccessEve
                   <div style={{ marginTop: 12 }}>
                     <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Tickets</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {avail.map(t => (
-                        <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: `1px solid ${W.line}`, borderRadius: 10, padding: "8px 12px" }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 600, color: W.ink, fontSize: 14 }}>{t.name}</div>
-                            <div style={{ fontSize: 13, color: t.price === 0 ? W.teal : W.soft, fontWeight: 700 }}>{t.price === 0 ? "Free" : `₹${t.price}`}</div>
+                      {avail.map(t => {
+                        const net = netPrice(t, subs);
+                        const disc = net < t.price;
+                        return (
+                          <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: `1px solid ${disc ? W.teal : W.line}`, borderRadius: 10, padding: "8px 12px" }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, color: W.ink, fontSize: 14 }}>{t.name}</div>
+                              <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                                {net === 0 ? <span style={{ color: W.teal }}>Free</span>
+                                  : <span style={{ color: W.ink }}>₹{net}</span>}
+                                {disc && t.price > 0 && <span style={{ color: W.soft, fontWeight: 500, textDecoration: "line-through" }}>₹{t.price}</span>}
+                                {disc && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "1px 6px", borderRadius: 10 }}>ROOM OFFER</span>}
+                              </div>
+                            </div>
+                            <button onClick={() => onJoin(e, t)} style={btn(net === 0 ? W.teal : W.ink, "#fff")}><Ticket size={14} />{net === 0 ? "Get" : "Buy"}</button>
                           </div>
-                          <button onClick={() => onJoin(e, t)} style={btn(t.price === 0 ? W.teal : W.ink, "#fff")}><Ticket size={14} />{t.price === 0 ? "Get" : "Buy"}</button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
@@ -688,7 +703,7 @@ function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreat
         ))}
       </div>
       {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
-        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : <AdminMembers onSendDM={onSendDM} />}
@@ -864,9 +879,10 @@ function Sheet({ children, onClose }) {
     </div>
   );
 }
-function TicketSheet({ target, profile, onConfirm, onClose }) {
+function TicketSheet({ target, profile, subs, onConfirm, onClose }) {
   const { event: e, type } = target;
-  const unit = type ? type.price : e.ticket_price;
+  const orig = type ? type.price : e.ticket_price;
+  const unit = type ? netPrice(type, subs) : e.ticket_price;
   const [qty, setQty] = useState(1);
   const [agree, setAgree] = useState(false);
   const needAgree = !!(e.terms && e.terms.trim());
@@ -876,7 +892,7 @@ function TicketSheet({ target, profile, onConfirm, onClose }) {
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 4 }}>{e.emoji} {e.title}</div>
-      <div style={{ color: W.soft, fontSize: 13.5, marginBottom: 16 }}>{type ? type.name : "Ticket"} · {unit === 0 ? "Free" : `₹${unit} each`}</div>
+      <div style={{ color: W.soft, fontSize: 13.5, marginBottom: 16 }}>{type ? type.name : "Ticket"} · {unit === 0 ? "Free" : `₹${unit} each`}{unit < orig ? ` (room offer — was ₹${orig})` : ""}</div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <span style={{ fontWeight: 600, color: W.ink }}>Number of tickets</span>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -992,33 +1008,54 @@ function MyTicket({ event: e, profile, rows, onClose }) {
     </Sheet>
   );
 }
-function TicketTypes({ eventId, types, onAdd, onDel }) {
+function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [g, setG] = useState("any");
+  const [dRoom, setDRoom] = useState(""); const [dKind, setDKind] = useState("percent"); const [dVal, setDVal] = useState("");
   const gl = { any: "Anyone", male: "Men", female: "Women" };
-  const add = async () => { if (!name.trim()) return; await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: g }); setName(""); setPrice(""); setG("any"); };
+  const roomName = id => ((rooms || []).find(r => r.id === id) || {}).name || "room";
+  const add = async () => {
+    if (!name.trim()) return;
+    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: g, discount_room_id: dRoom || null, discount_kind: dKind, discount_value: Number(dVal) || 0 });
+    setName(""); setPrice(""); setG("any"); setDRoom(""); setDKind("percent"); setDVal("");
+  };
+  const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map(t => (
           <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 9, padding: "7px 10px" }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink }}><b>{t.name}</b> · {t.price === 0 ? "Free" : `₹${t.price}`} · {gl[t.gender_restrict]}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink }}><b>{t.name}</b> · {t.price === 0 ? "Free" : `₹${t.price}`} · {gl[t.gender_restrict]}{t.discount_room_id ? <span style={{ color: W.teal }}> · {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {roomName(t.discount_room_id)}</span> : ""}</span>
             <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(t.id)} />
           </div>
         ))}
         {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Men)" style={{ flex: "1 1 110px", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none" }} />
-        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ width: 64, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none" }} />
-        <select value={g} onChange={e => setG(e.target.value)} style={{ border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink }}>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Men)" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
+        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 64 }} />
+        <select value={g} onChange={e => setG(e.target.value)} style={ip}>
           <option value="any">Anyone</option>
           <option value="male">Men</option>
           <option value="female">Women</option>
         </select>
-        <button onClick={add} style={btn(W.teal, "#fff")}>Add</button>
       </div>
-      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Tip: make a "Women" type at ₹0 and a "Men" type with a price. Free types work now; paid ones charge once payments are on.</div>
+      <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
+        <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Discount for room members (optional)</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <select value={dRoom} onChange={e => setDRoom(e.target.value)} style={{ ...ip, flex: "1 1 120px", minWidth: 0 }}>
+            <option value="">No discount</option>
+            {(rooms || []).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <select value={dKind} onChange={e => setDKind(e.target.value)} style={ip}>
+            <option value="percent">% off</option>
+            <option value="flat">₹ off</option>
+          </select>
+          <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
+        </div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Members of that room get this off. 100% (or ₹ ≥ price) makes it free for them.</div>
+      </div>
+      <button onClick={add} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}><Plus size={15} />Add ticket type</button>
     </div>
   );
 }
@@ -1066,17 +1103,53 @@ function OptionList({ label, kind, items, onAdd, onDel }) {
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
+function EventSendSheet({ event, members, onSend, onClose }) {
+  const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [city, setCity] = useState("all"); const [busy, setBusy] = useState(false);
+  const det = m => m.member_details || {};
+  const ageBand = a => { a = Number(a); if (!a) return null; if (a < 25) return "18-24"; if (a < 35) return "25-34"; if (a < 45) return "35-44"; return "45+"; };
+  const profs = Array.from(new Set(members.map(m => det(m).profession).filter(Boolean))).sort();
+  const cities = Array.from(new Set(members.map(m => det(m).city).filter(Boolean))).sort();
+  const seg = members.filter(m => {
+    const d = det(m);
+    if (g !== "all" && m.gender !== g) return false;
+    if (age !== "all" && ageBand(d.age) !== age) return false;
+    if (prof !== "all" && d.profession !== prof) return false;
+    if (city !== "all" && d.city !== city) return false;
+    return true;
+  });
+  const sel = { padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
+  const chip = (v, label) => <button key={v} onClick={() => setG(v)} style={{ padding: "7px 13px", borderRadius: 18, border: `1px solid ${g === v ? W.teal : W.line}`, background: g === v ? W.teal : "#fff", color: g === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{label}</button>;
+  const go = async () => { setBusy(true); await onSend(seg.map(m => m.id)); setBusy(false); };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, marginBottom: 4 }}>Send event to members</div>
+      <div style={{ color: W.soft, fontSize: 13.5, marginBottom: 14 }}>{event.emoji} {event.title} — sent privately to each member's inbox.</div>
+      <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Who</div>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>{chip("all", "Everyone")}{chip("male", "Men")}{chip("female", "Women")}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+        <select value={age} onChange={e => setAge(e.target.value)} style={sel}><option value="all">All ages</option><option>18-24</option><option>25-34</option><option>35-44</option><option>45+</option></select>
+        <select value={prof} onChange={e => setProf(e.target.value)} style={sel}><option value="all">All work</option>{profs.map(p => <option key={p} value={p}>{p}</option>)}</select>
+        <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{cities.map(c => <option key={c} value={c}>{c}</option>)}</select>
+      </div>
+      <button onClick={go} disabled={busy || !seg.length} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: (busy || !seg.length) ? .5 : 1 }}><Send size={16} />{busy ? "Sending…" : `Send to ${seg.length} member${seg.length === 1 ? "" : "s"}`}</button>
+      <button onClick={onClose} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 10 }}>Cancel</button>
+    </Sheet>
+  );
+}
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
   const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image", terms: "" });
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
+  const [members, setMembers] = useState([]); const [sendFor, setSendFor] = useState(null);
+  useEffect(() => { supabase.from("profiles").select("id, gender, member_details(age, profession, city)").then(({ data }) => setMembers(data || [])); }, []);
   const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image", terms: "" });
   const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, city: f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms }); reset(); setCreating(false); };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
   return (
     <div style={{ padding: 14 }}>
+      {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
         <div onClick={() => setTaxOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
           <span style={{ fontWeight: 700, color: W.ink }}>Categories &amp; cities</span>
@@ -1138,13 +1211,13 @@ function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpda
               <Avatar room={{ emoji: e.emoji }} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div></div>
               <button onClick={() => onBroadcastEvent(e)} title="Post to all group chats" style={{ ...btn(W.teal, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Zap size={13} />Groups</button>
-              <button onClick={() => onSendEventDM(e)} title="Send privately to all members" style={{ ...btn(W.ink, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Send size={13} />Members</button>
+              <button onClick={() => setSendFor(e)} title="Send privately to members (with filters)" style={{ ...btn(W.ink, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Send size={13} />Members</button>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === e.id ? null : e.id)} />
             </div>
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <EventBanner ev={e} onUpdate={onUpdate} />
-                <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} onAdd={onAddTicketType} onDel={onDelTicketType} />
+                <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
                 <EventTerms ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
                 <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
@@ -1278,7 +1351,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • event-card-rsvp ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • ticket-discounts ✅</div>
       </div>
     </div>
   );
