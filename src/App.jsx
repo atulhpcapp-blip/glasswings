@@ -7,6 +7,7 @@ import {
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
 const WALL = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='none' stroke='%23000' stroke-opacity='0.03' stroke-width='2'><circle cx='20' cy='20' r='6'/><path d='M50 14 l8 8 M58 14 l-8 8'/><rect x='48' y='48' width='14' height='14' rx='3'/><path d='M14 54 q8 -10 16 0'/></g></svg>`);
+const EVENT_CATS = ["Music", "Comedy", "Sports", "Workshop", "Social", "Food & Drink", "Other"];
 
 async function uploadPhoto(userId, file) {
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
@@ -283,34 +284,50 @@ function Chats({ chats, onOpen, onExplore }) {
 
 /* ---------------- events ---------------- */
 function Events({ events, canAccessEvent, counts, onJoin }) {
+  const [cat, setCat] = useState("All");
+  const cats = ["All", ...Array.from(new Set(events.map(e => e.category).filter(Boolean)))];
+  const list = cat === "All" ? events : events.filter(e => e.category === cat);
   return (
     <div>
       <TopBar title="Events" />
+      {cats.length > 1 && (
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "12px 14px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
+          {cats.map(c => (
+            <button key={c} onClick={() => setCat(c)} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 20, border: `1px solid ${cat === c ? W.teal : W.line}`, background: cat === c ? W.teal : "#fff", color: cat === c ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{c}</button>
+          ))}
+        </div>
+      )}
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-        {events.length === 0 && <Center>No events yet. Create one from the Admin tab.</Center>}
-        {events.map(e => {
+        {list.length === 0 && <Center>No events here yet.</Center>}
+        {list.map(e => {
           const has = canAccessEvent(e);
           return (
-            <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16 }}>
-              <div style={{ display: "flex", gap: 13 }}>
-                <Avatar room={{ emoji: e.emoji }} size={50} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.title}</div>
-                  <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{e.description}</div>
+            <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden" }}>
+              {e.banner_url && <img src={e.banner_url} alt="" style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }} />}
+              <div style={{ padding: 16 }}>
+                <div style={{ display: "flex", gap: 13 }}>
+                  <Avatar room={{ emoji: e.emoji }} size={46} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.title}</span>
+                      {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>{e.category}</span>}
+                    </div>
+                    <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{e.description}</div>
+                  </div>
                 </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
+                  {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
+                  {e.venue && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{e.venue}</span>}
+                  <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Users size={13} />{counts[e.id] || 0} going</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
+                  {e.ticket_price === 0 ? <span style={{ fontWeight: 700, color: W.teal, fontSize: 15 }}>Free</span>
+                    : <span style={{ fontWeight: 700, color: W.ink, fontSize: 15, display: "flex", alignItems: "center" }}><IndianRupee size={14} />{e.ticket_price}<span style={{ color: W.soft, fontWeight: 500, fontSize: 13 }}> / ticket</span></span>}
+                  {has ? <button onClick={() => onJoin(e)} style={btn(W.teal, "#fff")}><MessageCircle size={15} />Open chat</button>
+                    : <button onClick={() => onJoin(e)} style={btn(W.ink, "#fff")}><Ticket size={15} />{e.ticket_price === 0 ? "Get ticket" : "Buy ticket"}</button>}
+                </div>
+                {has && <div style={{ fontSize: 12, color: W.teal, marginTop: 8 }}>✓ You're in — chat unlocked</div>}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
-                {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
-                {e.venue && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{e.venue}</span>}
-                <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Users size={13} />{counts[e.id] || 0} going</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
-                {e.ticket_price === 0 ? <span style={{ fontWeight: 700, color: W.teal, fontSize: 15 }}>Free</span>
-                  : <span style={{ fontWeight: 700, color: W.ink, fontSize: 15, display: "flex", alignItems: "center" }}><IndianRupee size={14} />{e.ticket_price}<span style={{ color: W.soft, fontWeight: 500, fontSize: 13 }}> / ticket</span></span>}
-                {has ? <button onClick={() => onJoin(e)} style={btn(W.teal, "#fff")}><MessageCircle size={15} />Open chat</button>
-                  : <button onClick={() => onJoin(e)} style={btn(W.ink, "#fff")}><Ticket size={15} />{e.ticket_price === 0 ? "Get ticket" : "Buy ticket"}</button>}
-              </div>
-              {has && <div style={{ fontSize: 12, color: W.teal, marginTop: 8 }}>✓ You're in — chat unlocked</div>}
             </div>
           );
         })}
@@ -579,23 +596,47 @@ function PinEditor({ room, onUpdate }) {
     </div>
   );
 }
+function EventBanner({ ev, onUpdate }) {
+  const ref = useRef(null); const [busy, setBusy] = useState(false);
+  const pick = async (e) => { const f = e.target.files?.[0]; if (!f) return; setBusy(true); try { const url = await uploadChatFile("banners", f); await onUpdate(ev.id, { banner_url: url }); } catch (x) { alert("Upload failed: " + x.message); } setBusy(false); };
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Event banner</label>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
+        {ev.banner_url ? <img src={ev.banner_url} alt="" style={{ width: 84, height: 50, borderRadius: 8, objectFit: "cover" }} /> : <div style={{ width: 84, height: 50, borderRadius: 8, background: W.bg }} />}
+        <button onClick={() => ref.current?.click()} style={btn(W.teal, "#fff")}><Camera size={15} />{busy ? "Uploading…" : "Change banner"}</button>
+        <input ref={ref} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+      </div>
+    </div>
+  );
+}
 function AdminEvents({ events, onCreate, onUpdate, onDelete }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
-  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "" });
-  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "" });
-  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue }); reset(); setCreating(false); };
+  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", banner: "" });
+  const [up, setUp] = useState(false);
+  const bRef = useRef(null);
+  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", banner: "" });
+  const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
+  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, banner_url: f.banner }); reset(); setCreating(false); };
   return (
     <div style={{ padding: 14 }}>
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New ticketed event</div>
+          <div onClick={() => bRef.current?.click()} style={{ height: 120, borderRadius: 12, border: `1.5px dashed ${W.line}`, background: f.banner ? `center/cover no-repeat url(${f.banner})` : W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft, cursor: "pointer", marginBottom: 12, fontSize: 13, fontWeight: 600 }}>
+            {up ? "Uploading…" : f.banner ? "" : "+ Add banner image"}
+          </div>
+          <input ref={bRef} type="file" accept="image/*" onChange={pickBanner} style={{ display: "none" }} />
           <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
             <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Event title" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
           </div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
+            {EVENT_CATS.map(c => <button key={c} onClick={() => setF({ ...f, category: c })} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${f.category === c ? W.teal : W.line}`, background: f.category === c ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{c}</button>)}
+          </div>
           <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <input value={f.date} onChange={e => setF({ ...f, date: e.target.value })} placeholder="Date & time (e.g. Sat 14 Jun · 8PM)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
-          <input value={f.venue} onChange={e => setF({ ...f, venue: e.target.value })} placeholder="Venue" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <input value={f.venue} onChange={e => setF({ ...f, venue: e.target.value })} placeholder="Venue / address" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
             <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
@@ -603,7 +644,7 @@ function AdminEvents({ events, onCreate, onUpdate, onDelete }) {
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-            <button onClick={create} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Create</button>
+            <button onClick={create} disabled={up} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: up ? .6 : 1 }}>Create</button>
           </div>
         </div>
       ) : (
@@ -614,11 +655,12 @@ function AdminEvents({ events, onCreate, onUpdate, onDelete }) {
           <div key={e.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.event_date ? ` · ${e.event_date}` : ""}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}</div></div>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === e.id ? null : e.id)} />
             </div>
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+                <EventBanner ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
                 <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
               </div>
@@ -716,6 +758,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • banners-categories ✅</div>
       </div>
     </div>
   );
