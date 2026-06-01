@@ -33,7 +33,15 @@ function ticketStatus(t, e, stats, typeSold) {
   return { ok: true, label: hasCap ? `${t.capacity - sold} left` : null };
 }
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
-function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
+function loadRazorpay() {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && window.Razorpay) return resolve(true);
+    const s = document.createElement("script");
+    s.src = "https://checkout.razorpay.com/v1/checkout.js";
+    s.onload = () => resolve(true); s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+}function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
 function fitText(x, t, max) { let s = String(t || ""); if (x.measureText(s).width <= max) return s; while (s.length > 1 && x.measureText(s + "X").width > max) s = s.slice(0, -1); return s + "…"; }
 async function makeTicketBlob(d) {
   const Wd = 1000, Ht = 600, s = 2;
@@ -534,11 +542,71 @@ function Main({ user }) {
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
 
+  const startPayment = async (purpose, payload, onPaid) => {
+    const ready = await loadRazorpay();
+    if (!ready) return setNotice("Couldn't open the payment window. Check your connection and try again.");
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    let order;
+    try {
+      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose, ...payload }) });
+      order = await r.json();
+      if (!r.ok) return setNotice(order.error || "Could not start the payment.");
+    } catch { return setNotice("Could not start the payment. Please try again."); }
+    const rzp = new window.Razorpay({
+      key: order.key_id, amount: order.amount, currency: order.currency, order_id: order.order_id,
+      name: "Glasswings Events", description: purpose === "ticket" ? "Event ticket" : "Room subscription",
+      image: "/icon-192.png", theme: { color: "#0E8C7F" },
+      prefill: { name: profile?.full_name || "", email: user.email || "" },
+      handler: async (resp) => {
+        try {
+          const v = await fetch("/api/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
+          const vd = await v.json();
+          if (!v.ok || !vd.ok) return setNotice(vd.error || "We couldn't confirm the payment. If money was deducted, contact us and we'll sort it.");
+          await load();
+          onPaid && onPaid();
+        } catch { setNotice("Payment confirmation failed. If money was deducted, contact us and we'll sort it."); }
+      },
+    });
+    rzp.on("payment.failed", () => setNotice("Payment failed or was cancelled — nothing was charged."));
+    rzp.open();
+  };
+
+  const startSubscription = async (room) => {
+    const ready = await loadRazorpay();
+    if (!ready) return setNotice("Couldn't open the payment window. Check your connection and try again.");
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    let sub;
+    try {
+      const r = await fetch("/api/razorpay/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, room_id: room.id }) });
+      sub = await r.json();
+      if (!r.ok) return setNotice(sub.error || "Could not start the subscription.");
+    } catch { return setNotice("Could not start the subscription. Please try again."); }
+    const rzp = new window.Razorpay({
+      key: sub.key_id, subscription_id: sub.subscription_id,
+      name: "Glasswings Events", description: `${room.name} — ₹${room.price_monthly}/month`,
+      image: "/icon-192.png", theme: { color: "#0E8C7F" },
+      prefill: { name: profile?.full_name || "", email: user.email || "" },
+      handler: async (resp) => {
+        try {
+          const v = await fetch("/api/razorpay/verify-sub", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
+          const vd = await v.json();
+          if (!v.ok || !vd.ok) return setNotice(vd.error || "We couldn't confirm the subscription. If money was deducted, contact us and we'll sort it.");
+          await load();
+          setOpen({ id: room.id, type: "room" });
+        } catch { setNotice("Subscription confirmation failed. If money was deducted, contact us and we'll sort it."); }
+      },
+    });
+    rzp.on("payment.failed", () => setNotice("Payment failed or was cancelled — nothing was charged."));
+    rzp.open();
+  };
+
   const joinRoom = async (r) => {
     if (canAccess(r)) return setOpen({ id: r.id, type: "room" });
     if (r.gender_restrict === "male" && profile?.gender !== "male") return setNotice("This room is for men only.");
     if (r.gender_restrict === "female" && profile?.gender !== "female") return setNotice("This room is for women only.");
-    if (!freeForUser(r)) return setNotice("Online payments are being set up — paid subscriptions for men are coming next.");
+    if (!freeForUser(r)) return startSubscription(r);
     const { error } = await supabase.from("room_subscriptions").insert({ room_id: r.id, user_id: user.id });
     if (error) return setNotice(error.message);
     setSubs(p => [...p, r.id]); setCounts(c => ({ ...c, [r.id]: (c[r.id] || 0) + 1 })); setOpen({ id: r.id, type: "room" });
@@ -551,7 +619,7 @@ function Main({ user }) {
     const { event: e, type } = buyTarget;
     if (type) { const st = ticketStatus(type, e, eventStats, typeSold); if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? "These tickets are sold out." : "Men's tickets aren't open yet — they release as more women join."); } }
     const unit = type ? netPrice(type, subs) : e.ticket_price;
-    if (unit > 0) { setBuyTarget(null); return setNotice("Online payments are being set up — paid tickets go live with the payments step."); }
+    if (unit > 0) { setBuyTarget(null); return startPayment("ticket", { event_id: e.id, ticket_type_id: type ? type.id : null, quantity: qty }, () => setOpen({ id: e.id, type: "event" })); }
     const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty });
     setBuyTarget(null);
     if (error) return setNotice(error.message);
@@ -1271,10 +1339,10 @@ function TicketSheet({ target, profile, subs, onConfirm, onClose }) {
         <span style={{ color: W.soft, fontSize: 14 }}>Total</span>
         <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : `₹${total}`}</span>
       </div>
-      {unit > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>Online payment is being set up — paid tickets go live with the payments step.</div>}
+      {unit > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your ticket is issued the moment payment succeeds.</div>}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-        <button disabled={!canConfirm} onClick={() => onConfirm(qty)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{unit > 0 ? "Continue" : `Get ${qty} ticket${qty > 1 ? "s" : ""}`}</button>
+        <button disabled={!canConfirm} onClick={() => onConfirm(qty)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{unit > 0 ? `Pay ₹${total}` : `Get ${qty} ticket${qty > 1 ? "s" : ""}`}</button>
       </div>
     </Sheet>
   );
@@ -1812,7 +1880,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • rename-reset ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • subscriptions ✅</div>
       </div>
     </div>
   );
