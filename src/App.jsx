@@ -201,14 +201,13 @@ function Auth() {
   };
   const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
   return (
-    <div style={{ minHeight: "100vh", background: W.bg, padding: "0 22px", display: "flex", flexDirection: "column" }}>
-      <div style={{ textAlign: "center", paddingTop: 44 }}>
-        <img src="/icon-192.png" alt="Glasswings Events" style={{ width: 88, height: 88, borderRadius: 22, boxShadow: "0 10px 28px rgba(0,0,0,.18)" }} />
-        <div style={{ fontSize: 24, fontWeight: 800, color: W.ink, marginTop: 14, letterSpacing: 1 }}>GLASSWINGS EVENTS</div>
-        <div style={{ color: W.soft, marginTop: 5, fontSize: 13.5, letterSpacing: 0.5 }}>Events · Meetups · Community</div>
+    <div style={{ minHeight: "100vh", padding: "0 22px 44px", display: "flex", flexDirection: "column", alignItems: "center", backgroundImage: "linear-gradient(rgba(6,22,28,.72), rgba(6,18,26,.93)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center" }}>
+      <div style={{ textAlign: "center", paddingTop: 56 }}>
+        <img src="/logo-white.png" alt="Glasswings Events" style={{ width: 200, maxWidth: "66%", objectFit: "contain" }} />
+        <div style={{ fontSize: 29, fontWeight: 800, color: "#fff", marginTop: 18, lineHeight: 1.18, letterSpacing: 0.3 }}>Discover the best<br />events &amp; meetups</div>
+        <div style={{ color: "rgba(255,255,255,.82)", marginTop: 9, fontSize: 14.5 }}>Tickets · Rooms · Community — all in one place</div>
       </div>
-      <img src="/hero.jpg" alt="" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 16, marginTop: 20 }} />
-      <div style={{ background: "#fff", borderRadius: 18, padding: 20, marginTop: 18, border: `1px solid ${W.line}` }}>
+      <div style={{ background: "#fff", borderRadius: 18, padding: 20, marginTop: 30, width: "100%", maxWidth: 384, boxShadow: "0 24px 60px rgba(0,0,0,.4)" }}>
         <div style={{ display: "flex", background: W.bg, borderRadius: 10, padding: 4, marginBottom: 16 }}>
           {["login", "signup"].map(m => <button key={m} onClick={() => { setMode(m); setErr(""); setNote(""); }} style={{ flex: 1, padding: 9, border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14, background: mode === m ? W.teal : "transparent", color: mode === m ? "#fff" : W.soft }}>{m === "login" ? "Log in" : "Sign up"}</button>)}
         </div>
@@ -1480,7 +1479,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • desktop-brand ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • landing-v2 ✅</div>
       </div>
     </div>
   );
