@@ -232,7 +232,23 @@ function Main({ user }) {
   const createRoom = async (d) => { const { error } = await supabase.from("rooms").insert(d); if (error) return setNotice(error.message); await load(); };
   const updateRoom = async (id, p) => { const { error } = await supabase.from("rooms").update(p).eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.map(r => r.id === id ? { ...r, ...p } : r)); };
   const deleteRoom = async (id) => { const { error } = await supabase.from("rooms").delete().eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.filter(r => r.id !== id)); setOpen(null); };
-  const createEvent = async (d) => { const { error } = await supabase.from("events").insert(d); if (error) return setNotice(error.message); await load(); };
+  const announceToRooms = async (body, media_type) => {
+    if (!rooms.length) return;
+    const rows = rooms.map(r => ({ group_type: "room", group_id: r.id, sender_id: user.id, body, media_type }));
+    await supabase.from("messages").insert(rows);
+  };
+  const createEvent = async (d) => {
+    const { error } = await supabase.from("events").insert(d);
+    if (error) return setNotice(error.message);
+    const line = [d.event_date, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+    await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${line ? "\n" + line : ""}\nOpen the Events tab to grab your ticket.`, "event");
+    await load();
+  };
+  const broadcast = async (text) => {
+    const t = (text || "").trim(); if (!t) return;
+    await announceToRooms(t, "broadcast");
+    setNotice("Broadcast sent to all group chats.");
+  };
   const updateEvent = async (id, p) => { const { error } = await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
   const deleteEvent = async (id) => { const { error } = await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
   const addOption = async (kind, name) => { const n = name.trim(); if (!n) return; const { error } = await supabase.from("event_options").insert({ kind, name: n }); if (error) return setNotice(error.message); await load(); };
@@ -266,7 +282,7 @@ function Main({ user }) {
         {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
         {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} />}
-        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} />}
+        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
@@ -521,6 +537,18 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             const mine = m.sender_id === user.id;
             const first = (i === 0 || msgs[i - 1].sender_id !== m.sender_id);
             const s = senders[m.sender_id] || {};
+            if (m.media_type === "event" || m.media_type === "broadcast") {
+              const isEvent = m.media_type === "event";
+              return (
+                <div key={m.id} style={{ display: "flex", justifyContent: "center", margin: "8px 4px" }}>
+                  <div style={{ maxWidth: "90%", background: isEvent ? "#E7F6EF" : "#FFF6E0", border: `1px solid ${isEvent ? "#BFE6D8" : "#F0DDA8"}`, borderRadius: 12, padding: "11px 14px", textAlign: "center" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .5, color: isEvent ? W.teal : "#B8860B", marginBottom: 4 }}>{isEvent ? "NEW EVENT" : "📢 ANNOUNCEMENT"}</div>
+                    <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>{m.body}</div>
+                    <div style={{ fontSize: 11, color: W.soft, marginTop: 5 }}>{fmtTime(m.created_at)}</div>
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
@@ -572,19 +600,34 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 }
 
 /* ---------------- admin ---------------- */
-function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType }) {
+function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast }) {
   const [seg, setSeg] = useState("rooms");
   return (
     <div>
       <TopBar title="Admin Panel" />
       <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9 }}>
-        {[["rooms", "Rooms"], ["events", "Events"], ["members", "Members"]].map(([v, l]) => (
-          <button key={v} onClick={() => setSeg(v)} style={{ flex: 1, padding: "13px 0", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 14, color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
+        {[["rooms", "Rooms"], ["events", "Events"], ["broadcast", "Broadcast"], ["members", "Members"]].map(([v, l]) => (
+          <button key={v} onClick={() => setSeg(v)} style={{ flex: 1, padding: "13px 0", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
       {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
         : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} />
-          : <AdminMembers />}
+          : seg === "broadcast" ? <AdminBroadcast onBroadcast={onBroadcast} />
+            : <AdminMembers />}
+    </div>
+  );
+}
+function AdminBroadcast({ onBroadcast }) {
+  const [t, setT] = useState(""); const [sending, setSending] = useState(false);
+  const send = async () => { if (!t.trim()) return; setSending(true); await onBroadcast(t); setT(""); setSending(false); };
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 16 }}>
+        <div style={{ fontWeight: 700, color: W.ink, marginBottom: 6 }}>Broadcast to all groups</div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 12, lineHeight: 1.45 }}>This message is posted into every room's chat as an announcement, so all members in your groups see it.</div>
+        <textarea value={t} onChange={e => setT(e.target.value)} rows={4} placeholder="Type your announcement…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
+        <button onClick={send} disabled={sending || !t.trim()} style={{ ...btn(W.teal, "#fff"), marginTop: 10, width: "100%", justifyContent: "center", opacity: (sending || !t.trim()) ? .6 : 1 }}><Zap size={16} />{sending ? "Sending…" : "Send to everyone"}</button>
+      </div>
     </div>
   );
 }
@@ -985,7 +1028,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • tickets-qty-terms-print ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • announce-broadcast ✅</div>
       </div>
     </div>
   );
