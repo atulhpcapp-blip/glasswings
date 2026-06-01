@@ -334,6 +334,8 @@ function Main({ user }) {
 
   const joinRoom = async (r) => {
     if (canAccess(r)) return setOpen({ id: r.id, type: "room" });
+    if (r.gender_restrict === "male" && profile?.gender !== "male") return setNotice("This room is for men only.");
+    if (r.gender_restrict === "female" && profile?.gender !== "female") return setNotice("This room is for women only.");
     if (!freeForUser(r)) return setNotice("Online payments are being set up — paid subscriptions for men are coming next.");
     const { error } = await supabase.from("room_subscriptions").insert({ room_id: r.id, user_id: user.id });
     if (error) return setNotice(error.message);
@@ -581,12 +583,14 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, canAcc
 
 /* ---------------- explore ---------------- */
 function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
+  const admin = profile?.role === "admin";
+  const list = rooms.filter(r => admin || !r.gender_restrict || r.gender_restrict === "any" || r.gender_restrict === "couple" || r.gender_restrict === profile?.gender);
   return (
     <div>
       <TopBar title="Explore Rooms" />
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-        {rooms.length === 0 && <Center>No rooms yet. Create one from the Admin tab.</Center>}
-        {rooms.map(r => {
+        {list.length === 0 && <Center>No rooms yet. Create one from the Admin tab.</Center>}
+        {list.map(r => {
           const has = canAccess(r);
           const womenFree = r.price_monthly > 0 && profile?.gender !== "male";
           return (
@@ -594,7 +598,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
               <div style={{ display: "flex", gap: 13 }}>
                 <Avatar room={r} size={50} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{r.name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: W.ink, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>{r.name}{r.gender_restrict === "female" && <span style={{ background: "#FCE7F1", color: W.pink, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>WOMEN ONLY</span>}{r.gender_restrict === "male" && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>MEN ONLY</span>}{r.gender_restrict === "couple" && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>COUPLES</span>}</div>
                   <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{r.description}</div>
                   <div style={{ color: W.soft, fontSize: 12.5, marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}><Users size={13} />{counts[r.id] || 0} members</div>
                 </div>
@@ -894,9 +898,9 @@ function AdminBroadcast({ events, onBroadcast, onBroadcastEvent, onSendDM, onSen
 }
 function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
-  const [f, setF] = useState({ emoji: "💬", name: "", price: "", desc: "" });
-  const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "" });
-  const create = async () => { if (!f.name) return; await onCreate({ name: f.name, emoji: f.emoji || "💬", price_monthly: Number(f.price) || 0, description: f.desc }); reset(); setCreating(false); };
+  const [f, setF] = useState({ emoji: "💬", name: "", price: "", desc: "", gender: "any" });
+  const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "", gender: "any" });
+  const create = async () => { if (!f.name) return; await onCreate({ name: f.name, emoji: f.emoji || "💬", price_monthly: Number(f.price) || 0, description: f.desc, gender_restrict: f.gender || "any" }); reset(); setCreating(false); };
   return (
     <div style={{ padding: 14 }}>
       {creating ? (
@@ -912,6 +916,12 @@ function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
             <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
             <span style={{ color: W.soft, fontSize: 14 }}>per month</span>
           </div>
+          <select value={f.gender} onChange={e => setF({ ...f, gender: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", background: "#fff", color: W.ink, marginBottom: 14 }}>
+            <option value="any">Open to everyone</option>
+            <option value="female">Women only</option>
+            <option value="male">Men only</option>
+            <option value="couple">Couples</option>
+          </select>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
             <button onClick={create} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Create</button>
@@ -925,13 +935,28 @@ function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
           <div key={r.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={r} size={44} />
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{r.name}</div><div style={{ fontSize: 13, color: W.soft }}>{r.price_monthly === 0 ? "Free" : `₹${r.price_monthly}/mo`}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 7 }}>{r.name}{r.auto_join && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>FREE ROOM</span>}</div><div style={{ fontSize: 13, color: W.soft }}>{r.price_monthly === 0 ? "Free" : `₹${r.price_monthly}/mo`}</div></div>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === r.id ? null : r.id)} />
             </div>
             {manage === r.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
                 <RoomPhoto room={r} onUpdate={onUpdate} />
                 <PinEditor room={r} onUpdate={onUpdate} />
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Who can join</label>
+                  <select value={r.gender_restrict || "any"} onChange={e => onUpdate(r.id, { gender_restrict: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff", color: W.ink, marginTop: 6 }}>
+                    <option value="any">Everyone</option>
+                    <option value="female">Women only</option>
+                    <option value="male">Men only</option>
+                    <option value="couple">Couples</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Free Room</label>
+                  <button onClick={() => onUpdate(r.id, { auto_join: !r.auto_join })} style={{ ...btn(r.auto_join ? W.teal : "#fff", r.auto_join ? "#fff" : W.ink), border: r.auto_join ? "none" : `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 6 }}>
+                    {r.auto_join ? "✓ New members auto-join this room" : "Make this the Free Room (auto-join on signup)"}
+                  </button>
+                </div>
                 <button onClick={() => { if (confirm("Delete this room and all its messages?")) onDelete(r.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete room</button>
               </div>
             )}
@@ -1439,7 +1464,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • push-takeover ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • room-types ✅</div>
       </div>
     </div>
   );
