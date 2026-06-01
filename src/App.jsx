@@ -181,6 +181,35 @@ function DesktopSidebar({ tab, setTab, isAdmin, width }) {
     </div>
   );
 }
+function ChatListPane({ chats, open, onOpen, width }) {
+  return (
+    <div style={{ width, flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto", background: "#fff", borderRight: `1px solid ${W.line}`, zIndex: 10 }}>
+      <div style={{ padding: "18px 18px 12px", fontWeight: 800, fontSize: 20, color: W.ink }}>Chats</div>
+      {chats.length === 0 && <div style={{ padding: "8px 18px", color: W.soft, fontSize: 13.5, lineHeight: 1.5 }}>No chats yet. Open <b>Explore</b> to join a room.</div>}
+      {chats.map(c => {
+        const on = open && open.id === c.id && open.type === c.type;
+        return (
+          <div key={c.type + c.id} onClick={() => onOpen(c)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", cursor: "pointer", background: on ? "#E7F6EF" : "transparent", borderLeft: on ? `3px solid ${W.teal}` : "3px solid transparent" }}>
+            <Avatar room={c} size={46} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+              <div style={{ fontSize: 12.5, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.sub}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+function EmptyConvo() {
+  return (
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: W.wall, backgroundImage: `url("${WALL}")` }}>
+      <div style={{ width: 92, height: 92, borderRadius: "50%", background: W.teal, display: "flex", alignItems: "center", justifyContent: "center" }}><MessageCircle size={46} color="#fff" /></div>
+      <div style={{ fontSize: 16.5, color: W.ink, fontWeight: 600 }}>Select a chat to start messaging</div>
+      <div style={{ fontSize: 13.5, color: W.soft }}>Your rooms, events &amp; organiser messages live here.</div>
+    </div>
+  );
+}
 function Splash() { return <div style={{ height: "100vh", background: "linear-gradient(135deg,#0E5C54,#061f1c)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}><img src="/logo-white.png" alt="" style={{ width: 200, maxWidth: "60%" }} /></div>; }
 
 /* ---------------- auth ---------------- */
@@ -1664,7 +1693,7 @@ function Profile({ user, profile, reload }) {
         </div>
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • desktop-app ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • desktop-2pane ✅</div>
       </div>
     </div>
   );
