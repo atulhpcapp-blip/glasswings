@@ -163,13 +163,15 @@ function Main({ user }) {
   const [eventMods, setEventMods] = useState([]);
   const [counts, setCounts] = useState({});
   const [eventCounts, setEventCounts] = useState({});
+  const [categories, setCategories] = useState([]);
+  const [cities, setCities] = useState([]);
   const [tab, setTab] = useState("chats");
   const [open, setOpen] = useState(null); // { id, type }
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -179,12 +181,15 @@ function Main({ user }) {
       supabase.from("event_moderators").select("event_id").eq("user_id", user.id),
       supabase.rpc("room_member_counts"),
       supabase.rpc("event_ticket_counts"),
+      supabase.from("event_options").select("*").order("name", { ascending: true }),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     setSubs((sb || []).map(x => x.room_id)); setTickets((tk || []).map(x => x.event_id));
     setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
     const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
+    setCategories((opts || []).filter(o => o.kind === "category"));
+    setCities((opts || []).filter(o => o.kind === "city"));
     setReady(true);
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
@@ -215,6 +220,8 @@ function Main({ user }) {
   const createEvent = async (d) => { const { error } = await supabase.from("events").insert(d); if (error) return setNotice(error.message); await load(); };
   const updateEvent = async (id, p) => { const { error } = await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
   const deleteEvent = async (id) => { const { error } = await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
+  const addOption = async (kind, name) => { const n = name.trim(); if (!n) return; const { error } = await supabase.from("event_options").insert({ kind, name: n }); if (error) return setNotice(error.message); await load(); };
+  const delOption = async (id) => { const { error } = await supabase.from("event_options").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
 
   if (!ready) return <Splash />;
   if (profile && !profile.profile_completed) return <ProfileGate user={user} profile={profile} reload={load} />;
@@ -239,8 +246,8 @@ function Main({ user }) {
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-        {tab === "events" && <Events events={events} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} />}
-        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} />}
+        {tab === "events" && <Events events={events} categories={categories} cities={cities} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} />}
+        {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
@@ -283,20 +290,25 @@ function Chats({ chats, onOpen, onExplore }) {
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, canAccessEvent, counts, onJoin }) {
+function Events({ events, categories, cities, canAccessEvent, counts, onJoin }) {
   const [cat, setCat] = useState("All");
-  const cats = ["All", ...Array.from(new Set(events.map(e => e.category).filter(Boolean)))];
-  const list = cat === "All" ? events : events.filter(e => e.category === cat);
+  const [city, setCity] = useState("All");
+  const catNames = (categories && categories.length) ? categories.map(c => c.name) : Array.from(new Set(events.map(e => e.category).filter(Boolean)));
+  const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
+  const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city));
+  const Chips = ({ label, opts, val, set }) => opts.length ? (
+    <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}`, alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{label}</span>
+      {["All", ...opts].map(o => (
+        <button key={o} onClick={() => set(o)} style={{ flexShrink: 0, padding: "6px 13px", borderRadius: 20, border: `1px solid ${val === o ? W.teal : W.line}`, background: val === o ? W.teal : "#fff", color: val === o ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{o}</button>
+      ))}
+    </div>
+  ) : null;
   return (
     <div>
       <TopBar title="Events" />
-      {cats.length > 1 && (
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "12px 14px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
-          {cats.map(c => (
-            <button key={c} onClick={() => setCat(c)} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 20, border: `1px solid ${cat === c ? W.teal : W.line}`, background: cat === c ? W.teal : "#fff", color: cat === c ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{c}</button>
-          ))}
-        </div>
-      )}
+      <Chips label="Type" opts={catNames} val={cat} set={setCat} />
+      <Chips label="City" opts={cityNames} val={city} set={setCity} />
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
         {list.length === 0 && <Center>No events here yet.</Center>}
         {list.map(e => {
@@ -317,7 +329,7 @@ function Events({ events, canAccessEvent, counts, onJoin }) {
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
                   {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
-                  {e.venue && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{e.venue}</span>}
+                  {(e.venue || e.city) && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>}
                   <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Users size={13} />{counts[e.id] || 0} going</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
@@ -518,7 +530,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 }
 
 /* ---------------- admin ---------------- */
-function Admin({ rooms, events, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent }) {
+function Admin({ rooms, events, categories, cities, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption }) {
   const [seg, setSeg] = useState("rooms");
   return (
     <div>
@@ -529,7 +541,7 @@ function Admin({ rooms, events, counts, onCreateRoom, onUpdateRoom, onDeleteRoom
         ))}
       </div>
       {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
-        : seg === "events" ? <AdminEvents events={events} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} />
+        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} />
           : <AdminMembers />}
     </div>
   );
@@ -610,16 +622,49 @@ function EventBanner({ ev, onUpdate }) {
     </div>
   );
 }
-function AdminEvents({ events, onCreate, onUpdate, onDelete }) {
-  const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
-  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", banner: "" });
+function OptionList({ label, kind, items, onAdd, onDel }) {
+  const [val, setVal] = useState("");
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: W.soft, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <input value={val} onChange={e => setVal(e.target.value)} placeholder={`Add a ${kind}…`} style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
+        <button onClick={async () => { await onAdd(kind, val); setVal(""); }} style={btn(W.teal, "#fff")}>Add</button>
+      </div>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+        {items.map(it => (
+          <span key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, background: W.bg, borderRadius: 16, padding: "5px 7px 5px 12px", fontSize: 13, color: W.ink }}>
+            {it.name}<X size={14} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(it.id)} />
+          </span>
+        ))}
+        {items.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>None yet.</span>}
+      </div>
+    </div>
+  );
+}
+function AdminEvents({ events, categories, cities, onCreate, onUpdate, onDelete, onAddOption, onDelOption }) {
+  const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
+  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "" });
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
-  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", banner: "" });
+  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "" });
   const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
-  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, banner_url: f.banner }); reset(); setCreating(false); };
+  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, city: f.city, banner_url: f.banner }); reset(); setCreating(false); };
+  const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
   return (
     <div style={{ padding: 14 }}>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
+        <div onClick={() => setTaxOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+          <span style={{ fontWeight: 700, color: W.ink }}>Categories &amp; cities</span>
+          <span style={{ color: W.soft, fontSize: 13 }}>{taxOpen ? "Hide ▲" : "Manage ▼"}</span>
+        </div>
+        {taxOpen && (
+          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 16 }}>
+            <OptionList label="Categories" kind="category" items={categories} onAdd={onAddOption} onDel={onDelOption} />
+            <OptionList label="Cities" kind="city" items={cities} onAdd={onAddOption} onDel={onDelOption} />
+          </div>
+        )}
+      </div>
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New ticketed event</div>
@@ -631,8 +676,13 @@ function AdminEvents({ events, onCreate, onUpdate, onDelete }) {
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
             <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Event title" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
           </div>
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
-            {EVENT_CATS.map(c => <button key={c} onClick={() => setF({ ...f, category: c })} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${f.category === c ? W.teal : W.line}`, background: f.category === c ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{c}</button>)}
+          <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Category</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+            {categories.length === 0 ? <span style={{ fontSize: 12.5, color: W.soft }}>Add categories with "Manage" above first.</span> : categories.map(c => chip(c.name, f.category === c.name, () => setF({ ...f, category: f.category === c.name ? "" : c.name })))}
+          </div>
+          <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>City</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+            {cities.length === 0 ? <span style={{ fontSize: 12.5, color: W.soft }}>Add cities with "Manage" above first.</span> : cities.map(c => chip(c.name, f.city === c.name, () => setF({ ...f, city: f.city === c.name ? "" : c.name })))}
           </div>
           <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <input value={f.date} onChange={e => setF({ ...f, date: e.target.value })} placeholder="Date & time (e.g. Sat 14 Jun · 8PM)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
@@ -655,7 +705,7 @@ function AdminEvents({ events, onCreate, onUpdate, onDelete }) {
           <div key={e.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div></div>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === e.id ? null : e.id)} />
             </div>
             {manage === e.id && (
@@ -758,7 +808,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • banners-categories ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • categories-cities-filters ✅</div>
       </div>
     </div>
   );
