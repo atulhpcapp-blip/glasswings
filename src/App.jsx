@@ -417,14 +417,78 @@ function PublicLanding() {
           ))}
         </div>
       </div>
-      <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 34px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
+      <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
+      <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
+        <LegalLinks />
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events</div>
+      </div>
     </div>
+  );
+}
+const PRIVACY = {
+  title: "Privacy Policy",
+  updated: "June 2026",
+  sections: [
+    { p: "Glasswings Events (\"we\", \"us\") operates glass-wings.com and the Glasswings community app. This policy explains what information we collect, why, and your choices. By using the app you agree to this policy." },
+    { h: "Information we collect", p: "• Account details you provide: name, email, phone number, gender, age, city, profession, and profile photo.\n• Content you create: messages, photos and other posts in rooms and events.\n• Payment information: payments are processed by Razorpay. We do not see or store your full card / UPI details — only a record that a payment or subscription succeeded.\n• Notifications: if you enable them, a push token for your device so we can alert you.\n• Basic usage and device information needed to run the service securely." },
+    { h: "How we use it", p: "To run the community, events, tickets and subscriptions; to send you organiser messages and notifications you opt into; to process payments and renewals; and to keep the service safe and prevent misuse." },
+    { h: "Who we share it with", p: "We share only what's necessary with: Razorpay (to process payments and recurring subscriptions) and our hosting/database provider (Supabase) to store your data securely. We may disclose information if required by law. We do not sell your personal data." },
+    { h: "Notifications", p: "If you turn on notifications, we store a device token to deliver them. You can turn notifications off any time from your Profile or your browser/device settings." },
+    { h: "Data retention and your rights", p: "You can ask us to access or delete your personal data, or delete your account, by contacting us. Deleting your account removes your profile and associated data, except records we must keep for legal or accounting reasons (for example, payment records)." },
+    { h: "Contact", p: "Questions about privacy? Email us at hello@glass-wings.com." },
+  ],
+};
+const TERMS = {
+  title: "Terms & Conditions",
+  updated: "June 2026",
+  sections: [
+    { p: "These terms govern your use of the Glasswings Events app and website (glass-wings.com). By creating an account or making a payment, you accept these terms." },
+    { h: "Membership & accounts", p: "You must be 18 or older to join. Provide accurate information and keep your login secure — you're responsible for activity on your account." },
+    { h: "Rooms & subscriptions", p: "Some rooms are free and some are paid monthly subscriptions. When you subscribe to a paid room you authorise Razorpay to charge the monthly fee automatically each cycle until you cancel. You can cancel anytime from Profile → Your subscriptions; cancelling stops all future charges and ends your access to that room." },
+    { h: "Event tickets", p: "Tickets are sold per event and may be limited in number. Any event-specific terms shown at the time of purchase (date, venue, entry rules) form part of these terms." },
+    { h: "Refunds & cancellations", p: "Subscriptions: you may cancel at any time to stop future billing; fees already charged for the current cycle are non-refundable except where the law requires otherwise.\nEvent tickets: tickets are non-refundable unless the organiser cancels the event, in which case the ticket amount is refunded to the original payment method." },
+    { h: "Community conduct", p: "Be respectful. No harassment, hate speech, illegal content, spam, or sharing others' private information. We may remove content or members who break these rules." },
+    { h: "Liability", p: "The service and events are provided in good faith on an \"as is\" basis. To the extent permitted by law, we are not liable for indirect or incidental losses arising from use of the app or attendance at events." },
+    { h: "Governing law", p: "These terms are governed by the laws of India. We may update these terms from time to time; continued use means you accept the changes." },
+    { h: "Contact", p: "Questions? Email us at hello@glass-wings.com." },
+  ],
+};
+function PolicyModal({ kind, onClose }) {
+  const data = kind === "privacy" ? PRIVACY : TERMS;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: "24px 12px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 680, width: "100%", padding: "22px 22px 30px", margin: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div style={{ fontWeight: 800, fontSize: 20, color: W.ink }}>{data.title}</div>
+          <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        <div style={{ fontSize: 12, color: W.soft, marginBottom: 16 }}>Last updated: {data.updated}</div>
+        {data.sections.map((s, i) => (
+          <div key={i} style={{ marginBottom: 14 }}>
+            {s.h && <div style={{ fontWeight: 700, fontSize: 15, color: W.ink, marginBottom: 5 }}>{s.h}</div>}
+            <div style={{ fontSize: 13.5, color: W.ink, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{s.p}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+function LegalLinks({ dark }) {
+  const [show, setShow] = useState(null);
+  const ls = { color: dark ? "rgba(255,255,255,.85)" : W.soft, fontSize: 13, cursor: "pointer", textDecoration: "underline" };
+  return (
+    <>
+      <div style={{ display: "flex", gap: 18, justifyContent: "center", flexWrap: "wrap" }}>
+        <span style={ls} onClick={() => setShow("privacy")}>Privacy Policy</span>
+        <span style={ls} onClick={() => setShow("terms")}>Terms &amp; Conditions</span>
+      </div>
+      {show && <PolicyModal kind={show} onClose={() => setShow(null)} />}
+    </>
   );
 }
 function ProfileGate({ user, profile, reload }) {
   const [name, setName] = useState(profile.full_name || "");
-  const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");
-  const [avatar, setAvatar] = useState(profile.avatar_url || "");
+  const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");  const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const fileRef = useRef(null);
   useEffect(() => {
@@ -1750,7 +1814,7 @@ function RoomPhoto({ room, onUpdate }) {
 function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
-  const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all");
+  const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all"); const [q, setQ] = useState("");
   useEffect(() => {
     supabase.from("profiles").select("id, full_name, gender, role, avatar_url, member_details(phone, age, area, profession, city)").order("created_at", { ascending: false })
       .then(({ data }) => setList(data || []));
@@ -1768,6 +1832,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom }) {
     if (prof !== "all" && d.profession !== prof) return false;
     if (area !== "all" && d.area !== area) return false;
     if (city !== "all" && d.city !== city) return false;
+    if (q.trim()) { const s = q.trim().toLowerCase(); if (!((m.full_name || "").toLowerCase().includes(s) || (d.phone || "").toLowerCase().includes(s))) return false; }
     return true;
   });
   const phones = filtered.map(m => det(m).phone).filter(Boolean);
@@ -1777,6 +1842,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom }) {
   return (
     <div style={{ padding: 14 }}>
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 12, marginBottom: 12 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or phone…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink, marginBottom: 10 }} />
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
           {chip("all", "Everyone")}{chip("male", "Men")}{chip("female", "Women")}
         </div>
@@ -1933,7 +1999,8 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         )}
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • room-remove ✅</div>
+        <div style={{ marginTop: 20 }}><LegalLinks /></div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • search-legal ✅</div>
       </div>
     </div>
   );
