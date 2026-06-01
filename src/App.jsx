@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./supabaseClient.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2
 } from "lucide-react";
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
 const WALL = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='none' stroke='%23000' stroke-opacity='0.03' stroke-width='2'><circle cx='20' cy='20' r='6'/><path d='M50 14 l8 8 M58 14 l-8 8'/><rect x='48' y='48' width='14' height='14' rx='3'/><path d='M14 54 q8 -10 16 0'/></g></svg>`);
 const EVENT_CATS = ["Music", "Comedy", "Sports", "Workshop", "Social", "Food & Drink", "Other"];
+function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
 async function uploadPhoto(userId, file) {
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
@@ -166,6 +167,9 @@ function Main({ user }) {
   const [categories, setCategories] = useState([]);
   const [cities, setCities] = useState([]);
   const [ticketTypes, setTicketTypes] = useState({});
+  const [myTickets, setMyTickets] = useState({});
+  const [buyTarget, setBuyTarget] = useState(null);
+  const [ticketView, setTicketView] = useState(null);
   const [tab, setTab] = useState("chats");
   const [open, setOpen] = useState(null); // { id, type }
   const [ready, setReady] = useState(false);
@@ -177,7 +181,7 @@ function Main({ user }) {
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
       supabase.from("room_subscriptions").select("room_id").eq("user_id", user.id),
-      supabase.from("event_tickets").select("event_id").eq("user_id", user.id),
+      supabase.from("event_tickets").select("id, event_id, quantity, ticket_type_id, purchased_at").eq("user_id", user.id),
       supabase.from("room_moderators").select("room_id").eq("user_id", user.id),
       supabase.from("event_moderators").select("event_id").eq("user_id", user.id),
       supabase.rpc("room_member_counts"),
@@ -186,7 +190,8 @@ function Main({ user }) {
       supabase.from("event_ticket_types").select("*").order("sort", { ascending: true }),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
-    setSubs((sb || []).map(x => x.room_id)); setTickets((tk || []).map(x => x.event_id));
+    setSubs((sb || []).map(x => x.room_id)); setTickets([...new Set((tk || []).map(x => x.event_id))]);
+    const mt = {}; (tk || []).forEach(r => { if (!mt[r.event_id]) mt[r.event_id] = []; mt[r.event_id].push(r); }); setMyTickets(mt);
     setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
     const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
@@ -209,13 +214,19 @@ function Main({ user }) {
     if (error) return setNotice(error.message);
     setSubs(p => [...p, r.id]); setCounts(c => ({ ...c, [r.id]: (c[r.id] || 0) + 1 })); setOpen({ id: r.id, type: "room" });
   };
-  const joinEvent = async (e, type = null) => {
+  const joinEvent = (e, type = null) => {
     if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
-    const price = type ? type.price : e.ticket_price;
-    if (price > 0) return setNotice("Online payments are being set up — paid tickets go live with the payments step.");
-    const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null });
+    setBuyTarget({ event: e, type });
+  };
+  const confirmPurchase = async (qty) => {
+    const { event: e, type } = buyTarget;
+    const unit = type ? type.price : e.ticket_price;
+    if (unit > 0) { setBuyTarget(null); return setNotice("Online payments are being set up — paid tickets go live with the payments step."); }
+    const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty });
+    setBuyTarget(null);
     if (error) return setNotice(error.message);
-    setTickets(p => [...p, e.id]); setEventCounts(c => ({ ...c, [e.id]: (c[e.id] || 0) + 1 })); setOpen({ id: e.id, type: "event" });
+    await load();
+    setOpen({ id: e.id, type: "event" });
   };
 
   const createRoom = async (d) => { const { error } = await supabase.from("rooms").insert(d); if (error) return setNotice(error.message); await load(); };
@@ -249,10 +260,12 @@ function Main({ user }) {
   return (
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
+      {buyTarget && <TicketSheet target={buyTarget} profile={profile} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
+      {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
         {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-        {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} />}
+        {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} />}
         {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} />}
         {tab === "profile" && <Profile user={user} profile={profile} reload={load} />}
       </div>
@@ -296,7 +309,7 @@ function Chats({ chats, onOpen, onExplore }) {
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, canAccessEvent, counts, onJoin }) {
+function Events({ events, categories, cities, profile, ticketTypes, canAccessEvent, counts, onJoin, onTicket }) {
   const [cat, setCat] = useState("All");
   const [city, setCity] = useState("All");
   const catNames = (categories && categories.length) ? categories.map(c => c.name) : Array.from(new Set(events.map(e => e.category).filter(Boolean)));
@@ -341,7 +354,8 @@ function Events({ events, categories, cities, profile, ticketTypes, canAccessEve
                   <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Users size={13} />{counts[e.id] || 0} going</span>
                 </div>
                 {has ? (
-                  <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                    <button onClick={() => onTicket(e)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}` }}><Ticket size={15} />My ticket</button>
                     <button onClick={() => onJoin(e)} style={btn(W.teal, "#fff")}><MessageCircle size={15} />Open chat</button>
                   </div>
                 ) : avail.length ? (
@@ -641,6 +655,87 @@ function BannerMedia({ url, type, style }) {
   if (type === "video") return <video src={url} style={style} autoPlay loop muted playsInline />;
   return <img src={url} alt="" style={style} />;
 }
+function Sheet({ children, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 480, borderRadius: "18px 18px 0 0", padding: 18, maxHeight: "88vh", overflowY: "auto" }}>{children}</div>
+    </div>
+  );
+}
+function TicketSheet({ target, profile, onConfirm, onClose }) {
+  const { event: e, type } = target;
+  const unit = type ? type.price : e.ticket_price;
+  const [qty, setQty] = useState(1);
+  const [agree, setAgree] = useState(false);
+  const needAgree = !!(e.terms && e.terms.trim());
+  const total = unit * qty;
+  const canConfirm = !needAgree || agree;
+  const stepBtn = { width: 34, height: 34, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 20, color: W.ink, cursor: "pointer", lineHeight: 1 };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 4 }}>{e.emoji} {e.title}</div>
+      <div style={{ color: W.soft, fontSize: 13.5, marginBottom: 16 }}>{type ? type.name : "Ticket"} · {unit === 0 ? "Free" : `₹${unit} each`}</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <span style={{ fontWeight: 600, color: W.ink }}>Number of tickets</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button onClick={() => setQty(q => Math.max(1, q - 1))} style={stepBtn}>−</button>
+          <span style={{ fontWeight: 700, fontSize: 17, minWidth: 24, textAlign: "center" }}>{qty}</span>
+          <button onClick={() => setQty(q => q + 1)} style={stepBtn}>+</button>
+        </div>
+      </div>
+      {needAgree && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 6 }}>Terms &amp; conditions</div>
+          <div style={{ background: W.bg, borderRadius: 10, padding: 12, fontSize: 13, color: W.ink, maxHeight: 150, overflowY: "auto", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{e.terms}</div>
+          <label style={{ display: "flex", gap: 9, alignItems: "flex-start", marginTop: 10, cursor: "pointer" }}>
+            <input type="checkbox" checked={agree} onChange={ev => setAgree(ev.target.checked)} style={{ marginTop: 3 }} />
+            <span style={{ fontSize: 13.5, color: W.ink }}>I have read and agree to the terms &amp; conditions.</span>
+          </label>
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <span style={{ color: W.soft, fontSize: 14 }}>Total</span>
+        <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : `₹${total}`}</span>
+      </div>
+      {unit > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>Online payment is being set up — paid tickets go live with the payments step.</div>}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+        <button disabled={!canConfirm} onClick={() => onConfirm(qty)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{unit > 0 ? "Continue" : `Get ${qty} ticket${qty > 1 ? "s" : ""}`}</button>
+      </div>
+    </Sheet>
+  );
+}
+function MyTicket({ event: e, profile, rows, onClose }) {
+  const qty = rows.reduce((s, r) => s + (r.quantity || 1), 0);
+  const code = "GW-" + ((rows[0]?.id || "").replace(/-/g, "").slice(0, 8).toUpperCase());
+  const place = [e.venue, e.city].filter(Boolean).join(", ");
+  const summary = `🎟️ Glasswings Ticket\n${e.title}\n${e.event_date || ""}${place ? `\n${place}` : ""}\nName: ${profile?.name || ""}\nTickets: ${qty}\nCode: ${code}`;
+  const wa = "https://wa.me/?text=" + encodeURIComponent(summary);
+  const print = () => {
+    const w = window.open("", "_blank", "width=420,height=640");
+    if (!w) return;
+    w.document.write(`<html><head><title>Ticket</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,Arial,sans-serif;padding:24px;color:#0b1f1c}.t{border:2px dashed #0E8C7F;border-radius:16px;padding:22px}.h{font-size:22px;font-weight:800}.m{color:#5a6b67;margin-top:4px}.r{display:flex;justify-content:space-between;margin-top:14px;font-size:15px}.lbl{margin-top:18px;font-size:13px;color:#5a6b67}.code{font-size:22px;font-weight:800;letter-spacing:3px;margin-top:4px}</style></head><body><div class="t"><div class="h">${escapeHtml((e.emoji || "🎟️") + " " + e.title)}</div><div class="m">${escapeHtml(e.event_date || "")}</div><div class="m">${escapeHtml(place)}</div><div class="r"><span>Name</span><b>${escapeHtml(profile?.name || "")}</b></div><div class="r"><span>Tickets</span><b>${qty}</b></div><div class="lbl">Ticket code</div><div class="code">${code}</div><div class="lbl">Glasswings community</div></div><script>window.onload=function(){window.print()}</script></body></html>`);
+    w.document.close();
+  };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ border: `2px dashed ${W.teal}`, borderRadius: 16, padding: 18, marginBottom: 16 }}>
+        <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{e.emoji} {e.title}</div>
+        {e.event_date && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}><Calendar size={14} />{e.event_date}</div>}
+        {place && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 4, display: "flex", gap: 6, alignItems: "center" }}><MapPin size={14} />{place}</div>}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, fontSize: 14 }}><span style={{ color: W.soft }}>Name</span><b style={{ color: W.ink }}>{profile?.name}</b></div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 14 }}><span style={{ color: W.soft }}>Tickets</span><b style={{ color: W.ink }}>{qty}</b></div>
+        <div style={{ marginTop: 14, fontSize: 12, color: W.soft }}>Ticket code</div>
+        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 3, color: W.ink }}>{code}</div>
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={print} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}><Printer size={16} />Print</button>
+        <a href={wa} target="_blank" rel="noreferrer" style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", textDecoration: "none" }}><Share2 size={16} />WhatsApp</a>
+      </div>
+      <button onClick={onClose} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 10 }}>Close</button>
+    </Sheet>
+  );
+}
 function TicketTypes({ eventId, types, onAdd, onDel }) {
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [g, setG] = useState("any");
   const gl = { any: "Anyone", male: "Men", female: "Women" };
@@ -668,6 +763,16 @@ function TicketTypes({ eventId, types, onAdd, onDel }) {
         <button onClick={add} style={btn(W.teal, "#fff")}>Add</button>
       </div>
       <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Tip: make a "Women" type at ₹0 and a "Men" type with a price. Free types work now; paid ones charge once payments are on.</div>
+    </div>
+  );
+}
+function EventTerms({ ev, onUpdate }) {
+  const [t, setT] = useState(ev.terms || ""); const [saved, setSaved] = useState(false);
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Terms &amp; conditions</label>
+      <textarea value={t} onChange={e => { setT(e.target.value); setSaved(false); }} rows={3} placeholder="e.g. No refunds. Carry a valid photo ID. Entry subject to availability." style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", marginTop: 6, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
+      <button onClick={async () => { await onUpdate(ev.id, { terms: t }); setSaved(true); }} style={{ ...btn(W.teal, "#fff"), marginTop: 6 }}>{saved ? "Saved ✓" : "Save terms"}</button>
     </div>
   );
 }
@@ -707,12 +812,12 @@ function OptionList({ label, kind, items, onAdd, onDel }) {
 }
 function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
-  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image" });
+  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image", terms: "" });
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
-  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image" });
+  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image", terms: "" });
   const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
-  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, city: f.city, banner_url: f.banner, banner_type: f.bannerType }); reset(); setCreating(false); };
+  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, city: f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms }); reset(); setCreating(false); };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
   return (
     <div style={{ padding: 14 }}>
@@ -756,6 +861,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpda
           <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <input value={f.date} onChange={e => setF({ ...f, date: e.target.value })} placeholder="Date & time (e.g. Sat 14 Jun · 8PM)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <input value={f.venue} onChange={e => setF({ ...f, venue: e.target.value })} placeholder="Venue / address" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <textarea value={f.terms} onChange={e => setF({ ...f, terms: e.target.value })} rows={2} placeholder="Terms & conditions (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
             <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
@@ -781,6 +887,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, onCreate, onUpda
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <EventBanner ev={e} onUpdate={onUpdate} />
                 <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} onAdd={onAddTicketType} onDel={onDelTicketType} />
+                <EventTerms ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
                 <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
               </div>
@@ -878,7 +985,7 @@ function Profile({ user, profile, reload }) {
           </div>
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • ticket-types ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 18 }}>Glasswings build • tickets-qty-terms-print ✅</div>
       </div>
     </div>
   );
