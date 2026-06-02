@@ -44,28 +44,70 @@ function loadRazorpay() {
 }function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
 function fitText(x, t, max) { let s = String(t || ""); if (x.measureText(s).width <= max) return s; while (s.length > 1 && x.measureText(s + "X").width > max) s = s.slice(0, -1); return s + "…"; }
 async function makeTicketBlob(d) {
-  const Wd = 1000, Ht = 600, s = 2;
+  const Wd = 1000, Ht = 560, s = 2;
   const c = document.createElement("canvas"); c.width = Wd * s; c.height = Ht * s;
   const x = c.getContext("2d"); x.scale(s, s);
-  x.fillStyle = "#ffffff"; rr(x, 0, 0, Wd, Ht, 30); x.fill();
-  const g = x.createLinearGradient(0, 0, Wd, 200); g.addColorStop(0, "#008069"); g.addColorStop(1, "#04B08F");
-  x.save(); rr(x, 0, 0, Wd, 200, 30); x.clip(); x.fillStyle = g; x.fillRect(0, 0, Wd, 200); x.restore();
-  x.fillStyle = "rgba(255,255,255,.85)"; x.font = "700 20px system-ui,Arial"; x.fillText("G L A S S W I N G S", 44, 54);
-  x.fillStyle = "#fff"; x.font = "800 42px system-ui,Arial"; x.fillText(fitText(x, ((d.emoji ? d.emoji + " " : "") + d.title), Wd - 88), 44, 120);
-  x.fillStyle = "rgba(255,255,255,.95)"; x.font = "500 24px system-ui,Arial";
-  const meta = [d.dateStr, d.place].filter(Boolean).join("   -   "); if (meta) x.fillText(fitText(x, meta, Wd - 88), 44, 165);
-  x.fillStyle = "#5a6b67"; x.font = "600 22px system-ui,Arial"; x.fillText("ATTENDEE", 44, 282);
-  x.fillStyle = "#0b1f1c"; x.font = "800 34px system-ui,Arial"; x.fillText(fitText(x, d.name || "", 600), 44, 324);
-  x.fillStyle = "#5a6b67"; x.font = "600 22px system-ui,Arial"; x.fillText("TICKETS", 44, 388);
-  x.fillStyle = "#0b1f1c"; x.font = "800 34px system-ui,Arial"; x.fillText(String(d.qty), 44, 430);
-  x.fillStyle = "#5a6b67"; x.font = "600 22px system-ui,Arial"; x.fillText("TICKET CODE", 44, 494);
-  x.fillStyle = "#008069"; x.font = "800 40px ui-monospace,monospace"; x.fillText(d.code, 44, 538);
-  x.strokeStyle = "#d9e2df"; x.setLineDash([12, 10]); x.beginPath(); x.moveTo(Wd - 300, 240); x.lineTo(Wd - 300, Ht - 40); x.stroke(); x.setLineDash([]);
-  try { const qr = await loadImg("https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=" + encodeURIComponent(d.code)); x.drawImage(qr, Wd - 258, 300, 200, 200); } catch (e) { }
-  x.fillStyle = "#5a6b67"; x.font = "500 18px system-ui,Arial"; x.fillText("Show at entry", Wd - 244, 528);
+  x.fillStyle = "#0C1A16"; rr(x, 0, 0, Wd, Ht, 30); x.fill();
+  x.fillStyle = "#2FD4A8"; rr(x, 0, 0, 12, Ht, 6); x.fill();
+  x.fillStyle = "#2FD4A8"; x.font = "800 20px system-ui,Arial"; x.fillText("G L A S S W I N G S", 48, 60);
+  x.fillStyle = "#ffffff"; x.font = "900 48px system-ui,Arial"; x.fillText(fitText(x, ((d.emoji ? d.emoji + " " : "") + d.title), 600), 48, 120);
+  x.fillStyle = "rgba(255,255,255,.92)"; x.font = "500 24px system-ui,Arial";
+  const meta = [d.dateStr, d.place].filter(Boolean).join("   ·   "); if (meta) x.fillText(fitText(x, meta, 600), 48, 166);
+  x.strokeStyle = "rgba(255,255,255,.25)"; x.setLineDash([12, 10]); x.beginPath(); x.moveTo(Wd - 320, 30); x.lineTo(Wd - 320, Ht - 30); x.stroke(); x.setLineDash([]);
+  x.fillStyle = "#2FD4A8"; x.font = "800 19px system-ui,Arial"; x.fillText("ATTENDEE", 48, 256);
+  x.fillStyle = "#ffffff"; x.font = "800 36px system-ui,Arial"; x.fillText(fitText(x, d.name || "", 560), 48, 300);
+  x.fillStyle = "rgba(255,255,255,.55)"; x.font = "700 18px system-ui,Arial"; x.fillText("TICKETS", 48, 372);
+  x.fillStyle = "#ffffff"; x.font = "800 34px system-ui,Arial"; x.fillText(String(d.qty), 48, 416);
+  x.fillStyle = "rgba(255,255,255,.55)"; x.font = "700 18px system-ui,Arial"; x.fillText("CODE", 230, 372);
+  x.fillStyle = "#2FD4A8"; x.font = "800 28px ui-monospace,monospace"; x.fillText(d.code, 230, 414);
+  x.fillStyle = "rgba(255,255,255,.5)"; x.font = "500 18px system-ui,Arial"; x.fillText("Show this ticket at entry", 48, 500);
+  x.fillStyle = "#ffffff"; rr(x, Wd - 268, Ht / 2 - 110, 210, 210, 16); x.fill();
+  // (entry QR removed from the held ticket)
   return await new Promise(res => c.toBlob(res, "image/png"));
 }
 
+function wrapLines(x, text, maxW) {
+  const words = String(text || "").split(/\s+/); const lines = []; let cur = "";
+  for (const w of words) { const t = cur ? cur + " " + w : w; if (x.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur); return lines;
+}
+async function makePosterBlob(d) {
+  const Wd = 800, Ht = 1150, s = 2, bh = 470;
+  const c = document.createElement("canvas"); c.width = Wd * s; c.height = Ht * s;
+  const x = c.getContext("2d"); x.scale(s, s);
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, Wd, Ht);
+  let drew = false;
+  if (d.bannerUrl && d.bannerType !== "video") {
+    try {
+      const img = await loadImg(d.bannerUrl);
+      const scale = Math.max(Wd / img.width, bh / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      x.save(); x.beginPath(); x.rect(0, 0, Wd, bh); x.clip();
+      x.drawImage(img, (Wd - w) / 2, (bh - h) / 2, w, h); x.restore(); drew = true;
+    } catch (e) { }
+  }
+  if (!drew) {
+    const g = x.createLinearGradient(0, 0, Wd, bh); g.addColorStop(0, "#008069"); g.addColorStop(1, "#04B08F");
+    x.fillStyle = g; x.fillRect(0, 0, Wd, bh);
+    x.textAlign = "center"; x.fillStyle = "#fff"; x.font = "800 150px system-ui,Arial"; x.fillText(d.emoji || "\u{1F39F}", Wd / 2, bh / 2 + 52); x.textAlign = "left";
+  }
+  let y = bh + 58;
+  x.fillStyle = "#008069"; x.font = "800 17px system-ui,Arial"; x.fillText("GLASSWINGS EVENTS", 50, y); y += 46;
+  x.fillStyle = "#0b1f1c"; x.font = "800 46px system-ui,Arial";
+  for (const ln of wrapLines(x, d.title, Wd - 100).slice(0, 3)) { x.fillText(ln, 50, y); y += 54; }
+  y += 6;
+  x.fillStyle = "#3a4a47"; x.font = "500 24px system-ui,Arial";
+  if (d.dateStr) { x.fillText("\u{1F4C5}  " + d.dateStr, 50, y); y += 36; }
+  if (d.place) { for (const ln of wrapLines(x, "\u{1F4CD}  " + d.place, Wd - 100).slice(0, 2)) { x.fillText(ln, 50, y); y += 34; } }
+  const qrSize = 300, qy = Ht - qrSize - 86;
+  x.strokeStyle = "#e6ebe9"; x.beginPath(); x.moveTo(50, qy - 34); x.lineTo(Wd - 50, qy - 34); x.stroke();
+  x.textAlign = "center";
+  x.fillStyle = "#008069"; x.font = "800 26px system-ui,Arial"; x.fillText("SCAN TO BUY TICKETS", Wd / 2, qy - 6);
+  try { const qr = await loadImg("https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=0&data=" + encodeURIComponent(d.link)); x.drawImage(qr, (Wd - qrSize) / 2, qy + 6, qrSize, qrSize); } catch (e) { }
+  x.fillStyle = "#5a6b67"; x.font = "500 18px system-ui,Arial"; x.fillText("glass-wings.com", Wd / 2, qy + qrSize + 40);
+  x.textAlign = "left";
+  return await new Promise(res => c.toBlob(res, "image/png"));
+}
 async function uploadPhoto(userId, file) {
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const path = `${userId}/${Date.now()}.${ext}`;
@@ -1744,20 +1786,20 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   const print = () => {
     const w = window.open("", "_blank", "width=460,height=720"); if (!w) return;
     w.document.write(`<!doctype html><html><head><title>Glasswings Ticket</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>
-      *{box-sizing:border-box} body{font-family:system-ui,Arial,sans-serif;margin:0;padding:24px;background:#eef2f1;color:#0b1f1c}
-      .t{max-width:420px;margin:0 auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.12)}
-      .hd{background:linear-gradient(135deg,#0E8C7F,#13B3A0);color:#fff;padding:22px 22px 26px}
-      .br{font-size:11px;letter-spacing:3px;font-weight:700;opacity:.85}
-      .ti{font-size:24px;font-weight:800;margin-top:8px;line-height:1.2}
-      .mt{font-size:13.5px;opacity:.95;margin-top:8px}
-      .bd{padding:22px;position:relative}
-      .tear{border-top:2px dashed #d9e2df;margin:0 -22px 18px}
+      *{box-sizing:border-box} body{font-family:system-ui,Arial,sans-serif;margin:0;padding:24px;background:#eef2f1;color:#fff}
+      .t{max-width:420px;margin:0 auto;background:#0C1A16;border-radius:20px;overflow:hidden;box-shadow:0 12px 34px rgba(0,0,0,.25)}
+      .hd{padding:22px 22px 20px;border-left:6px solid #2FD4A8}
+      .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#2FD4A8}
+      .ti{font-size:26px;font-weight:900;margin-top:8px;line-height:1.15;color:#fff}
+      .mt{font-size:13.5px;color:rgba(255,255,255,.9);margin-top:8px}
+      .bd{padding:0 22px 22px;position:relative}
+      .tear{border-top:2px dashed rgba(255,255,255,.22);margin:0 -22px 18px}
       .row{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
-      .lbl{font-size:11px;letter-spacing:1px;color:#5a6b67;text-transform:uppercase;margin-top:12px}
-      .val{font-size:18px;font-weight:800;color:#0b1f1c}
-      .code{font-size:24px;font-weight:800;letter-spacing:3px;color:#0E8C7F;font-family:ui-monospace,monospace}
-      .qr{width:120px;height:120px;border:1px solid #e6ebe9;border-radius:12px}
-      .ft{text-align:center;font-size:12px;color:#5a6b67;margin-top:16px}
+      .lbl{font-size:10px;letter-spacing:1.5px;color:#2FD4A8;text-transform:uppercase;margin-top:12px;font-weight:800}
+      .val{font-size:18px;font-weight:800;color:#fff}
+      .code{font-size:20px;font-weight:800;letter-spacing:2px;color:#2FD4A8;font-family:ui-monospace,monospace}
+      .qr{width:128px;height:128px;border-radius:12px;background:#fff;padding:7px}
+      .ft{text-align:center;font-size:12px;color:rgba(255,255,255,.55);margin-top:18px}
     </style></head><body><div class="t">
       <div class="hd"><div class="br">G L A S S W I N G S</div><div class="ti">${escapeHtml((e.emoji || "🎟️") + " " + e.title)}</div>${e.event_date ? `<div class="mt">📅 ${escapeHtml(e.event_date)}</div>` : ""}${place ? `<div class="mt">📍 ${escapeHtml(place)}</div>` : ""}</div>
       <div class="bd"><div class="tear"></div>
@@ -1765,7 +1807,7 @@ function MyTicket({ event: e, profile, rows, onClose }) {
           <div class="lbl">Attendee</div><div class="val">${escapeHtml(name)}</div>
           <div class="lbl">Tickets</div><div class="val">${qty}</div>
           <div class="lbl">Ticket code</div><div class="code">${code}</div>
-        </div><img class="qr" src="${qr}" alt="QR"/></div>
+        </div></div>
         <div class="ft">Show this ticket at entry · Glasswings community</div>
       </div></div>
       <script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`);
@@ -1787,34 +1829,36 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   };
   return (
     <Sheet onClose={onClose}>
-      <div style={{ borderRadius: 20, overflow: "hidden", boxShadow: "0 12px 34px rgba(0,0,0,.16)", marginBottom: 16, background: "#fff" }}>
-        <div style={{ background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", padding: "20px 20px 24px" }}>
-          <div style={{ fontSize: 10.5, letterSpacing: 3, fontWeight: 800, opacity: .9 }}>G L A S S W I N G S</div>
-          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8, lineHeight: 1.2 }}>{e.emoji} {e.title}</div>
-          {e.event_date && <div style={{ fontSize: 13.5, marginTop: 10, opacity: .96, display: "flex", gap: 7, alignItems: "center" }}><Calendar size={15} />{e.event_date}</div>}
-          {place && <div style={{ fontSize: 13.5, marginTop: 5, opacity: .96, display: "flex", gap: 7, alignItems: "flex-start" }}><MapPin size={15} style={{ marginTop: 1, flexShrink: 0 }} />{place}</div>}
+      <div style={{ borderRadius: 20, overflow: "hidden", boxShadow: "0 16px 40px rgba(0,0,0,.3)", marginBottom: 16, background: "#0C1A16" }}>
+        <div style={{ position: "relative" }}>
+          {e.banner_url
+            ? <div style={{ position: "relative", height: 150 }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: 150, objectFit: "cover", display: "block" }} /><div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,rgba(12,26,22,.15),rgba(12,26,22,.92))" }} /></div>
+            : <div style={{ height: 110, background: "linear-gradient(135deg,#063b32,#0C1A16)" }} />}
+          <div style={{ position: "absolute", left: 20, right: 20, bottom: 14 }}>
+            <div style={{ fontSize: 10.5, letterSpacing: 4, fontWeight: 800, color: "#2FD4A8" }}>G L A S S W I N G S</div>
+            <div style={{ fontSize: 25, fontWeight: 900, color: "#fff", lineHeight: 1.15, marginTop: 4, textShadow: "0 2px 8px rgba(0,0,0,.5)" }}>{e.emoji} {e.title}</div>
+          </div>
         </div>
-        <div style={{ position: "relative", height: 22, background: "#fff" }}>
-          <div style={{ position: "absolute", top: "50%", left: -11, width: 22, height: 22, borderRadius: "50%", background: W.bg, transform: "translateY(-50%)" }} />
-          <div style={{ position: "absolute", top: "50%", right: -11, width: 22, height: 22, borderRadius: "50%", background: W.bg, transform: "translateY(-50%)" }} />
-          <div style={{ position: "absolute", top: "50%", left: 16, right: 16, borderTop: `2px dashed ${W.line}`, transform: "translateY(-50%)" }} />
+        <div style={{ padding: "16px 20px 4px", color: "#fff" }}>
+          {e.event_date && <div style={{ fontSize: 13.5, marginBottom: 6, display: "flex", gap: 9, alignItems: "center" }}><Calendar size={15} color="#2FD4A8" />{e.event_date}</div>}
+          {place && <div style={{ fontSize: 13.5, marginBottom: 6, display: "flex", gap: 9, alignItems: "flex-start", color: "rgba(255,255,255,.92)" }}><MapPin size={15} color="#2FD4A8" style={{ marginTop: 1, flexShrink: 0 }} />{place}</div>}
+        </div>
+        <div style={{ position: "relative", height: 24 }}>
+          <div style={{ position: "absolute", top: "50%", left: -12, width: 24, height: 24, borderRadius: "50%", background: W.bg, transform: "translateY(-50%)" }} />
+          <div style={{ position: "absolute", top: "50%", right: -12, width: 24, height: 24, borderRadius: "50%", background: W.bg, transform: "translateY(-50%)" }} />
+          <div style={{ position: "absolute", top: "50%", left: 18, right: 18, borderTop: "2px dashed rgba(255,255,255,.22)", transform: "translateY(-50%)" }} />
         </div>
         <div style={{ padding: "6px 20px 20px" }}>
-          <div style={{ fontSize: 10.5, letterSpacing: 1.5, color: W.soft, textTransform: "uppercase", fontWeight: 700 }}>Attendee</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: W.ink, marginTop: 2 }}>{name}</div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginTop: 16 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, letterSpacing: 1.5, color: W.soft, textTransform: "uppercase", fontWeight: 700 }}>Tickets</div>
-              <div style={{ fontSize: 26, fontWeight: 800, color: W.ink, lineHeight: 1.1 }}>{qty}</div>
-              <div style={{ fontSize: 10.5, letterSpacing: 1.5, color: W.soft, textTransform: "uppercase", fontWeight: 700, marginTop: 14 }}>Ticket code</div>
-              <div style={{ display: "inline-block", marginTop: 4, background: "#E7F6EF", color: W.teal, fontWeight: 800, letterSpacing: 1.5, fontFamily: "ui-monospace,monospace", fontSize: 16, padding: "5px 11px", borderRadius: 9 }}>{code}</div>
-            </div>
-            <div style={{ textAlign: "center", flexShrink: 0 }}>
-              <img src={qr} alt="QR" width={132} height={132} style={{ borderRadius: 12, border: `1px solid ${W.line}`, padding: 6, background: "#fff" }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: "#2FD4A8", textTransform: "uppercase", fontWeight: 800 }}>Attendee</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: "#fff", marginTop: 2, marginBottom: 14 }}>{name}</div>
+            <div style={{ display: "flex", gap: 32 }}>
+              <div><div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", textTransform: "uppercase", fontWeight: 700 }}>Tickets</div><div style={{ fontSize: 24, fontWeight: 800, color: "#fff" }}>{qty}</div></div>
+              <div style={{ minWidth: 0 }}><div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", textTransform: "uppercase", fontWeight: 700 }}>Code</div><div style={{ display: "inline-block", marginTop: 4, fontSize: 17, fontWeight: 800, color: "#08130F", background: "#2FD4A8", fontFamily: "ui-monospace,monospace", letterSpacing: 1, padding: "5px 12px", borderRadius: 8 }}>{code}</div></div>
             </div>
           </div>
-          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 16, textAlign: "center", borderTop: `1px solid ${W.line}`, paddingTop: 12 }}>Show this ticket at entry</div>
         </div>
+        <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>Show this ticket at entry</div>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={print} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}><Printer size={16} />Print</button>
@@ -2256,13 +2300,25 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
 function EventShare({ event }) {
   const link = `${window.location.origin}/?event=${event.id}`;
   const [copied, setCopied] = useState(false);
+  const [poster, setPoster] = useState(false);
   const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(link)}`;
   const copy = () => { try { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
   const share = async () => { try { if (navigator.share) await navigator.share({ title: event.title, text: `Check out ${event.title} on Glasswings`, url: link }); else copy(); } catch {} };
+  const makePoster = async () => {
+    setPoster(true);
+    try {
+      const place = [event.venue, event.city].filter(Boolean).join(", ");
+      const blob = await makePosterBlob({ emoji: event.emoji, title: event.title, dateStr: event.event_date, place, bannerUrl: event.banner_url, bannerType: event.banner_type, link });
+      const file = new File([blob], "event-poster.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: event.title });
+      else { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${(event.title || "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-poster.png`; a.click(); URL.revokeObjectURL(url); }
+    } catch (e) { }
+    setPoster(false);
+  };
   return (
     <div>
-      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Share this event</label>
-      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Anyone who opens this link or scans the code lands straight on this event.</div>
+      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Share &amp; sell tickets</label>
+      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Anyone who opens this link or scans the code lands on this event and can buy a ticket.</div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         <input readOnly value={link} onFocus={e => e.target.select()} style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 12.5, color: W.ink, background: W.bg }} />
         <button onClick={copy} style={btn(W.teal, "#fff")}>{copied ? "Copied ✓" : "Copy"}</button>
@@ -2271,11 +2327,12 @@ function EventShare({ event }) {
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <img src={qr} alt="Event QR code" width={120} height={120} style={{ borderRadius: 10, border: `1px solid ${W.line}` }} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 13, color: W.ink, fontWeight: 600, marginBottom: 6 }}>QR code</div>
+          <div style={{ fontSize: 13, color: W.ink, fontWeight: 700, marginBottom: 2 }}>Scan to buy tickets</div>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Print it on flyers or show it at your stall.</div>
           <a href={qr} target="_blank" rel="noreferrer" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, textDecoration: "none", fontSize: 13 }}>Open / save QR</a>
-          <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Print it on flyers or show it at the door.</div>
         </div>
       </div>
+      <button onClick={makePoster} disabled={poster} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 12, opacity: poster ? .6 : 1 }}><ImageIcon size={16} />{poster ? "Building poster…" : "Download event poster"}</button>
     </div>
   );
 }
@@ -2631,7 +2688,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticket-ui ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticket-pro ✅</div>
       </div>
     </div>
   );
