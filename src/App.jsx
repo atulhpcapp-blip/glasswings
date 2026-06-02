@@ -763,15 +763,21 @@ function Main({ user }) {
     const rows = rooms.map(r => ({ group_type: "room", group_id: r.id, sender_id: user.id, body, media_type, ...extra }));
     await supabase.from("messages").insert(rows);
   };
-  const createEvent = async (d, dates) => {
+  const createEvent = async (d, dates, addonsList) => {
     const list = (dates && dates.length) ? dates : [d.event_date].filter(Boolean);
     if (!list.length) list.push("");
     const sid = list.length > 1 ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) : null;
-    let firstId = null;
+    let firstId = null; const ids = [];
     for (const dt of list) {
       const { data: ins, error } = await supabase.from("events").insert({ ...d, event_date: dt, host_id: user.id, series_id: sid }).select("id").single();
       if (error) return setNotice(error.message);
       if (!firstId) firstId = ins?.id;
+      if (ins?.id) ids.push(ins.id);
+    }
+    if (addonsList && addonsList.length && ids.length) {
+      const rows = [];
+      ids.forEach(id => addonsList.forEach(a => { if ((a.name || "").trim()) rows.push({ event_id: id, name: a.name.trim(), price: Number(a.price) || 0 }); }));
+      if (rows.length) await supabase.from("event_addons").insert(rows);
     }
     const line = [list[0], [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
     await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${list.length > 1 ? ` (${list.length} dates)` : ""}${line ? "\n" + line : ""}`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image", event_ref: firstId });
@@ -849,7 +855,7 @@ function Main({ user }) {
     <>
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-      {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
@@ -927,7 +933,7 @@ function Chats({ chats, onOpen, onExplore }) {
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
   const [cat, setCat] = useState("All");
   const [city, setCity] = useState("All");
   const [hl, setHl] = useState(null);
@@ -981,10 +987,10 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
                   {(e.venue || e.city) && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>}
                   <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Users size={13} />{counts[e.id] || 0} going</span>
                 </div>
-                {((e.inclusions && e.inclusions.length) || (e.exclusions && e.exclusions.length)) ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10 }}>
-                    {(e.inclusions || []).map(x => <span key={"i" + x} style={{ fontSize: 12.5, color: W.teal, display: "flex", alignItems: "center", gap: 4 }}><Check size={13} />{x}</span>)}
-                    {(e.exclusions || []).map(x => <span key={"e" + x} style={{ fontSize: 12.5, color: "#C0392B", display: "flex", alignItems: "center", gap: 4 }}><X size={12} />{x}</span>)}
+                {((addonsMap?.[e.id] || []).length || (e.exclusions && e.exclusions.length)) ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10 }}>
+                    {(e.exclusions || []).map(x => <span key={"e" + x} style={{ fontSize: 13, color: "#C0392B", display: "flex", alignItems: "center", gap: 6 }}><X size={13} />{x}</span>)}
+                    {(addonsMap?.[e.id] || []).map(a => <span key={"a" + a.id} style={{ fontSize: 13, color: W.teal, display: "flex", alignItems: "center", gap: 6 }}><Check size={14} />{a.name}{a.price > 0 ? <span style={{ color: W.soft }}>· ₹{a.price}</span> : <span style={{ color: W.soft }}>· Free</span>}</span>)}
                   </div>
                 ) : null}
                 {has ? (
@@ -1951,6 +1957,28 @@ function CheckInSheet({ event, onClose }) {
     </div>
   );
 }
+function AddonDraft({ value, onChange }) {
+  const [name, setName] = useState(""); const [price, setPrice] = useState("");
+  const inp = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink };
+  const add = () => { const n = name.trim(); if (!n) return; onChange([...value, { name: n, price: Number(price) || 0 }]); setName(""); setPrice(""); };
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: W.ink, marginBottom: 2 }}>What's included (add-ons)</div>
+      <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Each is priced separately (₹0 = free). Buyers pick these at checkout.</div>
+      {value.map((a, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0", borderTop: `1px solid ${W.line}` }}>
+          <span style={{ fontSize: 14, color: W.ink }}>{a.name} · <b style={{ color: a.price > 0 ? W.teal : W.soft }}>{a.price > 0 ? `₹${a.price}` : "Free"}</b></span>
+          <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onChange(value.filter((_, j) => j !== i))} />
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Welcome drink" style={{ ...inp, flex: 1, minWidth: 0 }} />
+        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹" inputMode="numeric" style={{ ...inp, width: 64 }} />
+        <button onClick={add} style={btn(W.ink, "#fff")}><Plus size={14} />Add</button>
+      </div>
+    </div>
+  );
+}
 function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, onDelPerk }) {
   const [txt, setTxt] = useState("");
   const add = (lbl) => { const n = (lbl || "").trim(); if (!n) return; if (!value.includes(n)) onChange([...value, n]); if (!library.some(p => p.label === n)) onAddPerk(kind, n); setTxt(""); };
@@ -1973,7 +2001,7 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
 }
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], inclusions: [], exclusions: [] };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
@@ -1999,7 +2027,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: dates[0] || f.date, venue: f.venue, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, inclusions: f.inclusions, exclusions: f.exclusions }, dates);
+    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: dates[0] || f.date, venue: f.venue, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -2074,8 +2102,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
           )}
           <input value={f.venue} onChange={e => setF({ ...f, venue: e.target.value })} placeholder="Venue / address" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <textarea value={f.terms} onChange={e => setF({ ...f, terms: e.target.value })} rows={2} placeholder="Terms & conditions (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
-          <PerkPicker kind="inclusion" label="What's included" color={W.teal} value={f.inclusions} onChange={v => setF({ ...f, inclusions: v })} library={(perksList || []).filter(p => p.kind === "inclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
           <PerkPicker kind="exclusion" label="Not included" color="#C0392B" value={f.exclusions} onChange={v => setF({ ...f, exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
+          <AddonDraft value={f.addons} onChange={v => setF({ ...f, addons: v })} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
             <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
@@ -2363,7 +2391,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • step-b2b ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • addons-incl ✅</div>
       </div>
     </div>
   );
