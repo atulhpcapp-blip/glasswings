@@ -407,7 +407,7 @@ function PublicLanding() {
                 {e.description && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 4, lineHeight: 1.4 }}>{e.description}</div>}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
                   {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
-                  {(e.venue || e.city) && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>}
+                  {(e.venue || e.city) && (e.venue_lat ? <a href={`https://www.google.com/maps/search/?api=1&query=${e.venue_lat},${e.venue_lng}`} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} style={{ display: "flex", gap: 5, alignItems: "center", color: W.teal, textDecoration: "none" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")} · Directions</a> : <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>)}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 14 }}>
                   <span style={{ fontWeight: 800, color: W.teal, fontSize: 15 }}>{priceFrom(e)}</span>
@@ -989,7 +989,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
                   {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
-                  {(e.venue || e.city) && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>}
+                  {(e.venue || e.city) && (e.venue_lat ? <a href={`https://www.google.com/maps/search/?api=1&query=${e.venue_lat},${e.venue_lng}`} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} style={{ display: "flex", gap: 5, alignItems: "center", color: W.teal, textDecoration: "none" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")} · Directions</a> : <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>)}
                   <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Users size={13} />{counts[e.id] || 0} going</span>
                 </div>
                 {((addonsMap?.[e.id] || []).length || (e.exclusions && e.exclusions.length)) ? (
@@ -2010,6 +2010,44 @@ function CheckInSheet({ event, onClose }) {
     </div>
   );
 }
+function VenueAutocomplete({ value, onChange }) {
+  const [q, setQ] = useState(value || "");
+  const [sug, setSug] = useState([]);
+  const [open, setOpen] = useState(false);
+  const tref = useRef();
+  const run = (text) => {
+    setQ(text);
+    onChange({ venue: text, lat: null, lng: null });
+    clearTimeout(tref.current);
+    if (text.trim().length < 3) { setSug([]); return; }
+    tref.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(text)}&limit=5`);
+        const j = await r.json();
+        setSug(j.features || []); setOpen(true);
+      } catch { setSug([]); }
+    }, 350);
+  };
+  const label = (p) => [p.name, p.street && !p.name?.includes(p.street) ? p.street : null, p.city, p.state].filter(Boolean).join(", ");
+  const pick = (f) => {
+    const p = f.properties; const lbl = label(p); const [lng, lat] = f.geometry.coordinates;
+    setQ(lbl); onChange({ venue: lbl, lat, lng }); setSug([]); setOpen(false);
+  };
+  return (
+    <div style={{ position: "relative", marginBottom: 10 }}>
+      <input value={q} onChange={e => run(e.target.value)} onFocus={() => sug.length && setOpen(true)} placeholder="Venue / address — start typing to search" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", boxSizing: "border-box" }} />
+      {open && sug.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 10, marginTop: 4, zIndex: 20, boxShadow: "0 6px 20px rgba(0,0,0,.12)", overflow: "hidden" }}>
+          {sug.map((f, i) => (
+            <div key={i} onClick={() => pick(f)} style={{ padding: "10px 12px", fontSize: 13.5, color: W.ink, cursor: "pointer", borderTop: i ? `1px solid ${W.line}` : "none", display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <MapPin size={14} style={{ marginTop: 2, flexShrink: 0, color: W.soft }} />{label(f.properties)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function AddonDraft({ value, onChange }) {
   const [name, setName] = useState(""); const [price, setPrice] = useState("");
   const inp = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink };
@@ -2054,7 +2092,7 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
 }
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
@@ -2081,7 +2119,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
+    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -2157,7 +2195,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
               <div style={{ fontSize: 12.5, color: W.soft }}>{buildDates().length ? `Creates ${buildDates().length} ${f.repeat} event${buildDates().length === 1 ? "" : "s"}.` : "Pick a start and end date."}</div>
             </div>
           )}
-          <input value={f.venue} onChange={e => setF({ ...f, venue: e.target.value })} placeholder="Venue / address" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <VenueAutocomplete value={f.venue} onChange={({ venue, lat, lng }) => setF({ ...f, venue, venueLat: lat, venueLng: lng })} />
           <textarea value={f.terms} onChange={e => setF({ ...f, terms: e.target.value })} rows={2} placeholder="Terms & conditions (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
           <PerkPicker kind="exclusion" label="Not included" color="#C0392B" value={f.exclusions} onChange={v => setF({ ...f, exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
           <AddonDraft value={f.addons} onChange={v => setF({ ...f, addons: v })} />
@@ -2555,7 +2593,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • cron ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • location ✅</div>
       </div>
     </div>
   );
