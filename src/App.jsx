@@ -1045,12 +1045,17 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
 /* ---------------- explore ---------------- */
 function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
   const admin = ["admin", "superadmin"].includes(profile?.role);
-  const list = rooms.filter(r => admin || !r.gender_restrict || r.gender_restrict === "any" || r.gender_restrict === "couple" || r.gender_restrict === profile?.gender);
+  const [city, setCity] = useState("all");
+  const cityList = Array.from(new Set(rooms.map(r => r.city).filter(Boolean))).sort();
+  const list = rooms.filter(r => admin || !r.gender_restrict || r.gender_restrict === "any" || r.gender_restrict === "couple" || r.gender_restrict === profile?.gender)
+    .filter(r => city === "all" || (r.city || "") === city);
+  const chip = (v, label) => <button key={v} onClick={() => setCity(v)} style={{ padding: "6px 13px", borderRadius: 16, border: `1px solid ${city === v ? W.teal : W.line}`, background: city === v ? W.teal : "#fff", color: city === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>{label}</button>;
   return (
     <div>
       <TopBar title="Explore Rooms" />
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-        {list.length === 0 && <Center>No rooms yet. Create one from the Admin tab.</Center>}
+        {cityList.length > 0 && <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{chip("all", "All cities")}{cityList.map(c => chip(c, c))}</div>}
+        {list.length === 0 && <Center>No rooms here yet.</Center>}
         {list.map(r => {
           const has = canAccess(r);
           const womenFree = r.price_monthly > 0 && profile?.gender !== "male";
@@ -1059,7 +1064,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
               <div style={{ display: "flex", gap: 13 }}>
                 <Avatar room={r} size={50} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: W.ink, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>{r.name}{r.gender_restrict === "female" && <span style={{ background: "#FCE7F1", color: W.pink, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>WOMEN ONLY</span>}{r.gender_restrict === "male" && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>MEN ONLY</span>}{r.gender_restrict === "couple" && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>COUPLES</span>}</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: W.ink, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>{r.name}{r.gender_restrict === "female" && <span style={{ background: "#FCE7F1", color: W.pink, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>WOMEN ONLY</span>}{r.gender_restrict === "male" && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>MEN ONLY</span>}{r.gender_restrict === "couple" && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>COUPLES</span>}{r.city && <span style={{ background: "#EEF2F1", color: W.soft, fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 10 }}>{r.city}</span>}</div>
                   <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{r.description}</div>
                   <div style={{ color: W.soft, fontSize: 12.5, marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}><Users size={13} />{counts[r.id] || 0} members</div>
                 </div>
@@ -1327,7 +1332,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
+      {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
         : seg === "dash" ? <Dashboard />
         : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
@@ -1512,11 +1517,11 @@ function AdminBroadcast({ events, onBroadcast, onBroadcastEvent, onSendDM, onSen
     </div>
   );
 }
-function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
+function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
-  const [f, setF] = useState({ emoji: "💬", name: "", price: "", desc: "", gender: "any" });
-  const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "", gender: "any" });
-  const create = async () => { if (!f.name) return; await onCreate({ name: f.name, emoji: f.emoji || "💬", price_monthly: Number(f.price) || 0, description: f.desc, gender_restrict: f.gender || "any" }); reset(); setCreating(false); };
+  const [f, setF] = useState({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "" });
+  const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "" });
+  const create = async () => { if (!f.name) return; await onCreate({ name: f.name, emoji: f.emoji || "💬", price_monthly: Number(f.price) || 0, description: f.desc, gender_restrict: f.gender || "any", city: lockCity || f.city || null }); reset(); setCreating(false); };
   return (
     <div style={{ padding: 14 }}>
       {creating ? (
@@ -1538,6 +1543,12 @@ function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
             <option value="male">Men only</option>
             <option value="couple">Couples</option>
           </select>
+          {lockCity ? <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>City: <b style={{ color: W.ink }}>{lockCity}</b></div> : (
+            <select value={f.city} onChange={e => setF({ ...f, city: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", background: "#fff", color: W.ink, marginBottom: 14 }}>
+              <option value="">All cities (no city)</option>
+              {(cities || []).map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+            </select>
+          )}
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
             <button onClick={create} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Create</button>
@@ -1551,7 +1562,7 @@ function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
           <div key={r.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={r} size={44} />
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 7 }}>{r.name}{r.auto_join && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>FREE ROOM</span>}</div><div style={{ fontSize: 13, color: W.soft }}>{r.price_monthly === 0 ? "Free" : `₹${r.price_monthly}/mo`}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 7 }}>{r.name}{r.auto_join && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>FREE ROOM</span>}</div><div style={{ fontSize: 13, color: W.soft }}>{r.price_monthly === 0 ? "Free" : `₹${r.price_monthly}/mo`}{r.city ? ` · ${r.city}` : ""}</div></div>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === r.id ? null : r.id)} />
             </div>
             {manage === r.id && (
@@ -1559,6 +1570,13 @@ function AdminRooms({ rooms, onCreate, onUpdate, onDelete }) {
                 <RoomName room={r} onUpdate={onUpdate} />
                 <RoomPhoto room={r} onUpdate={onUpdate} />
                 <PinEditor room={r} onUpdate={onUpdate} />
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>City</label>
+                  <select value={r.city || ""} onChange={e => onUpdate(r.id, { city: e.target.value || null })} disabled={!!lockCity} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff", color: W.ink, marginTop: 6, opacity: lockCity ? .6 : 1 }}>
+                    <option value="">All cities (no city)</option>
+                    {(cities || []).map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
                 <div>
                   <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Who can join</label>
                   <select value={r.gender_restrict || "any"} onChange={e => onUpdate(r.id, { gender_restrict: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff", color: W.ink, marginTop: 6 }}>
@@ -2391,7 +2409,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • addons-incl ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • rooms-city ✅</div>
       </div>
     </div>
   );
