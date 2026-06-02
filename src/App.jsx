@@ -623,7 +623,7 @@ function Main({ user }) {
   const capOf = (k) => isSuper || perms.some(p => myRoles.includes(p.role) && p[k]);
   const isAdmin = isSuper || myRoles.includes("admin");
   const isStaff = isSuper || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
-  const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics"), editMembers: capOf("can_edit_members") };
+  const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics"), editMembers: capOf("can_edit_members"), stamps: capOf("can_stamps") };
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id);
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
@@ -1338,7 +1338,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} isSuper={isSuper} cities={cities} />}
+                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} />}
     </div>
   );
 }
@@ -1348,7 +1348,17 @@ function RoleBadges({ roles }) {
   if (!rs.length) return null;
   return <>{rs.map(r => { const b = ROLE_BADGE[r]; return <span key={r} style={{ background: b.bg, color: b.c, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>{b.t}</span>; })}</>;
 }
-const CAP_LIST = [["can_rooms", "Manage rooms"], ["can_host", "Host events"], ["can_analytics", "See their event analytics"], ["can_broadcast", "Send broadcasts"], ["can_view_members", "View members"], ["can_edit_members", "Edit member profiles"], ["can_add", "Add members to rooms"], ["can_remove", "Remove members from rooms"], ["show_age", "See age"], ["show_area", "See area"], ["show_city", "See city"], ["show_profession", "See profession"]];
+const CAP_LIST = [["can_rooms", "Manage rooms"], ["can_host", "Host events"], ["can_analytics", "See their event analytics"], ["can_broadcast", "Send broadcasts"], ["can_view_members", "View members"], ["can_edit_members", "Edit member profiles"], ["can_stamps", "Award stamps"], ["can_add", "Add members to rooms"], ["can_remove", "Remove members from rooms"], ["show_age", "See age"], ["show_area", "See area"], ["show_city", "See city"], ["show_profession", "See profession"]];
+function StampBadge({ count, size = "sm" }) {
+  const n = count || 0; const tier = Math.floor(n / 5);
+  const big = size === "lg";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: "#FEF6E0", color: "#B45309", fontWeight: 800, fontSize: big ? 15 : 11.5, padding: big ? "5px 11px" : "2px 8px", borderRadius: 12 }}>★ {n}</span>
+      {tier > 0 && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontWeight: 800, fontSize: big ? 13 : 10.5, padding: big ? "5px 10px" : "2px 7px", borderRadius: 12 }}>Tier {tier}</span>}
+    </span>
+  );
+}
 const STAFF_ROLES = ["admin", "subadmin", "organiser", "promoter"];
 function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
   const [list, setList] = useState(null);
@@ -2274,13 +2284,17 @@ function EditMemberSheet({ member, isSuper, cities, onClose, onSaved }) {
     </div>
   );
 }
-function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, isSuper, cities }) {
+function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
   const [editing, setEditing] = useState(null);
   const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all"); const [q, setQ] = useState("");
   const reload = () => supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
   useEffect(() => { reload(); }, []);
+  const award = async (uid, amount, note) => {
+    setList(l => l.map(m => m.id === uid ? { ...m, stamps: (Number(m.stamps) || 0) + amount } : m));
+    await supabase.rpc("award_stamp", { p_user: uid, p_amount: amount, p_note: note || null });
+  };
   if (list === null) return <Center>loading members…</Center>;
   const ageBand = a => { a = Number(a); if (!a) return null; if (a < 25) return "18-24"; if (a < 35) return "25-34"; if (a < 45) return "35-44"; return "45+"; };
   const profs = Array.from(new Set(list.map(m => m.profession).filter(Boolean))).sort();
@@ -2345,6 +2359,16 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
               <span style={{ color: W.soft }}>Events attended: <b style={{ color: W.ink }}>{m.events_attended || 0}</b></span>
               {m.last_event && <span style={{ color: W.soft }}>Last: <b style={{ color: W.ink }}>{m.last_event}</b></span>}
               {m.income != null && <span style={{ color: W.soft }}>Income: <b style={{ color: W.teal }}>₹{Math.round((m.income || 0) / 100)}</b></span>}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
+              <StampBadge count={m.stamps} />
+              {canStamps && (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => award(m.id, -1, "manual")} title="Remove a stamp" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "5px 11px", fontSize: 16, lineHeight: 1 }}>−</button>
+                  <button onClick={() => award(m.id, 1, "manual")} title="Give a stamp" style={{ ...btn("#fff", "#B45309"), border: "1px solid #F0D9A8", padding: "5px 10px", fontSize: 12.5 }}>★ +1</button>
+                  <button onClick={() => { const a = window.prompt("Give how many stamps? (use a negative number to deduct)"); const n = parseInt(a); if (!n) return; const note = window.prompt("Note (optional, e.g. great host energy):") || "manual"; award(m.id, n, note); }} title="Award a custom amount" style={{ ...btn(W.ink, "#fff"), padding: "5px 10px", fontSize: 12.5 }}>Award…</button>
+                </div>
+              )}
             </div>
             {rooms && rooms.length > 0 && (canAdd || canRemove) && (
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
@@ -2431,6 +2455,8 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
   const roleLabel = { admin: "Admin (Owner)", subadmin: "Sub-admin", member: "Member" }[profile?.role] || "Member";
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
+  const [stamps, setStamps] = useState(null);
+  useEffect(() => { supabase.rpc("my_stamps").then(({ data }) => setStamps(data ?? 0)); }, []);
   const change = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     setBusy(true);
@@ -2453,6 +2479,15 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 7, background: "#E7F6EF", color: W.teal, fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{profile?.role !== "member" && <Crown size={13} />}{roleLabel}</span>
           </div>
         </div>
+        {stamps !== null && (
+          <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, color: W.ink }}>Your stamps</div>
+              <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2 }}>Earned from attending meetups and from the team. Every 5 = a new tier.</div>
+            </div>
+            <StampBadge count={stamps} size="lg" />
+          </div>
+        )}
         {paidSubs.length > 0 && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16 }}>
             <div style={{ fontWeight: 700, color: W.ink, marginBottom: 4 }}>Your subscriptions</div>
@@ -2468,7 +2503,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • edit-sex ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • stamps ✅</div>
       </div>
     </div>
   );
