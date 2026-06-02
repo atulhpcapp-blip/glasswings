@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient.js";
 import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Image as ImageIcon
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Check, Image as ImageIcon
 } from "lucide-react";
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
@@ -755,7 +755,7 @@ function Main({ user }) {
     await supabase.from("messages").insert(rows);
   };
   const createEvent = async (d) => {
-    const { data: ins, error } = await supabase.from("events").insert(d).select("id").single();
+    const { data: ins, error } = await supabase.from("events").insert({ ...d, host_id: user.id }).select("id").single();
     if (error) return setNotice(error.message);
     const line = [d.event_date, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
     await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${line ? "\n" + line : ""}`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image", event_ref: ins?.id || null });
@@ -1213,8 +1213,71 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 }
 
 /* ---------------- admin ---------------- */
+function Dashboard() {
+  const [sum, setSum] = useState(null), [staff, setStaff] = useState([]), [evts, setEvts] = useState([]);
+  useEffect(() => {
+    supabase.rpc("income_summary").then(({ data }) => setSum(data?.[0] || null));
+    supabase.rpc("staff_stats").then(({ data }) => setStaff(data || []));
+    supabase.rpc("event_analytics").then(({ data }) => setEvts(data || []));
+  }, []);
+  const rupees = p => "₹" + Math.round((p || 0) / 100).toLocaleString("en-IN");
+  const card = (label, value, accent) => (
+    <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: "14px 16px", flex: "1 1 140px" }}>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: accent || W.ink }}>{value}</div>
+    </div>
+  );
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginBottom: 10 }}>Income</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+        {card("Total revenue", sum ? rupees(sum.total_revenue) : "…", W.teal)}
+        {card("This month", sum ? rupees(sum.month_revenue) : "…", W.teal)}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
+        {card("Ticket sales", sum ? rupees(sum.ticket_revenue) : "…")}
+        {card("Subscriptions", sum ? rupees(sum.sub_revenue) : "…")}
+        {card("Paying members", sum ? sum.paying_members : "…")}
+        {card("Active subs", sum ? sum.active_subs : "…")}
+      </div>
+
+      <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginBottom: 10 }}>Team — hosted vs attended</div>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden", marginBottom: 20 }}>
+        {staff.length === 0 ? <Center>No staff yet.</Center> : staff.map((s, i) => (
+          <div key={s.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", borderTop: i ? `1px solid ${W.line}` : "none" }}>
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{s.full_name || "—"}</span><RoleBadges roles={s.roles} /></div>
+            <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
+              <span style={{ color: W.soft }}>Hosted <b style={{ color: W.ink }}>{s.hosted}</b></span>
+              <span style={{ color: W.soft }}>Attended <b style={{ color: W.ink }}>{s.attended}</b></span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginBottom: 10 }}>Events</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {evts.length === 0 ? <Center>No events yet.</Center> : evts.map(e => (
+          <div key={e.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+              <div style={{ fontWeight: 700, color: W.ink, minWidth: 0 }}>{e.title}</div>
+              <div style={{ fontWeight: 800, color: W.teal, whiteSpace: "nowrap" }}>{rupees(e.revenue)}</div>
+            </div>
+            <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2 }}>{[e.city, e.event_date].filter(Boolean).join(" · ")}{e.host_name ? ` · by ${e.host_name}` : ""}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", marginTop: 8, fontSize: 13 }}>
+              <span style={{ color: W.soft }}>Tickets <b style={{ color: W.ink }}>{e.tickets_sold}</b></span>
+              <span style={{ color: W.soft }}>Attended <b style={{ color: W.ink }}>{e.attended}</b></span>
+              <span style={{ color: W.soft }}>Guys <b style={{ color: W.ink }}>{e.guys}</b></span>
+              <span style={{ color: W.soft }}>Girls <b style={{ color: W.ink }}>{e.girls}</b></span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
   const tabs = [
+    ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
@@ -1233,6 +1296,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         ))}
       </div>
       {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
+        : seg === "dash" ? <Dashboard />
         : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
@@ -1797,12 +1861,51 @@ function EventSendSheet({ event, members, onSend, onClose }) {
     </Sheet>
   );
 }
+function CheckInSheet({ event, onClose }) {
+  const [list, setList] = useState(null);
+  const load = () => supabase.rpc("event_attendees", { p_event: event.id }).then(({ data }) => setList(data || []));
+  useEffect(() => { load(); }, [event.id]);
+  const toggle = async (uid, present) => {
+    setList(l => l.map(x => x.user_id === uid ? { ...x, present } : x));
+    await supabase.rpc("set_attendance", { p_event: event.id, p_user: uid, p_present: present });
+  };
+  const seg = (label, rows) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: W.soft, margin: "4px 0 8px" }}>{label} ({rows.length})</div>
+      {rows.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>None</div> : rows.map(m => (
+        <div key={m.user_id} onClick={() => toggle(m.user_id, !m.present)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 0", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}>
+          <PersonAvatar url={m.avatar_url} name={m.full_name} size={38} />
+          <span style={{ flex: 1, minWidth: 0, fontWeight: 600, color: W.ink, fontSize: 14.5 }}>{m.full_name || "—"}</span>
+          <div style={{ width: 26, height: 26, borderRadius: "50%", border: `2px solid ${m.present ? W.teal : W.line}`, background: m.present ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>{m.present && <Check size={15} />}</div>
+        </div>
+      ))}
+    </div>
+  );
+  const guys = (list || []).filter(m => m.gender === "male");
+  const girls = (list || []).filter(m => m.gender === "female");
+  const others = (list || []).filter(m => m.gender !== "male" && m.gender !== "female");
+  const present = (list || []).filter(m => m.present).length;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: "24px 12px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 560, width: "100%", padding: "20px 20px 28px", margin: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, minWidth: 0 }}>Check-in · {event.title}</div>
+          <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 16 }}>{list === null ? "Loading…" : `${present} of ${list.length} checked in`}</div>
+        {list === null ? <Center>loading…</Center> : list.length === 0 ? <Center>No ticket holders yet.</Center> : (
+          <>{seg("Guys", guys)}{seg("Girls", girls)}{others.length > 0 && seg("Other", others)}</>
+        )}
+      </div>
+    </div>
+  );
+}
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
   const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "" });
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
-  const [members, setMembers] = useState([]); const [sendFor, setSendFor] = useState(null);
+  const [members, setMembers] = useState([]); const [sendFor, setSendFor] = useState(null); const [checkIn, setCheckIn] = useState(null);
   useEffect(() => { supabase.from("profiles").select("id, gender, member_details(age, profession, city)").then(({ data }) => setMembers(data || [])); }, []);
   const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "" });
   const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
@@ -1811,6 +1914,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   return (
     <div style={{ padding: 14 }}>
       {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
+      {checkIn && <CheckInSheet event={checkIn} onClose={() => setCheckIn(null)} />}
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
         <div onClick={() => setTaxOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
           <span style={{ fontWeight: 700, color: W.ink }}>Categories &amp; cities</span>
@@ -1872,6 +1976,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
               <Avatar room={{ emoji: e.emoji }} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div></div>
               <button onClick={() => onBroadcastEvent(e)} title="Post to all group chats" style={{ ...btn(W.teal, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Zap size={13} />Groups</button>
+              <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 11.5 }}><Users size={13} />Check-in</button>
               <button onClick={() => setSendFor(e)} title="Send privately to members (with filters)" style={{ ...btn(W.ink, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Send size={13} />Members</button>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === e.id ? null : e.id)} />
             </div>
@@ -2116,7 +2221,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • rbac ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • step-b ✅</div>
       </div>
     </div>
   );
