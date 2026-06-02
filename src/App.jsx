@@ -623,7 +623,7 @@ function Main({ user }) {
   const capOf = (k) => isSuper || perms.some(p => myRoles.includes(p.role) && p[k]);
   const isAdmin = isSuper || myRoles.includes("admin");
   const isStaff = isSuper || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
-  const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics") };
+  const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics"), editMembers: capOf("can_edit_members") };
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id);
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
@@ -1338,7 +1338,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} isSuper={isSuper} />}
+                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} isSuper={isSuper} cities={cities} />}
     </div>
   );
 }
@@ -1348,7 +1348,7 @@ function RoleBadges({ roles }) {
   if (!rs.length) return null;
   return <>{rs.map(r => { const b = ROLE_BADGE[r]; return <span key={r} style={{ background: b.bg, color: b.c, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>{b.t}</span>; })}</>;
 }
-const CAP_LIST = [["can_rooms", "Manage rooms"], ["can_host", "Host events"], ["can_analytics", "See their event analytics"], ["can_broadcast", "Send broadcasts"], ["can_view_members", "View members"], ["can_add", "Add members to rooms"], ["can_remove", "Remove members from rooms"], ["show_age", "See age"], ["show_area", "See area"], ["show_city", "See city"], ["show_profession", "See profession"]];
+const CAP_LIST = [["can_rooms", "Manage rooms"], ["can_host", "Host events"], ["can_analytics", "See their event analytics"], ["can_broadcast", "Send broadcasts"], ["can_view_members", "View members"], ["can_edit_members", "Edit member profiles"], ["can_add", "Add members to rooms"], ["can_remove", "Remove members from rooms"], ["show_age", "See age"], ["show_area", "See area"], ["show_city", "See city"], ["show_profession", "See profession"]];
 const STAFF_ROLES = ["admin", "subadmin", "organiser", "promoter"];
 function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
   const [list, setList] = useState(null);
@@ -2219,16 +2219,65 @@ function RoomPhoto({ room, onUpdate }) {
     </div>
   );
 }
-function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canRemove, isSuper }) {
+function EditMemberSheet({ member, isSuper, cities, onClose, onSaved }) {
+  const [name, setName] = useState(member.full_name || "");
+  const [age, setAge] = useState(member.age || "");
+  const [area, setArea] = useState(member.area || "");
+  const [city, setCity] = useState(member.city || "");
+  const [prof, setProf] = useState(member.profession || "");
+  const [phone, setPhone] = useState(member.phone || "");
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const inp = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", color: W.ink, marginBottom: 10, boxSizing: "border-box" };
+  const save = async () => {
+    setBusy(true); setErr("");
+    const { error } = await supabase.rpc("staff_update_member", { p_user: member.id, p_full_name: name, p_age: String(age || ""), p_area: area, p_city: city, p_profession: prof, p_phone: isSuper ? phone : null });
+    setBusy(false);
+    if (error) return setErr(error.message);
+    onSaved();
+  };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: "24px 12px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 460, width: "100%", padding: "20px 20px 24px", margin: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>Edit member</div>
+          <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        <label style={{ fontSize: 12, color: W.soft }}>Full name</label>
+        <input value={name} onChange={e => setName(e.target.value)} style={inp} />
+        <label style={{ fontSize: 12, color: W.soft }}>Age</label>
+        <input value={age} onChange={e => setAge(e.target.value.replace(/\D/g, ""))} inputMode="numeric" style={inp} />
+        <label style={{ fontSize: 12, color: W.soft }}>Area / locality</label>
+        <input value={area} onChange={e => setArea(e.target.value)} style={inp} />
+        <label style={{ fontSize: 12, color: W.soft }}>City</label>
+        <input value={city} onChange={e => setCity(e.target.value)} list="gw-cities" style={inp} />
+        <datalist id="gw-cities">{(cities || []).map(c => <option key={c.id || c.name} value={c.name} />)}</datalist>
+        <label style={{ fontSize: 12, color: W.soft }}>Profession</label>
+        <input value={prof} onChange={e => setProf(e.target.value)} style={inp} />
+        {isSuper && <>
+          <label style={{ fontSize: 12, color: W.soft }}>Phone (private to you)</label>
+          <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" style={inp} />
+        </>}
+        {err && <div style={{ color: "#C0392B", fontSize: 13, marginBottom: 8 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+          <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, isSuper, cities }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
+  const [editing, setEditing] = useState(null);
   const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all"); const [q, setQ] = useState("");
-  useEffect(() => { supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, []);
+  const reload = () => supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
+  useEffect(() => { reload(); }, []);
   if (list === null) return <Center>loading members…</Center>;
   const ageBand = a => { a = Number(a); if (!a) return null; if (a < 25) return "18-24"; if (a < 35) return "25-34"; if (a < 45) return "35-44"; return "45+"; };
   const profs = Array.from(new Set(list.map(m => m.profession).filter(Boolean))).sort();
   const areas = Array.from(new Set(list.map(m => m.area).filter(Boolean))).sort();
-  const cities = Array.from(new Set(list.map(m => m.city).filter(Boolean))).sort();
+  const cityVals = Array.from(new Set(list.map(m => m.city).filter(Boolean))).sort();
   const hasField = k => list.some(m => m[k] != null && m[k] !== "");
   const filtered = list.filter(m => {
     if (g !== "all" && m.gender !== g) return false;
@@ -2245,6 +2294,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
   const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
   return (
     <div style={{ padding: 14 }}>
+      {editing && <EditMemberSheet member={editing} isSuper={isSuper} cities={cities} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 12, marginBottom: 12 }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder={isSuper ? "Search by name or phone…" : "Search by name…"} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink, marginBottom: 10 }} />
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
@@ -2254,7 +2304,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
           {hasField("age") && <select value={age} onChange={e => setAge(e.target.value)} style={sel}><option value="all">All ages</option><option>18-24</option><option>25-34</option><option>35-44</option><option>45+</option></select>}
           {hasField("profession") && <select value={prof} onChange={e => setProf(e.target.value)} style={sel}><option value="all">All work</option>{profs.map(p => <option key={p} value={p}>{p}</option>)}</select>}
           {hasField("area") && <select value={area} onChange={e => setArea(e.target.value)} style={sel}><option value="all">All areas</option>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select>}
-          {hasField("city") && <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{cities.map(c => <option key={c} value={c}>{c}</option>)}</select>}
+          {hasField("city") && <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{cityVals.map(c => <option key={c} value={c}>{c}</option>)}</select>}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
@@ -2273,6 +2323,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
                   : <div style={{ fontSize: 12.5, color: W.soft }}>{{ male: "Man", female: "Woman", other: "—" }[m.gender] || "—"}</div>}
               </div>
               {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "7px 10px", fontSize: 12.5, textDecoration: "none" }}><MessageCircle size={14} />WhatsApp</a>}
+              {canEdit && <button onClick={() => setEditing(m)} title="Edit profile" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 10px", fontSize: 12.5 }}><Settings size={14} /></button>}
               <button onClick={() => { const text = window.prompt(`Send an in-app message to ${m.full_name || "this member"}:`); if (text && text.trim()) onSendDM([m.id], text); }} style={{ ...btn(W.teal, "#fff"), padding: "7px 10px", fontSize: 12.5 }}><Send size={14} /></button>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 13, color: W.soft }}>
@@ -2409,7 +2460,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • rooms-city ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • edit-members ✅</div>
       </div>
     </div>
   );
