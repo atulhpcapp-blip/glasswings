@@ -24,6 +24,7 @@ export default async function handler(req, res) {
   const body = (typeof req.body === "object" && req.body) ? req.body : await readBody(req);
   const { access_token, purpose = "ticket", event_id, ticket_type_id, room_id } = body;
   const qty = Math.max(1, parseInt(body.quantity) || 1);
+  const addonSel = Array.isArray(body.addons) ? body.addons : [];   // [{id, qty}]
 
   try {
     const { data: ures } = await sb.auth.getUser(access_token);
@@ -32,7 +33,23 @@ export default async function handler(req, res) {
     const { data: me } = await sb.from("profiles").select("gender, founding_member").eq("id", uid).single();
 
     let amount = 0;          // paise
+    let addonRows = [];      // resolved [{id,name,price,qty}]
     const notes = { purpose, uid };
+
+    // resolve add-ons from the DB (never trust client prices)
+    async function resolveAddons() {
+      if (!event_id || !addonSel.length) return 0;
+      const ids = addonSel.map(a => a.id).filter(Boolean);
+      if (!ids.length) return 0;
+      const { data: defs } = await sb.from("event_addons").select("*").eq("event_id", event_id).in("id", ids);
+      let sum = 0;
+      (defs || []).forEach(d => {
+        const want = addonSel.find(a => a.id === d.id);
+        const aq = Math.max(0, parseInt(want?.qty) || 0);
+        if (aq > 0) { addonRows.push({ id: d.id, name: d.name, price: d.price, qty: aq }); sum += (d.price || 0) * aq; }
+      });
+      return sum;
+    }
 
     if (purpose === "ticket") {
       if (ticket_type_id) {
@@ -46,7 +63,6 @@ export default async function handler(req, res) {
           const { data: s } = await sb.from("room_subscriptions").select("room_id").eq("user_id", uid).eq("room_id", t.discount_room_id).eq("status", "active");
           if ((s || []).length) { const d = t.discount_kind === "flat" ? t.discount_value : Math.round(net * t.discount_value / 100); net = Math.max(0, net - d); }
         }
-        if (net <= 0) return res.status(400).json({ error: "This ticket is free for you — just tap Get." });
 
         // capacity + men/women balance enforced server-side
         const { data: ev } = await sb.from("events").select("balance_on, men_per_woman, men_open_start").eq("id", event_id).single();
@@ -65,14 +81,19 @@ export default async function handler(req, res) {
           if (budget - male - qty < 0) return res.status(409).json({ error: "Men's tickets aren't open yet — they release as more women join." });
         }
 
-        amount = net * qty * 100;
-        Object.assign(notes, { event_id, ticket_type_id, qty });
+        const addonSum = await resolveAddons();
+        const subtotal = net * qty + addonSum;
+        if (subtotal <= 0) return res.status(400).json({ error: "This ticket is free for you — just tap Get." });
+        amount = subtotal * 100;
+        Object.assign(notes, { event_id, ticket_type_id, qty, addons: addonRows.length });
       } else {
         const { data: ev } = await sb.from("events").select("ticket_price").eq("id", event_id).single();
         const net = ev?.ticket_price || 0;
-        if (net <= 0) return res.status(400).json({ error: "This event is free — just tap Get." });
-        amount = net * qty * 100;
-        Object.assign(notes, { event_id, qty });
+        const addonSum = await resolveAddons();
+        const subtotal = net * qty + addonSum;
+        if (subtotal <= 0) return res.status(400).json({ error: "This event is free — just tap Get." });
+        amount = subtotal * 100;
+        Object.assign(notes, { event_id, qty, addons: addonRows.length });
       }
     } else if (purpose === "room") {
       const { data: r } = await sb.from("rooms").select("*").eq("id", room_id).single();
@@ -98,6 +119,7 @@ export default async function handler(req, res) {
     await sb.from("payments").insert({
       user_id: uid, purpose, event_id: event_id || null, ticket_type_id: ticket_type_id || null,
       room_id: room_id || null, quantity: qty, amount, status: "created", razorpay_order_id: order.id,
+      addons: addonRows,
     });
 
     return res.status(200).json({ order_id: order.id, amount, currency: "INR", key_id: KEY });
