@@ -768,12 +768,13 @@ function Main({ user }) {
     await supabase.from("messages").insert(rows);
   };
   const createEvent = async (d, dates, addonsList) => {
-    const list = (dates && dates.length) ? dates : [d.event_date].filter(Boolean);
-    if (!list.length) list.push("");
+    let list = (dates && dates.length) ? dates : [{ label: d.event_date || "", iso: d.event_at || null }];
+    list = list.map(x => typeof x === "string" ? { label: x, iso: null } : x);
+    if (!list.length) list = [{ label: "", iso: null }];
     const sid = list.length > 1 ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) : null;
     let firstId = null; const ids = [];
     for (const dt of list) {
-      const { data: ins, error } = await supabase.from("events").insert({ ...d, event_date: dt, host_id: user.id, series_id: sid }).select("id").single();
+      const { data: ins, error } = await supabase.from("events").insert({ ...d, event_date: dt.label, event_at: dt.iso || null, host_id: user.id, series_id: sid }).select("id").single();
       if (error) return setNotice(error.message);
       if (!firstId) firstId = ins?.id;
       if (ins?.id) ids.push(ins.id);
@@ -783,7 +784,7 @@ function Main({ user }) {
       ids.forEach(id => addonsList.forEach(a => { if ((a.name || "").trim()) rows.push({ event_id: id, name: a.name.trim(), price: Number(a.price) || 0 }); }));
       if (rows.length) await supabase.from("event_addons").insert(rows);
     }
-    const line = [list[0], [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+    const line = [list[0].label, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
     await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${list.length > 1 ? ` (${list.length} dates)` : ""}${line ? "\n" + line : ""}`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image", event_ref: firstId });
     await load();
   };
@@ -2063,14 +2064,15 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }); };
   const withTime = lbl => lbl + (f.time ? ` · ${f.time}` : "");
+  const occ = iso => ({ label: withTime(fmtDay(iso)), iso });
   const buildDates = () => {
-    if (f.repeat === "none") return f.date ? [f.date] : [];
-    if (f.repeat === "custom") return f.customDates.filter(Boolean).map(d => withTime(fmtDay(d)));
+    if (f.repeat === "none") return f.startDate ? [occ(f.startDate)] : [];
+    if (f.repeat === "custom") return f.customDates.filter(Boolean).map(occ);
     if (!f.startDate || !f.endDate) return [];
     const out = []; const d = new Date(f.startDate + "T00:00:00"); const end = new Date(f.endDate + "T00:00:00");
     let n = 0;
     while (n < 60 && d <= end) {
-      out.push(withTime(fmtDay(d.toISOString().slice(0, 10))));
+      out.push(occ(d.toISOString().slice(0, 10)));
       if (f.repeat === "weekly") d.setDate(d.getDate() + 7); else d.setMonth(d.getMonth() + 1);
       n++;
     }
@@ -2079,7 +2081,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: dates[0] || f.date, venue: f.venue, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
+    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -2131,7 +2133,10 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
             ))}
           </div>
           {f.repeat === "none" ? (
-            <input value={f.date} onChange={e => setF({ ...f, date: e.target.value })} placeholder="Date & time (e.g. Sat 14 Jun · 8PM)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <label style={{ flex: "1 1 150px", fontSize: 12, color: W.soft }}>Date<input type="date" value={f.startDate} onChange={e => setF({ ...f, startDate: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink }} /></label>
+              <label style={{ flex: "1 1 110px", fontSize: 12, color: W.soft }}>Time<input value={f.time} onChange={e => setF({ ...f, time: e.target.value })} placeholder="8PM" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none" }} /></label>
+            </div>
           ) : f.repeat === "custom" ? (
             <div style={{ marginBottom: 10 }}>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
@@ -2550,7 +2555,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • promoters ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • cron ✅</div>
       </div>
     </div>
   );
