@@ -48,7 +48,7 @@ async function makeTicketBlob(d) {
   const c = document.createElement("canvas"); c.width = Wd * s; c.height = Ht * s;
   const x = c.getContext("2d"); x.scale(s, s);
   x.fillStyle = "#ffffff"; rr(x, 0, 0, Wd, Ht, 30); x.fill();
-  const g = x.createLinearGradient(0, 0, Wd, 200); g.addColorStop(0, "#0E8C7F"); g.addColorStop(1, "#13B3A0");
+  const g = x.createLinearGradient(0, 0, Wd, 200); g.addColorStop(0, "#008069"); g.addColorStop(1, "#04B08F");
   x.save(); rr(x, 0, 0, Wd, 200, 30); x.clip(); x.fillStyle = g; x.fillRect(0, 0, Wd, 200); x.restore();
   x.fillStyle = "rgba(255,255,255,.85)"; x.font = "700 20px system-ui,Arial"; x.fillText("G L A S S W I N G S", 44, 54);
   x.fillStyle = "#fff"; x.font = "800 42px system-ui,Arial"; x.fillText(fitText(x, ((d.emoji ? d.emoji + " " : "") + d.title), Wd - 88), 44, 120);
@@ -59,7 +59,7 @@ async function makeTicketBlob(d) {
   x.fillStyle = "#5a6b67"; x.font = "600 22px system-ui,Arial"; x.fillText("TICKETS", 44, 388);
   x.fillStyle = "#0b1f1c"; x.font = "800 34px system-ui,Arial"; x.fillText(String(d.qty), 44, 430);
   x.fillStyle = "#5a6b67"; x.font = "600 22px system-ui,Arial"; x.fillText("TICKET CODE", 44, 494);
-  x.fillStyle = "#0E8C7F"; x.font = "800 40px ui-monospace,monospace"; x.fillText(d.code, 44, 538);
+  x.fillStyle = "#008069"; x.font = "800 40px ui-monospace,monospace"; x.fillText(d.code, 44, 538);
   x.strokeStyle = "#d9e2df"; x.setLineDash([12, 10]); x.beginPath(); x.moveTo(Wd - 300, 240); x.lineTo(Wd - 300, Ht - 40); x.stroke(); x.setLineDash([]);
   try { const qr = await loadImg("https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=" + encodeURIComponent(d.code)); x.drawImage(qr, Wd - 258, 300, 200, 200); } catch (e) { }
   x.fillStyle = "#5a6b67"; x.font = "500 18px system-ui,Arial"; x.fillText("Show at entry", Wd - 244, 528);
@@ -1733,11 +1733,13 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose })
 }
 function MyTicket({ event: e, profile, rows, onClose }) {
   const [busy, setBusy] = useState(false);
-  const qty = rows.reduce((s, r) => s + (r.quantity || 1), 0);
-  const code = "GW-" + ((rows[0]?.id || "").replace(/-/g, "").slice(0, 8).toUpperCase());
+  const name = profile?.full_name || profile?.name || "Member";
+  const qty = rows.reduce((s, r) => s + (r.quantity || 1), 0) || 1;
+  const base = (rows[0]?.id || ((profile?.id || "") + (e.id || ""))).replace(/-/g, "");
+  const code = "GW-" + (base.slice(0, 8).toUpperCase() || "TICKET");
   const place = [e.venue, e.city].filter(Boolean).join(", ");
-  const qr = "https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=" + encodeURIComponent(code);
-  const summary = `🎟️ Glasswings Ticket\n${e.title}\n${e.event_date || ""}${place ? `\n${place}` : ""}\nName: ${profile?.name || ""}\nTickets: ${qty}\nCode: ${code}`;
+  const qr = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=" + encodeURIComponent(code);
+  const summary = `🎟️ Glasswings Ticket\n${e.title}\n${e.event_date || ""}${place ? `\n${place}` : ""}\nName: ${name}\nTickets: ${qty}\nCode: ${code}`;
   const wa = "https://wa.me/?text=" + encodeURIComponent(summary);
   const print = () => {
     const w = window.open("", "_blank", "width=460,height=720"); if (!w) return;
@@ -1760,7 +1762,7 @@ function MyTicket({ event: e, profile, rows, onClose }) {
       <div class="hd"><div class="br">G L A S S W I N G S</div><div class="ti">${escapeHtml((e.emoji || "🎟️") + " " + e.title)}</div>${e.event_date ? `<div class="mt">📅 ${escapeHtml(e.event_date)}</div>` : ""}${place ? `<div class="mt">📍 ${escapeHtml(place)}</div>` : ""}</div>
       <div class="bd"><div class="tear"></div>
         <div class="row"><div>
-          <div class="lbl">Attendee</div><div class="val">${escapeHtml(profile?.name || "")}</div>
+          <div class="lbl">Attendee</div><div class="val">${escapeHtml(name)}</div>
           <div class="lbl">Tickets</div><div class="val">${qty}</div>
           <div class="lbl">Ticket code</div><div class="code">${code}</div>
         </div><img class="qr" src="${qr}" alt="QR"/></div>
@@ -1772,7 +1774,7 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   const shareWhatsApp = async () => {
     setBusy(true);
     try {
-      const blob = await makeTicketBlob({ emoji: e.emoji, title: e.title, dateStr: e.event_date, place, name: profile?.name, qty, code });
+      const blob = await makeTicketBlob({ emoji: e.emoji, title: e.title, dateStr: e.event_date, place, name, qty, code });
       const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: e.title, text: summary });
@@ -1785,27 +1787,33 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   };
   return (
     <Sheet onClose={onClose}>
-      <div style={{ borderRadius: 18, overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,.14)", marginBottom: 16, background: "#fff" }}>
-        <div style={{ background: "linear-gradient(135deg,#0E8C7F,#13B3A0)", color: "#fff", padding: "18px 18px 22px" }}>
-          <div style={{ fontSize: 10.5, letterSpacing: 3, fontWeight: 700, opacity: .85 }}>G L A S S W I N G S</div>
-          <div style={{ fontSize: 21, fontWeight: 800, marginTop: 7, lineHeight: 1.2 }}>{e.emoji} {e.title}</div>
-          {e.event_date && <div style={{ fontSize: 13, marginTop: 8, opacity: .96, display: "flex", gap: 6, alignItems: "center" }}><Calendar size={14} />{e.event_date}</div>}
-          {place && <div style={{ fontSize: 13, marginTop: 4, opacity: .96, display: "flex", gap: 6, alignItems: "center" }}><MapPin size={14} />{place}</div>}
+      <div style={{ borderRadius: 20, overflow: "hidden", boxShadow: "0 12px 34px rgba(0,0,0,.16)", marginBottom: 16, background: "#fff" }}>
+        <div style={{ background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", padding: "20px 20px 24px" }}>
+          <div style={{ fontSize: 10.5, letterSpacing: 3, fontWeight: 800, opacity: .9 }}>G L A S S W I N G S</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8, lineHeight: 1.2 }}>{e.emoji} {e.title}</div>
+          {e.event_date && <div style={{ fontSize: 13.5, marginTop: 10, opacity: .96, display: "flex", gap: 7, alignItems: "center" }}><Calendar size={15} />{e.event_date}</div>}
+          {place && <div style={{ fontSize: 13.5, marginTop: 5, opacity: .96, display: "flex", gap: 7, alignItems: "flex-start" }}><MapPin size={15} style={{ marginTop: 1, flexShrink: 0 }} />{place}</div>}
         </div>
-        <div style={{ padding: 18 }}>
-          <div style={{ borderTop: `2px dashed ${W.line}`, margin: "0 -18px 16px" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 14 }}>
+        <div style={{ position: "relative", height: 22, background: "#fff" }}>
+          <div style={{ position: "absolute", top: "50%", left: -11, width: 22, height: 22, borderRadius: "50%", background: W.bg, transform: "translateY(-50%)" }} />
+          <div style={{ position: "absolute", top: "50%", right: -11, width: 22, height: 22, borderRadius: "50%", background: W.bg, transform: "translateY(-50%)" }} />
+          <div style={{ position: "absolute", top: "50%", left: 16, right: 16, borderTop: `2px dashed ${W.line}`, transform: "translateY(-50%)" }} />
+        </div>
+        <div style={{ padding: "6px 20px 20px" }}>
+          <div style={{ fontSize: 10.5, letterSpacing: 1.5, color: W.soft, textTransform: "uppercase", fontWeight: 700 }}>Attendee</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: W.ink, marginTop: 2 }}>{name}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, marginTop: 16 }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, letterSpacing: 1, color: W.soft, textTransform: "uppercase" }}>Attendee</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: W.ink }}>{profile?.name}</div>
-              <div style={{ fontSize: 10.5, letterSpacing: 1, color: W.soft, textTransform: "uppercase", marginTop: 10 }}>Tickets</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: W.ink }}>{qty}</div>
-              <div style={{ fontSize: 10.5, letterSpacing: 1, color: W.soft, textTransform: "uppercase", marginTop: 10 }}>Ticket code</div>
-              <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: 2, color: W.teal, fontFamily: "ui-monospace,monospace" }}>{code}</div>
+              <div style={{ fontSize: 10.5, letterSpacing: 1.5, color: W.soft, textTransform: "uppercase", fontWeight: 700 }}>Tickets</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: W.ink, lineHeight: 1.1 }}>{qty}</div>
+              <div style={{ fontSize: 10.5, letterSpacing: 1.5, color: W.soft, textTransform: "uppercase", fontWeight: 700, marginTop: 14 }}>Ticket code</div>
+              <div style={{ display: "inline-block", marginTop: 4, background: "#E7F6EF", color: W.teal, fontWeight: 800, letterSpacing: 1.5, fontFamily: "ui-monospace,monospace", fontSize: 16, padding: "5px 11px", borderRadius: 9 }}>{code}</div>
             </div>
-            <img src={qr} alt="QR" width={112} height={112} style={{ borderRadius: 10, border: `1px solid ${W.line}`, flexShrink: 0 }} />
+            <div style={{ textAlign: "center", flexShrink: 0 }}>
+              <img src={qr} alt="QR" width={132} height={132} style={{ borderRadius: 12, border: `1px solid ${W.line}`, padding: 6, background: "#fff" }} />
+            </div>
           </div>
-          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 14, textAlign: "center" }}>Show this ticket at entry</div>
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 16, textAlign: "center", borderTop: `1px solid ${W.line}`, paddingTop: 12 }}>Show this ticket at entry</div>
         </div>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
@@ -2623,7 +2631,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • events-ui2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticket-ui ✅</div>
       </div>
     </div>
   );
