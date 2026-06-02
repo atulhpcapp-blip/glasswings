@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     if (pay.status === "paid") return res.status(200).json({ ok: true });   // idempotent
 
     if (pay.purpose === "ticket") {
-      await sb.from("event_tickets").insert({ event_id: pay.event_id, user_id: uid, ticket_type_id: pay.ticket_type_id, quantity: pay.quantity, addons: pay.addons || [] });
+      await sb.from("event_tickets").insert({ event_id: pay.event_id, user_id: uid, ticket_type_id: pay.ticket_type_id, quantity: pay.quantity, addons: pay.addons || [], referrer_id: pay.referrer_id || null });
     } else if (pay.purpose === "room") {
       await sb.from("room_subscriptions").insert({ room_id: pay.room_id, user_id: uid, status: "active" });
     }
