@@ -493,7 +493,9 @@ function ProfileGate({ user, profile, reload }) {
   const fileRef = useRef(null);
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => { if (data) { setPhone(data.phone || ""); setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); } });
+      .then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); } });
+    supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => { if (data?.phone) setPhone(data.phone); });
   }, [user.id]);
   const pick = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -505,7 +507,8 @@ function ProfileGate({ user, profile, reload }) {
     setErr(""); if (!name || !phone || !age || !area || !prof || !city) return setErr("Please complete every field.");
     if (!avatar) return setErr("Please add a profile photo.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, phone, age: Number(age) || null, area, profession: prof, city });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city });
+    await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     setBusy(false);
     if (e1 || e2) return setErr((e1 || e2).message);
@@ -548,6 +551,7 @@ function Main({ user }) {
   const [rooms, setRooms] = useState([]);
   const [events, setEvents] = useState([]);
   const [subs, setSubs] = useState([]);
+  const [settings, setSettings] = useState({ admin_can_add: true, admin_can_remove: true, show_age: true, show_area: true, show_city: true, show_profession: true });
   const [subRows, setSubRows] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [mods, setMods] = useState([]);
@@ -570,7 +574,7 @@ function Main({ user }) {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -585,6 +589,7 @@ function Main({ user }) {
       supabase.from("messages").select("id").eq("group_type", "dm").eq("group_id", user.id).limit(1),
       supabase.rpc("event_ticket_stats"),
       supabase.rpc("ticket_type_sold"),
+      supabase.from("staff_settings").select("*").maybeSingle(),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     setSubs((sb || []).map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
@@ -594,6 +599,7 @@ function Main({ user }) {
     const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
     const es = {}; (estat || []).forEach(x => { es[x.event_id] = { male: Number(x.male_sold), female: Number(x.female_sold) }; }); setEventStats(es);
     const ts = {}; (tsold || []).forEach(x => { ts[x.ticket_type_id] = Number(x.sold); }); setTypeSold(ts);
+    if (stg) setSettings(stg);
     setCategories((opts || []).filter(o => o.kind === "category"));
     setCities((opts || []).filter(o => o.kind === "city"));
     const tm = {}; (tt || []).forEach(t => { if (!tm[t.event_id]) tm[t.event_id] = []; tm[t.event_id].push(t); }); setTicketTypes(tm);
@@ -602,7 +608,10 @@ function Main({ user }) {
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
 
-  const isAdmin = profile?.role === "admin";
+  const role = profile?.role || "member";
+  const isSuper = role === "superadmin";
+  const isAdmin = role === "admin" || role === "superadmin";
+  const isStaff = ["organiser", "subadmin", "admin", "superadmin"].includes(role);
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id);
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
@@ -685,6 +694,16 @@ function Main({ user }) {
     if (error) return setNotice(error.message);
     setNotice("Member added to the room.");
     await load();
+  };
+  const saveSettings = async (patch) => {
+    setSettings(s => ({ ...s, ...patch }));
+    const { error } = await supabase.from("staff_settings").update(patch).eq("id", true);
+    if (error) setNotice(error.message);
+  };
+  const setMemberRole = async (userId, newRole) => {
+    const { error } = await supabase.rpc("set_member_role", { p_user: userId, p_role: newRole });
+    if (error) return setNotice(error.message);
+    setNotice("Role updated.");
   };
   const removeRoom = async (userId, roomId) => {
     if (!window.confirm("Remove this member from the room? If they were on a paid subscription, billing will be cancelled too.")) return;
@@ -805,7 +824,7 @@ function Main({ user }) {
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
       {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-      {tab === "admin" && isAdmin && <Admin rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin role={role} isSuper={isSuper} settings={settings} onSaveSettings={saveSettings} onSetRole={setMemberRole} rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
@@ -818,7 +837,7 @@ function Main({ user }) {
         {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
         {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
-          <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isAdmin} width={SW} />
+          <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
             {twoPane ? (
               <>
@@ -842,7 +861,7 @@ function Main({ user }) {
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {screen}
       </div>
-      <Nav tab={tab} setTab={setTab} isAdmin={isAdmin} />
+      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} />
     </>
   );
 }
@@ -987,7 +1006,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
 
 /* ---------------- explore ---------------- */
 function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
-  const admin = profile?.role === "admin";
+  const admin = ["admin", "superadmin"].includes(profile?.role);
   const list = rooms.filter(r => admin || !r.gender_restrict || r.gender_restrict === "any" || r.gender_restrict === "couple" || r.gender_restrict === profile?.gender);
   return (
     <div>
@@ -1188,13 +1207,20 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 }
 
 /* ---------------- admin ---------------- */
-function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
-  const [seg, setSeg] = useState("rooms");
+function Admin({ role, isSuper, settings, onSaveSettings, onSetRole, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
+  const organiser = role === "organiser";
+  const mgr = role === "admin" || role === "subadmin" || isSuper;
+  const canAdd = isSuper || (mgr && settings?.admin_can_add);
+  const canRemove = isSuper || (mgr && settings?.admin_can_remove);
+  const tabs = organiser
+    ? [["events", "Events"], ["members", "Members"]]
+    : [["rooms", "Rooms"], ["events", "Events"], ["broadcast", "Send"], ["inbox", "Inbox"], ["members", "Members"], ...(isSuper ? [["team", "Team"]] : [])];
+  const [seg, setSeg] = useState(tabs[0][0]);
   return (
     <div>
-      <TopBar title="Admin Panel" />
+      <TopBar title={isSuper ? "Superadmin Panel" : "Admin Panel"} />
       <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9, overflowX: "auto" }}>
-        {[["rooms", "Rooms"], ["events", "Events"], ["broadcast", "Send"], ["inbox", "Inbox"], ["members", "Members"]].map(([v, l]) => (
+        {tabs.map(([v, l]) => (
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
@@ -1202,7 +1228,56 @@ function Admin({ rooms, events, categories, cities, ticketTypes, counts, onCreat
         : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
-              : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} />}
+              : seg === "team" ? <TeamPanel settings={settings} onSaveSettings={onSaveSettings} onSetRole={onSetRole} />
+                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={canAdd} canRemove={canRemove} isSuper={isSuper} />}
+    </div>
+  );
+}
+const ROLE_BADGE = { superadmin: { t: "Super Admin", c: "#7C3AED", bg: "#EFEAFB" }, admin: { t: "Admin", c: W.teal, bg: "#E7F6EF" }, subadmin: { t: "Sub-admin", c: "#0369A1", bg: "#E0F2FE" }, organiser: { t: "Organiser", c: "#B45309", bg: "#FEF3C7" }, member: null };
+function RoleBadge({ role }) {
+  const b = ROLE_BADGE[role]; if (!b) return null;
+  return <span style={{ background: b.bg, color: b.c, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>{b.t}</span>;
+}
+function TeamPanel({ settings, onSaveSettings, onSetRole }) {
+  const [list, setList] = useState(null);
+  const reload = () => supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
+  useEffect(() => { reload(); }, []);
+  const Toggle = ({ k, label }) => (
+    <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}>
+      <span style={{ fontSize: 14, color: W.ink }}>{label}</span>
+      <input type="checkbox" checked={!!settings?.[k]} onChange={e => onSaveSettings({ [k]: e.target.checked })} />
+    </label>
+  );
+  const sel = { padding: "7px 9px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: "14px 16px", marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, fontSize: 16, color: W.ink }}>What admins can do</div>
+        <Toggle k="admin_can_add" label="Admins can add members to rooms" />
+        <Toggle k="admin_can_remove" label="Admins can remove members from rooms" />
+        <div style={{ fontWeight: 800, fontSize: 15, color: W.ink, marginTop: 16 }}>What admins can see</div>
+        <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 2px" }}>Phone numbers are always private to you.</div>
+        <Toggle k="show_age" label="Show age" />
+        <Toggle k="show_area" label="Show area" />
+        <Toggle k="show_city" label="Show city" />
+        <Toggle k="show_profession" label="Show profession" />
+      </div>
+      <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginBottom: 8 }}>Team & roles</div>
+      {list === null ? <Center>loading…</Center> : list.map(m => (
+        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 12, border: `1px solid ${W.line}`, padding: "10px 12px", marginBottom: 8 }}>
+          <PersonAvatar url={m.avatar_url} name={m.full_name} size={40} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: W.ink, fontSize: 14.5, display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.full_name || "—"} <RoleBadge role={m.role} /></div>
+          </div>
+          {m.role === "superadmin" ? <span style={{ fontSize: 12, color: W.soft }}>You</span> :
+            <select value={m.role} onChange={async e => { await onSetRole(m.id, e.target.value); reload(); }} style={sel}>
+              <option value="member">Member</option>
+              <option value="organiser">Organiser</option>
+              <option value="subadmin">Sub-admin</option>
+              <option value="admin">Admin</option>
+            </select>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1811,85 +1886,86 @@ function RoomPhoto({ room, onUpdate }) {
     </div>
   );
 }
-function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom }) {
+function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canRemove, isSuper }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
   const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all"); const [q, setQ] = useState("");
-  useEffect(() => {
-    supabase.from("profiles").select("id, full_name, gender, role, avatar_url, member_details(phone, age, area, profession, city)").order("created_at", { ascending: false })
-      .then(({ data }) => setList(data || []));
-  }, []);
+  useEffect(() => { supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, []);
   if (list === null) return <Center>loading members…</Center>;
-  const det = m => m.member_details || {};
   const ageBand = a => { a = Number(a); if (!a) return null; if (a < 25) return "18-24"; if (a < 35) return "25-34"; if (a < 45) return "35-44"; return "45+"; };
-  const profs = Array.from(new Set(list.map(m => det(m).profession).filter(Boolean))).sort();
-  const areas = Array.from(new Set(list.map(m => det(m).area).filter(Boolean))).sort();
-  const cities = Array.from(new Set(list.map(m => det(m).city).filter(Boolean))).sort();
+  const profs = Array.from(new Set(list.map(m => m.profession).filter(Boolean))).sort();
+  const areas = Array.from(new Set(list.map(m => m.area).filter(Boolean))).sort();
+  const cities = Array.from(new Set(list.map(m => m.city).filter(Boolean))).sort();
+  const hasField = k => list.some(m => m[k] != null && m[k] !== "");
   const filtered = list.filter(m => {
-    const d = det(m);
     if (g !== "all" && m.gender !== g) return false;
-    if (age !== "all" && ageBand(d.age) !== age) return false;
-    if (prof !== "all" && d.profession !== prof) return false;
-    if (area !== "all" && d.area !== area) return false;
-    if (city !== "all" && d.city !== city) return false;
-    if (q.trim()) { const s = q.trim().toLowerCase(); if (!((m.full_name || "").toLowerCase().includes(s) || (d.phone || "").toLowerCase().includes(s))) return false; }
+    if (age !== "all" && ageBand(m.age) !== age) return false;
+    if (prof !== "all" && m.profession !== prof) return false;
+    if (area !== "all" && m.area !== area) return false;
+    if (city !== "all" && m.city !== city) return false;
+    if (q.trim()) { const s = q.trim().toLowerCase(); if (!((m.full_name || "").toLowerCase().includes(s) || (m.phone || "").toLowerCase().includes(s))) return false; }
     return true;
   });
-  const phones = filtered.map(m => det(m).phone).filter(Boolean);
   const messageAll = () => { if (!filtered.length) return; const text = window.prompt(`Send an in-app message to ${filtered.length} member${filtered.length === 1 ? "" : "s"}:`); if (text && text.trim()) onSendDM(filtered.map(m => m.id), text); };
   const sel = { padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
   const chip = (v, label) => <button key={v} onClick={() => setG(v)} style={{ padding: "7px 13px", borderRadius: 18, border: `1px solid ${g === v ? W.teal : W.line}`, background: g === v ? W.teal : "#fff", color: g === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{label}</button>;
+  const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
   return (
     <div style={{ padding: 14 }}>
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 12, marginBottom: 12 }}>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or phone…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink, marginBottom: 10 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder={isSuper ? "Search by name or phone…" : "Search by name…"} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink, marginBottom: 10 }} />
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
           {chip("all", "Everyone")}{chip("male", "Men")}{chip("female", "Women")}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select value={age} onChange={e => setAge(e.target.value)} style={sel}><option value="all">All ages</option><option>18-24</option><option>25-34</option><option>35-44</option><option>45+</option></select>
-          <select value={prof} onChange={e => setProf(e.target.value)} style={sel}><option value="all">All work</option>{profs.map(p => <option key={p} value={p}>{p}</option>)}</select>
-          <select value={area} onChange={e => setArea(e.target.value)} style={sel}><option value="all">All areas</option>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select>
-          <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{cities.map(c => <option key={c} value={c}>{c}</option>)}</select>
+          {hasField("age") && <select value={age} onChange={e => setAge(e.target.value)} style={sel}><option value="all">All ages</option><option>18-24</option><option>25-34</option><option>35-44</option><option>45+</option></select>}
+          {hasField("profession") && <select value={prof} onChange={e => setProf(e.target.value)} style={sel}><option value="all">All work</option>{profs.map(p => <option key={p} value={p}>{p}</option>)}</select>}
+          {hasField("area") && <select value={area} onChange={e => setArea(e.target.value)} style={sel}><option value="all">All areas</option>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select>}
+          {hasField("city") && <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{cities.map(c => <option key={c} value={c}>{c}</option>)}</select>}
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
-        <span style={{ fontSize: 13.5, color: W.soft }}><b style={{ color: W.ink }}>{filtered.length}</b> member{filtered.length === 1 ? "" : "s"} match</span>
+        <span style={{ fontSize: 13.5, color: W.soft }}><b style={{ color: W.ink }}>{filtered.length}</b> member{filtered.length === 1 ? "" : "s"}</span>
         <button onClick={messageAll} disabled={!filtered.length} style={{ ...btn(W.teal, "#fff"), opacity: filtered.length ? 1 : .5 }}><Send size={15} />Message {filtered.length}</button>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {filtered.map(m => {
-          const d = det(m);
-          return (
-            <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                <PersonAvatar url={m.avatar_url} name={m.full_name} size={42} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, color: W.ink }}>{m.full_name || "—"} {m.role !== "member" && <span style={{ fontSize: 11, color: W.teal }}>· {m.role}</span>}</div>
-                  <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{d.phone || "no phone"}</div>
-                </div>
-                <button onClick={() => { const text = window.prompt(`Send an in-app message to ${m.full_name || "this member"}:`); if (text && text.trim()) onSendDM([m.id], text); }} style={{ ...btn(W.teal, "#fff"), padding: "7px 11px", fontSize: 12.5 }}><Send size={14} />Message</button>
+        {filtered.map(m => (
+          <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+              <PersonAvatar url={m.avatar_url} name={m.full_name} size={42} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{m.full_name || "—"} <RoleBadge role={m.role} /></div>
+                {m.phone
+                  ? <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{m.phone}</div>
+                  : <div style={{ fontSize: 12.5, color: W.soft }}>{{ male: "Man", female: "Woman", other: "—" }[m.gender] || "—"}</div>}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 13, color: W.soft }}>
-                <span>Sex: {{ male: "M", female: "F", other: "—" }[m.gender] || "—"}</span>
-                <span>Age: {d.age || "—"}</span>
-                <span>Area: {d.area || "—"}</span>
-                <span>City: {d.city || "—"}</span>
-                <span>Work: {d.profession || "—"}</span>
-              </div>
-              {rooms && rooms.length > 0 && onGrantRoom && (
-                <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                  <select value={pick[m.id] || ""} onChange={e => setPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: 1, minWidth: 0 }}>
-                    <option value="">Pick a room…</option>
-                    {rooms.map(r => <option key={r.id} value={r.id}>{r.name}{r.price_monthly ? ` · ₹${r.price_monthly}/mo` : ""}</option>)}
-                  </select>
-                  <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onGrantRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn(W.ink, "#fff"), opacity: pick[m.id] ? 1 : .5 }}><Plus size={14} />Add</button>
-                  {onRemoveRoom && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onRemoveRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", opacity: pick[m.id] ? 1 : .5 }}>Remove</button>}
-                </div>
-              )}
+              {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "7px 10px", fontSize: 12.5, textDecoration: "none" }}><MessageCircle size={14} />WhatsApp</a>}
+              <button onClick={() => { const text = window.prompt(`Send an in-app message to ${m.full_name || "this member"}:`); if (text && text.trim()) onSendDM([m.id], text); }} style={{ ...btn(W.teal, "#fff"), padding: "7px 10px", fontSize: 12.5 }}><Send size={14} /></button>
             </div>
-          );
-        })}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 13, color: W.soft }}>
+              <span>Sex: {{ male: "M", female: "F", other: "—" }[m.gender] || "—"}</span>
+              {m.age != null && <span>Age: {m.age}</span>}
+              {m.area && <span>Area: {m.area}</span>}
+              {m.city && <span>City: {m.city}</span>}
+              {m.profession && <span>Work: {m.profession}</span>}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 6, fontSize: 13 }}>
+              <span style={{ color: W.soft }}>Events attended: <b style={{ color: W.ink }}>{m.events_attended || 0}</b></span>
+              {m.last_event && <span style={{ color: W.soft }}>Last: <b style={{ color: W.ink }}>{m.last_event}</b></span>}
+              {m.income != null && <span style={{ color: W.soft }}>Income: <b style={{ color: W.teal }}>₹{Math.round((m.income || 0) / 100)}</b></span>}
+            </div>
+            {rooms && rooms.length > 0 && (canAdd || canRemove) && (
+              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                <select value={pick[m.id] || ""} onChange={e => setPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: 1, minWidth: 0 }}>
+                  <option value="">Pick a room…</option>
+                  {rooms.map(r => <option key={r.id} value={r.id}>{r.name}{r.price_monthly ? ` · ₹${r.price_monthly}/mo` : ""}</option>)}
+                </select>
+                {canAdd && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onGrantRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn(W.ink, "#fff"), opacity: pick[m.id] ? 1 : .5 }}><Plus size={14} />Add</button>}
+                {canRemove && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onRemoveRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", opacity: pick[m.id] ? 1 : .5 }}>Remove</button>}
+              </div>
+            )}
+          </div>
+        ))}
         {filtered.length === 0 && <Center>No members match these filters.</Center>}
       </div>
     </div>
@@ -2000,7 +2076,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • search-legal ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • superadmin ✅</div>
       </div>
     </div>
   );
