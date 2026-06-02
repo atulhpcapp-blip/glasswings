@@ -554,6 +554,7 @@ function Main({ user }) {
   const [settings, setSettings] = useState({ admin_can_add: true, admin_can_remove: true, show_age: true, show_area: true, show_city: true, show_profession: true });
   const [perms, setPerms] = useState([]);
   const [perksList, setPerksList] = useState([]);
+  const [addons, setAddons] = useState({});
   const [subRows, setSubRows] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [mods, setMods] = useState([]);
@@ -576,7 +577,7 @@ function Main({ user }) {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }, { data: ad }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -594,6 +595,7 @@ function Main({ user }) {
       supabase.from("staff_settings").select("*").maybeSingle(),
       supabase.from("role_perms").select("*"),
       supabase.from("event_perks").select("*").order("label", { ascending: true }),
+      supabase.from("event_addons").select("*"),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     setSubs((sb || []).map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
@@ -606,6 +608,7 @@ function Main({ user }) {
     if (stg) setSettings(stg);
     if (rp) setPerms(rp);
     setPerksList(pk || []);
+    const am = {}; (ad || []).forEach(a => { if (!am[a.event_id]) am[a.event_id] = []; am[a.event_id].push(a); }); setAddons(am);
     setCategories((opts || []).filter(o => o.kind === "category"));
     setCities((opts || []).filter(o => o.kind === "city"));
     const tm = {}; (tt || []).forEach(t => { if (!tm[t.event_id]) tm[t.event_id] = []; tm[t.event_id].push(t); }); setTicketTypes(tm);
@@ -737,12 +740,15 @@ function Main({ user }) {
     if (open && open.type === "room" && open.id === roomId) setOpen(null);
     await load();
   };
-  const confirmPurchase = async (qty) => {
+  const confirmPurchase = async (qty, sel = []) => {
     const { event: e, type } = buyTarget;
     if (type) { const st = ticketStatus(type, e, eventStats, typeSold); if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? "These tickets are sold out." : "Men's tickets aren't open yet — they release as more women join."); } }
     const unit = type ? netPrice(type, subs) : e.ticket_price;
-    if (unit > 0) { setBuyTarget(null); return startPayment("ticket", { event_id: e.id, ticket_type_id: type ? type.id : null, quantity: qty }, () => setOpen({ id: e.id, type: "event" })); }
-    const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty });
+    const chosen = sel.filter(a => (a.qty || 0) > 0);
+    const addonTotal = chosen.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
+    const total = unit * qty + addonTotal;
+    if (total > 0) { setBuyTarget(null); return startPayment("ticket", { event_id: e.id, ticket_type_id: type ? type.id : null, quantity: qty, addons: chosen.map(a => ({ id: a.id, qty: a.qty })) }, () => setOpen({ id: e.id, type: "event" })); }
+    const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty, addons: chosen.map(a => ({ id: a.id, name: a.name, price: a.price, qty: a.qty })) });
     setBuyTarget(null);
     if (error) return setNotice(error.message);
     await load();
@@ -806,6 +812,8 @@ function Main({ user }) {
   const delOption = async (id) => { const { error } = await supabase.from("event_options").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
   const addPerk = async (kind, label) => { const n = (label || "").trim(); if (!n) return; const { error } = await supabase.from("event_perks").insert({ kind, label: n }); if (error && !String(error.message).includes("duplicate")) return; await load(); };
   const delPerk = async (id) => { await supabase.from("event_perks").delete().eq("id", id); await load(); };
+  const addAddon = async (eventId, d) => { const n = (d.name || "").trim(); if (!n) return; const { error } = await supabase.from("event_addons").insert({ event_id: eventId, name: n, price: Number(d.price) || 0 }); if (error) return setNotice(error.message); await load(); };
+  const delAddon = async (id) => { await supabase.from("event_addons").delete().eq("id", id); await load(); };
   const addTicketType = async (eventId, d) => { const { error } = await supabase.from("event_ticket_types").insert({ event_id: eventId, ...d }); if (error) return setNotice(error.message); await load(); };
   const delTicketType = async (id) => { const { error } = await supabase.from("event_ticket_types").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
 
@@ -842,7 +850,7 @@ function Main({ user }) {
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
       {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
@@ -852,7 +860,7 @@ function Main({ user }) {
     return (
       <>
         {notice && <Notice text={notice} onClose={() => setNotice("")} />}
-        {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
+        {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
         {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
           <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} />
@@ -874,7 +882,7 @@ function Main({ user }) {
   return (
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
-      {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
+      {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
       {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {screen}
@@ -1293,7 +1301,7 @@ function Dashboard() {
     </div>
   );
 }
-function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
+function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
@@ -1315,7 +1323,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
       </div>
       {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
         : seg === "dash" ? <Dashboard />
-        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -1594,16 +1602,20 @@ function Sheet({ children, onClose }) {
     </div>
   );
 }
-function TicketSheet({ target, profile, subs, onConfirm, onClose }) {
+function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose }) {
   const { event: e, type } = target;
   const orig = type ? type.price : e.ticket_price;
   const unit = type ? netPrice(type, subs) : e.ticket_price;
   const [qty, setQty] = useState(1);
   const [agree, setAgree] = useState(false);
+  const [addQ, setAddQ] = useState({});
   const needAgree = !!(e.terms && e.terms.trim());
-  const total = unit * qty;
+  const sel = addons.map(a => ({ ...a, qty: addQ[a.id] || 0 }));
+  const addonTotal = sel.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
+  const total = unit * qty + addonTotal;
   const canConfirm = !needAgree || agree;
   const stepBtn = { width: 34, height: 34, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 20, color: W.ink, cursor: "pointer", lineHeight: 1 };
+  const miniBtn = { width: 28, height: 28, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 17, color: W.ink, cursor: "pointer", lineHeight: 1 };
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 4 }}>{e.emoji} {e.title}</div>
@@ -1616,6 +1628,27 @@ function TicketSheet({ target, profile, subs, onConfirm, onClose }) {
           <button onClick={() => setQty(q => q + 1)} style={stepBtn}>+</button>
         </div>
       </div>
+      {addons.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 8 }}>Add-ons</div>
+          {addons.map(a => {
+            const q = addQ[a.id] || 0;
+            return (
+              <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderTop: `1px solid ${W.line}` }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: W.ink, fontSize: 14.5 }}>{a.name}</div>
+                  <div style={{ fontSize: 12.5, color: a.price > 0 ? W.teal : W.soft }}>{a.price > 0 ? `₹${a.price}` : "Free"}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <button onClick={() => setAddQ(s => ({ ...s, [a.id]: Math.max(0, q - 1) }))} style={miniBtn}>−</button>
+                  <span style={{ fontWeight: 700, minWidth: 18, textAlign: "center" }}>{q}</span>
+                  <button onClick={() => setAddQ(s => ({ ...s, [a.id]: q + 1 }))} style={miniBtn}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {needAgree && (
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 6 }}>Terms &amp; conditions</div>
@@ -1630,10 +1663,10 @@ function TicketSheet({ target, profile, subs, onConfirm, onClose }) {
         <span style={{ color: W.soft, fontSize: 14 }}>Total</span>
         <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : `₹${total}`}</span>
       </div>
-      {unit > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your ticket is issued the moment payment succeeds.</div>}
+      {total > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your ticket is issued the moment payment succeeds.</div>}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-        <button disabled={!canConfirm} onClick={() => onConfirm(qty)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{unit > 0 ? `Pay ₹${total}` : `Get ${qty} ticket${qty > 1 ? "s" : ""}`}</button>
+        <button disabled={!canConfirm} onClick={() => onConfirm(qty, sel)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? `Pay ₹${total}` : `Get ${qty} ticket${qty > 1 ? "s" : ""}`}</button>
       </div>
     </Sheet>
   );
@@ -1938,7 +1971,7 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
   const blankF = { emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], inclusions: [], exclusions: [] };
   const [f, setF] = useState(blankF);
@@ -2071,6 +2104,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <EventBanner ev={e} onUpdate={onUpdate} />
                 <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
+                <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                 <GenderBalance ev={e} onUpdate={onUpdate} />
                 <EventTerms ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
@@ -2080,6 +2114,27 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
           </div>
         ))}
         {events.length === 0 && <Center>No events yet.</Center>}
+      </div>
+    </div>
+  );
+}
+function AddonEditor({ eventId, list, onAdd, onDel }) {
+  const [name, setName] = useState(""); const [price, setPrice] = useState("");
+  const inp = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink };
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Add-ons</label>
+      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Extras buyers can add at checkout (₹0 = free perk). E.g. Welcome drink ₹50, Table ₹500.</div>
+      {(list || []).map(a => (
+        <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderTop: `1px solid ${W.line}` }}>
+          <span style={{ fontSize: 14, color: W.ink }}>{a.name} · <b style={{ color: a.price > 0 ? W.teal : W.soft }}>{a.price > 0 ? `₹${a.price}` : "Free"}</b></span>
+          <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(a.id)} />
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Add-on name" style={{ ...inp, flex: 1, minWidth: 0 }} />
+        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹" inputMode="numeric" style={{ ...inp, width: 70 }} />
+        <button onClick={async () => { if (!name.trim()) return; await onAdd(eventId, { name, price }); setName(""); setPrice(""); }} style={btn(W.ink, "#fff")}><Plus size={14} />Add</button>
       </div>
     </div>
   );
@@ -2308,7 +2363,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • step-b2a ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • step-b2b ✅</div>
       </div>
     </div>
   );
