@@ -283,6 +283,7 @@ function Splash() { return <div style={{ height: "100vh", background: "linear-gr
 /* ---------------- auth ---------------- */
 function Auth({ initialMode = "login", onClose }) {
   const [mode, setMode] = useState(initialMode);
+  const buying = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   const [name, setName] = useState(""), [email, setEmail] = useState(""), [pass, setPass] = useState(""), [gender, setGender] = useState("male");
   const [err, setErr] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
   const go = async () => {
@@ -297,8 +298,15 @@ function Auth({ initialMode = "login", onClose }) {
     if (!email || !pass || (mode === "signup" && !name)) return setErr("Please fill in all fields.");
     setBusy(true);
     if (mode === "signup") {
-      const { error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, gender } } });
-      if (error) setErr(error.message); else setNote("Account created! If login doesn't happen automatically, just log in.");
+      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, gender } } });
+      if (error) { setErr(error.message); }
+      else {
+        try {
+          const buying = localStorage.getItem("gw_buy");
+          if (buying && data?.session?.user) await supabase.from("profiles").update({ full_name: name, gender, profile_completed: true }).eq("id", data.session.user.id);
+        } catch {}
+        if (!data?.session) setNote("Account created! Please log in to continue.");
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
       if (error) setErr(error.message);
@@ -315,6 +323,7 @@ function Auth({ initialMode = "login", onClose }) {
         <div style={{ color: "rgba(255,255,255,.82)", marginTop: 9, fontSize: 14.5 }}>Tickets · Rooms · Community — all in one place</div>
       </div>
       <div style={{ background: "#fff", borderRadius: 18, padding: 20, marginTop: 30, width: "100%", maxWidth: 384, boxShadow: "0 24px 60px rgba(0,0,0,.4)" }}>
+        {buying && mode === "signup" && <div style={{ background: "#E7F6EF", color: W.teal, fontSize: 13, fontWeight: 600, borderRadius: 10, padding: "10px 12px", marginBottom: 14, textAlign: "center", lineHeight: 1.4 }}>You're one step from your ticket — create your free account.</div>}
         <div style={{ display: "flex", background: W.bg, borderRadius: 10, padding: 4, marginBottom: 16 }}>
           {["login", "signup"].map(m => <button key={m} onClick={() => { setMode(m); setErr(""); setNote(""); }} style={{ flex: 1, padding: 9, border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14, background: mode === m ? W.teal : "transparent", color: mode === m ? "#fff" : W.soft }}>{m === "login" ? "Log in" : "Sign up"}</button>)}
         </div>
@@ -418,14 +427,14 @@ function PublicLanding() {
         <img src="/logo-white.png" alt="Glasswings Events" style={{ height: wide ? 34 : 28, objectFit: "contain" }} />
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => setAuthMode("login")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.45)", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Log in</button>
-          <button onClick={() => setAuthMode("signup")} style={{ background: W.teal, color: "#fff", border: "none", borderRadius: 9, padding: "9px 17px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Sign up</button>
+          <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ background: W.teal, color: "#fff", border: "none", borderRadius: 9, padding: "9px 17px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Sign up</button>
         </div>
       </div>
       <div style={{ backgroundImage: "linear-gradient(rgba(6,18,26,.5),rgba(6,14,22,.82)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center", padding: wide ? "96px 7%" : "40px 20px 34px", color: "#fff" }}>
         <div style={{ maxWidth: 1180, margin: "0 auto", textAlign: wide ? "left" : "center" }}>
           <div style={{ fontSize: wide ? 50 : 26, fontWeight: 800, lineHeight: 1.1, maxWidth: 720, margin: wide ? "0" : "0 auto" }}>Discover top events &amp; meetups in your city</div>
           <div style={{ fontSize: wide ? 18 : 14, opacity: 0.9, maxWidth: 560, margin: wide ? "14px 0 0" : "8px auto 0" }}>Parties, socials and community meetups — see what's on and grab your tickets in seconds.</div>
-          <button onClick={() => setAuthMode("signup")} style={{ ...btn(W.teal, "#fff"), marginTop: 22, padding: "13px 24px", fontSize: 15 }}><Ticket size={17} />Join free</button>
+          <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ ...btn(W.teal, "#fff"), marginTop: 22, padding: "13px 24px", fontSize: 15 }}><Ticket size={17} />Join free</button>
         </div>
       </div>
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
@@ -453,7 +462,7 @@ function PublicLanding() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 14 }}>
                   <span style={{ fontWeight: 800, color: W.teal, fontSize: 15 }}>{priceFrom(e)}</span>
-                  <button onClick={() => setAuthMode("signup")} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
+                  <button onClick={() => { try { localStorage.setItem("gw_buy", e.id); localStorage.setItem("gw_event", e.id); } catch {} setAuthMode("signup"); }} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
                 </div>
               </div>
             </div>
@@ -746,6 +755,13 @@ function Main({ user }) {
     if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
     setBuyTarget({ event: e, type });
   };
+  useEffect(() => {
+    if (!events.length) return;
+    let buy = null; try { buy = localStorage.getItem("gw_buy"); } catch {}
+    if (!buy) return;
+    const e = events.find(x => x.id === buy);
+    if (e) { try { localStorage.removeItem("gw_buy"); } catch {} setTab("events"); joinEvent(e); }
+  }, [events]);
   const grantRoom = async (userId, roomId) => {
     const { error } = await supabase.rpc("admin_grant_room", { p_user: userId, p_room: roomId });
     if (error) return setNotice(error.message);
@@ -872,7 +888,8 @@ function Main({ user }) {
   const delTicketType = async (id) => { const { error } = await supabase.from("event_ticket_types").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
 
   if (!ready) return <Splash />;
-  if (profile && !profile.profile_completed) return <ProfileGate user={user} profile={profile} reload={load} />;
+  const pendingBuy = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
+  if (profile && !profile.profile_completed && !pendingBuy) return <ProfileGate user={user} profile={profile} reload={load} />;
 
   const listW = 340;
   const twoPane = wide && (tab === "chats" || !!open);
@@ -2688,7 +2705,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticket-pro ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • express-buy ✅</div>
       </div>
     </div>
   );
