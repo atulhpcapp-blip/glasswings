@@ -753,6 +753,11 @@ function Main({ user }) {
   };
   const joinEvent = (e, type = null) => {
     if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
+    if (type) {
+      if (type.gender_restrict && type.gender_restrict !== "any" && type.gender_restrict !== profile?.gender) return setNotice(type.gender_restrict === "female" ? "These tickets are for women only." : "These tickets are for men only.");
+    } else if ((ticketTypes[e.id] || []).length) {
+      return setNotice("Please choose a ticket type for this event.");
+    }
     setBuyTarget({ event: e, type });
   };
   useEffect(() => {
@@ -760,7 +765,7 @@ function Main({ user }) {
     let buy = null; try { buy = localStorage.getItem("gw_buy"); } catch {}
     if (!buy) return;
     const e = events.find(x => x.id === buy);
-    if (e) { try { localStorage.removeItem("gw_buy"); } catch {} setTab("events"); joinEvent(e); }
+    if (e) { try { localStorage.removeItem("gw_buy"); } catch {} setTab("events"); setFocusEvent(e.id); }
   }, [events]);
   const grantRoom = async (userId, roomId) => {
     const { error } = await supabase.rpc("admin_grant_room", { p_user: userId, p_room: roomId });
@@ -803,6 +808,9 @@ function Main({ user }) {
   };
   const confirmPurchase = async (qty, sel = []) => {
     const { event: e, type } = buyTarget;
+    if (type) {
+      if (type.gender_restrict && type.gender_restrict !== "any" && type.gender_restrict !== profile?.gender) { setBuyTarget(null); return setNotice(type.gender_restrict === "female" ? "These tickets are for women only." : "These tickets are for men only."); }
+    } else if ((ticketTypes[e.id] || []).length) { setBuyTarget(null); return setNotice("Please choose a ticket type for this event."); }
     if (type) { const st = ticketStatus(type, e, eventStats, typeSold); if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? "These tickets are sold out." : "Men's tickets aren't open yet — they release as more women join."); } }
     const unit = type ? netPrice(type, subs) : e.ticket_price;
     const chosen = sel.filter(a => (a.qty || 0) > 0);
@@ -1090,6 +1098,8 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
                       })}
                     </div>
                   </div>
+                ) : types.length ? (
+                  <div style={{ marginTop: 14, fontSize: 13.5, color: W.soft, textAlign: "center", background: W.bg, borderRadius: 10, padding: "12px" }}>These tickets aren't available for your profile.</div>
                 ) : (
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
                     {e.ticket_price === 0 ? <span style={{ fontWeight: 700, color: W.teal, fontSize: 15 }}>Free</span>
@@ -1896,13 +1906,24 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
     setName(""); setPrice(""); setG("any"); setCap(""); setDRoom(""); setDKind("percent"); setDVal("");
   };
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
+  const audBadge = (gr) => {
+    const map = { male: ["Men only", "#E8F2FB", "#1B6FB8"], female: ["Women only", "#FBE9F2", "#C0246E"], any: ["Anyone", "#ECEFEE", W.soft] };
+    const [label, bg, col] = map[gr] || map.any;
+    return <span style={{ background: bg, color: col, fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{label}</span>;
+  };
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map(t => (
           <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 9, padding: "7px 10px" }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink }}><b>{t.name}</b> · {t.price === 0 ? "Free" : `₹${t.price}`} · {gl[t.gender_restrict]}{t.capacity != null ? <span style={{ color: W.soft }}> · cap {t.capacity}</span> : ""}{t.discount_room_id ? <span style={{ color: W.teal }}> · {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {roomName(t.discount_room_id)}</span> : ""}</span>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <b>{t.name}</b>
+              <span style={{ color: W.soft }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
+              {audBadge(t.gender_restrict)}
+              {t.capacity != null && <span style={{ color: W.soft }}>· cap {t.capacity}</span>}
+              {t.discount_room_id && <span style={{ color: W.teal }}>· {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {roomName(t.discount_room_id)}</span>}
+            </div>
             <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(t.id)} />
           </div>
         ))}
@@ -2705,7 +2726,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • express-buy ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • audience-badge ✅</div>
       </div>
     </div>
   );
