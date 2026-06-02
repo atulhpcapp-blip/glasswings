@@ -172,7 +172,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [recovery, setRecovery] = useState(false);
   useEffect(() => {
-    try { const r = new URLSearchParams(window.location.search).get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); } catch {}
+    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); } catch {}
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -572,6 +572,7 @@ function Main({ user }) {
   const [hasDM, setHasDM] = useState(false);
   const [focusEvent, setFocusEvent] = useState(null);
   const openEvent = (id) => { setOpen(null); setTab("events"); setFocusEvent(id); };
+  useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setFocusEvent(ev); } } catch {} }, []);
   const [tab, setTab] = useState("chats");
   const [open, setOpen] = useState(null); // { id, type }
   const [ready, setReady] = useState(false);
@@ -2226,6 +2227,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <EventBanner ev={e} onUpdate={onUpdate} />
+                <EventShare event={e} />
                 <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
                 <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                 <GenderBalance ev={e} onUpdate={onUpdate} />
@@ -2237,6 +2239,32 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
           </div>
         ))}
         {events.length === 0 && <Center>No events yet.</Center>}
+      </div>
+    </div>
+  );
+}
+function EventShare({ event }) {
+  const link = `${window.location.origin}/?event=${event.id}`;
+  const [copied, setCopied] = useState(false);
+  const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(link)}`;
+  const copy = () => { try { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
+  const share = async () => { try { if (navigator.share) await navigator.share({ title: event.title, text: `Check out ${event.title} on Glasswings`, url: link }); else copy(); } catch {} };
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Share this event</label>
+      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Anyone who opens this link or scans the code lands straight on this event.</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <input readOnly value={link} onFocus={e => e.target.select()} style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 12.5, color: W.ink, background: W.bg }} />
+        <button onClick={copy} style={btn(W.teal, "#fff")}>{copied ? "Copied ✓" : "Copy"}</button>
+        <button onClick={share} title="Share" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}` }}><Share2 size={15} /></button>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <img src={qr} alt="Event QR code" width={120} height={120} style={{ borderRadius: 10, border: `1px solid ${W.line}` }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: W.ink, fontWeight: 600, marginBottom: 6 }}>QR code</div>
+          <a href={qr} target="_blank" rel="noreferrer" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, textDecoration: "none", fontSize: 13 }}>Open / save QR</a>
+          <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Print it on flyers or show it at the door.</div>
+        </div>
       </div>
     </div>
   );
@@ -2593,7 +2621,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • location ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • event-link ✅</div>
       </div>
     </div>
   );
