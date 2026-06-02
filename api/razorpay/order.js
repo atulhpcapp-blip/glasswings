@@ -25,6 +25,7 @@ export default async function handler(req, res) {
   const { access_token, purpose = "ticket", event_id, ticket_type_id, room_id } = body;
   const qty = Math.max(1, parseInt(body.quantity) || 1);
   const addonSel = Array.isArray(body.addons) ? body.addons : [];   // [{id, qty}]
+  const refCode = (body.ref || "").toString().trim();
 
   try {
     const { data: ures } = await sb.auth.getUser(access_token);
@@ -34,6 +35,7 @@ export default async function handler(req, res) {
 
     let amount = 0;          // paise
     let addonRows = [];      // resolved [{id,name,price,qty}]
+    let ticketRev = 0;       // rupees (for commission)
     const notes = { purpose, uid };
 
     // resolve add-ons from the DB (never trust client prices)
@@ -84,6 +86,7 @@ export default async function handler(req, res) {
         const addonSum = await resolveAddons();
         const subtotal = net * qty + addonSum;
         if (subtotal <= 0) return res.status(400).json({ error: "This ticket is free for you — just tap Get." });
+        ticketRev = net * qty;
         amount = subtotal * 100;
         Object.assign(notes, { event_id, ticket_type_id, qty, addons: addonRows.length });
       } else {
@@ -92,6 +95,7 @@ export default async function handler(req, res) {
         const addonSum = await resolveAddons();
         const subtotal = net * qty + addonSum;
         if (subtotal <= 0) return res.status(400).json({ error: "This event is free — just tap Get." });
+        ticketRev = net * qty;
         amount = subtotal * 100;
         Object.assign(notes, { event_id, qty, addons: addonRows.length });
       }
@@ -116,10 +120,20 @@ export default async function handler(req, res) {
     const order = await r.json();
     if (!order.id) return res.status(502).json({ error: order.error?.description || "Could not start the payment." });
 
+    // resolve a promoter referral (tickets only), and compute their commission
+    let referrer_id = null, commission_amount = 0;
+    if (purpose === "ticket" && refCode) {
+      const { data: ref } = await sb.from("profiles").select("id, commission_pct").eq("promo_code", refCode.toUpperCase()).single();
+      if (ref && ref.id !== uid) {
+        referrer_id = ref.id;
+        commission_amount = Math.round(ticketRev * (Number(ref.commission_pct) || 0));  // paise = rupees*pct
+      }
+    }
+
     await sb.from("payments").insert({
       user_id: uid, purpose, event_id: event_id || null, ticket_type_id: ticket_type_id || null,
       room_id: room_id || null, quantity: qty, amount, status: "created", razorpay_order_id: order.id,
-      addons: addonRows,
+      addons: addonRows, referrer_id, commission_amount,
     });
 
     return res.status(200).json({ order_id: order.id, amount, currency: "INR", key_id: KEY });
