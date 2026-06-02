@@ -2218,11 +2218,13 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
           <div key={e.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div></div>
-              <button onClick={() => onBroadcastEvent(e)} title="Post to all group chats" style={{ ...btn(W.teal, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Zap size={13} />Groups</button>
-              <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 11.5 }}><Users size={13} />Check-in</button>
-              <button onClick={() => setSendFor(e)} title="Send privately to members (with filters)" style={{ ...btn(W.ink, "#fff"), padding: "6px 9px", fontSize: 11.5 }}><Send size={13} />Members</button>
-              <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === e.id ? null : e.id)} />
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div><div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div></div>
+              <button onClick={() => setManage(manage === e.id ? null : e.id)} style={{ ...btn("#fff", manage === e.id ? W.teal : W.soft), border: `1px solid ${W.line}`, padding: "7px 9px", flexShrink: 0 }}><Settings size={17} /></button>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={() => onBroadcastEvent(e)} title="Post to all group chats" style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />Post</button>
+              <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Check-in</button>
+              <button onClick={() => setSendFor(e)} title="Message members" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Send size={14} />Notify</button>
             </div>
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
@@ -2621,7 +2623,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • event-link ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • events-ui ✅</div>
       </div>
     </div>
   );
