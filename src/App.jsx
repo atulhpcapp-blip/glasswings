@@ -611,6 +611,7 @@ function Main({ user }) {
   const [tickets, setTickets] = useState([]);
   const [mods, setMods] = useState([]);
   const [eventMods, setEventMods] = useState([]);
+  const [payBusy, setPayBusy] = useState(false);
   const [counts, setCounts] = useState({});
   const [eventCounts, setEventCounts] = useState({});
   const [categories, setCategories] = useState([]);
@@ -624,6 +625,7 @@ function Main({ user }) {
   const [focusEvent, setFocusEvent] = useState(null);
   const openEvent = (id) => { setOpen(null); setTab("events"); setFocusEvent(id); };
   useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setFocusEvent(ev); } } catch {} }, []);
+  useEffect(() => { loadRazorpay(); }, []);
   const [tab, setTab] = useState("chats");
   const [open, setOpen] = useState(null); // { id, type }
   const [ready, setReady] = useState(false);
@@ -682,8 +684,9 @@ function Main({ user }) {
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
 
   const startPayment = async (purpose, payload, onPaid) => {
+    setPayBusy(true);
     const ready = await loadRazorpay();
-    if (!ready) return setNotice("Couldn't open the payment window. Check your connection and try again.");
+    if (!ready) { setPayBusy(false); return setNotice("Couldn't open the payment window. Check your connection and try again."); }
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
     let order;
@@ -691,8 +694,8 @@ function Main({ user }) {
       const ref = (() => { try { return localStorage.getItem("gw_ref") || ""; } catch { return ""; } })();
       const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose, ref, ...payload }) });
       order = await r.json();
-      if (!r.ok) return setNotice(order.error || "Could not start the payment.");
-    } catch { return setNotice("Could not start the payment. Please try again."); }
+      if (!r.ok) { setPayBusy(false); return setNotice(order.error || "Could not start the payment."); }
+    } catch { setPayBusy(false); return setNotice("Could not start the payment. Please try again."); }
     const rzp = new window.Razorpay({
       key: order.key_id, amount: order.amount, currency: order.currency, order_id: order.order_id,
       name: "Glasswings Events", description: purpose === "ticket" ? "Event ticket" : "Room subscription",
@@ -709,20 +712,22 @@ function Main({ user }) {
       },
     });
     rzp.on("payment.failed", () => setNotice("Payment failed or was cancelled — nothing was charged."));
+    setPayBusy(false);
     rzp.open();
   };
 
   const startSubscription = async (room) => {
+    setPayBusy(true);
     const ready = await loadRazorpay();
-    if (!ready) return setNotice("Couldn't open the payment window. Check your connection and try again.");
+    if (!ready) { setPayBusy(false); return setNotice("Couldn't open the payment window. Check your connection and try again."); }
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
     let sub;
     try {
       const r = await fetch("/api/razorpay/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, room_id: room.id }) });
       sub = await r.json();
-      if (!r.ok) return setNotice(sub.error || "Could not start the subscription.");
-    } catch { return setNotice("Could not start the subscription. Please try again."); }
+      if (!r.ok) { setPayBusy(false); return setNotice(sub.error || "Could not start the subscription."); }
+    } catch { setPayBusy(false); return setNotice("Could not start the subscription. Please try again."); }
     const rzp = new window.Razorpay({
       key: sub.key_id, subscription_id: sub.subscription_id,
       name: "Glasswings Events", description: `${room.name} — ₹${room.price_monthly}/month`,
@@ -739,6 +744,7 @@ function Main({ user }) {
       },
     });
     rzp.on("payment.failed", () => setNotice("Payment failed or was cancelled — nothing was charged."));
+    setPayBusy(false);
     rzp.open();
   };
 
@@ -941,6 +947,7 @@ function Main({ user }) {
         {notice && <Notice text={notice} onClose={() => setNotice("")} />}
         {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
         {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
+        {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
           <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
@@ -963,6 +970,7 @@ function Main({ user }) {
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
       {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
       {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
+        {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {screen}
       </div>
@@ -2726,7 +2734,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • audience-badge ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pay-speed ✅</div>
       </div>
     </div>
   );
