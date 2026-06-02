@@ -59,16 +59,17 @@ export default async function handler(req, res) {
         if (!t || t.event_id !== event_id) return res.status(400).json({ error: "Ticket not found." });
         if (t.gender_restrict !== "any" && t.gender_restrict !== me?.gender) return res.status(403).json({ error: "You're not eligible for this ticket." });
 
-        // net price after any room-member discount
-        let net = t.price || 0;
-        if (t.discount_room_id && t.discount_value) {
-          const { data: s } = await sb.from("room_subscriptions").select("room_id").eq("user_id", uid).eq("room_id", t.discount_room_id).eq("status", "active");
-          if ((s || []).length) { const d = t.discount_kind === "flat" ? t.discount_value : Math.round(net * t.discount_value / 100); net = Math.max(0, net - d); }
-        }
+        // fetch independent data in parallel (big latency win)
+        const [{ data: s }, { data: ev }, { data: sold }, addonSum] = await Promise.all([
+          (t.discount_room_id && t.discount_value) ? sb.from("room_subscriptions").select("room_id").eq("user_id", uid).eq("room_id", t.discount_room_id).eq("status", "active") : Promise.resolve({ data: [] }),
+          sb.from("events").select("balance_on, men_per_woman, men_open_start").eq("id", event_id).single(),
+          sb.from("event_tickets").select("quantity").eq("ticket_type_id", ticket_type_id),
+          resolveAddons(),
+        ]);
 
-        // capacity + men/women balance enforced server-side
-        const { data: ev } = await sb.from("events").select("balance_on, men_per_woman, men_open_start").eq("id", event_id).single();
-        const { data: sold } = await sb.from("event_tickets").select("quantity").eq("ticket_type_id", ticket_type_id);
+        let net = t.price || 0;
+        if (t.discount_room_id && t.discount_value && (s || []).length) { const d = t.discount_kind === "flat" ? t.discount_value : Math.round(net * t.discount_value / 100); net = Math.max(0, net - d); }
+
         const soldQty = (sold || []).reduce((a, r) => a + (r.quantity || 1), 0);
         if (t.capacity != null && t.capacity - soldQty - qty < 0) return res.status(409).json({ error: "Not enough tickets left." });
         if (t.gender_restrict === "male" && ev?.balance_on === true) {
@@ -83,7 +84,6 @@ export default async function handler(req, res) {
           if (budget - male - qty < 0) return res.status(409).json({ error: "Men's tickets aren't open yet — they release as more women join." });
         }
 
-        const addonSum = await resolveAddons();
         const subtotal = net * qty + addonSum;
         if (subtotal <= 0) return res.status(400).json({ error: "This ticket is free for you — just tap Get." });
         ticketRev = net * qty;
@@ -110,24 +110,24 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Unknown purpose." });
     }
 
-    // create the Razorpay order
+    // create the Razorpay order and resolve any promoter referral in parallel
     const auth = Buffer.from(`${KEY}:${SECRET}`).toString("base64");
-    const r = await fetch("https://api.razorpay.com/v1/orders", {
-      method: "POST",
-      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ amount, currency: "INR", receipt: `gw_${Date.now()}`, notes }),
-    });
-    const order = await r.json();
+    const [orderRes, refRes] = await Promise.all([
+      fetch("https://api.razorpay.com/v1/orders", {
+        method: "POST",
+        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, currency: "INR", receipt: `gw_${Date.now()}`, notes }),
+      }),
+      (purpose === "ticket" && refCode) ? sb.from("profiles").select("id, commission_pct").eq("promo_code", refCode.toUpperCase()).single() : Promise.resolve({ data: null }),
+    ]);
+    const order = await orderRes.json();
     if (!order.id) return res.status(502).json({ error: order.error?.description || "Could not start the payment." });
 
-    // resolve a promoter referral (tickets only), and compute their commission
     let referrer_id = null, commission_amount = 0;
-    if (purpose === "ticket" && refCode) {
-      const { data: ref } = await sb.from("profiles").select("id, commission_pct").eq("promo_code", refCode.toUpperCase()).single();
-      if (ref && ref.id !== uid) {
-        referrer_id = ref.id;
-        commission_amount = Math.round(ticketRev * (Number(ref.commission_pct) || 0));  // paise = rupees*pct
-      }
+    const ref = refRes?.data;
+    if (ref && ref.id !== uid) {
+      referrer_id = ref.id;
+      commission_amount = Math.round(ticketRev * (Number(ref.commission_pct) || 0));  // paise = rupees*pct
     }
 
     await sb.from("payments").insert({
