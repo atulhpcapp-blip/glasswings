@@ -2225,12 +2225,13 @@ function EditMemberSheet({ member, isSuper, cities, onClose, onSaved }) {
   const [area, setArea] = useState(member.area || "");
   const [city, setCity] = useState(member.city || "");
   const [prof, setProf] = useState(member.profession || "");
+  const [gender, setGender] = useState(member.gender || "");
   const [phone, setPhone] = useState(member.phone || "");
   const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   const inp = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", color: W.ink, marginBottom: 10, boxSizing: "border-box" };
   const save = async () => {
     setBusy(true); setErr("");
-    const { error } = await supabase.rpc("staff_update_member", { p_user: member.id, p_full_name: name, p_age: String(age || ""), p_area: area, p_city: city, p_profession: prof, p_phone: isSuper ? phone : null });
+    const { error } = await supabase.rpc("staff_update_member", { p_user: member.id, p_full_name: name, p_age: String(age || ""), p_area: area, p_city: city, p_profession: prof, p_phone: isSuper ? phone : null, p_gender: gender || null });
     setBusy(false);
     if (error) return setErr(error.message);
     onSaved();
@@ -2246,6 +2247,13 @@ function EditMemberSheet({ member, isSuper, cities, onClose, onSaved }) {
         <input value={name} onChange={e => setName(e.target.value)} style={inp} />
         <label style={{ fontSize: 12, color: W.soft }}>Age</label>
         <input value={age} onChange={e => setAge(e.target.value.replace(/\D/g, ""))} inputMode="numeric" style={inp} />
+        <label style={{ fontSize: 12, color: W.soft }}>Sex</label>
+        <select value={gender} onChange={e => setGender(e.target.value)} style={{ ...inp, background: "#fff" }}>
+          <option value="">—</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+          <option value="other">Other</option>
+        </select>
         <label style={{ fontSize: 12, color: W.soft }}>Area / locality</label>
         <input value={area} onChange={e => setArea(e.target.value)} style={inp} />
         <label style={{ fontSize: 12, color: W.soft }}>City</label>
@@ -2460,7 +2468,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • edit-members ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • edit-sex ✅</div>
       </div>
     </div>
   );
