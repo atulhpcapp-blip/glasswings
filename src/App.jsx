@@ -172,6 +172,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [recovery, setRecovery] = useState(false);
   useEffect(() => {
+    try { const r = new URLSearchParams(window.location.search).get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); } catch {}
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -635,7 +636,8 @@ function Main({ user }) {
     const token = session?.access_token;
     let order;
     try {
-      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose, ...payload }) });
+      const ref = (() => { try { return localStorage.getItem("gw_ref") || ""; } catch { return ""; } })();
+      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose, ref, ...payload }) });
       order = await r.json();
       if (!r.ok) return setNotice(order.error || "Could not start the payment.");
     } catch { return setNotice("Could not start the payment. Please try again."); }
@@ -748,7 +750,9 @@ function Main({ user }) {
     const addonTotal = chosen.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
     const total = unit * qty + addonTotal;
     if (total > 0) { setBuyTarget(null); return startPayment("ticket", { event_id: e.id, ticket_type_id: type ? type.id : null, quantity: qty, addons: chosen.map(a => ({ id: a.id, qty: a.qty })) }, () => setOpen({ id: e.id, type: "event" })); }
-    const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty, addons: chosen.map(a => ({ id: a.id, name: a.name, price: a.price, qty: a.qty })) });
+    let referrer_id = null;
+    try { const code = localStorage.getItem("gw_ref"); if (code) { const { data } = await supabase.rpc("resolve_ref", { p_code: code }); if (data && data !== user.id) referrer_id = data; } } catch {}
+    const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty, addons: chosen.map(a => ({ id: a.id, name: a.name, price: a.price, qty: a.qty })), referrer_id });
     setBuyTarget(null);
     if (error) return setNotice(error.message);
     await load();
@@ -1251,11 +1255,12 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
 /* ---------------- admin ---------------- */
 function Dashboard() {
-  const [sum, setSum] = useState(null), [staff, setStaff] = useState([]), [evts, setEvts] = useState([]);
+  const [sum, setSum] = useState(null), [staff, setStaff] = useState([]), [evts, setEvts] = useState([]), [promos, setPromos] = useState([]);
   useEffect(() => {
     supabase.rpc("income_summary").then(({ data }) => setSum(data?.[0] || null));
     supabase.rpc("staff_stats").then(({ data }) => setStaff(data || []));
     supabase.rpc("event_analytics").then(({ data }) => setEvts(data || []));
+    supabase.rpc("promoter_stats").then(({ data }) => setPromos(data || []));
   }, []);
   const rupees = p => "₹" + Math.round((p || 0) / 100).toLocaleString("en-IN");
   const card = (label, value, accent) => (
@@ -1290,6 +1295,22 @@ function Dashboard() {
           </div>
         ))}
       </div>
+
+      {promos.length > 0 && <>
+        <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginBottom: 10 }}>Promoters</div>
+        <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden", marginBottom: 20 }}>
+          {promos.map((p, i) => (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", borderTop: i ? `1px solid ${W.line}` : "none", gap: 10 }}>
+              <div style={{ minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{p.full_name || "—"}</div><div style={{ fontSize: 12, color: W.soft }}>{p.code || "—"} · {p.pct || 0}%</div></div>
+              <div style={{ display: "flex", gap: 14, fontSize: 13, whiteSpace: "nowrap" }}>
+                <span style={{ color: W.soft }}>Tickets <b style={{ color: W.ink }}>{p.tickets}</b></span>
+                <span style={{ color: W.soft }}>Rev <b style={{ color: W.ink }}>₹{Math.round((p.revenue || 0) / 100)}</b></span>
+                <span style={{ color: W.soft }}>Comm <b style={{ color: W.teal }}>₹{Math.round((p.commission || 0) / 100)}</b></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </>}
 
       <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginBottom: 10 }}>Events</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1368,9 +1389,9 @@ function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
   useEffect(() => { reload(); }, []);
   const permOf = r => perms.find(p => p.role === r) || {};
   const sel = { padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
-  const getDraft = m => draft[m.id] || { roles: new Set((m.roles || []).filter(r => STAFF_ROLES.includes(r))), city: m.staff_city || "" };
+  const getDraft = m => draft[m.id] || { roles: new Set((m.roles || []).filter(r => STAFF_ROLES.includes(r))), city: m.staff_city || "", comm: m.commission_pct ?? "" };
   const setD = (id, patch) => setDraft(d => ({ ...d, [id]: { ...getDraftFor(id), ...patch } }));
-  const getDraftFor = id => { const m = (list || []).find(x => x.id === id) || {}; return draft[id] || { roles: new Set((m.roles || []).filter(r => STAFF_ROLES.includes(r))), city: m.staff_city || "" }; };
+  const getDraftFor = id => { const m = (list || []).find(x => x.id === id) || {}; return draft[id] || { roles: new Set((m.roles || []).filter(r => STAFF_ROLES.includes(r))), city: m.staff_city || "", comm: m.commission_pct ?? "" }; };
   return (
     <div style={{ padding: 14 }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -1415,12 +1436,15 @@ function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
                         <button key={r} onClick={() => { const ns = new Set(d.roles); on ? ns.delete(r) : ns.add(r); setD(m.id, { roles: ns }); }} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${on ? W.teal : W.line}`, background: on ? W.teal : "#fff", color: on ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{ROLE_BADGE[r].t}</button>
                       ); })}
                     </div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <select value={d.city} onChange={e => setD(m.id, { city: e.target.value })} style={{ ...sel, flex: 1 }}>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <select value={d.city} onChange={e => setD(m.id, { city: e.target.value })} style={{ ...sel, flex: "1 1 120px" }}>
                         <option value="">All cities</option>
                         {(cities || []).map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
                       </select>
-                      <button onClick={async () => { await onSetRoles(m.id, Array.from(d.roles), d.city); reload(); }} style={btn(W.teal, "#fff")}>Save</button>
+                      {d.roles.has("promoter") && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input value={d.comm} onChange={e => setD(m.id, { comm: e.target.value.replace(/[^\d.]/g, "") })} placeholder="0" inputMode="decimal" style={{ ...sel, width: 56 }} /><span style={{ fontSize: 13, color: W.soft }}>% comm</span>
+                      </div>}
+                      <button onClick={async () => { await onSetRoles(m.id, Array.from(d.roles), d.city); if (d.roles.has("promoter")) await supabase.rpc("set_commission", { p_user: m.id, p_pct: Number(d.comm) || 0 }); reload(); }} style={btn(W.teal, "#fff")}>Save</button>
                     </div>
                   </>
                 )}
@@ -2456,7 +2480,12 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [stamps, setStamps] = useState(null);
-  useEffect(() => { supabase.rpc("my_stamps").then(({ data }) => setStamps(data ?? 0)); }, []);
+  const [ref, setRef] = useState(null); const [copied, setCopied] = useState(false);
+  const isPromoter = (profile?.roles || []).includes("promoter");
+  useEffect(() => {
+    supabase.rpc("my_stamps").then(({ data }) => setStamps(data ?? 0));
+    if (isPromoter) supabase.rpc("my_referral").then(({ data }) => setRef(data?.[0] || null));
+  }, []);
   const change = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     setBusy(true);
@@ -2488,6 +2517,24 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
             <StampBadge count={stamps} size="lg" />
           </div>
         )}
+        {ref && (() => {
+          const link = `${window.location.origin}/?ref=${ref.code}`;
+          return (
+            <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16 }}>
+              <div style={{ fontWeight: 700, color: W.ink }}>Your promoter link</div>
+              <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2, marginBottom: 10 }}>Share this link. Tickets bought through it are credited to you{Number(ref.pct) > 0 ? ` (${ref.pct}% commission)` : ""}.</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <input readOnly value={link} style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13, color: W.ink, background: W.bg }} />
+                <button onClick={() => { try { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} }} style={btn(W.teal, "#fff")}>{copied ? "Copied ✓" : "Copy"}</button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <div style={{ flex: "1 1 90px", background: W.bg, borderRadius: 10, padding: "10px 12px" }}><div style={{ fontSize: 11.5, color: W.soft }}>Tickets</div><div style={{ fontSize: 18, fontWeight: 800, color: W.ink }}>{ref.tickets}</div></div>
+                <div style={{ flex: "1 1 90px", background: W.bg, borderRadius: 10, padding: "10px 12px" }}><div style={{ fontSize: 11.5, color: W.soft }}>Revenue</div><div style={{ fontSize: 18, fontWeight: 800, color: W.ink }}>₹{Math.round((ref.revenue || 0) / 100)}</div></div>
+                <div style={{ flex: "1 1 90px", background: W.bg, borderRadius: 10, padding: "10px 12px" }}><div style={{ fontSize: 11.5, color: W.soft }}>Commission</div><div style={{ fontSize: 18, fontWeight: 800, color: W.teal }}>₹{Math.round((ref.commission || 0) / 100)}</div></div>
+              </div>
+            </div>
+          );
+        })()}
         {paidSubs.length > 0 && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16 }}>
             <div style={{ fontWeight: 700, color: W.ink, marginBottom: 4 }}>Your subscriptions</div>
@@ -2503,7 +2550,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • stamps ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • promoters ✅</div>
       </div>
     </div>
   );
