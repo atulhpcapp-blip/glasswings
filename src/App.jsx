@@ -552,6 +552,7 @@ function Main({ user }) {
   const [events, setEvents] = useState([]);
   const [subs, setSubs] = useState([]);
   const [settings, setSettings] = useState({ admin_can_add: true, admin_can_remove: true, show_age: true, show_area: true, show_city: true, show_profession: true });
+  const [perms, setPerms] = useState([]);
   const [subRows, setSubRows] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [mods, setMods] = useState([]);
@@ -574,7 +575,7 @@ function Main({ user }) {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -590,6 +591,7 @@ function Main({ user }) {
       supabase.rpc("event_ticket_stats"),
       supabase.rpc("ticket_type_sold"),
       supabase.from("staff_settings").select("*").maybeSingle(),
+      supabase.from("role_perms").select("*"),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     setSubs((sb || []).map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
@@ -600,6 +602,7 @@ function Main({ user }) {
     const es = {}; (estat || []).forEach(x => { es[x.event_id] = { male: Number(x.male_sold), female: Number(x.female_sold) }; }); setEventStats(es);
     const ts = {}; (tsold || []).forEach(x => { ts[x.ticket_type_id] = Number(x.sold); }); setTypeSold(ts);
     if (stg) setSettings(stg);
+    if (rp) setPerms(rp);
     setCategories((opts || []).filter(o => o.kind === "category"));
     setCities((opts || []).filter(o => o.kind === "city"));
     const tm = {}; (tt || []).forEach(t => { if (!tm[t.event_id]) tm[t.event_id] = []; tm[t.event_id].push(t); }); setTicketTypes(tm);
@@ -608,10 +611,13 @@ function Main({ user }) {
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
 
-  const role = profile?.role || "member";
-  const isSuper = role === "superadmin";
-  const isAdmin = role === "admin" || role === "superadmin";
-  const isStaff = ["organiser", "subadmin", "admin", "superadmin"].includes(role);
+  const myRoles = (profile?.roles && profile.roles.length) ? profile.roles : (profile?.role && profile.role !== "member" ? [profile.role] : []);
+  const isSuper = myRoles.includes("superadmin");
+  const myCity = profile?.staff_city || null;
+  const capOf = (k) => isSuper || perms.some(p => myRoles.includes(p.role) && p[k]);
+  const isAdmin = isSuper || myRoles.includes("admin");
+  const isStaff = isSuper || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
+  const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics") };
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id);
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
@@ -695,15 +701,15 @@ function Main({ user }) {
     setNotice("Member added to the room.");
     await load();
   };
-  const saveSettings = async (patch) => {
-    setSettings(s => ({ ...s, ...patch }));
-    const { error } = await supabase.from("staff_settings").update(patch).eq("id", true);
+  const savePerm = async (roleName, patch) => {
+    setPerms(ps => ps.map(p => p.role === roleName ? { ...p, ...patch } : p));
+    const { error } = await supabase.from("role_perms").update(patch).eq("role", roleName);
     if (error) setNotice(error.message);
   };
-  const setMemberRole = async (userId, newRole) => {
-    const { error } = await supabase.rpc("set_member_role", { p_user: userId, p_role: newRole });
+  const setRoles = async (userId, rolesArr, city) => {
+    const { error } = await supabase.rpc("set_member_roles", { p_user: userId, p_roles: rolesArr, p_city: city || null });
     if (error) return setNotice(error.message);
-    setNotice("Role updated.");
+    setNotice("Team member updated.");
   };
   const removeRoom = async (userId, roomId) => {
     if (!window.confirm("Remove this member from the room? If they were on a paid subscription, billing will be cancelled too.")) return;
@@ -824,7 +830,7 @@ function Main({ user }) {
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
       {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-      {tab === "admin" && isStaff && <Admin role={role} isSuper={isSuper} settings={settings} onSaveSettings={saveSettings} onSetRole={setMemberRole} rooms={rooms} events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
@@ -1207,77 +1213,111 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 }
 
 /* ---------------- admin ---------------- */
-function Admin({ role, isSuper, settings, onSaveSettings, onSetRole, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
-  const organiser = role === "organiser";
-  const mgr = role === "admin" || role === "subadmin" || isSuper;
-  const canAdd = isSuper || (mgr && settings?.admin_can_add);
-  const canRemove = isSuper || (mgr && settings?.admin_can_remove);
-  const tabs = organiser
-    ? [["events", "Events"], ["members", "Members"]]
-    : [["rooms", "Rooms"], ["events", "Events"], ["broadcast", "Send"], ["inbox", "Inbox"], ["members", "Members"], ...(isSuper ? [["team", "Team"]] : [])];
-  const [seg, setSeg] = useState(tabs[0][0]);
+function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
+  const tabs = [
+    ...(caps.rooms ? [["rooms", "Rooms"]] : []),
+    ...(caps.host ? [["events", "Events"]] : []),
+    ...(caps.broadcast ? [["broadcast", "Send"]] : []),
+    ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"]] : []),
+    ...(isSuper ? [["team", "Team"]] : []),
+  ];
+  const [seg, setSeg] = useState(tabs[0]?.[0] || "none");
+  if (!tabs.length) return <div><TopBar title="Staff" /><Center>You don't have any staff tools enabled yet.</Center></div>;
   return (
     <div>
-      <TopBar title={isSuper ? "Superadmin Panel" : "Admin Panel"} />
+      <TopBar title={isSuper ? "Superadmin Panel" : "Staff Panel"} />
+      {myCity && !isSuper && <div style={{ background: "#FEF3C7", color: "#92400E", fontSize: 12.5, fontWeight: 600, padding: "7px 14px", textAlign: "center" }}>Scoped to {myCity}</div>}
       <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9, overflowX: "auto" }}>
         {tabs.map(([v, l]) => (
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
       {seg === "rooms" ? <AdminRooms rooms={rooms} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
-        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
-              : seg === "team" ? <TeamPanel settings={settings} onSaveSettings={onSaveSettings} onSetRole={onSetRole} />
-                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={canAdd} canRemove={canRemove} isSuper={isSuper} />}
+              : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
+                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} isSuper={isSuper} />}
     </div>
   );
 }
-const ROLE_BADGE = { superadmin: { t: "Super Admin", c: "#7C3AED", bg: "#EFEAFB" }, admin: { t: "Admin", c: W.teal, bg: "#E7F6EF" }, subadmin: { t: "Sub-admin", c: "#0369A1", bg: "#E0F2FE" }, organiser: { t: "Organiser", c: "#B45309", bg: "#FEF3C7" }, member: null };
-function RoleBadge({ role }) {
-  const b = ROLE_BADGE[role]; if (!b) return null;
-  return <span style={{ background: b.bg, color: b.c, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>{b.t}</span>;
+const ROLE_BADGE = { superadmin: { t: "Super Admin", c: "#7C3AED", bg: "#EFEAFB" }, admin: { t: "Admin", c: W.teal, bg: "#E7F6EF" }, subadmin: { t: "Sub-admin", c: "#0369A1", bg: "#E0F2FE" }, organiser: { t: "Organiser", c: "#B45309", bg: "#FEF3C7" }, promoter: { t: "Promoter", c: "#BE185D", bg: "#FCE7F3" }, member: null };
+function RoleBadges({ roles }) {
+  const rs = (roles || []).filter(r => ROLE_BADGE[r]);
+  if (!rs.length) return null;
+  return <>{rs.map(r => { const b = ROLE_BADGE[r]; return <span key={r} style={{ background: b.bg, color: b.c, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>{b.t}</span>; })}</>;
 }
-function TeamPanel({ settings, onSaveSettings, onSetRole }) {
+const CAP_LIST = [["can_rooms", "Manage rooms"], ["can_host", "Host events"], ["can_analytics", "See their event analytics"], ["can_broadcast", "Send broadcasts"], ["can_view_members", "View members"], ["can_add", "Add members to rooms"], ["can_remove", "Remove members from rooms"], ["show_age", "See age"], ["show_area", "See area"], ["show_city", "See city"], ["show_profession", "See profession"]];
+const STAFF_ROLES = ["admin", "subadmin", "organiser", "promoter"];
+function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
   const [list, setList] = useState(null);
+  const [view, setView] = useState("roles"); // roles | matrix
+  const [draft, setDraft] = useState({}); // memberId -> {roles:Set, city}
   const reload = () => supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
   useEffect(() => { reload(); }, []);
-  const Toggle = ({ k, label }) => (
-    <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}>
-      <span style={{ fontSize: 14, color: W.ink }}>{label}</span>
-      <input type="checkbox" checked={!!settings?.[k]} onChange={e => onSaveSettings({ [k]: e.target.checked })} />
-    </label>
-  );
-  const sel = { padding: "7px 9px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
+  const permOf = r => perms.find(p => p.role === r) || {};
+  const sel = { padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
+  const getDraft = m => draft[m.id] || { roles: new Set((m.roles || []).filter(r => STAFF_ROLES.includes(r))), city: m.staff_city || "" };
+  const setD = (id, patch) => setDraft(d => ({ ...d, [id]: { ...getDraftFor(id), ...patch } }));
+  const getDraftFor = id => { const m = (list || []).find(x => x.id === id) || {}; return draft[id] || { roles: new Set((m.roles || []).filter(r => STAFF_ROLES.includes(r))), city: m.staff_city || "" }; };
   return (
     <div style={{ padding: 14 }}>
-      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: "14px 16px", marginBottom: 14 }}>
-        <div style={{ fontWeight: 800, fontSize: 16, color: W.ink }}>What admins can do</div>
-        <Toggle k="admin_can_add" label="Admins can add members to rooms" />
-        <Toggle k="admin_can_remove" label="Admins can remove members from rooms" />
-        <div style={{ fontWeight: 800, fontSize: 15, color: W.ink, marginTop: 16 }}>What admins can see</div>
-        <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 2px" }}>Phone numbers are always private to you.</div>
-        <Toggle k="show_age" label="Show age" />
-        <Toggle k="show_area" label="Show area" />
-        <Toggle k="show_city" label="Show city" />
-        <Toggle k="show_profession" label="Show profession" />
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[["roles", "Team & roles"], ["matrix", "Permissions"]].map(([v, l]) => <button key={v} onClick={() => setView(v)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${view === v ? W.teal : W.line}`, background: view === v ? W.teal : "#fff", color: view === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>{l}</button>)}
       </div>
-      <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginBottom: 8 }}>Team & roles</div>
-      {list === null ? <Center>loading…</Center> : list.map(m => (
-        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 12, border: `1px solid ${W.line}`, padding: "10px 12px", marginBottom: 8 }}>
-          <PersonAvatar url={m.avatar_url} name={m.full_name} size={40} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, color: W.ink, fontSize: 14.5, display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.full_name || "—"} <RoleBadge role={m.role} /></div>
-          </div>
-          {m.role === "superadmin" ? <span style={{ fontSize: 12, color: W.soft }}>You</span> :
-            <select value={m.role} onChange={async e => { await onSetRole(m.id, e.target.value); reload(); }} style={sel}>
-              <option value="member">Member</option>
-              <option value="organiser">Organiser</option>
-              <option value="subadmin">Sub-admin</option>
-              <option value="admin">Admin</option>
-            </select>}
+
+      {view === "matrix" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 12.5, color: W.soft }}>Set what each role can do. Phone numbers stay private to you, always.</div>
+          {STAFF_ROLES.map(r => {
+            const p = permOf(r); const b = ROLE_BADGE[r];
+            return (
+              <div key={r} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
+                <div style={{ marginBottom: 8 }}><span style={{ background: b.bg, color: b.c, fontSize: 12, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>{b.t}</span></div>
+                {CAP_LIST.map(([k, label]) => (
+                  <label key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}>
+                    <span style={{ fontSize: 13.5, color: W.ink }}>{label}</span>
+                    <input type="checkbox" checked={!!p[k]} onChange={e => onSavePerm(r, { [k]: e.target.checked })} />
+                  </label>
+                ))}
+              </div>
+            );
+          })}
         </div>
-      ))}
+      ) : list === null ? <Center>loading…</Center> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {list.map(m => {
+            const d = getDraft(m);
+            const isSuperM = (m.roles || []).includes("superadmin");
+            return (
+              <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 13 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <PersonAvatar url={m.avatar_url} name={m.full_name} size={40} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{m.full_name || "—"} <RoleBadges roles={m.roles} /></div>
+                  </div>
+                </div>
+                {isSuperM ? <div style={{ fontSize: 12.5, color: W.soft, marginTop: 8 }}>That's you — the superadmin.</div> : (
+                  <>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
+                      {STAFF_ROLES.map(r => { const on = d.roles.has(r); return (
+                        <button key={r} onClick={() => { const ns = new Set(d.roles); on ? ns.delete(r) : ns.add(r); setD(m.id, { roles: ns }); }} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${on ? W.teal : W.line}`, background: on ? W.teal : "#fff", color: on ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{ROLE_BADGE[r].t}</button>
+                      ); })}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <select value={d.city} onChange={e => setD(m.id, { city: e.target.value })} style={{ ...sel, flex: 1 }}>
+                        <option value="">All cities</option>
+                        {(cities || []).map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+                      </select>
+                      <button onClick={async () => { await onSetRoles(m.id, Array.from(d.roles), d.city); reload(); }} style={btn(W.teal, "#fff")}>Save</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1757,16 +1797,16 @@ function EventSendSheet({ event, members, onSend, onClose }) {
     </Sheet>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
-  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image", terms: "" });
+  const [f, setF] = useState({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "" });
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
   const [members, setMembers] = useState([]); const [sendFor, setSendFor] = useState(null);
   useEffect(() => { supabase.from("profiles").select("id, gender, member_details(age, profession, city)").then(({ data }) => setMembers(data || [])); }, []);
-  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: "", banner: "", bannerType: "image", terms: "" });
+  const reset = () => setF({ emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "" });
   const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
-  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, city: f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms }); reset(); setCreating(false); };
+  const create = async () => { if (!f.title) return; await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: f.date, venue: f.venue, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms }); reset(); setCreating(false); };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
   return (
     <div style={{ padding: 14 }}>
@@ -1934,7 +1974,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <PersonAvatar url={m.avatar_url} name={m.full_name} size={42} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{m.full_name || "—"} <RoleBadge role={m.role} /></div>
+                <div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{m.full_name || "—"} <RoleBadges roles={m.roles} /></div>
                 {m.phone
                   ? <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{m.phone}</div>
                   : <div style={{ fontSize: 12.5, color: W.soft }}>{{ male: "Man", female: "Woman", other: "—" }[m.gender] || "—"}</div>}
@@ -2076,7 +2116,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • superadmin ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • rbac ✅</div>
       </div>
     </div>
   );
