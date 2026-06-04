@@ -484,6 +484,31 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             </Sec>
           )}
+          {(e.food_dining || "").trim() && (
+            <Sec title="🍽️ Food & dining">
+              <div>
+                {(e.food_dining || "").split("\n").map(x => x.trim()).filter(Boolean).map((x, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "5px 0", fontSize: 14.5, color: "#3c4a47", lineHeight: 1.5 }}>
+                    <span style={{ color: W.teal, fontWeight: 800 }}>•</span>{x}
+                  </div>
+                ))}
+              </div>
+            </Sec>
+          )}
+          {(e.facilities || "").trim() && (
+            <Sec title="✨ Facilities at the event">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {(e.facilities || "").split(/\n|,/).map(x => x.trim()).filter(Boolean).map((x, i) => (
+                  <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: W.bg, border: `1px solid ${W.line}`, color: W.ink, fontSize: 13, fontWeight: 600, padding: "7px 13px", borderRadius: 20 }}><Check size={14} color={W.teal} />{x}</span>
+                ))}
+              </div>
+            </Sec>
+          )}
+          {(e.dress_code || "").trim() && (
+            <Sec title="👗 Dress code">
+              <div style={{ background: "#FDF6EC", border: "1px solid #F2E2C4", borderRadius: 12, padding: "12px 15px", fontSize: 14.5, color: "#7a5a1e", fontWeight: 600, lineHeight: 1.5 }}>{e.dress_code}</div>
+            </Sec>
+          )}
           {sibs.length > 0 && (
             <Sec title="More dates">
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2505,7 +2530,7 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
 }
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
@@ -2532,7 +2557,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
+    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -2579,6 +2604,9 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
           </div>
           <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <textarea value={f.schedule} onChange={e => setF({ ...f, schedule: e.target.value })} placeholder={"Schedule (optional) — one item per line, e.g.\n7:00 PM — Doors open\n8:00 PM — Live music"} rows={3} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
+          <textarea value={f.food} onChange={e => setF({ ...f, food: e.target.value })} placeholder={"Food & dining (optional) — one item per line, e.g.\nUnlimited starters\nDinner buffet included"} rows={2} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
+          <textarea value={f.facilities} onChange={e => setF({ ...f, facilities: e.target.value })} placeholder="Facilities (optional) — comma separated, e.g. Parking, Washrooms, DJ, Photo booth" rows={2} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
+          <input value={f.dress} onChange={e => setF({ ...f, dress: e.target.value })} placeholder="Dress code (optional) — e.g. Smart casuals / Bollywood theme" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
             {[["none", "One-time"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["custom", "Custom dates"]].map(([v, l]) => (
               <button key={v} onClick={() => setF({ ...f, repeat: v })} style={{ padding: "7px 13px", borderRadius: 16, border: `1px solid ${f.repeat === v ? W.teal : W.line}`, background: f.repeat === v ? W.teal : "#fff", color: f.repeat === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
@@ -3147,7 +3175,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • event-page2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • event-info ✅</div>
       </div>
     </div>
   );
