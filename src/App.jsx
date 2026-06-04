@@ -696,7 +696,7 @@ function PublicLanding() {
   const buyNow = (ev) => { try { localStorage.setItem("gw_buy", ev.id); localStorage.setItem("gw_event", ev.id); } catch {} setAuthMode("signup"); };
   const popSet = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
   const heroSlides = custom.length
-    ? custom.map(s => ({ url: s.url }))
+    ? custom.map(s => ({ url: s.url, id: s.event_id || undefined }))
     : events.filter(e => e.banner_url && e.banner_type !== "video").slice(0, 6).map(e => ({ url: e.banner_url, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
@@ -1372,7 +1372,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     return m === 0 ? "Free" : `From ₹${m}`;
   };
   const heroSlides = custom.length
-    ? custom.map(sl => ({ url: sl.url }))
+    ? custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }))
     : events.filter(e => e.banner_url && e.banner_type !== "video").slice(0, 6).map(e => ({ url: e.banner_url, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   const Chips = ({ label, opts, val, set }) => opts.length ? (
     <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}`, alignItems: "center" }}>
@@ -1401,35 +1401,48 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
   const cityList = Array.from(new Set(rooms.map(r => r.city).filter(Boolean))).sort();
   const list = rooms.filter(r => admin || !r.gender_restrict || r.gender_restrict === "any" || r.gender_restrict === "couple" || r.gender_restrict === profile?.gender)
     .filter(r => city === "all" || (r.city || "") === city);
-  const chip = (v, label) => <button key={v} onClick={() => setCity(v)} style={{ padding: "6px 13px", borderRadius: 16, border: `1px solid ${city === v ? W.teal : W.line}`, background: city === v ? W.teal : "#fff", color: city === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>{label}</button>;
+  const chip = (v, label) => <button key={v} onClick={() => setCity(v)} style={{ padding: "6px 13px", borderRadius: 16, border: `1px solid ${city === v ? W.teal : W.line}`, background: city === v ? W.teal : "#fff", color: city === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{label}</button>;
+  const badge = (t, bg, c) => <span style={{ background: bg, color: c, fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 10 }}>{t}</span>;
   return (
     <div>
-      <TopBar title="Explore Rooms" />
-      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-        {cityList.length > 0 && <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{chip("all", "All cities")}{cityList.map(c => chip(c, c))}</div>}
-        {list.length === 0 && <Center>No rooms here yet.</Center>}
+      <TopBar title="Rooms" />
+      {cityList.length > 0 && <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>{chip("all", "All cities")}{cityList.map(c => chip(c, c))}</div>}
+      <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
+        {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No rooms here yet.</Center></div>}
         {list.map(r => {
           const has = canAccess(r);
           const womenFree = r.price_monthly > 0 && profile?.gender !== "male";
           return (
-            <div key={r.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16 }}>
-              <div style={{ display: "flex", gap: 13 }}>
-                <Avatar room={r} size={50} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 16, color: W.ink, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>{r.name}{r.gender_restrict === "female" && <span style={{ background: "#FCE7F1", color: W.pink, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>WOMEN ONLY</span>}{r.gender_restrict === "male" && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>MEN ONLY</span>}{r.gender_restrict === "couple" && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>COUPLES</span>}{r.city && <span style={{ background: "#EEF2F1", color: W.soft, fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 10 }}>{r.city}</span>}</div>
-                  <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{r.description}</div>
-                  <div style={{ color: W.soft, fontSize: 12.5, marginTop: 5, display: "flex", alignItems: "center", gap: 5 }}><Users size={13} />{counts[r.id] || 0} members</div>
-                </div>
+            <div key={r.id} onClick={() => onJoin(r)} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", boxShadow: "0 3px 12px rgba(0,0,0,.07)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
+              <div style={{ position: "relative", height: 130, background: "linear-gradient(135deg,#008069,#04B08F)", overflow: "hidden" }}>
+                {r.logo_url ? (
+                  <>
+                    <img src={r.logo_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(24px) brightness(.65)", transform: "scale(1.15)" }} />
+                    <img src={r.logo_url} alt={r.name} loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+                  </>
+                ) : (
+                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 46 }}>{r.emoji || "💬"}</div>
+                )}
+                {has && <span style={{ position: "absolute", top: 10, right: 10, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Member</span>}
               </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {r.price_monthly === 0 ? <span style={{ fontWeight: 700, color: W.teal, fontSize: 15 }}>Free</span>
-                    : womenFree ? <><span style={{ textDecoration: "line-through", color: W.soft, fontSize: 14, display: "flex", alignItems: "center" }}><IndianRupee size={13} />{r.price_monthly}</span><span style={{ background: "#FCE7F1", color: W.pink, fontWeight: 700, fontSize: 12, padding: "3px 9px", borderRadius: 20 }}>Free for women</span></>
-                      : <span style={{ fontWeight: 700, color: W.ink, fontSize: 15, display: "flex", alignItems: "center" }}><IndianRupee size={14} />{r.price_monthly}<span style={{ color: W.soft, fontWeight: 500, fontSize: 13 }}>/mo</span></span>}
+              <div style={{ padding: "13px 15px 15px", display: "flex", flexDirection: "column", flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, lineHeight: 1.25 }}>{r.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                  <span style={{ color: W.soft, fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}><Users size={13} />{counts[r.id] || 0} members</span>
+                  {r.city && <span style={{ color: W.soft, fontSize: 12.5 }}>· {r.city}</span>}
+                  {r.gender_restrict === "female" && badge("WOMEN ONLY", "#FCE7F1", W.pink)}
+                  {r.gender_restrict === "male" && badge("MEN ONLY", "#E8F2FB", "#1B6FB8")}
+                  {r.gender_restrict === "couple" && badge("COUPLES", "#EFEAFB", "#7C3AED")}
                 </div>
-                {has ? <button onClick={() => onJoin(r)} style={btn(W.teal, "#fff")}><MessageCircle size={15} />Open</button>
-                  : freeForUser(r) ? <button onClick={() => onJoin(r)} style={btn(W.teal, "#fff")}>Join free</button>
-                    : <button onClick={() => onJoin(r)} style={btn(W.ink, "#fff")}><Lock size={14} />Subscribe</button>}
+                {r.description && <div style={{ color: W.soft, fontSize: 13, marginTop: 7, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.description}</div>}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 12, gap: 8 }}>
+                  {r.price_monthly === 0 ? <span style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>Free</span>
+                    : womenFree ? <span style={{ background: "#FCE7F1", color: W.pink, fontWeight: 700, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>Free for women</span>
+                      : <span style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, display: "flex", alignItems: "center" }}><IndianRupee size={13} />{r.price_monthly}<span style={{ color: W.soft, fontWeight: 500, fontSize: 12.5 }}>/mo</span></span>}
+                  {has ? <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}><MessageCircle size={14} />Open</button>
+                    : freeForUser(r) ? <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>Join free</button>
+                      : <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.ink, "#fff"), padding: "8px 16px" }}><Lock size={13} />Subscribe</button>}
+                </div>
               </div>
             </div>
           );
@@ -1438,8 +1451,6 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
     </div>
   );
 }
-
-/* ---------------- chat room ---------------- */
 function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, readOnly = false, wide = false, sidebar = 0 }) {
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
@@ -1608,9 +1619,11 @@ function SliderManager() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const fileRef = useRef(null);
+  const [evs, setEvs] = useState([]);
   const load = () => supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setRows(data || []));
   useEffect(() => {
     load();
+    supabase.from("events").select("id, title, emoji").order("created_at", { ascending: false }).limit(60).then(({ data }) => setEvs(data || []));
     supabase.auth.getUser().then(({ data }) => {
       const id = data?.user?.id; if (!id) return;
       supabase.from("profiles").select("roles, role").eq("id", id).single().then(({ data: p }) => {
@@ -1635,12 +1648,16 @@ function SliderManager() {
   return (
     <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
       <div style={{ fontWeight: 700, color: W.ink }}>Homepage slider</div>
-      <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 10px" }}>These images rotate at the top of the public events page. If you don't add any, the latest event banners are shown automatically.</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 10px" }}>These images rotate at the top of the events page. Link each one to an event so tapping it opens that event. If you add none, the latest event banners are shown automatically.</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {rows.map(r => (
-          <div key={r.id} style={{ position: "relative" }}>
-            <img src={r.url} alt="" style={{ width: 110, height: 64, objectFit: "cover", borderRadius: 9, border: `1px solid ${W.line}`, display: "block" }} />
+          <div key={r.id} style={{ position: "relative", width: 130 }}>
+            <img src={r.url} alt="" style={{ width: 130, height: 74, objectFit: "cover", borderRadius: 9, border: `1px solid ${W.line}`, display: "block" }} />
             <button onClick={() => del(r.id)} title="Remove" style={{ position: "absolute", top: -7, right: -7, width: 21, height: 21, borderRadius: "50%", border: "none", background: "#C0392B", color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1 }}>✕</button>
+            <select value={r.event_id || ""} onChange={async (e) => { const v = e.target.value || null; await supabase.from("slider_images").update({ event_id: v }).eq("id", r.id); load(); }} style={{ width: "100%", marginTop: 6, padding: "6px 7px", borderRadius: 8, border: `1px solid ${r.event_id ? W.teal : W.line}`, background: "#fff", fontSize: 11.5, color: r.event_id ? W.teal : W.soft, outline: "none", fontWeight: 600 }}>
+              <option value="">No link</option>
+              {evs.map(ev => <option key={ev.id} value={ev.id}>{(ev.emoji || "🎟️") + " " + ev.title}</option>)}
+            </select>
           </div>
         ))}
         <button onClick={() => fileRef.current?.click()} disabled={busy} style={{ width: 110, height: 64, borderRadius: 9, border: `1.5px dashed ${W.teal}`, background: "#fff", color: W.teal, fontWeight: 700, fontSize: 12.5, cursor: "pointer", opacity: busy ? .6 : 1 }}>{busy ? "Uploading…" : "+ Add image"}</button>
@@ -3268,7 +3285,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • moderation ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • meetup-rooms ✅</div>
       </div>
     </div>
   );
