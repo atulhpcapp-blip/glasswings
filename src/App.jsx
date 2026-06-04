@@ -896,6 +896,7 @@ function Main({ user }) {
   const [eventMods, setEventMods] = useState([]);
   const [payBusy, setPayBusy] = useState(false);
   const [eventPage, setEventPage] = useState(null);
+  const [roomPage, setRoomPage] = useState(null);
   const [counts, setCounts] = useState({});
   const [eventCounts, setEventCounts] = useState({});
   const [categories, setCategories] = useState([]);
@@ -1237,7 +1238,7 @@ function Main({ user }) {
   const screen = (
     <>
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
-      {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
+      {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} />}
       {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
@@ -1266,6 +1267,19 @@ function Main({ user }) {
                 onViewTicket={() => setTicketView(ev)}
                 onOpenChat={() => { setEventPage(null); setOpen({ id: ev.id, type: "event" }); }}
               />
+            </div>
+          );
+        })()}
+        {roomPage && (() => {
+          const rr = rooms.find(x => x.id === roomPage);
+          if (!rr) return null;
+          return (
+            <div style={{ position: "fixed", inset: 0, zIndex: 49, overflowY: "auto", background: W.bg }}>
+              <RoomPage room={rr} profile={profile} count={counts[rr.id] || 0} isMember={canAccess(rr)} freeForUser={freeForUser}
+                onJoin={(r2) => joinRoom(r2)} events={events}
+                onOpenEvent={(id) => setEventPage(id)}
+                onOpenChat={() => { setRoomPage(null); setOpen({ id: rr.id, type: "room" }); }}
+                onBack={() => setRoomPage(null)} onNotice={setNotice} />
             </div>
           );
         })()}
@@ -1306,6 +1320,19 @@ function Main({ user }) {
                 onViewTicket={() => setTicketView(ev)}
                 onOpenChat={() => { setEventPage(null); setOpen({ id: ev.id, type: "event" }); }}
               />
+            </div>
+          );
+        })()}
+        {roomPage && (() => {
+          const rr = rooms.find(x => x.id === roomPage);
+          if (!rr) return null;
+          return (
+            <div style={{ position: "fixed", inset: 0, zIndex: 49, overflowY: "auto", background: W.bg }}>
+              <RoomPage room={rr} profile={profile} count={counts[rr.id] || 0} isMember={canAccess(rr)} freeForUser={freeForUser}
+                onJoin={(r2) => joinRoom(r2)} events={events}
+                onOpenEvent={(id) => setEventPage(id)}
+                onOpenChat={() => { setRoomPage(null); setOpen({ id: rr.id, type: "room" }); }}
+                onBack={() => setRoomPage(null)} onNotice={setNotice} />
             </div>
           );
         })()}
@@ -1395,7 +1422,176 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     </div>
   );
 }
-function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
+function Constellation({ data, me, roomName, onWave }) {
+  const [sel, setSel] = useState(null);
+  if (!data) return <div style={{ background: "#0b1f1c", borderRadius: 16, height: 240, display: "flex", alignItems: "center", justifyContent: "center", color: "#5a8f84", fontSize: 13 }}>Mapping the constellation…</div>;
+  const nodes = [...(data.nodes || [])].sort((a, b) => (b.events || 0) - (a.events || 0));
+  const edges = data.edges || [];
+  if (!nodes.length) return null;
+  const CW = 340, CH = 290, cx = CW / 2, cy = CH / 2 - 6;
+  const pos = {};
+  nodes.forEach((n, i) => {
+    if (i === 0 && nodes.length > 1) { pos[n.id] = { x: cx, y: cy }; return; }
+    const ang = i * 2.39996; const rad = Math.min(128, 30 + 15.5 * Math.sqrt(i));
+    pos[n.id] = { x: cx + rad * Math.cos(ang), y: cy + rad * Math.sin(ang) * 0.8 };
+  });
+  const myEdges = {}; edges.forEach(e => { if (e.a === me) myEdges[e.b] = e.w; if (e.b === me) myEdges[e.a] = e.w; });
+  const crossed = Object.keys(myEdges).length;
+  const unmet = Math.max(0, nodes.filter(n => n.id !== me).length - crossed);
+  const selNode = sel ? nodes.find(n => n.id === sel) : null;
+  const initial = n => (n.name || "?").trim().charAt(0).toUpperCase();
+  return (
+    <div style={{ background: "radial-gradient(ellipse at 50% 35%, #11332c, #0b1f1c)", borderRadius: 16, overflow: "hidden" }}>
+      <style>{`@keyframes gwtw{0%,100%{opacity:.2}50%{opacity:.9}}`}</style>
+      <div style={{ padding: "14px 16px 0", color: "#fff" }}>
+        <div style={{ fontWeight: 800, fontSize: 15.5 }}>✨ The Constellation</div>
+        <div style={{ fontSize: 12, color: "#8fc4b8", marginTop: 2 }}>Every line is a real meetup you shared. Show up — your star moves to the centre.</div>
+      </div>
+      <svg viewBox={`0 0 ${CW} ${CH}`} style={{ width: "100%", display: "block" }}>
+        {[...Array(14)].map((_, i) => <circle key={"bg" + i} cx={(i * 73 + 21) % CW} cy={(i * 47 + 13) % CH} r={1} fill="#7de8cc" style={{ animation: `gwtw ${2 + (i % 4)}s ease-in-out ${i * .4}s infinite` }} />)}
+        {edges.map((e, i) => { const a = pos[e.a], b = pos[e.b]; if (!a || !b) return null; const mine = e.a === me || e.b === me; return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={mine ? "#2FD4A8" : "#9EE8D6"} strokeWidth={Math.min(2.6, .6 + e.w * .5)} opacity={mine ? .65 : .22 + Math.min(.4, e.w * .12)} />; })}
+        {nodes.map(n => { const pt = pos[n.id]; if (!pt) return null; const isMe = n.id === me; const isSel = n.id === sel; const r = isMe ? 13 : 11;
+          return (
+            <g key={n.id} onClick={() => setSel(isSel ? null : n.id)} style={{ cursor: "pointer" }}>
+              {(isMe || isSel) && <circle cx={pt.x} cy={pt.y} r={r + 4} fill="none" stroke={isMe ? "#2FD4A8" : "#fff"} strokeWidth={1.6} opacity={.9} />}
+              {n.avatar ? (
+                <>
+                  <clipPath id={"cl" + n.id}><circle cx={pt.x} cy={pt.y} r={r} /></clipPath>
+                  <image href={n.avatar} x={pt.x - r} y={pt.y - r} width={r * 2} height={r * 2} clipPath={`url(#cl${n.id})`} preserveAspectRatio="xMidYMid slice" />
+                </>
+              ) : (
+                <>
+                  <circle cx={pt.x} cy={pt.y} r={r} fill={(n.events || 0) > 0 ? "#15584a" : "#123028"} stroke="#2FD4A8" strokeWidth={.8} />
+                  <text x={pt.x} y={pt.y + 4} textAnchor="middle" fontSize="11" fontWeight="800" fill="#9EE8D6">{initial(n)}</text>
+                </>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{ padding: "0 16px 14px", color: "#fff" }}>
+        {selNode ? (
+          <div style={{ background: "rgba(255,255,255,.07)", borderRadius: 12, padding: "11px 13px", display: "flex", alignItems: "center", gap: 11 }}>
+            <PersonAvatar url={selNode.avatar} name={selNode.name} size={36} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>{selNode.id === me ? "That's you ⭐" : selNode.name || "Member"}</div>
+              <div style={{ fontSize: 12, color: "#8fc4b8" }}>
+                {selNode.id === me ? `Crossed paths with ${crossed} ${crossed === 1 ? "person" : "people"} · ${unmet} yet to meet`
+                  : myEdges[selNode.id] ? `You've crossed paths at ${myEdges[selNode.id]} ${myEdges[selNode.id] === 1 ? "event" : "events"}` : "You haven't met yet — next meetup?"}
+              </div>
+            </div>
+            {selNode.id !== me && <button onClick={() => onWave(selNode)} style={{ ...btn("#2FD4A8", "#0b1f1c"), padding: "8px 13px", fontSize: 12.5, fontWeight: 800 }}>Say hi 👋</button>}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "#8fc4b8" }}>You've crossed paths with <b style={{ color: "#2FD4A8" }}>{crossed}</b> {crossed === 1 ? "person" : "people"} here · <b style={{ color: "#fff" }}>{unmet}</b> yet to meet. Tap a star.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, events, onOpenEvent, onOpenChat, onBack, onNotice }) {
+  const [tab, setTab] = useState("home");
+  const [galaxy, setGalaxy] = useState(null);
+  useEffect(() => { setGalaxy(null); supabase.rpc("room_constellation", { p_room: r.id }).then(({ data }) => setGalaxy(data || { nodes: [], edges: [] })); }, [r.id]);
+  const today = new Date().toISOString().slice(0, 10);
+  const roomEvents = events.filter(e => !r.city || !e.city || e.city === r.city);
+  const upcoming = roomEvents.filter(e => !e.event_at || e.event_at >= today);
+  const past = roomEvents.filter(e => e.event_at && e.event_at < today).slice(0, 12);
+  const womenFree = r.price_monthly > 0 && profile?.gender !== "male";
+  const wave = async (node) => {
+    try {
+      const first = (node.name || "").split(" ")[0];
+      const { error } = await supabase.from("messages").insert({ group_type: "dm", group_id: node.id, sender_id: profile.id, body: `👋 Hi${first ? " " + first : ""}! We've crossed paths at ${r.name} meetups — I'm ${profile.full_name}. Say hi back!` });
+      onNotice(error ? "Couldn't send the wave right now." : `Wave sent to ${node.name} 👋 — check Chats for their reply.`);
+    } catch { onNotice("Couldn't send the wave right now."); }
+  };
+  const tabBtn = (v, l) => <button key={v} onClick={() => v === "chat" ? (isMember ? onOpenChat() : onNotice("Join the room to enter the chat.")) : setTab(v)} style={{ flex: 1, padding: "11px 0", border: "none", background: "transparent", borderBottom: `2.5px solid ${tab === v ? W.teal : "transparent"}`, color: tab === v ? W.teal : W.soft, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{l}</button>;
+  const joinCta = !isMember && (
+    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+      <div>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>Join {r.name}</div>
+        <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2 }}>{r.price_monthly === 0 ? "Free to join" : womenFree ? "Free for women" : `₹${r.price_monthly}/month`}</div>
+      </div>
+      <button onClick={() => onJoin(r)} style={{ ...btn(W.teal, "#fff"), padding: "10px 18px" }}>{freeForUser(r) ? "Join free" : "Subscribe"}</button>
+    </div>
+  );
+  return (
+    <div style={{ minHeight: "100vh", background: W.bg }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(8,18,24,.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 7, background: "transparent", border: "none", color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: "pointer", padding: 0 }}><ArrowLeft size={19} />Rooms</button>
+      </div>
+      <div style={{ position: "relative", height: 170, background: "linear-gradient(135deg,#008069,#04B08F)", overflow: "hidden" }}>
+        {r.logo_url && <>
+          <img src={r.logo_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(24px) brightness(.6)", transform: "scale(1.15)" }} />
+          <img src={r.logo_url} alt={r.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+        </>}
+        {!r.logo_url && <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 56 }}>{r.emoji || "💬"}</div>}
+      </div>
+      <div style={{ background: "#fff", padding: "14px 16px 0", borderBottom: `1px solid ${W.line}` }}>
+        <div style={{ fontWeight: 800, fontSize: 21, color: W.ink }}>{r.name}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginTop: 5, fontSize: 12.5, color: W.soft }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Users size={13} />{count} members</span>
+          {r.city && <span>· {r.city}</span>}
+          {r.gender_restrict === "female" && <span style={{ background: "#FCE7F1", color: W.pink, fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10 }}>WOMEN ONLY</span>}
+          {r.gender_restrict === "couple" && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10 }}>COUPLES</span>}
+        </div>
+        <div style={{ display: "flex", marginTop: 10 }}>
+          {tabBtn("home", "Home")}{tabBtn("events", "Events")}{tabBtn("members", "Members")}{tabBtn("chat", "Chat")}
+        </div>
+      </div>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 14, paddingBottom: 40 }}>
+        {tab === "home" && (
+          <>
+            {joinCta}
+            {r.description && <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, fontSize: 14, color: "#3c4a47", lineHeight: 1.55 }}>{r.description}</div>}
+            {r.pinned && <div style={{ background: "#FDF6EC", border: "1px solid #F2E2C4", borderRadius: 14, padding: 13, fontSize: 13.5, color: "#7a5a1e", lineHeight: 1.5 }}><b>📌 Pinned</b><div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{r.pinned}</div></div>}
+            <Constellation data={galaxy} me={profile?.id} roomName={r.name} onWave={wave} />
+            {upcoming.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15.5, color: W.ink, margin: "4px 0 10px" }}>Next meetups</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12 }}>
+                  {upcoming.slice(0, 4).map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={(e.ticket_price || 0) === 0 ? "Free" : `From ₹${e.ticket_price}`} popular={false} going={false} onOpen={onOpenEvent} />)}
+                </div>
+              </div>
+            )}
+            {isMember && <button onClick={onOpenChat} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", padding: 13, fontSize: 14.5 }}><MessageCircle size={16} />Open room chat</button>}
+          </>
+        )}
+        {tab === "events" && (
+          <>
+            {upcoming.length === 0 && past.length === 0 && <Center>No meetups yet.</Center>}
+            {upcoming.length > 0 && <div style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>Upcoming</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12 }}>
+              {upcoming.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={(e.ticket_price || 0) === 0 ? "Free" : `From ₹${e.ticket_price}`} popular={false} going={false} onOpen={onOpenEvent} />)}
+            </div>
+            {past.length > 0 && <div style={{ fontWeight: 800, fontSize: 15, color: W.ink, marginTop: 6 }}>Memories</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12 }}>
+              {past.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price="" popular={false} going={false} onOpen={onOpenEvent} />)}
+            </div>
+          </>
+        )}
+        {tab === "members" && (
+          galaxy === null ? <Center>loading members…</Center> : (
+            <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14 }}>
+              {(galaxy.nodes || []).map((n, i) => (
+                <div key={n.id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 14px", borderTop: i ? `1px solid ${W.line}` : "none" }}>
+                  <PersonAvatar url={n.avatar} name={n.name} size={38} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{n.name || "Member"}{n.id === profile?.id ? " (you)" : ""}</div>
+                    <div style={{ fontSize: 12, color: W.soft }}>{n.events || 0} meetups attended</div>
+                  </div>
+                  {n.id !== profile?.id && <button onClick={() => wave(n)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "6px 11px", fontSize: 12.5 }}>👋</button>}
+                </div>
+              ))}
+              {(galaxy.nodes || []).length === 0 && <div style={{ padding: 14 }}><Center>No members yet.</Center></div>}
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom }) {
   const admin = ["admin", "superadmin"].includes(profile?.role);
   const [city, setCity] = useState("all");
   const cityList = Array.from(new Set(rooms.map(r => r.city).filter(Boolean))).sort();
@@ -1413,7 +1609,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
           const has = canAccess(r);
           const womenFree = r.price_monthly > 0 && profile?.gender !== "male";
           return (
-            <div key={r.id} onClick={() => onJoin(r)} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", boxShadow: "0 3px 12px rgba(0,0,0,.07)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
+            <div key={r.id} onClick={() => onOpenRoom ? onOpenRoom(r.id) : onJoin(r)} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", boxShadow: "0 3px 12px rgba(0,0,0,.07)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "relative", height: 130, background: "linear-gradient(135deg,#008069,#04B08F)", overflow: "hidden" }}>
                 {r.logo_url ? (
                   <>
@@ -1439,7 +1635,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
                   {r.price_monthly === 0 ? <span style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>Free</span>
                     : womenFree ? <span style={{ background: "#FCE7F1", color: W.pink, fontWeight: 700, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>Free for women</span>
                       : <span style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, display: "flex", alignItems: "center" }}><IndianRupee size={13} />{r.price_monthly}<span style={{ color: W.soft, fontWeight: 500, fontSize: 12.5 }}>/mo</span></span>}
-                  {has ? <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}><MessageCircle size={14} />Open</button>
+                  {has ? <button onClick={(ev) => { ev.stopPropagation(); onOpenRoom ? onOpenRoom(r.id) : onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}><MessageCircle size={14} />Open</button>
                     : freeForUser(r) ? <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>Join free</button>
                       : <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.ink, "#fff"), padding: "8px 16px" }}><Lock size={13} />Subscribe</button>}
                 </div>
@@ -3285,7 +3481,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • meetup-rooms ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • constellation ✅</div>
       </div>
     </div>
   );
