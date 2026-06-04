@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient.js";
 import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Check, Image as ImageIcon
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Check, Pencil, Image as ImageIcon
 } from "lucide-react";
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
@@ -683,6 +683,13 @@ function Main({ user }) {
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
 
+  const emailTicket = async (eventId) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token; if (!token || !eventId) return;
+      fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, event_id: eventId }) });
+    } catch {}
+  };
   const startPayment = async (purpose, payload, onPaid) => {
     setPayBusy(true);
     const ready = await loadRazorpay();
@@ -707,6 +714,7 @@ function Main({ user }) {
           const vd = await v.json();
           if (!v.ok || !vd.ok) return setNotice(vd.error || "We couldn't confirm the payment. If money was deducted, contact us and we'll sort it.");
           await load();
+          if (purpose === "ticket" && payload?.event_id) emailTicket(payload.event_id);
           onPaid && onPaid();
         } catch { setNotice("Payment confirmation failed. If money was deducted, contact us and we'll sort it."); }
       },
@@ -829,6 +837,7 @@ function Main({ user }) {
     setBuyTarget(null);
     if (error) return setNotice(error.message);
     await load();
+    emailTicket(e.id);
     setOpen({ id: e.id, type: "event" });
   };
 
@@ -2328,6 +2337,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <EventBanner ev={e} onUpdate={onUpdate} />
                 <EventShare event={e} />
+                <GuestTickets event={e} />
                 <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
                 <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                 <GenderBalance ev={e} onUpdate={onUpdate} />
@@ -2340,6 +2350,40 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
         ))}
         {events.length === 0 && <Center>No events yet.</Center>}
       </div>
+    </div>
+  );
+}
+function GuestTickets({ event }) {
+  const [q, setQ] = useState("");
+  const [list, setList] = useState([]);
+  const [given, setGiven] = useState({});
+  const [msg, setMsg] = useState("");
+  useEffect(() => { supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, []);
+  const matches = q.trim().length < 2 ? [] : list.filter(m => (m.full_name || "").toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6);
+  const give = async (m) => {
+    setMsg("");
+    const { error } = await supabase.rpc("issue_ticket", { p_event: event.id, p_user: m.id, p_qty: 1 });
+    if (error) return setMsg(error.message);
+    setGiven(g => ({ ...g, [m.id]: (g[m.id] || 0) + 1 }));
+    setMsg(`✓ Free ticket issued to ${m.full_name} — they'll see it in their app and get it by email.`);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, event_id: event.id, for_user: m.id }) });
+    } catch {}
+  };
+  return (
+    <div style={{ marginTop: 16 }}>
+      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Guest list — free tickets</label>
+      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Quietly give free tickets to friends and special guests. Nothing is shown or sold on the portal — the guest just receives the ticket. (They need a free account first.)</div>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member by name…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", color: W.ink }} />
+      {matches.map(m => (
+        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: `1px solid ${W.line}` }}>
+          <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.full_name}</span>
+          <button onClick={() => give(m)} style={{ ...btn(W.teal, "#fff"), padding: "6px 11px", fontSize: 12.5 }}>{given[m.id] ? `Give again (${given[m.id]})` : "Give ticket"}</button>
+        </div>
+      ))}
+      {msg && <div style={{ fontSize: 12.5, color: msg.startsWith("✓") ? W.teal : "#C0392B", marginTop: 8 }}>{msg}</div>}
     </div>
   );
 }
@@ -2659,12 +2703,73 @@ function Gallery({ isAdmin }) {
     </div>
   );
 }
+function EditProfileSheet({ user, profile, onClose, reload }) {
+  const [name, setName] = useState(profile.full_name || "");
+  const [gender, setGender] = useState(profile.gender || "male");
+  const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");
+  const [avatar, setAvatar] = useState(profile.avatar_url || "");
+  const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
+  const fileRef = useRef(null);
+  useEffect(() => {
+    supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); } });
+    supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data?.phone) setPhone(data.phone); });
+  }, [user.id]);
+  const pick = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setErr(""); setUploading(true);
+    try { setAvatar(await uploadPhoto(user.id, file)); } catch (x) { setErr("Photo upload failed: " + x.message); }
+    setUploading(false);
+  };
+  const save = async () => {
+    setErr(""); if (!name.trim()) return setErr("Please enter your name.");
+    setBusy(true);
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city });
+    if (phone) await supabase.from("member_phone").upsert({ user_id: user.id, phone });
+    const { error: e2 } = await supabase.from("profiles").update({ full_name: name.trim(), gender, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
+    setBusy(false);
+    if (e1 || e2) return setErr((e1 || e2).message);
+    reload(); onClose();
+  };
+  const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink, boxSizing: "border-box" }} />;
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 14 }}>Edit profile</div>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+        <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer" }}>
+          <PersonAvatar url={avatar} name={name} size={84} />
+          <div style={{ position: "absolute", bottom: 0, right: 0, width: 28, height: 28, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>{uploading ? "…" : <Camera size={14} />}</div>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {inp("Full name", name, setName)}
+        <div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6, fontWeight: 600 }}>I am</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[["male", "Man"], ["female", "Woman"], ["other", "Other"]].map(([v, l]) => <button key={v} onClick={() => setGender(v)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${gender === v ? W.teal : W.line}`, background: gender === v ? "#E7F6EF" : "#fff", color: W.ink, fontWeight: 600, fontSize: 14 }}>{l}</button>)}
+          </div>
+        </div>
+        {inp("Phone number (private — staff only)", phone, setPhone, "tel")}
+        {inp("Age", age, setAge, "number")}
+        {inp("Area / locality", area, setArea)}
+        {inp("City", city, setCity)}
+        {inp("Profession", prof, setProf)}
+        {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+          <button onClick={save} disabled={busy || uploading} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: (busy || uploading) ? .6 : 1 }}>{busy ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
 function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
   const roleLabel = { admin: "Admin (Owner)", subadmin: "Sub-admin", member: "Member" }[profile?.role] || "Member";
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [stamps, setStamps] = useState(null);
   const [ref, setRef] = useState(null); const [copied, setCopied] = useState(false);
+  const [edit, setEdit] = useState(false);
   const isPromoter = (profile?.roles || []).includes("promoter");
   useEffect(() => {
     supabase.rpc("my_stamps").then(({ data }) => setStamps(data ?? 0));
@@ -2692,6 +2797,8 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 7, background: "#E7F6EF", color: W.teal, fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{profile?.role !== "member" && <Crown size={13} />}{roleLabel}</span>
           </div>
         </div>
+        <button onClick={() => setEdit(true)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}><Pencil size={15} />Edit profile</button>
+        {edit && <EditProfileSheet user={user} profile={profile} onClose={() => setEdit(false)} reload={reload} />}
         {stamps !== null && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div>
@@ -2734,7 +2841,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pay-speed ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • guest-list ✅</div>
       </div>
     </div>
   );
