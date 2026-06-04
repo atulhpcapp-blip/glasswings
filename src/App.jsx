@@ -1196,6 +1196,16 @@ function Main({ user }) {
   const delTicketType = async (id) => { const { error } = await supabase.from("event_ticket_types").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
 
   if (!ready) return <Splash />;
+  if (profile?.blocked) return (
+    <div style={{ minHeight: "100vh", background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 28, maxWidth: 380, textAlign: "center", border: `1px solid ${W.line}` }}>
+        <div style={{ fontSize: 40 }}>🚫</div>
+        <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginTop: 8 }}>Account blocked</div>
+        <div style={{ fontSize: 14, color: W.soft, marginTop: 6, lineHeight: 1.5 }}>Your account has been blocked by the organiser. If you think this is a mistake, please contact the Glasswings team.</div>
+        <button onClick={() => supabase.auth.signOut()} style={{ ...btn(W.ink, "#fff"), marginTop: 16, justifyContent: "center", width: "100%" }}>Sign out</button>
+      </div>
+    </div>
+  );
   const pendingBuy = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   if (profile && !profile.profile_completed && !pendingBuy) return <ProfileGate user={user} profile={profile} reload={load} />;
 
@@ -1746,7 +1756,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} />}
+                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} />}
     </div>
   );
 }
@@ -1770,7 +1780,9 @@ function StampBadge({ count, size = "sm" }) {
 const STAFF_ROLES = ["admin", "subadmin", "organiser", "promoter"];
 function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
   const [list, setList] = useState(null);
-  const [view, setView] = useState("roles"); // roles | matrix
+  const [view, setView] = useState("roles"); // roles | stats | matrix
+  const [tstats, setTstats] = useState([]);
+  useEffect(() => { supabase.rpc("staff_stats").then(({ data }) => setTstats(data || [])); }, []);
   const [draft, setDraft] = useState({}); // memberId -> {roles:Set, city}
   const reload = () => supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
   useEffect(() => { reload(); }, []);
@@ -1782,7 +1794,7 @@ function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
   return (
     <div style={{ padding: 14 }}>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {[["roles", "Team & roles"], ["matrix", "Permissions"]].map(([v, l]) => <button key={v} onClick={() => setView(v)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${view === v ? W.teal : W.line}`, background: view === v ? W.teal : "#fff", color: view === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>{l}</button>)}
+        {[["roles", "Team"], ["stats", "Analytics"], ["matrix", "Permissions"]].map(([v, l]) => <button key={v} onClick={() => setView(v)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${view === v ? W.teal : W.line}`, background: view === v ? W.teal : "#fff", color: view === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>{l}</button>)}
       </div>
 
       {view === "matrix" ? (
@@ -1803,9 +1815,24 @@ function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
             );
           })}
         </div>
+      ) : view === "stats" ? (
+        <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}` }}>
+          <div style={{ padding: "13px 14px 4px", fontWeight: 700, color: W.ink }}>Team analytics</div>
+          <div style={{ padding: "0 14px 8px", fontSize: 12.5, color: W.soft }}>Events hosted and total attendance brought in by each team member.</div>
+          {tstats.length === 0 ? <div style={{ padding: 14 }}><Center>No team activity yet.</Center></div> : tstats.map((st, i) => (
+            <div key={st.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", borderTop: `1px solid ${W.line}` }}>
+              <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{st.full_name || "—"}</span><RoleBadges roles={st.roles} /></div>
+              <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
+                <span style={{ color: W.soft }}>Hosted <b style={{ color: W.ink }}>{st.hosted}</b></span>
+                <span style={{ color: W.soft }}>Attended <b style={{ color: W.ink }}>{st.attended}</b></span>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : list === null ? <Center>loading…</Center> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {list.map(m => {
+          <div style={{ fontSize: 12.5, color: W.soft }}>Your team. To promote a member to a role, use the Members tab.</div>
+          {list.filter(m => (m.roles || []).some(r => r === "superadmin" || STAFF_ROLES.includes(r))).map(m => {
             const d = getDraft(m);
             const isSuperM = (m.roles || []).includes("superadmin");
             return (
@@ -2656,6 +2683,20 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
                 <EventBanner ev={e} onUpdate={onUpdate} />
                 <EventShare event={e} />
                 <GuestTickets event={e} />
+                <div style={{ marginTop: 16 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Category &amp; city</label>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                    <select value={e.category || ""} onChange={ev => onUpdate(e.id, { category: ev.target.value || null })} style={{ flex: "1 1 140px", padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" }}>
+                      <option value="">No category</option>
+                      {categories.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <select value={e.city || ""} onChange={ev => onUpdate(e.id, { city: ev.target.value || null })} disabled={!!lockCity} style={{ flex: "1 1 140px", padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none", opacity: lockCity ? .6 : 1 }}>
+                      <option value="">All cities</option>
+                      {cities.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Changes save instantly — works on already-posted events.</div>
+                </div>
                 <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
                 <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                 <GenderBalance ev={e} onUpdate={onUpdate} />
@@ -2854,13 +2895,73 @@ function EditMemberSheet({ member, isSuper, cities, onClose, onSaved }) {
     </div>
   );
 }
-function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities }) {
+function MemberRolesSheet({ member: m, cities, onSetRoles, onClose, onSaved }) {
+  const [roles, setRoles] = useState(new Set((m.roles || []).filter(r => STAFF_ROLES.includes(r))));
+  const [city, setCity] = useState(m.staff_city || "");
+  const [comm, setComm] = useState(m.commission_pct ?? "");
+  const [busy, setBusy] = useState(false);
+  const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" };
+  const save = async () => {
+    setBusy(true);
+    await onSetRoles(m.id, Array.from(roles), city);
+    if (roles.has("promoter")) await supabase.rpc("set_commission", { p_user: m.id, p_pct: Number(comm) || 0 });
+    setBusy(false); onSaved();
+  };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 4 }}>Roles — {m.full_name || "Member"}</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Promote this member to your team, or remove all roles to make them a regular member.</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+        {STAFF_ROLES.map(r => { const on = roles.has(r); return (
+          <button key={r} onClick={() => { const ns = new Set(roles); on ? ns.delete(r) : ns.add(r); setRoles(ns); }} style={{ padding: "8px 14px", borderRadius: 16, border: `1px solid ${on ? W.teal : W.line}`, background: on ? W.teal : "#fff", color: on ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{ROLE_BADGE[r].t}</button>
+        ); })}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <select value={city} onChange={e => setCity(e.target.value)} style={{ ...sel, flex: "1 1 130px" }}>
+          <option value="">All cities</option>
+          {(cities || []).map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+        </select>
+        {roles.has("promoter") && <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <input value={comm} onChange={e => setComm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" inputMode="decimal" style={{ ...sel, width: 60 }} /><span style={{ fontSize: 13, color: W.soft }}>% commission</span>
+        </div>}
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+        <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+        <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "Save"}</button>
+      </div>
+    </Sheet>
+  );
+}
+function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities, onSetRoles }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
   const [editing, setEditing] = useState(null);
+  const [rolesFor, setRolesFor] = useState(null);
+  const [blockedMap, setBlockedMap] = useState({});
   const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all"); const [q, setQ] = useState("");
-  const reload = () => supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
+  const reload = () => {
+    supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
+    if (isSuper) supabase.from("profiles").select("id, blocked").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.id] = !!r.blocked; }); setBlockedMap(m); });
+  };
   useEffect(() => { reload(); }, []);
+  const toggleBlock = async (m) => {
+    const nb = !blockedMap[m.id];
+    if (!window.confirm(nb ? `Block ${m.full_name || "this member"}? They won't be able to use the app.` : `Unblock ${m.full_name || "this member"}?`)) return;
+    const { error } = await supabase.rpc("set_member_blocked", { p_user: m.id, p_blocked: nb });
+    if (error) return alert(error.message);
+    setBlockedMap(b => ({ ...b, [m.id]: nb }));
+  };
+  const deleteMember = async (m) => {
+    if (!window.confirm(`Permanently DELETE ${m.full_name || "this member"}? Their account, tickets and messages are removed. This cannot be undone.`)) return;
+    if (!window.confirm("Are you absolutely sure? This is permanent.")) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch("/api/admin/delete-member", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, user_id: m.id }) });
+      const d = await r.json();
+      if (!r.ok) return alert(d.error || "Could not delete.");
+      setList(l => (l || []).filter(x => x.id !== m.id));
+    } catch { alert("Could not delete. Try again."); }
+  };
   const award = async (uid, amount, note) => {
     setList(l => l.map(m => m.id === uid ? { ...m, stamps: (Number(m.stamps) || 0) + amount } : m));
     await supabase.rpc("award_stamp", { p_user: uid, p_amount: amount, p_note: note || null });
@@ -2887,6 +2988,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
   return (
     <div style={{ padding: 14 }}>
       {editing && <EditMemberSheet member={editing} isSuper={isSuper} cities={cities} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+      {rolesFor && <MemberRolesSheet member={rolesFor} cities={cities} onSetRoles={onSetRoles} onClose={() => setRolesFor(null)} onSaved={() => { setRolesFor(null); reload(); }} />}
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 12, marginBottom: 12 }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder={isSuper ? "Search by name or phone…" : "Search by name…"} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink, marginBottom: 10 }} />
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
@@ -2909,13 +3011,14 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <PersonAvatar url={m.avatar_url} name={m.full_name} size={42} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{m.full_name || "—"} <RoleBadges roles={m.roles} /></div>
+                <div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{m.full_name || "—"} <RoleBadges roles={m.roles} />{blockedMap[m.id] && <span style={{ background: "#FBE9E7", color: "#C0392B", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10 }}>Blocked</span>}</div>
                 {m.phone
                   ? <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{m.phone}</div>
                   : <div style={{ fontSize: 12.5, color: W.soft }}>{{ male: "Man", female: "Woman", other: "—" }[m.gender] || "—"}</div>}
               </div>
               {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "7px 10px", fontSize: 12.5, textDecoration: "none" }}><MessageCircle size={14} />WhatsApp</a>}
               {canEdit && <button onClick={() => setEditing(m)} title="Edit profile" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 10px", fontSize: 12.5 }}><Settings size={14} /></button>}
+              {isSuper && !(m.roles || []).includes("superadmin") && <button onClick={() => setRolesFor(m)} title="Roles & promotion" style={{ ...btn("#fff", "#7C3AED"), border: "1px solid #E4D5FB", padding: "7px 10px", fontSize: 12.5 }}><Crown size={14} /></button>}
               <button onClick={() => { const text = window.prompt(`Send an in-app message to ${m.full_name || "this member"}:`); if (text && text.trim()) onSendDM([m.id], text); }} style={{ ...btn(W.teal, "#fff"), padding: "7px 10px", fontSize: 12.5 }}><Send size={14} /></button>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 13, color: W.soft }}>
@@ -2940,6 +3043,12 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
                 </div>
               )}
             </div>
+            {isSuper && !(m.roles || []).includes("superadmin") && (
+              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                <button onClick={() => toggleBlock(m)} style={{ ...btn("#fff", blockedMap[m.id] ? W.teal : "#B45309"), border: `1px solid ${blockedMap[m.id] ? W.line : "#F0D9A8"}`, padding: "6px 12px", fontSize: 12.5 }}>{blockedMap[m.id] ? "Unblock" : "Block"}</button>
+                <button onClick={() => deleteMember(m)} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 12px", fontSize: 12.5 }}><Trash2 size={13} />Delete</button>
+              </div>
+            )}
             {rooms && rooms.length > 0 && (canAdd || canRemove) && (
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                 <select value={pick[m.id] || ""} onChange={e => setPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: 1, minWidth: 0 }}>
@@ -3159,7 +3268,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • smart-fit ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • moderation ✅</div>
       </div>
     </div>
   );
