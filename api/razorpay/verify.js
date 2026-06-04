@@ -33,16 +33,18 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Payment could not be verified." });
     }
 
-    const { data: ures } = await sb.auth.getUser(access_token);
+    const [{ data: ures }, { data: pay }] = await Promise.all([
+      sb.auth.getUser(access_token),
+      sb.from("payments").select("*").eq("razorpay_order_id", razorpay_order_id).single(),
+    ]);
     const uid = ures?.user?.id;
     if (!uid) return res.status(401).json({ error: "Please log in again." });
-
-    const { data: pay } = await sb.from("payments").select("*").eq("razorpay_order_id", razorpay_order_id).single();
     if (!pay || pay.user_id !== uid) return res.status(400).json({ error: "Order not found." });
     if (pay.status === "paid") return res.status(200).json({ ok: true });   // idempotent
 
     if (pay.purpose === "ticket") {
-      await sb.from("event_tickets").insert({ event_id: pay.event_id, user_id: uid, ticket_type_id: pay.ticket_type_id, quantity: pay.quantity, addons: pay.addons || [], referrer_id: pay.referrer_id || null });
+      const { error: insErr } = await sb.from("event_tickets").insert({ event_id: pay.event_id, user_id: uid, ticket_type_id: pay.ticket_type_id, quantity: pay.quantity, addons: pay.addons || [], referrer_id: pay.referrer_id || null, razorpay_order_id });
+      if (insErr && insErr.code !== "23505") throw insErr;   // 23505 = webhook already granted it
     } else if (pay.purpose === "room") {
       await sb.from("room_subscriptions").insert({ room_id: pay.room_id, user_id: uid, status: "active" });
     }
