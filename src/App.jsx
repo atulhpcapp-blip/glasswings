@@ -543,6 +543,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             </Sec>
           )}
+          {profile && <TimeCapsule event={e} profile={profile} />}
           {(e.food_dining || "").trim() && (
             <Sec title="🍽️ Food & dining">
               <div>
@@ -2633,6 +2634,102 @@ function EventSendSheet({ event, members, onSend, onClose }) {
     </Sheet>
   );
 }
+function Introductions({ eventId, refreshKey }) {
+  const [data, setData] = useState(null);
+  useEffect(() => { supabase.rpc("event_introductions", { p_event: eventId }).then(({ data }) => setData(data || null)); }, [eventId, refreshKey]);
+  if (!data) return null;
+  const pairs = data.pairs || [], newbies = data.newcomers || [];
+  if (!pairs.length && !newbies.length) return null;
+  const face = (p, size = 30) => (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <PersonAvatar url={p.avatar} name={p.name} size={size} />
+      <span style={{ fontWeight: 700, color: W.ink, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(p.name || "—").split(" ")[0]}</span>
+    </span>
+  );
+  return (
+    <div style={{ background: "linear-gradient(135deg,#FFF8EC,#FDF1F7)", border: "1px solid #F2E2C4", borderRadius: 14, padding: "13px 14px", marginBottom: 16 }}>
+      <div style={{ fontWeight: 800, fontSize: 14.5, color: W.ink }}>🤝 Make introductions tonight</div>
+      {pairs.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, color: W.soft, margin: "3px 0 9px" }}>These people have crossed paths before but never connected — walk them over to each other.</div>
+          {pairs.map((pr, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i ? "1px solid #F2E2C4" : "none" }}>
+              {face(pr.a)}
+              <span style={{ color: "#B45309", fontWeight: 800, fontSize: 13 }}>×</span>
+              {face(pr.b)}
+              <span style={{ marginLeft: "auto", background: "#fff", border: "1px solid #F2E2C4", color: "#B45309", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 12, whiteSpace: "nowrap" }}>met {pr.shared}× · never talked</span>
+            </div>
+          ))}
+        </>
+      )}
+      {newbies.length > 0 && (
+        <div style={{ marginTop: pairs.length ? 10 : 6 }}>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 7 }}>👋 First-timers tonight — give them a warm welcome:</div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{newbies.map((n, i) => <span key={i}>{face(n, 26)}</span>)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+function TimeCapsule({ event: e, profile }) {
+  const [cap, setCap] = useState(null);
+  const [txt, setTxt] = useState("");
+  const [img, setImg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fref = useRef(null);
+  const load = () => supabase.rpc("capsule_read", { p_event: e.id }).then(({ data }) => setCap(data || null));
+  useEffect(() => { setCap(null); load(); }, [e.id]);
+  if (!cap || !cap.eligible) return null;
+  const drop = async () => {
+    if (!txt.trim() && !img) return;
+    setBusy(true);
+    const { error } = await supabase.rpc("capsule_drop", { p_event: e.id, p_body: txt, p_image: img || null });
+    setBusy(false);
+    if (!error) { setTxt(""); setImg(""); load(); }
+  };
+  const pick = async (ev) => {
+    const f = ev.target.files?.[0]; if (fref.current) fref.current.value = "";
+    if (!f) return;
+    try { setBusy(true); const url = await uploadPhoto(profile.id, f); setImg(url); } catch {} finally { setBusy(false); }
+  };
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ background: "linear-gradient(140deg,#141031,#0E2231)", borderRadius: 16, padding: "16px 16px 14px", color: "#fff" }}>
+        <div style={{ fontWeight: 800, fontSize: 15.5 }}>{cap.open ? "🔓 The Time Capsule — opened" : "⏳ Time Capsule"}</div>
+        {cap.open ? (
+          <>
+            <div style={{ fontSize: 12, color: "#9fb3d9", marginTop: 3 }}>Memories dropped on this night, sealed until now.</div>
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+              {(cap.notes || []).map((n, i) => (
+                <div key={i} style={{ background: "rgba(255,255,255,.07)", borderRadius: 12, padding: "10px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <PersonAvatar url={n.avatar} name={n.name} size={26} />
+                    <span style={{ fontWeight: 700, fontSize: 12.5 }}>{n.name || "Someone"}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 11, color: "#9fb3d9" }}>{n.at}</span>
+                  </div>
+                  {n.body && <div style={{ fontSize: 13.5, lineHeight: 1.5, marginTop: 7, whiteSpace: "pre-wrap" }}>{n.body}</div>}
+                  {n.image && <img src={n.image} alt="" loading="lazy" style={{ width: "100%", borderRadius: 10, marginTop: 8, display: "block" }} />}
+                </div>
+              ))}
+              {(cap.notes || []).length === 0 && <div style={{ fontSize: 12.5, color: "#9fb3d9" }}>The capsule was empty this time — drop something at the next event!</div>}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 12, color: "#9fb3d9", marginTop: 3 }}>Drop a memory from this night — a thought, a moment, a photo. The capsule stays sealed until the next meetup happens.</div>
+            <div style={{ fontSize: 12.5, marginTop: 9, color: "#cdd9f2" }}>✉️ <b style={{ color: "#fff" }}>{cap.count}</b> {cap.count === 1 ? "memory" : "memories"} sealed inside{cap.mine > 0 ? ` · ${cap.mine} from you` : ""}</div>
+            <textarea value={txt} onChange={ev => setTxt(ev.target.value)} placeholder="Tonight I…" rows={2} style={{ width: "100%", marginTop: 10, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.08)", color: "#fff", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", fontFamily: "inherit", resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
+              <button onClick={() => fref.current?.click()} style={{ ...btn("transparent", img ? "#2FD4A8" : "#cdd9f2"), border: `1px solid ${img ? "#2FD4A8" : "rgba(255,255,255,.25)"}`, padding: "9px 13px", fontSize: 12.5 }}><Camera size={14} />{img ? "Photo added ✓" : "Photo"}</button>
+              <button onClick={drop} disabled={busy || (!txt.trim() && !img)} style={{ ...btn("#2FD4A8", "#0b1f1c"), flex: 1, justifyContent: "center", fontWeight: 800, opacity: busy || (!txt.trim() && !img) ? .55 : 1 }}>{busy ? "Sealing…" : "Drop into the capsule"}</button>
+            </div>
+            <input ref={fref} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 function CheckInSheet({ event, onClose }) {
   const [list, setList] = useState(null);
   const load = () => supabase.rpc("event_attendees", { p_event: event.id }).then(({ data }) => setList(data || []));
@@ -2665,6 +2762,7 @@ function CheckInSheet({ event, onClose }) {
           <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
         <div style={{ fontSize: 13, color: W.soft, marginBottom: 16 }}>{list === null ? "Loading…" : `${present} of ${list.length} checked in`}</div>
+        {list !== null && present > 1 && <Introductions eventId={event.id} refreshKey={present} />}
         {list === null ? <Center>loading…</Center> : list.length === 0 ? <Center>No ticket holders yet.</Center> : (
           <>{seg("Guys", guys)}{seg("Girls", girls)}{others.length > 0 && seg("Other", others)}</>
         )}
@@ -3481,7 +3579,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • constellation ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • capsule ✅</div>
       </div>
     </div>
   );
