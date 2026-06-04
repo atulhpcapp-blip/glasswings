@@ -108,7 +108,24 @@ async function makePosterBlob(d) {
   x.textAlign = "left";
   return await new Promise(res => c.toBlob(res, "image/png"));
 }
+async function compressImage(file, maxW = 1600, quality = 0.82) {
+  if (!file || !file.type || !file.type.startsWith("image/") || file.type === "image/gif") return file;
+  try {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const scale = Math.min(1, maxW / (img.width || maxW));
+    if (scale === 1 && file.size < 400 * 1024) { URL.revokeObjectURL(url); return file; }
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(img.width * scale)); c.height = Math.max(1, Math.round(img.height * scale));
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", quality));
+    if (blob && blob.size < file.size) return new File([blob], (file.name || "image").replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+    return file;
+  } catch { return file; }
+}
 async function uploadPhoto(userId, file) {
+  file = await compressImage(file);
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const path = `${userId}/${Date.now()}.${ext}`;
   const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
@@ -392,6 +409,41 @@ function RecoverPassword({ onDone }) {
     </div>
   );
 }
+function PosterCard({ e, price, popular, going, onOpen, date }) {
+  return (
+    <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
+      <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
+        {e.banner_url && e.banner_type !== "video"
+          ? <img src={e.banner_url} alt={e.title} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{e.emoji || "🎟️"}</div>}
+        {popular && <span style={{ position: "absolute", top: 8, left: 8, background: "#D35400", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔥 Popular</span>}
+        {going && <span style={{ position: "absolute", top: 8, right: 8, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Going</span>}
+        {date && <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "linear-gradient(transparent, rgba(0,0,0,.74))", padding: "26px 10px 8px", color: "#fff", fontSize: 11.5, fontWeight: 700 }}>{date}</div>}
+      </div>
+      <div style={{ padding: "8px 2px 0" }}>
+        <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.title}</div>
+        <div style={{ fontSize: 12.5, color: W.teal, fontWeight: 800, marginTop: 3 }}>{price}</div>
+      </div>
+    </div>
+  );
+}
+function CategoryTiles({ cats, val, set }) {
+  if (!cats || !cats.length) return null;
+  const tile = (key, name, img, emoji) => (
+    <div key={key} onClick={() => set(name)} style={{ flexShrink: 0, width: 74, cursor: "pointer", textAlign: "center" }}>
+      <div style={{ width: 64, height: 64, margin: "0 auto", borderRadius: 18, overflow: "hidden", border: `2.5px solid ${val === name ? "#008069" : "transparent"}`, boxShadow: "0 2px 8px rgba(0,0,0,.09)", background: "linear-gradient(135deg,#008069,#04B08F)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {img ? <img src={img} alt={name} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <span style={{ fontSize: 26, color: "#fff" }}>{emoji}</span>}
+      </div>
+      <div style={{ fontSize: 11.5, fontWeight: val === name ? 800 : 600, color: val === name ? W.teal : W.ink, marginTop: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "12px 14px 10px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
+      {tile("__all", "All", null, "✦")}
+      {cats.map(c => tile(c.id || c.name, c.name, c.image_url, "🎟️"))}
+    </div>
+  );
+}
 function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat }) {
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -619,12 +671,14 @@ function PublicLanding() {
   const [pop, setPop] = useState({});
   const [addonsMap, setAddonsMap] = useState({});
   const [detail, setDetail] = useState(() => { try { return new URLSearchParams(window.location.search).get("event"); } catch { return null; } });
+  const [optCats, setOptCats] = useState([]);
   useEffect(() => {
     supabase.from("events").select("*").order("created_at", { ascending: false }).then(({ data }) => setEvents(data || []));
     supabase.from("event_ticket_types").select("*").then(({ data }) => { const m = {}; (data || []).forEach(t => { (m[t.event_id] = m[t.event_id] || []).push(t); }); setTypes(m); });
     supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || []));
     supabase.rpc("event_popularity").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.event_id] = Number(r.sold); }); setPop(m); });
     supabase.from("event_addons").select("*").then(({ data }) => { const m = {}; (data || []).forEach(a => { (m[a.event_id] = m[a.event_id] || []).push(a); }); setAddonsMap(m); });
+    supabase.from("event_options").select("*").eq("kind", "category").order("name").then(({ data }) => setOptCats(data || []));
   }, []);
   useEffect(() => { if (detail && events.length && !events.find(x => x.id === detail)) setDetail(null); }, [events, detail]);
   const openDetail = (id) => { setDetail(id); try { history.replaceState(null, "", `/?event=${id}`); } catch {} window.scrollTo(0, 0); };
@@ -679,35 +733,13 @@ function PublicLanding() {
       )}
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
         <div style={{ fontWeight: 800, fontSize: wide ? 26 : 19, color: W.ink, padding: wide ? "0 0 8px" : "18px 16px 4px" }}>Upcoming events</div>
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "8px 0 4px" : "8px 14px", alignItems: "center" }}>
-          {["All", ...cats].map(o => <button key={o} onClick={() => setCat(o)} style={chip(cat === o)}>{o}</button>)}
-        </div>
+        <CategoryTiles cats={optCats.length ? optCats : cats.map(n => ({ name: n }))} val={cat} set={setCat} />
         {cityList.length > 0 && <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "4px 0 8px" : "0 14px 8px", alignItems: "center" }}>
           {["All", ...cityList].map(o => <button key={o} onClick={() => setCity(o)} style={chip(city === o)}>{o}</button>)}
         </div>}
-        <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(330px,1fr))" : "1fr", gap: 16, padding: wide ? "8px 0 0" : "6px 14px" }}>
-          {list.length === 0 && <Center>No events yet — check back soon!</Center>}
-          {list.map(e => (
-            <div key={e.id} onClick={() => openDetail(e.id)} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer" }}>
-              {e.banner_url && <BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 180 : "auto", objectFit: "cover", display: "block" }} />}
-              <div style={{ padding: 16, display: "flex", flexDirection: "column", flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.emoji} {e.title}</span>
-                  {popSet.has(e.id) && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 12 }}>🔥 Popular</span>}
-                  {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>{e.category}</span>}
-                </div>
-                {e.description && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 4, lineHeight: 1.4 }}>{e.description}</div>}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
-                  {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
-                  {(e.venue || e.city) && (e.venue_lat ? <a href={`https://www.google.com/maps/search/?api=1&query=${e.venue_lat},${e.venue_lng}`} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} style={{ display: "flex", gap: 5, alignItems: "center", color: W.teal, textDecoration: "none" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")} · Directions</a> : <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>)}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 14 }}>
-                  <span style={{ fontWeight: 800, color: W.teal, fontSize: 15 }}>{priceFrom(e)}</span>
-                  <button onClick={(ev) => { ev.stopPropagation(); openDetail(e.id); }} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "repeat(2,1fr)", gap: 14, padding: wide ? "8px 0 0" : "6px 14px" }}>
+          {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events yet — check back soon!</Center></div>}
+          {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={false} onOpen={openDetail} />)}
         </div>
       </div>
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
@@ -1145,6 +1177,7 @@ function Main({ user }) {
   const deleteEvent = async (id) => { const { error } = await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
   const addOption = async (kind, name) => { const n = name.trim(); if (!n) return; const { error } = await supabase.from("event_options").insert({ kind, name: n }); if (error) return setNotice(error.message); await load(); };
   const delOption = async (id) => { const { error } = await supabase.from("event_options").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
+  const setOptionImage = async (id, url) => { const { error } = await supabase.from("event_options").update({ image_url: url }).eq("id", id); if (error) return setNotice(error.message); await load(); };
   const addPerk = async (kind, label) => { const n = (label || "").trim(); if (!n) return; const { error } = await supabase.from("event_perks").insert({ kind, label: n }); if (error && !String(error.message).includes("duplicate")) return; await load(); };
   const delPerk = async (id) => { await supabase.from("event_perks").delete().eq("id", id); await load(); };
   const addAddon = async (eventId, d) => { const n = (d.name || "").trim(); if (!n) return; const { error } = await supabase.from("event_addons").insert({ event_id: eventId, name: n, price: Number(d.price) || 0 }); if (error) return setNotice(error.message); await load(); };
@@ -1186,7 +1219,7 @@ function Main({ user }) {
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
       {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
@@ -1306,19 +1339,21 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   })();
   const [cat, setCat] = useState("All");
   const [city, setCity] = useState("All");
-  const [hl, setHl] = useState(null);
-  useEffect(() => {
-    if (!focus) return;
-    setCat("All"); setCity("All"); setHl(focus);
-    const el = document.getElementById("ev-" + focus);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    const t1 = setTimeout(() => setHl(null), 2600);
-    const t2 = setTimeout(() => onFocusDone && onFocusDone(), 800);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [focus]);
-  const catNames = (categories && categories.length) ? categories.map(c => c.name) : Array.from(new Set(events.map(e => e.category).filter(Boolean)));
+  const [custom, setCustom] = useState([]);
+  useEffect(() => { supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || [])); }, []);
+  useEffect(() => { if (focus) { onOpenDetail && onOpenDetail(focus); onFocusDone && onFocusDone(); } }, [focus]);
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
+  const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
   const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city));
+  const priceFrom = (e) => {
+    const ts = (ticketTypes[e.id] || []).filter(t => !profile || t.gender_restrict === "any" || t.gender_restrict === profile.gender);
+    const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
+    const m = Math.min(...prices);
+    return m === 0 ? "Free" : `From ₹${m}`;
+  };
+  const heroSlides = custom.length
+    ? custom.map(sl => ({ url: sl.url }))
+    : events.filter(e => e.banner_url && e.banner_type !== "video").slice(0, 6).map(e => ({ url: e.banner_url, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   const Chips = ({ label, opts, val, set }) => opts.length ? (
     <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}`, alignItems: "center" }}>
       <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{label}</span>
@@ -1330,92 +1365,16 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   return (
     <div>
       <TopBar title="Events" />
-      <Chips label="Type" opts={catNames} val={cat} set={setCat} />
+      {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
+      <CategoryTiles cats={catTiles} val={cat} set={setCat} />
       <Chips label="City" opts={cityNames} val={city} set={setCity} />
-      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-        {list.length === 0 && <Center>No events here yet.</Center>}
-        {list.map(e => {
-          const has = canAccessEvent(e);
-          const types = ticketTypes[e.id] || [];
-          const avail = types.filter(t => t.gender_restrict === "any" || t.gender_restrict === profile?.gender);
-          return (
-            <div key={e.id} id={"ev-" + e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${hl === e.id ? W.teal : W.line}`, overflow: "hidden", boxShadow: hl === e.id ? `0 0 0 3px ${W.teal}33` : "none", transition: "box-shadow .3s, border-color .3s" }}>
-              {e.banner_url && <div onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ cursor: "pointer" }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: "auto", display: "block" }} /></div>}
-              <div style={{ padding: 16 }}>
-                <div onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ display: "flex", gap: 13, cursor: "pointer" }}>
-                  <Avatar room={{ emoji: e.emoji }} size={46} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.title}</span>
-                      {popSet.has(e.id) && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 12 }}>🔥 Popular</span>}
-                      {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>{e.category}</span>}
-                    </div>
-                    <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{e.description}</div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, fontSize: 13, color: W.soft }}>
-                  {e.event_date && <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Calendar size={14} />{e.event_date}</span>}
-                  {(e.venue || e.city) && (e.venue_lat ? <a href={`https://www.google.com/maps/search/?api=1&query=${e.venue_lat},${e.venue_lng}`} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} style={{ display: "flex", gap: 5, alignItems: "center", color: W.teal, textDecoration: "none" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")} · Directions</a> : <span style={{ display: "flex", gap: 5, alignItems: "center" }}><MapPin size={14} />{[e.venue, e.city].filter(Boolean).join(", ")}</span>)}
-                  <span style={{ display: "flex", gap: 5, alignItems: "center" }}><Users size={13} />{counts[e.id] || 0} going</span>
-                </div>
-                {((addonsMap?.[e.id] || []).length || (e.exclusions && e.exclusions.length)) ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10 }}>
-                    {(e.exclusions || []).map(x => <span key={"e" + x} style={{ fontSize: 13, color: "#C0392B", display: "flex", alignItems: "center", gap: 6 }}><X size={13} />{x}</span>)}
-                    {(addonsMap?.[e.id] || []).map(a => <span key={"a" + a.id} style={{ fontSize: 13, color: W.teal, display: "flex", alignItems: "center", gap: 6 }}><Check size={14} />{a.name}{a.price > 0 ? <span style={{ color: W.soft }}>· ₹{a.price}</span> : <span style={{ color: W.soft }}>· Free</span>}</span>)}
-                  </div>
-                ) : null}
-                {has ? (
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
-                    <button onClick={() => onTicket(e)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}` }}><Ticket size={15} />My ticket</button>
-                    <button onClick={() => onJoin(e)} style={btn(W.teal, "#fff")}><MessageCircle size={15} />Open chat</button>
-                  </div>
-                ) : avail.length ? (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Tickets</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {avail.map(t => {
-                        const net = netPrice(t, subs);
-                        const disc = net < t.price;
-                        const st = ticketStatus(t, e, stats, typeSold);
-                        return (
-                          <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: `1px solid ${disc ? W.teal : W.line}`, borderRadius: 10, padding: "8px 12px", opacity: st.ok ? 1 : 0.75 }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontWeight: 600, color: W.ink, fontSize: 14, display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>{t.name}{st.label && <span style={{ background: st.ok ? "#EFF6F4" : "#FBEEE6", color: st.ok ? W.soft : "#B8651B", fontSize: 10.5, fontWeight: 700, padding: "1px 7px", borderRadius: 10 }}>{st.label}</span>}</div>
-                              <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-                                {net === 0 ? <span style={{ color: W.teal }}>Free</span>
-                                  : <span style={{ color: W.ink }}>₹{net}</span>}
-                                {disc && t.price > 0 && <span style={{ color: W.soft, fontWeight: 500, textDecoration: "line-through" }}>₹{t.price}</span>}
-                                {disc && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "1px 6px", borderRadius: 10 }}>ROOM OFFER</span>}
-                              </div>
-                            </div>
-                            {st.ok
-                              ? <button onClick={() => onJoin(e, t)} style={btn(net === 0 ? W.teal : W.ink, "#fff")}><Ticket size={14} />{net === 0 ? "Get" : "Buy"}</button>
-                              : <button disabled style={{ ...btn(W.line, W.soft), cursor: "default" }}>{st.label === "Sold out" ? "Sold out" : "Not open"}</button>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : types.length ? (
-                  <div style={{ marginTop: 14, fontSize: 13.5, color: W.soft, textAlign: "center", background: W.bg, borderRadius: 10, padding: "12px" }}>These tickets aren't available for your profile.</div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
-                    {e.ticket_price === 0 ? <span style={{ fontWeight: 700, color: W.teal, fontSize: 15 }}>Free</span>
-                      : <span style={{ fontWeight: 700, color: W.ink, fontSize: 15, display: "flex", alignItems: "center" }}><IndianRupee size={14} />{e.ticket_price}<span style={{ color: W.soft, fontWeight: 500, fontSize: 13 }}> / ticket</span></span>}
-                    <button onClick={() => onJoin(e)} style={btn(W.ink, "#fff")}><Ticket size={15} />{e.ticket_price === 0 ? "Get ticket" : "Buy ticket"}</button>
-                  </div>
-                )}
-                {has && <div style={{ fontSize: 12, color: W.teal, marginTop: 8 }}>✓ You're in — chat unlocked</div>}
-              </div>
-            </div>
-          );
-        })}
+      <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
+        {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events here yet.</Center></div>}
+        {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
       </div>
     </div>
   );
 }
-
-/* ---------------- explore ---------------- */
 function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin }) {
   const admin = ["admin", "superadmin"].includes(profile?.role);
   const [city, setCity] = useState("all");
@@ -1751,7 +1710,7 @@ function Dashboard() {
     </div>
   );
 }
-function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread }) {
+function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
@@ -1773,7 +1732,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
       </div>
       {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
         : seg === "dash" ? <Dashboard />
-        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -2356,23 +2315,38 @@ function EventBanner({ ev, onUpdate }) {
     </div>
   );
 }
-function OptionList({ label, kind, items, onAdd, onDel }) {
+function OptionList({ label, kind, items, onAdd, onDel, onSetImage }) {
   const [val, setVal] = useState("");
+  const fileRef = useRef(null);
+  const [picking, setPicking] = useState(null);
+  const onFile = async (e) => {
+    const f = e.target.files?.[0]; const id = picking;
+    setPicking(null); if (fileRef.current) fileRef.current.value = "";
+    if (!f || !id || !onSetImage) return;
+    try { const { data } = await supabase.auth.getUser(); const url = await uploadPhoto(data?.user?.id || "opt", f); await onSetImage(id, url); } catch {}
+  };
   return (
     <div>
       <div style={{ fontSize: 13, fontWeight: 700, color: W.soft, marginBottom: 6 }}>{label}</div>
+      {kind === "category" && <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 8 }}>Tap a category's icon to give it an image (shown as tiles on the events page).</div>}
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <input value={val} onChange={e => setVal(e.target.value)} placeholder={`Add a ${kind}…`} style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
         <button onClick={async () => { await onAdd(kind, val); setVal(""); }} style={btn(W.teal, "#fff")}>Add</button>
       </div>
       <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
         {items.map(it => (
-          <span key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, background: W.bg, borderRadius: 16, padding: "5px 7px 5px 12px", fontSize: 13, color: W.ink }}>
+          <span key={it.id} style={{ display: "flex", alignItems: "center", gap: 7, background: W.bg, borderRadius: 16, padding: "5px 7px 5px 7px", fontSize: 13, color: W.ink }}>
+            {kind === "category" && onSetImage && (
+              <span onClick={() => { setPicking(it.id); fileRef.current?.click(); }} title="Set image" style={{ width: 26, height: 26, borderRadius: 9, overflow: "hidden", cursor: "pointer", flexShrink: 0, background: "linear-gradient(135deg,#008069,#04B08F)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {it.image_url ? <img src={it.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <Camera size={13} color="#fff" />}
+              </span>
+            )}
             {it.name}<X size={14} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(it.id)} />
           </span>
         ))}
         {items.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>None yet.</span>}
       </div>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
     </div>
   );
 }
@@ -2528,7 +2502,7 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
   const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
   const [f, setF] = useState(blankF);
@@ -2572,7 +2546,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
         </div>
         {taxOpen && (
           <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 16 }}>
-            <OptionList label="Categories" kind="category" items={categories} onAdd={onAddOption} onDel={onDelOption} />
+            <OptionList label="Categories" kind="category" items={categories} onAdd={onAddOption} onDel={onDelOption} onSetImage={onSetOptionImage} />
             <OptionList label="Cities" kind="city" items={cities} onAdd={onAddOption} onDel={onDelOption} />
           </div>
         )}
@@ -3175,7 +3149,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • event-info ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • bms ✅</div>
       </div>
     </div>
   );
