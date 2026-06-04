@@ -392,6 +392,151 @@ function RecoverPassword({ onDone }) {
     </div>
   );
 }
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick }) {
+  const [showTerms, setShowTerms] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const link = `${window.location.origin}/?event=${e.id}`;
+  const share = async () => { try { if (navigator.share) await navigator.share({ title: e.title, url: link }); else { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } } catch {} };
+  const prices = types.length ? types.map(t => t.price || 0) : [e.ticket_price || 0];
+  const minPrice = Math.min(...prices);
+  const sched = (e.schedule || "").split("\n").map(s => s.trim()).filter(Boolean);
+  const sibs = e.series_id ? events.filter(x => x.series_id === e.series_id && x.id !== e.id).slice(0, 8) : [];
+  const excl = e.exclusions || [];
+  const gl = { any: ["Anyone", "#ECEFEE", W.soft], male: ["Men only", "#E8F2FB", "#1B6FB8"], female: ["Women only", "#FBE9F2", "#C0246E"] };
+  const aud = gr => { const [l, bg, c] = gl[gr] || gl.any; return <span style={{ background: bg, color: c, fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{l}</span>; };
+  const Sec = ({ title, children }) => (
+    <div style={{ marginTop: 28 }}>
+      <div style={{ fontWeight: 800, fontSize: 17.5, color: W.ink, marginBottom: 10 }}>{title}</div>
+      {children}
+    </div>
+  );
+  const ticketList = (
+    <div>
+      {types.length ? types.map(t => (
+        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}` }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>{t.name} {aud(t.gender_restrict)}</div>
+            <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(t.price || 0) === 0 ? "Free" : `₹${t.price}`}</div>
+          </div>
+          <button onClick={() => onBuy(e)} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px" }}>Get</button>
+        </div>
+      )) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink }}>Standard ticket</div>
+            <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{minPrice === 0 ? "Free" : `₹${minPrice}`}</div>
+          </div>
+          <button onClick={() => onBuy(e)} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px" }}>Get</button>
+        </div>
+      )}
+      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}><Lock size={12} />Instant ticket · secure payment · sent to your email</div>
+    </div>
+  );
+  return (
+    <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif" }}>
+      <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}`}</style>
+      <div style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(8,18,24,.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "12px 7%" : "10px 14px" }}>
+        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 7, background: "transparent", border: "none", color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: "pointer", padding: 0 }}><ArrowLeft size={19} />All events</button>
+        <img src="/logo-white.png" alt="Glasswings" style={{ height: 26, objectFit: "contain" }} />
+        <button onClick={share} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(255,255,255,.4)", color: "#fff", borderRadius: 9, padding: "7px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}><Share2 size={14} />{copied ? "Copied ✓" : "Share"}</button>
+      </div>
+      {e.banner_url && <div style={{ background: "#0b1f1c" }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>}
+      <div style={{ maxWidth: 1080, margin: "0 auto", padding: wide ? "28px 24px 60px" : "20px 16px 110px", display: "flex", gap: 36, alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {popular && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 12, fontWeight: 800, padding: "4px 11px", borderRadius: 14 }}>🔥 Popular</span>}
+            {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.category}</span>}
+            {e.city && <span style={{ background: W.bg, color: W.soft, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.city}</span>}
+          </div>
+          <h1 style={{ fontSize: wide ? 34 : 24, fontWeight: 800, color: W.ink, margin: 0, lineHeight: 1.18 }}>{e.emoji} {e.title}</h1>
+          <div style={{ background: W.bg, borderRadius: 14, padding: "14px 16px", marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            {e.event_date && <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14.5, color: W.ink, fontWeight: 600 }}><Calendar size={17} color={W.teal} />{e.event_date}</div>}
+            {(e.venue || e.city) && (
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14.5, color: W.ink, fontWeight: 600 }}>
+                <MapPin size={17} color={W.teal} style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>{[e.venue, e.city].filter(Boolean).join(", ")}{e.venue_lat && <a href={`https://www.google.com/maps/search/?api=1&query=${e.venue_lat},${e.venue_lng}`} target="_blank" rel="noreferrer" style={{ color: W.teal, fontWeight: 700, marginLeft: 8, textDecoration: "none" }}>Directions →</a>}</span>
+              </div>
+            )}
+          </div>
+          {!wide && <Sec title="Tickets"><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
+          {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
+          {sched.length > 0 && (
+            <Sec title="Schedule">
+              <div>
+                {sched.map((s, i) => (
+                  <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "7px 0" }}>
+                    <div style={{ width: 9, height: 9, borderRadius: "50%", background: W.teal, marginTop: 6, flexShrink: 0 }} />
+                    <div style={{ fontSize: 14.5, color: "#3c4a47", lineHeight: 1.5 }}>{s}</div>
+                  </div>
+                ))}
+              </div>
+            </Sec>
+          )}
+          {sibs.length > 0 && (
+            <Sec title="More dates">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {sibs.map(s => <button key={s.id} onClick={() => onPick(s)} style={{ padding: "8px 14px", borderRadius: 20, border: `1px solid ${W.line}`, background: "#fff", color: W.ink, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{s.event_date || "Date TBA"}</button>)}
+              </div>
+            </Sec>
+          )}
+          {addons.length > 0 && (
+            <Sec title="Optional add-ons">
+              {addons.map(a => (
+                <div key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: `1px solid ${W.line}`, fontSize: 14.5 }}>
+                  <span style={{ color: W.ink, fontWeight: 600 }}>{a.name}</span>
+                  <span style={{ color: W.teal, fontWeight: 800 }}>{(a.price || 0) === 0 ? "Free" : `+₹${a.price}`}</span>
+                </div>
+              ))}
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 8 }}>Choose add-ons while booking.</div>
+            </Sec>
+          )}
+          {excl.length > 0 && (
+            <Sec title="Not included">
+              {excl.map((x, i) => <div key={i} style={{ display: "flex", gap: 9, alignItems: "center", padding: "5px 0", fontSize: 14.5, color: "#3c4a47" }}><span style={{ color: "#C0392B", fontWeight: 800 }}>✗</span>{x}</div>)}
+            </Sec>
+          )}
+          {e.venue_lat && (
+            <Sec title="Venue">
+              <iframe title="map" src={`https://maps.google.com/maps?q=${e.venue_lat},${e.venue_lng}&z=15&output=embed`} style={{ border: 0, width: "100%", height: wide ? 260 : 200, borderRadius: 14 }} loading="lazy" />
+            </Sec>
+          )}
+          <Sec title="Hosted by">
+            <div style={{ display: "flex", alignItems: "center", gap: 13, border: `1px solid ${W.line}`, borderRadius: 14, padding: 14 }}>
+              <div style={{ width: 46, height: 46, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 17, flexShrink: 0 }}>GE</div>
+              <div>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>Glasswings Events</div>
+                <div style={{ fontSize: 12.5, color: W.soft }}>Community events, socials &amp; meetups</div>
+              </div>
+            </div>
+          </Sec>
+          {e.terms && (
+            <div style={{ marginTop: 24 }}>
+              <button onClick={() => setShowTerms(v => !v)} style={{ background: "none", border: "none", color: W.soft, fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: 0 }}>Terms &amp; conditions {showTerms ? "▴" : "▾"}</button>
+              {showTerms && <div style={{ fontSize: 13, color: W.soft, lineHeight: 1.6, whiteSpace: "pre-wrap", marginTop: 8 }}>{e.terms}</div>}
+            </div>
+          )}
+        </div>
+        {wide && (
+          <div style={{ width: 330, flexShrink: 0, position: "sticky", top: 76 }}>
+            <div style={{ border: `1px solid ${W.line}`, borderRadius: 16, padding: "8px 18px 16px", boxShadow: "0 8px 28px rgba(0,0,0,.07)" }}>
+              <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>Tickets</div>
+              {ticketList}
+            </div>
+          </div>
+        )}
+      </div>
+      {!wide && (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 30, background: "#fff", borderTop: `1px solid ${W.line}`, padding: "12px 16px calc(12px + env(safe-area-inset-bottom))", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{types.length > 1 ? "From" : "Price"}</div>
+            <div style={{ fontSize: 19, fontWeight: 800, color: W.ink }}>{minPrice === 0 ? "Free" : `₹${minPrice}`}</div>
+          </div>
+          <button onClick={() => onBuy(e)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Get tickets</button>
+        </div>
+      )}
+    </div>
+  );
+}
 function HeroSlider({ slides, wide, onSlide }) {
   const [i, setI] = useState(0);
   const tx = useRef(null);
@@ -435,17 +580,29 @@ function PublicLanding() {
   const [city, setCity] = useState("All");
   const [custom, setCustom] = useState([]);
   const [pop, setPop] = useState({});
+  const [addonsMap, setAddonsMap] = useState({});
+  const [detail, setDetail] = useState(() => { try { return new URLSearchParams(window.location.search).get("event"); } catch { return null; } });
   useEffect(() => {
     supabase.from("events").select("*").order("created_at", { ascending: false }).then(({ data }) => setEvents(data || []));
     supabase.from("event_ticket_types").select("*").then(({ data }) => { const m = {}; (data || []).forEach(t => { (m[t.event_id] = m[t.event_id] || []).push(t); }); setTypes(m); });
     supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || []));
     supabase.rpc("event_popularity").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.event_id] = Number(r.sold); }); setPop(m); });
+    supabase.from("event_addons").select("*").then(({ data }) => { const m = {}; (data || []).forEach(a => { (m[a.event_id] = m[a.event_id] || []).push(a); }); setAddonsMap(m); });
   }, []);
+  useEffect(() => { if (detail && events.length && !events.find(x => x.id === detail)) setDetail(null); }, [events, detail]);
+  const openDetail = (id) => { setDetail(id); try { history.replaceState(null, "", `/?event=${id}`); } catch {} window.scrollTo(0, 0); };
+  const closeDetail = () => { setDetail(null); try { history.replaceState(null, "", "/"); } catch {} };
+  const buyNow = (ev) => { try { localStorage.setItem("gw_buy", ev.id); localStorage.setItem("gw_event", ev.id); } catch {} setAuthMode("signup"); };
   const popSet = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
   const heroSlides = custom.length
     ? custom.map(s => ({ url: s.url }))
     : events.filter(e => e.banner_url && e.banner_type !== "video").slice(0, 6).map(e => ({ url: e.banner_url, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
+  const detailEvent = detail ? events.find(x => x.id === detail) : null;
+  if (detailEvent) {
+    const popSetD = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
+    return <PublicEventPage e={detailEvent} types={types[detailEvent.id] || []} addons={addonsMap[detailEvent.id] || []} popular={popSetD.has(detailEvent.id)} events={events} wide={wide} onBack={closeDetail} onBuy={buyNow} onPick={(s) => openDetail(s.id)} />;
+  }
   const cats = Array.from(new Set(events.map(e => e.category).filter(Boolean)));
   const cityList = Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city));
@@ -473,7 +630,7 @@ function PublicLanding() {
         </div>
       </div>
       {heroSlides.length ? (
-        <HeroSlider slides={heroSlides} wide={wide} onSlide={(s) => { if (s.id) { try { localStorage.setItem("gw_buy", s.id); localStorage.setItem("gw_event", s.id); } catch {} } setAuthMode("signup"); }} />
+        <HeroSlider slides={heroSlides} wide={wide} onSlide={(s) => { if (s.id) openDetail(s.id); else setAuthMode("signup"); }} />
       ) : (
         <div style={{ backgroundImage: "linear-gradient(rgba(6,18,26,.5),rgba(6,14,22,.82)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center", padding: wide ? "96px 7%" : "40px 20px 34px", color: "#fff" }}>
           <div style={{ maxWidth: 1180, margin: "0 auto", textAlign: wide ? "left" : "center" }}>
@@ -494,7 +651,7 @@ function PublicLanding() {
         <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(330px,1fr))" : "1fr", gap: 16, padding: wide ? "8px 0 0" : "6px 14px" }}>
           {list.length === 0 && <Center>No events yet — check back soon!</Center>}
           {list.map(e => (
-            <div key={e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div key={e.id} onClick={() => openDetail(e.id)} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", display: "flex", flexDirection: "column", cursor: "pointer" }}>
               {e.banner_url && <BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 180 : "auto", objectFit: "cover", display: "block" }} />}
               <div style={{ padding: 16, display: "flex", flexDirection: "column", flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -509,7 +666,7 @@ function PublicLanding() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 14 }}>
                   <span style={{ fontWeight: 800, color: W.teal, fontSize: 15 }}>{priceFrom(e)}</span>
-                  <button onClick={() => { try { localStorage.setItem("gw_buy", e.id); localStorage.setItem("gw_event", e.id); } catch {} setAuthMode("signup"); }} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
+                  <button onClick={(ev) => { ev.stopPropagation(); buyNow(e); }} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
                 </div>
               </div>
             </div>
@@ -2301,7 +2458,7 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
 }
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
@@ -2328,7 +2485,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
+    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -2374,6 +2531,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
             {cities.length === 0 ? <span style={{ fontSize: 12.5, color: W.soft }}>Add cities with "Manage" above first.</span> : cities.map(c => chip(c.name, f.city === c.name, () => setF({ ...f, city: f.city === c.name ? "" : c.name })))}
           </div>
           <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <textarea value={f.schedule} onChange={e => setF({ ...f, schedule: e.target.value })} placeholder={"Schedule (optional) — one item per line, e.g.\n7:00 PM — Doors open\n8:00 PM — Live music"} rows={3} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
             {[["none", "One-time"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["custom", "Custom dates"]].map(([v, l]) => (
               <button key={v} onClick={() => setF({ ...f, repeat: v })} style={{ padding: "7px 13px", borderRadius: 16, border: `1px solid ${f.repeat === v ? W.teal : W.line}`, background: f.repeat === v ? W.teal : "#fff", color: f.repeat === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
@@ -2942,7 +3100,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • slider ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • event-page ✅</div>
       </div>
     </div>
   );
