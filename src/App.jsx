@@ -392,12 +392,13 @@ function RecoverPassword({ onDone }) {
     </div>
   );
 }
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick }) {
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat }) {
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
   const link = `${window.location.origin}/?event=${e.id}`;
   const share = async () => { try { if (navigator.share) await navigator.share({ title: e.title, url: link }); else { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } } catch {} };
-  const prices = types.length ? types.map(t => t.price || 0) : [e.ticket_price || 0];
+  const visTypes = profile ? types.filter(t => t.gender_restrict === "any" || t.gender_restrict === profile.gender) : types;
+  const prices = visTypes.length ? visTypes.map(t => t.price || 0) : [e.ticket_price || 0];
   const minPrice = Math.min(...prices);
   const sched = (e.schedule || "").split("\n").map(s => s.trim()).filter(Boolean);
   const sibs = e.series_id ? events.filter(x => x.series_id === e.series_id && x.id !== e.id).slice(0, 8) : [];
@@ -412,13 +413,24 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   );
   const ticketList = (
     <div>
-      {types.length ? types.map(t => (
+      {hasTicket && (
+        <div style={{ background: "#E7F6EF", borderRadius: 12, padding: "12px 14px", margin: "10px 0 4px" }}>
+          <div style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>🎟️ You're going!</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {onViewTicket && <button onClick={onViewTicket} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>View my ticket</button>}
+            {onOpenChat && <button onClick={onOpenChat} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>Event chat</button>}
+          </div>
+        </div>
+      )}
+      {profile && types.length > 0 && visTypes.length === 0 ? (
+        <div style={{ padding: "14px 0", fontSize: 13.5, color: W.soft }}>These tickets aren't available for your profile.</div>
+      ) : visTypes.length ? visTypes.map(t => (
         <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}` }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>{t.name} {aud(t.gender_restrict)}</div>
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(t.price || 0) === 0 ? "Free" : `₹${t.price}`}</div>
           </div>
-          <button onClick={() => onBuy(e)} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px" }}>Get</button>
+          <button onClick={() => onBuy(e, t)} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px" }}>Get</button>
         </div>
       )) : (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0" }}>
@@ -426,7 +438,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink }}>Standard ticket</div>
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{minPrice === 0 ? "Free" : `₹${minPrice}`}</div>
           </div>
-          <button onClick={() => onBuy(e)} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px" }}>Get</button>
+          <button onClick={() => onBuy(e, null)} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px" }}>Get</button>
         </div>
       )}
       <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}><Lock size={12} />Instant ticket · secure payment · sent to your email</div>
@@ -531,7 +543,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{types.length > 1 ? "From" : "Price"}</div>
             <div style={{ fontSize: 19, fontWeight: 800, color: W.ink }}>{minPrice === 0 ? "Free" : `₹${minPrice}`}</div>
           </div>
-          <button onClick={() => onBuy(e)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Get tickets</button>
+          <button onClick={() => onBuy(e, visTypes.length === 1 ? visTypes[0] : null)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Get tickets</button>
         </div>
       )}
     </div>
@@ -666,7 +678,7 @@ function PublicLanding() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 14 }}>
                   <span style={{ fontWeight: 800, color: W.teal, fontSize: 15 }}>{priceFrom(e)}</span>
-                  <button onClick={(ev) => { ev.stopPropagation(); buyNow(e); }} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
+                  <button onClick={(ev) => { ev.stopPropagation(); openDetail(e.id); }} style={btn(W.teal, "#fff")}><Ticket size={15} />Get tickets</button>
                 </div>
               </div>
             </div>
@@ -816,6 +828,7 @@ function Main({ user }) {
   const [mods, setMods] = useState([]);
   const [eventMods, setEventMods] = useState([]);
   const [payBusy, setPayBusy] = useState(false);
+  const [eventPage, setEventPage] = useState(null);
   const [counts, setCounts] = useState({});
   const [eventCounts, setEventCounts] = useState({});
   const [categories, setCategories] = useState([]);
@@ -827,8 +840,8 @@ function Main({ user }) {
   const [ticketView, setTicketView] = useState(null);
   const [hasDM, setHasDM] = useState(false);
   const [focusEvent, setFocusEvent] = useState(null);
-  const openEvent = (id) => { setOpen(null); setTab("events"); setFocusEvent(id); };
-  useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setFocusEvent(ev); } } catch {} }, []);
+  const openEvent = (id) => { setOpen(null); setTab("events"); setEventPage(id); };
+  useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setEventPage(ev); } } catch {} }, []);
   useEffect(() => { loadRazorpay(); }, []);
   const [tab, setTab] = useState("chats");
   const [open, setOpen] = useState(null); // { id, type }
@@ -983,7 +996,7 @@ function Main({ user }) {
     let buy = null; try { buy = localStorage.getItem("gw_buy"); } catch {}
     if (!buy) return;
     const e = events.find(x => x.id === buy);
-    if (e) { try { localStorage.removeItem("gw_buy"); } catch {} setTab("events"); setFocusEvent(e.id); }
+    if (e) { try { localStorage.removeItem("gw_buy"); } catch {} setTab("events"); setEventPage(e.id); }
   }, [events]);
   const grantRoom = async (userId, roomId) => {
     const { error } = await supabase.rpc("admin_grant_room", { p_user: userId, p_room: roomId });
@@ -1147,7 +1160,7 @@ function Main({ user }) {
     <>
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} />}
-      {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
@@ -1161,6 +1174,23 @@ function Main({ user }) {
         {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
         {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
+        {eventPage && (() => {
+          const ev = events.find(x => x.id === eventPage);
+          if (!ev) return null;
+          const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
+          return (
+            <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
+              <PublicEventPage e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile}
+                hasTicket={canAccessEvent(ev)}
+                onBack={() => setEventPage(null)}
+                onBuy={(e2, t) => joinEvent(e2, t || null)}
+                onPick={(s) => setEventPage(s.id)}
+                onViewTicket={() => setTicketView(ev)}
+                onOpenChat={() => { setEventPage(null); setOpen({ id: ev.id, type: "event" }); }}
+              />
+            </div>
+          );
+        })()}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
           <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
@@ -1184,6 +1214,23 @@ function Main({ user }) {
       {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
       {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
+        {eventPage && (() => {
+          const ev = events.find(x => x.id === eventPage);
+          if (!ev) return null;
+          const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
+          return (
+            <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
+              <PublicEventPage e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile}
+                hasTicket={canAccessEvent(ev)}
+                onBack={() => setEventPage(null)}
+                onBuy={(e2, t) => joinEvent(e2, t || null)}
+                onPick={(s) => setEventPage(s.id)}
+                onViewTicket={() => setTicketView(ev)}
+                onOpenChat={() => { setEventPage(null); setOpen({ id: ev.id, type: "event" }); }}
+              />
+            </div>
+          );
+        })()}
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {screen}
       </div>
@@ -1227,7 +1274,7 @@ function Chats({ chats, onOpen, onExplore }) {
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone }) {
   const popSet = (() => {
     const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
     return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
@@ -1268,9 +1315,9 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
           const avail = types.filter(t => t.gender_restrict === "any" || t.gender_restrict === profile?.gender);
           return (
             <div key={e.id} id={"ev-" + e.id} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${hl === e.id ? W.teal : W.line}`, overflow: "hidden", boxShadow: hl === e.id ? `0 0 0 3px ${W.teal}33` : "none", transition: "box-shadow .3s, border-color .3s" }}>
-              {e.banner_url && <BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: "auto", display: "block" }} />}
+              {e.banner_url && <div onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ cursor: "pointer" }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: "auto", display: "block" }} /></div>}
               <div style={{ padding: 16 }}>
-                <div style={{ display: "flex", gap: 13 }}>
+                <div onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ display: "flex", gap: 13, cursor: "pointer" }}>
                   <Avatar room={{ emoji: e.emoji }} size={46} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -3100,7 +3147,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • event-page ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • event-page2 ✅</div>
       </div>
     </div>
   );
