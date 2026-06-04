@@ -2732,7 +2732,8 @@ function TimeCapsule({ event: e, profile }) {
 }
 function CheckInSheet({ event, onClose }) {
   const [list, setList] = useState(null);
-  const load = () => supabase.rpc("event_attendees", { p_event: event.id }).then(({ data }) => setList(data || []));
+  const [err, setErr] = useState("");
+  const load = () => supabase.rpc("event_attendees", { p_event: event.id }).then(({ data, error }) => { setErr(error ? (error.message || "Could not load attendees.") : ""); setList(data || []); });
   useEffect(() => { load(); }, [event.id]);
   const toggle = async (uid, present) => {
     setList(l => l.map(x => x.user_id === uid ? { ...x, present } : x));
@@ -2762,6 +2763,7 @@ function CheckInSheet({ event, onClose }) {
           <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
         <div style={{ fontSize: 13, color: W.soft, marginBottom: 16 }}>{list === null ? "Loading…" : `${present} of ${list.length} checked in`}</div>
+        {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
         {list !== null && present > 1 && <Introductions eventId={event.id} refreshKey={present} />}
         {list === null ? <Center>loading…</Center> : list.length === 0 ? <Center>No ticket holders yet.</Center> : (
           <>{seg("Guys", guys)}{seg("Girls", girls)}{others.length > 0 && seg("Other", others)}</>
@@ -3579,7 +3581,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • capsule ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • checkin-fix ✅</div>
       </div>
     </div>
   );
