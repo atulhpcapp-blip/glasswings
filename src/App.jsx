@@ -392,6 +392,40 @@ function RecoverPassword({ onDone }) {
     </div>
   );
 }
+function HeroSlider({ slides, wide, onSlide }) {
+  const [i, setI] = useState(0);
+  const tx = useRef(null);
+  useEffect(() => { setI(0); }, [slides.length]);
+  useEffect(() => {
+    if (slides.length < 2) return;
+    const t = setInterval(() => setI(x => (x + 1) % slides.length), 4000);
+    return () => clearInterval(t);
+  }, [slides.length]);
+  if (!slides.length) return null;
+  const start = (e) => { tx.current = e.touches[0].clientX; };
+  const end = (e) => { if (tx.current == null) return; const d = e.changedTouches[0].clientX - tx.current; tx.current = null; if (Math.abs(d) > 40) setI(x => (x + (d < 0 ? 1 : -1) + slides.length) % slides.length); };
+  const s = slides[i] || slides[0];
+  return (
+    <div onTouchStart={start} onTouchEnd={end} style={{ position: "relative", height: wide ? 380 : 215, overflow: "hidden", background: "#0b1f1c" }}>
+      {slides.map((sl, idx) => (
+        <img key={idx} src={sl.url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: idx === i ? 1 : 0, transition: "opacity .6s ease" }} />
+      ))}
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(rgba(6,18,26,.04) 38%, rgba(6,14,22,.8))" }} />
+      {(s.title || s.cta) && (
+        <div style={{ position: "absolute", left: wide ? "7%" : 16, right: wide ? "7%" : 16, bottom: 28, color: "#fff" }}>
+          {s.title && <div style={{ fontSize: wide ? 30 : 19, fontWeight: 800, lineHeight: 1.15, textShadow: "0 2px 10px rgba(0,0,0,.45)" }}>{s.title}</div>}
+          {s.sub && <div style={{ fontSize: wide ? 15 : 12.5, opacity: .93, marginTop: 4, textShadow: "0 1px 6px rgba(0,0,0,.4)" }}>{s.sub}</div>}
+          {s.cta && <button onClick={() => onSlide && onSlide(s)} style={{ ...btn(W.teal, "#fff"), marginTop: 10, padding: wide ? "11px 20px" : "9px 16px" }}><Ticket size={15} />{s.cta}</button>}
+        </div>
+      )}
+      {slides.length > 1 && (
+        <div style={{ position: "absolute", bottom: 10, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 6 }}>
+          {slides.map((_, idx) => <div key={idx} onClick={() => setI(idx)} style={{ width: idx === i ? 18 : 7, height: 7, borderRadius: 4, background: idx === i ? "#fff" : "rgba(255,255,255,.55)", cursor: "pointer", transition: "width .3s" }} />)}
+        </div>
+      )}
+    </div>
+  );
+}
 function PublicLanding() {
   const wide = useWide(820);
   const [authMode, setAuthMode] = useState(null);
@@ -399,10 +433,18 @@ function PublicLanding() {
   const [types, setTypes] = useState({});
   const [cat, setCat] = useState("All");
   const [city, setCity] = useState("All");
+  const [custom, setCustom] = useState([]);
+  const [pop, setPop] = useState({});
   useEffect(() => {
     supabase.from("events").select("*").order("created_at", { ascending: false }).then(({ data }) => setEvents(data || []));
     supabase.from("event_ticket_types").select("*").then(({ data }) => { const m = {}; (data || []).forEach(t => { (m[t.event_id] = m[t.event_id] || []).push(t); }); setTypes(m); });
+    supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || []));
+    supabase.rpc("event_popularity").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.event_id] = Number(r.sold); }); setPop(m); });
   }, []);
+  const popSet = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
+  const heroSlides = custom.length
+    ? custom.map(s => ({ url: s.url }))
+    : events.filter(e => e.banner_url && e.banner_type !== "video").slice(0, 6).map(e => ({ url: e.banner_url, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
   const cats = Array.from(new Set(events.map(e => e.category).filter(Boolean)));
   const cityList = Array.from(new Set(events.map(e => e.city).filter(Boolean)));
@@ -430,13 +472,17 @@ function PublicLanding() {
           <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ background: W.teal, color: "#fff", border: "none", borderRadius: 9, padding: "9px 17px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Sign up</button>
         </div>
       </div>
-      <div style={{ backgroundImage: "linear-gradient(rgba(6,18,26,.5),rgba(6,14,22,.82)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center", padding: wide ? "96px 7%" : "40px 20px 34px", color: "#fff" }}>
-        <div style={{ maxWidth: 1180, margin: "0 auto", textAlign: wide ? "left" : "center" }}>
-          <div style={{ fontSize: wide ? 50 : 26, fontWeight: 800, lineHeight: 1.1, maxWidth: 720, margin: wide ? "0" : "0 auto" }}>Discover top events &amp; meetups in your city</div>
-          <div style={{ fontSize: wide ? 18 : 14, opacity: 0.9, maxWidth: 560, margin: wide ? "14px 0 0" : "8px auto 0" }}>Parties, socials and community meetups — see what's on and grab your tickets in seconds.</div>
-          <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ ...btn(W.teal, "#fff"), marginTop: 22, padding: "13px 24px", fontSize: 15 }}><Ticket size={17} />Join free</button>
+      {heroSlides.length ? (
+        <HeroSlider slides={heroSlides} wide={wide} onSlide={(s) => { if (s.id) { try { localStorage.setItem("gw_buy", s.id); localStorage.setItem("gw_event", s.id); } catch {} } setAuthMode("signup"); }} />
+      ) : (
+        <div style={{ backgroundImage: "linear-gradient(rgba(6,18,26,.5),rgba(6,14,22,.82)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center", padding: wide ? "96px 7%" : "40px 20px 34px", color: "#fff" }}>
+          <div style={{ maxWidth: 1180, margin: "0 auto", textAlign: wide ? "left" : "center" }}>
+            <div style={{ fontSize: wide ? 50 : 26, fontWeight: 800, lineHeight: 1.1, maxWidth: 720, margin: wide ? "0" : "0 auto" }}>Discover top events &amp; meetups in your city</div>
+            <div style={{ fontSize: wide ? 18 : 14, opacity: 0.9, maxWidth: 560, margin: wide ? "14px 0 0" : "8px auto 0" }}>Parties, socials and community meetups — see what's on and grab your tickets in seconds.</div>
+            <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ ...btn(W.teal, "#fff"), marginTop: 22, padding: "13px 24px", fontSize: 15 }}><Ticket size={17} />Join free</button>
+          </div>
         </div>
-      </div>
+      )}
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
         <div style={{ fontWeight: 800, fontSize: wide ? 26 : 19, color: W.ink, padding: wide ? "0 0 8px" : "18px 16px 4px" }}>Upcoming events</div>
         <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "8px 0 4px" : "8px 14px", alignItems: "center" }}>
@@ -453,6 +499,7 @@ function PublicLanding() {
               <div style={{ padding: 16, display: "flex", flexDirection: "column", flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.emoji} {e.title}</span>
+                  {popSet.has(e.id) && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 12 }}>🔥 Popular</span>}
                   {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>{e.category}</span>}
                 </div>
                 {e.description && <div style={{ color: W.soft, fontSize: 13.5, marginTop: 4, lineHeight: 1.4 }}>{e.description}</div>}
@@ -1024,6 +1071,10 @@ function Chats({ chats, onOpen, onExplore }) {
 
 /* ---------------- events ---------------- */
 function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, focus, onFocusDone }) {
+  const popSet = (() => {
+    const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
+    return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
+  })();
   const [cat, setCat] = useState("All");
   const [city, setCity] = useState("All");
   const [hl, setHl] = useState(null);
@@ -1067,6 +1118,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontWeight: 700, fontSize: 16, color: W.ink }}>{e.title}</span>
+                      {popSet.has(e.id) && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 12 }}>🔥 Popular</span>}
                       {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 12 }}>{e.category}</span>}
                     </div>
                     <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, lineHeight: 1.4 }}>{e.description}</div>
@@ -1342,6 +1394,54 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 }
 
 /* ---------------- admin ---------------- */
+function SliderManager() {
+  const [uid, setUid] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const fileRef = useRef(null);
+  const load = () => supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setRows(data || []));
+  useEffect(() => {
+    load();
+    supabase.auth.getUser().then(({ data }) => {
+      const id = data?.user?.id; if (!id) return;
+      supabase.from("profiles").select("roles, role").eq("id", id).single().then(({ data: p }) => {
+        const ok = (p?.roles || []).some(r => ["superadmin", "admin"].includes(r)) || ["superadmin", "admin"].includes(p?.role);
+        if (ok) setUid(id);
+      });
+    });
+  }, []);
+  if (!uid) return null;
+  const add = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    setBusy(true); setMsg("");
+    try {
+      const url = await uploadPhoto(uid, f);
+      const { error } = await supabase.from("slider_images").insert({ url });
+      if (error) setMsg(error.message); else await load();
+    } catch (x) { setMsg("Upload failed: " + x.message); }
+    setBusy(false);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+  const del = async (id) => { await supabase.from("slider_images").delete().eq("id", id); load(); };
+  return (
+    <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, color: W.ink }}>Homepage slider</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 10px" }}>These images rotate at the top of the public events page. If you don't add any, the latest event banners are shown automatically.</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {rows.map(r => (
+          <div key={r.id} style={{ position: "relative" }}>
+            <img src={r.url} alt="" style={{ width: 110, height: 64, objectFit: "cover", borderRadius: 9, border: `1px solid ${W.line}`, display: "block" }} />
+            <button onClick={() => del(r.id)} title="Remove" style={{ position: "absolute", top: -7, right: -7, width: 21, height: 21, borderRadius: "50%", border: "none", background: "#C0392B", color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1 }}>✕</button>
+          </div>
+        ))}
+        <button onClick={() => fileRef.current?.click()} disabled={busy} style={{ width: 110, height: 64, borderRadius: 9, border: `1.5px dashed ${W.teal}`, background: "#fff", color: W.teal, fontWeight: 700, fontSize: 12.5, cursor: "pointer", opacity: busy ? .6 : 1 }}>{busy ? "Uploading…" : "+ Add image"}</button>
+        <input ref={fileRef} type="file" accept="image/*" onChange={add} style={{ display: "none" }} />
+      </div>
+      {msg && <div style={{ fontSize: 12.5, color: "#C0392B", marginTop: 8 }}>{msg}</div>}
+    </div>
+  );
+}
 function Dashboard() {
   const [sum, setSum] = useState(null), [staff, setStaff] = useState([]), [evts, setEvts] = useState([]), [promos, setPromos] = useState([]);
   useEffect(() => {
@@ -1359,6 +1459,7 @@ function Dashboard() {
   );
   return (
     <div style={{ padding: 14 }}>
+      <SliderManager />
       <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginBottom: 10 }}>Income</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
         {card("Total revenue", sum ? rupees(sum.total_revenue) : "…", W.teal)}
@@ -2841,7 +2942,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • guest-list ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • slider ✅</div>
       </div>
     </div>
   );
