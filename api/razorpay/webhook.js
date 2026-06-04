@@ -35,6 +35,42 @@ export default async function handler(req, res) {
   try { body = JSON.parse(raw || "{}"); } catch { return res.status(400).json({ error: "bad body" }); }
 
   const event = body.event;
+
+  // ── One-time payments (tickets / room joins): grant server-side ──
+  // The browser's verify call is the fast path, but if the buyer's app
+  // closed mid-UPI-switch it never runs. This webhook is the safety net;
+  // a unique index on event_tickets.razorpay_order_id prevents doubles.
+  if (event === "payment.captured" || event === "order.paid") {
+    try {
+      const pe = body.payload?.payment?.entity;
+      const orderId = pe?.order_id || body.payload?.order?.entity?.id;
+      if (!orderId) return res.status(200).json({ ignored: true });
+      // atomically claim the order: only one grantor wins
+      const { data: claimed } = await sb.from("payments")
+        .update({ status: "paid", ...(pe?.id ? { razorpay_payment_id: pe.id } : {}) })
+        .eq("razorpay_order_id", orderId).neq("status", "paid")
+        .select().maybeSingle();
+      if (claimed) {
+        if (claimed.purpose === "ticket" && claimed.event_id) {
+          const { error: insErr } = await sb.from("event_tickets").insert({
+            event_id: claimed.event_id, user_id: claimed.user_id,
+            ticket_type_id: claimed.ticket_type_id, quantity: claimed.quantity || 1,
+            addons: claimed.addons || [], referrer_id: claimed.referrer_id || null,
+            razorpay_order_id: orderId,
+          });
+          if (insErr && insErr.code !== "23505") throw insErr;
+        } else if (claimed.purpose === "room" && claimed.room_id) {
+          const { data: existing } = await sb.from("room_subscriptions").select("id")
+            .eq("room_id", claimed.room_id).eq("user_id", claimed.user_id).maybeSingle();
+          if (!existing) await sb.from("room_subscriptions").insert({ room_id: claimed.room_id, user_id: claimed.user_id, status: "active" });
+        }
+      }
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
+  }
+
   const subEnt = body.payload?.subscription?.entity;
   const subId = subEnt?.id;
   if (!subId) return res.status(200).json({ ignored: true });
