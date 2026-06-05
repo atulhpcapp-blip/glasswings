@@ -475,12 +475,18 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const minPrice = Math.min(...prices);
   const MAX_TIX = 10;
   const [qtyMap, setQtyMap] = useState({});
-  const setQ = (key, q) => setQtyMap(q > 0 ? { [key]: Math.min(q, MAX_TIX) } : {});
-  const selEntry = Object.entries(qtyMap).find(([, q]) => q > 0);
-  const selQty = selEntry ? selEntry[1] : 0;
-  const selType = selEntry ? (selEntry[0] === "__base" ? null : visTypes.find(t => t.id === selEntry[0])) : undefined;
-  const selUnit = selType ? (selType.price || 0) : (e.ticket_price || 0);
-  const selTotal = selUnit * selQty;
+  const totalQty = m => Object.values(m).reduce((a, q) => a + q, 0);
+  const setQ = (key, q) => setQtyMap(m => {
+    const n = { ...m };
+    if (q <= 0) { delete n[key]; return n; }
+    n[key] = q;
+    return totalQty(n) > MAX_TIX ? m : n;
+  });
+  const cart = Object.entries(qtyMap).filter(([, q]) => q > 0)
+    .map(([k, q]) => ({ type: k === "__base" ? null : visTypes.find(t => t.id === k), qty: q }))
+    .filter(c => c.type !== undefined || c.type === null);
+  const selQty = cart.reduce((a, c) => a + c.qty, 0);
+  const selTotal = cart.reduce((a, c) => a + (c.type ? (c.type.price || 0) : (e.ticket_price || 0)) * c.qty, 0);
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
   const stepper = (key, q, max) => (
     <div style={{ display: "flex", alignItems: "center", gap: 0, border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden" }}>
@@ -515,7 +521,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       {profile && types.length > 0 && visTypes.length === 0 ? (
         <div style={{ padding: "14px 0", fontSize: 13.5, color: W.soft }}>These tickets aren't available for your profile.</div>
       ) : visTypes.length ? (<>
-      <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets, one ticket type per order.</div>
+      <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order.</div>
       {visTypes.map(t => {
         const st = ticketStatus(t, e, stats, typeSold);
         const soldOut = !st.ok && st.label === "Sold out";
@@ -523,7 +529,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const fast = st.ok && left != null && left > 0 && left <= 5;
         const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
         const q = qtyMap[t.id] || 0;
-        const max = Math.min(MAX_TIX, left == null ? MAX_TIX : left);
+        const max = Math.min(q + (MAX_TIX - selQty), left == null ? MAX_TIX : left);
         return (
         <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}`, opacity: soldOut ? .5 : 1 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -673,7 +679,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ border: `1px solid ${W.line}`, borderRadius: 16, padding: "8px 18px 16px", boxShadow: "0 8px 28px rgba(0,0,0,.07)" }}>
               <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>Tickets</div>
               {ticketList}
-              {selQty > 0 && <button onClick={() => onBuy(e, selType, selQty)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 12, fontSize: 15 }}>{selTotal === 0 ? `Get ${selQty} ticket${selQty > 1 ? "s" : ""}` : `Proceed · ₹${selTotal}`}</button>}
+              {selQty > 0 && <button onClick={() => onBuy(e, cart)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 12, fontSize: 15 }}>{selTotal === 0 ? `Get ${selQty} ticket${selQty > 1 ? "s" : ""}` : `Proceed · ₹${selTotal}`}</button>}
             </div>
           </div>
         )}
@@ -685,8 +691,8 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontSize: 19, fontWeight: 800, color: W.ink }}>{(selQty > 0 ? selTotal : minPrice) === 0 ? "Free" : `₹${selQty > 0 ? selTotal : minPrice}`}</div>
           </div>
           {selQty > 0
-            ? <button onClick={() => onBuy(e, selType, selQty)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Proceed</button>
-            : <button onClick={() => onBuy(e, visTypes.length === 1 ? visTypes[0] : null)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Get tickets</button>}
+            ? <button onClick={() => onBuy(e, cart)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Proceed</button>
+            : <button onClick={() => onBuy(e, visTypes.length === 1 ? [{ type: visTypes[0], qty: 1 }] : null)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Get tickets</button>}
         </div>
       )}
     </div>
@@ -1109,14 +1115,19 @@ function Main({ user }) {
     if (error) return setNotice(error.message);
     setSubs(p => [...p, r.id]); setCounts(c => ({ ...c, [r.id]: (c[r.id] || 0) + 1 })); setOpen({ id: r.id, type: "room" });
   };
-  const buyTicket = (e, type = null, qty = 1) => {
-    if (type) {
-      if (type.gender_restrict && type.gender_restrict !== "any" && type.gender_restrict !== profile?.gender)
-        return setNotice(type.gender_restrict === "female" ? "These tickets are for women only." : "These tickets are for men only.");
-    } else if ((ticketTypes[e.id] || []).length) {
-      return setNotice("Please choose a ticket type for this event.");
+  const buyTicket = (e, cartOrType = null, qty = 1) => {
+    let cart = Array.isArray(cartOrType) ? cartOrType.filter(c => c && c.qty > 0)
+      : [{ type: cartOrType, qty: Math.max(1, qty || 1) }];
+    if (!cart.length) cart = [{ type: null, qty: 1 }];
+    for (const c of cart) {
+      if (c.type) {
+        if (c.type.gender_restrict && c.type.gender_restrict !== "any" && c.type.gender_restrict !== profile?.gender)
+          return setNotice(c.type.gender_restrict === "female" ? "Some of these tickets are for women only." : "Some of these tickets are for men only.");
+      } else if ((ticketTypes[e.id] || []).length) {
+        return setNotice("Please choose a ticket type for this event.");
+      }
     }
-    setBuyTarget({ event: e, type, qty: Math.max(1, qty || 1) });
+    setBuyTarget({ event: e, cart });
   };
   const joinEvent = (e, type = null) => {
     if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
@@ -1173,22 +1184,37 @@ function Main({ user }) {
     if (open && open.type === "room" && open.id === roomId) setOpen(null);
     await load();
   };
-  const confirmPurchase = async (qty, sel = []) => {
-    const { event: e, type } = buyTarget;
-    if (type) {
-      if (type.gender_restrict && type.gender_restrict !== "any" && type.gender_restrict !== profile?.gender) { setBuyTarget(null); return setNotice(type.gender_restrict === "female" ? "These tickets are for women only." : "These tickets are for men only."); }
-    } else if ((ticketTypes[e.id] || []).length) { setBuyTarget(null); return setNotice("Please choose a ticket type for this event."); }
-    if (type) { const st = ticketStatus(type, e, eventStats, typeSold); if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? "These tickets are sold out." : "Men's tickets aren't open yet — they release as more women join."); } }
-    const unit = type ? netPrice(type, subs) : e.ticket_price;
+  const confirmPurchase = async (cart, sel = []) => {
+    const { event: e } = buyTarget;
+    for (const c of cart) {
+      if (c.type) {
+        if (c.type.gender_restrict && c.type.gender_restrict !== "any" && c.type.gender_restrict !== profile?.gender) { setBuyTarget(null); return setNotice(c.type.gender_restrict === "female" ? "Some of these tickets are for women only." : "Some of these tickets are for men only."); }
+        const st = ticketStatus(c.type, e, eventStats, typeSold);
+        if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? `"${c.type.name}" is sold out.` : "Men's tickets aren't open yet — they release as more women join."); }
+      } else if ((ticketTypes[e.id] || []).length) { setBuyTarget(null); return setNotice("Please choose a ticket type for this event."); }
+    }
     const chosen = sel.filter(a => (a.qty || 0) > 0);
     const addonTotal = chosen.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
-    const total = unit * qty + addonTotal;
-    if (total > 0) { setBuyTarget(null); return startPayment("ticket", { event_id: e.id, ticket_type_id: type ? type.id : null, quantity: qty, addons: chosen.map(a => ({ id: a.id, qty: a.qty })) }, () => setOpen({ id: e.id, type: "event" })); }
+    const ticketTotal = cart.reduce((s2, c) => s2 + (c.type ? netPrice(c.type, subs) : e.ticket_price || 0) * c.qty, 0);
+    const total = ticketTotal + addonTotal;
+    if (total > 0) {
+      setBuyTarget(null);
+      return startPayment("ticket", {
+        event_id: e.id,
+        items: cart.map(c => ({ ticket_type_id: c.type ? c.type.id : null, quantity: c.qty })),
+        ticket_type_id: cart[0].type ? cart[0].type.id : null,
+        quantity: cart.reduce((a, c) => a + c.qty, 0),
+        addons: chosen.map(a => ({ id: a.id, qty: a.qty })),
+      }, () => setOpen({ id: e.id, type: "event" }));
+    }
     let referrer_id = null;
     try { const code = localStorage.getItem("gw_ref"); if (code) { const { data } = await supabase.rpc("resolve_ref", { p_code: code }); if (data && data !== user.id) referrer_id = data; } } catch {}
-    const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: type ? type.id : null, quantity: qty, addons: chosen.map(a => ({ id: a.id, name: a.name, price: a.price, qty: a.qty })), referrer_id });
+    for (let ci = 0; ci < cart.length; ci++) {
+      const c = cart[ci];
+      const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: c.type ? c.type.id : null, quantity: c.qty, addons: ci === 0 ? chosen.map(a => ({ id: a.id, name: a.name, price: a.price, qty: a.qty })) : [], referrer_id });
+      if (error) { setBuyTarget(null); return setNotice(error.message); }
+    }
     setBuyTarget(null);
-    if (error) return setNotice(error.message);
     await load();
     emailTicket(e.id);
     setOpen({ id: e.id, type: "event" });
@@ -1330,7 +1356,7 @@ function Main({ user }) {
               <PublicEventPage e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
-                onBuy={(e2, t, q) => buyTicket(e2, t || null, q || 1)}
+                onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
                 onPick={(s) => setEventPage(s.id)}
                 onViewTicket={() => setTicketView(ev)}
                 onOpenChat={() => { setEventPage(null); setOpen({ id: ev.id, type: "event" }); }}
@@ -1383,7 +1409,7 @@ function Main({ user }) {
               <PublicEventPage e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
-                onBuy={(e2, t, q) => buyTicket(e2, t || null, q || 1)}
+                onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
                 onPick={(s) => setEventPage(s.id)}
                 onViewTicket={() => setTicketView(ev)}
                 onOpenChat={() => { setEventPage(null); setOpen({ id: ev.id, type: "event" }); }}
@@ -2356,33 +2382,45 @@ function Sheet({ children, onClose }) {
   );
 }
 function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose }) {
-  const { event: e, type } = target;
-  const orig = type ? type.price : e.ticket_price;
-  const unit = type ? netPrice(type, subs) : e.ticket_price;
-  const [qty, setQty] = useState(target.qty || 1);
+  const { event: e } = target;
+  const [cart, setCart] = useState((target.cart || [{ type: target.type || null, qty: target.qty || 1 }]).map(c => ({ ...c })));
   const [agree, setAgree] = useState(false);
   const [addQ, setAddQ] = useState({});
+  const MAX_TIX = 10;
   const needAgree = !!(e.terms && e.terms.trim());
   const sel = addons.map(a => ({ ...a, qty: addQ[a.id] || 0 }));
   const addonTotal = sel.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
-  const total = unit * qty + addonTotal;
-  const canConfirm = !needAgree || agree;
-  const stepBtn = { width: 34, height: 34, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 20, color: W.ink, cursor: "pointer", lineHeight: 1 };
-  const miniBtn = { width: 28, height: 28, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 17, color: W.ink, cursor: "pointer", lineHeight: 1 };
+  const unitOf = c => c.type ? netPrice(c.type, subs) : (e.ticket_price || 0);
+  const grossOf = c => c.type ? (c.type.price || 0) : (e.ticket_price || 0);
+  const totalQty = cart.reduce((a, c) => a + c.qty, 0);
+  const ticketTotal = cart.reduce((a, c) => a + unitOf(c) * c.qty, 0);
+  const total = ticketTotal + addonTotal;
+  const live = cart.filter(c => c.qty > 0);
+  const canConfirm = (!needAgree || agree) && live.length > 0;
+  const setLine = (idx, q) => setCart(cs => cs.map((c, k) => k === idx ? { ...c, qty: Math.max(0, q) } : c));
+  const miniBtn = { width: 30, height: 30, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 18, color: W.ink, cursor: "pointer", lineHeight: 1 };
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 4 }}>{e.emoji} {e.title}</div>
-      <div style={{ color: W.soft, fontSize: 13.5, marginBottom: 16 }}>{type ? type.name : "Ticket"} · {unit === 0 ? "Free" : `₹${unit} each`}{unit < orig ? ` (room offer — was ₹${orig})` : ""}</div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <span style={{ fontWeight: 600, color: W.ink }}>Number of tickets</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button onClick={() => setQty(q => Math.max(1, q - 1))} style={stepBtn}>−</button>
-          <span style={{ fontWeight: 700, fontSize: 17, minWidth: 24, textAlign: "center" }}>{qty}</span>
-          <button onClick={() => setQty(q => q + 1)} style={stepBtn}>+</button>
-        </div>
-      </div>
+      <div style={{ color: W.soft, fontSize: 13, marginBottom: 14 }}>Review your tickets · up to {MAX_TIX} per order</div>
+      {cart.map((c, idx) => {
+        const unit = unitOf(c), gross = grossOf(c);
+        return (
+          <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: W.ink, fontSize: 14.5 }}>{c.type ? c.type.name : "Standard ticket"}</div>
+              <div style={{ fontSize: 12.5, color: W.teal, fontWeight: 700 }}>{unit === 0 ? "Free" : `₹${unit} each`}{unit < gross ? <span style={{ color: W.soft, fontWeight: 500 }}> (room offer — was ₹{gross})</span> : null}</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
+              <button onClick={() => setLine(idx, c.qty - 1)} style={miniBtn}>−</button>
+              <span style={{ fontWeight: 800, minWidth: 20, textAlign: "center" }}>{c.qty}</span>
+              <button onClick={() => totalQty < MAX_TIX ? setLine(idx, c.qty + 1) : null} disabled={totalQty >= MAX_TIX} style={{ ...miniBtn, color: totalQty >= MAX_TIX ? "#bbb" : W.ink, cursor: totalQty >= MAX_TIX ? "default" : "pointer" }}>+</button>
+            </div>
+          </div>
+        );
+      })}
       {addons.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ margin: "14px 0 2px" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 8 }}>Add-ons</div>
           {addons.map(a => {
             const q = addQ[a.id] || 0;
@@ -2393,9 +2431,9 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose })
                   <div style={{ fontSize: 12.5, color: a.price > 0 ? W.teal : W.soft }}>{a.price > 0 ? `₹${a.price}` : "Free"}</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                  <button onClick={() => setAddQ(s => ({ ...s, [a.id]: Math.max(0, q - 1) }))} style={miniBtn}>−</button>
+                  <button onClick={() => setAddQ(s2 => ({ ...s2, [a.id]: Math.max(0, q - 1) }))} style={miniBtn}>−</button>
                   <span style={{ fontWeight: 700, minWidth: 18, textAlign: "center" }}>{q}</span>
-                  <button onClick={() => setAddQ(s => ({ ...s, [a.id]: q + 1 }))} style={miniBtn}>+</button>
+                  <button onClick={() => setAddQ(s2 => ({ ...s2, [a.id]: q + 1 }))} style={miniBtn}>+</button>
                 </div>
               </div>
             );
@@ -2403,7 +2441,7 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose })
         </div>
       )}
       {needAgree && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ margin: "14px 0 2px" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 6 }}>Terms &amp; conditions</div>
           <div style={{ background: W.bg, borderRadius: 10, padding: 12, fontSize: 13, color: W.ink, maxHeight: 150, overflowY: "auto", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{e.terms}</div>
           <label style={{ display: "flex", gap: 9, alignItems: "flex-start", marginTop: 10, cursor: "pointer" }}>
@@ -2412,14 +2450,14 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose })
           </label>
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <span style={{ color: W.soft, fontSize: 14 }}>Total</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0" }}>
+        <span style={{ color: W.soft, fontSize: 14 }}>Total · {totalQty} ticket{totalQty !== 1 ? "s" : ""}</span>
         <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : `₹${total}`}</span>
       </div>
-      {total > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your ticket is issued the moment payment succeeds.</div>}
+      {total > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your tickets are issued the moment payment succeeds.</div>}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-        <button disabled={!canConfirm} onClick={() => onConfirm(qty, sel)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? `Pay ₹${total}` : `Get ${qty} ticket${qty > 1 ? "s" : ""}`}</button>
+        <button disabled={!canConfirm} onClick={() => onConfirm(live, sel)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? `Pay ₹${total}` : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
       </div>
     </Sheet>
   );
@@ -3655,7 +3693,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • stepper ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • cart ✅</div>
       </div>
     </div>
   );
