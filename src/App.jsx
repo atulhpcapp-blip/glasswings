@@ -60,7 +60,15 @@ async function makeTicketBlob(d) {
   x.fillStyle = "#2FD4A8"; x.font = "800 28px ui-monospace,monospace"; x.fillText(d.code, 230, 414);
   x.fillStyle = "rgba(255,255,255,.5)"; x.font = "500 18px system-ui,Arial"; x.fillText("Show this ticket at entry", 48, 500);
   x.fillStyle = "#ffffff"; rr(x, Wd - 268, Ht / 2 - 110, 210, 210, 16); x.fill();
-  // (entry QR removed from the held ticket)
+  try {
+    const qrImg = await loadImg("https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=0&data=" + encodeURIComponent(d.code));
+    x.drawImage(qrImg, Wd - 268 + 13, Ht / 2 - 110 + 13, 184, 184);
+  } catch (e) {
+    x.fillStyle = "#0C1A16"; x.font = "800 26px ui-monospace,monospace"; x.textAlign = "center";
+    x.fillText(d.code, Wd - 268 + 105, Ht / 2 + 8); x.textAlign = "left";
+  }
+  x.fillStyle = "rgba(255,255,255,.6)"; x.font = "600 16px system-ui,Arial"; x.textAlign = "center";
+  x.fillText("SCAN AT ENTRY", Wd - 268 + 105, Ht / 2 + 132); x.textAlign = "left";
   return await new Promise(res => c.toBlob(res, "image/png"));
 }
 
@@ -2638,9 +2646,25 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     setSDone({ code: data && data.code, name: sName.trim(), qty: Number(sQty) || 1, phone: sPhone });
     setSName(""); setSPhone(""); setSQty("1");
   };
+  const [qrs, setQrs] = useState([]); const [qrSel, setQrSel] = useState("");
+  const loadQrs = (eid) => supabase.rpc("event_payment_qrs", { p_event: eid }).then(({ data, error }) => { if (!error) { setQrs(data || []); setQrSel(c => (data || []).some(q => q.id === c) ? c : ((data && data[0] && data[0].id) || "")); } });
+  useEffect(() => { if (evId) loadQrs(evId); else { setQrs([]); setQrSel(""); } }, [evId]);
+  const selQr = qrs.find(q => q.id === qrSel);
   const uploadQr = async (file) => {
     if (!file) return;
-    try { const url = await uploadPhoto(meId, file); await onUpdateEvent(ev.id, { upi_qr_url: url }); } catch (e2) { alert(e2.message || "Upload failed"); }
+    const label = window.prompt("Label for this QR (e.g. GPay / PhonePe / Account 2):", "") || "";
+    try {
+      const url = await uploadPhoto(meId, file);
+      const { data, error } = await supabase.rpc("add_payment_qr", { p_event: ev.id, p_label: label, p_url: url });
+      if (error) throw error;
+      await loadQrs(ev.id); if (data) setQrSel(data);
+    } catch (e2) { alert(e2.message || "Upload failed"); }
+  };
+  const removeQr = async (q) => {
+    if (!window.confirm(`Remove payment QR${q.label ? ` "${q.label}"` : ""}?`)) return;
+    const { error } = await supabase.rpc("delete_payment_qr", { p_id: q.id });
+    if (error) return alert(error.message);
+    loadQrs(ev.id);
   };
   const stStyle = st => st === "ok" ? ["#E7F6EF", W.teal, "✓ ADMITTED"] : st === "already" ? ["#FFF6E5", "#9A6B00", "⚠ ALREADY CHECKED IN"] : ["#FBE9E7", "#C0392B", st === "error" ? "✕ ERROR" : "✕ NOT FOUND"];
   const ip2 = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", background: "#fff", color: W.ink };
@@ -2681,7 +2705,15 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                   <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>✓ Sold & checked in</div>
                   <div style={{ fontSize: 14, color: W.ink, marginTop: 4 }}>{sDone.name} · {sDone.qty} entr{sDone.qty === 1 ? "y" : "ies"} · code <b style={{ fontFamily: "ui-monospace,monospace" }}>{sDone.code}</b></div>
                   <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
-                    <a href={`https://wa.me/${(sDone.phone || "").replace(/[^\d]/g, "")}?text=${encodeURIComponent(`🎟️ ${ev.title}\nYour ticket — show the QR at the door:\nhttps://glass-wings.com/?gt=${sDone.code}\n— Glasswings Events`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", fontSize: 13 }}>Send ticket on WhatsApp</a>
+                    <button onClick={async () => {
+                      const text = `🎟️ ${ev.title}\nYour ticket — show the QR at the door.\nCode: ${sDone.code}\nTicket: https://glass-wings.com/?gt=${sDone.code}\n— Glasswings Events`;
+                      try {
+                        const blob = await makeTicketBlob({ emoji: "🎟️", title: ev.title, dateStr: ev.event_date, place: [ev.venue, ev.city].filter(Boolean).join(", "), name: sDone.name, qty: sDone.qty, code: sDone.code });
+                        const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
+                        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: ev.title, text }); return; }
+                      } catch (e2) {}
+                      window.open(`https://wa.me/${(sDone.phone || "").replace(/[^\d]/g, "")}?text=${encodeURIComponent(text)}`, "_blank");
+                    }} style={{ ...btn("#25D366", "#fff"), fontSize: 13 }}>Send ticket on WhatsApp</button>
                     <button onClick={() => setSDone(null)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, fontSize: 13 }}>+ Next sale</button>
                   </div>
                 </div>
@@ -2710,15 +2742,27 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                   </div>
                   {sMethod === "upi" && (
                     <div style={{ textAlign: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 10 }}>
-                      {ev.upi_qr_url ? (
+                      {qrs.length > 1 && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center", marginBottom: 10 }}>
+                          {qrs.map((q, i) => (
+                            <button key={q.id} onClick={() => setQrSel(q.id)} style={{ border: `1.5px solid ${q.id === qrSel ? W.teal : W.line}`, background: q.id === qrSel ? "#E7F6EF" : "#fff", color: q.id === qrSel ? W.teal : W.soft, fontWeight: 800, fontSize: 12, padding: "6px 12px", borderRadius: 18, cursor: "pointer" }}>{q.label || `QR ${i + 1}`}</button>
+                          ))}
+                        </div>
+                      )}
+                      {selQr ? (
                         <>
-                          <img src={ev.upi_qr_url} alt="UPI QR" style={{ width: 200, maxWidth: "100%", borderRadius: 8 }} />
-                          <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Buyer scans this to pay ₹{sAmt || 0} · <label style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Replace<input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadQr(e.target.files && e.target.files[0])} /></label></div>
+                          <img src={selQr.url} alt="Payment QR" style={{ width: 210, maxWidth: "100%", borderRadius: 8 }} />
+                          <div style={{ fontSize: 12.5, color: W.ink, fontWeight: 700, marginTop: 6 }}>{selQr.label || "UPI"} — buyer scans this to pay ₹{sAmt || 0}</div>
+                          <div style={{ fontSize: 12, color: W.soft, marginTop: 5 }}>
+                            <label style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>+ Add another QR<input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { uploadQr(e.target.files && e.target.files[0]); e.target.value = ""; }} /></label>
+                            {" · "}
+                            <span onClick={() => removeQr(selQr)} style={{ color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove this QR</span>
+                          </div>
                         </>
                       ) : (
                         <label style={{ display: "block", cursor: "pointer", padding: "16px 10px", border: `2px dashed ${W.line}`, borderRadius: 10, color: W.soft, fontSize: 13.5, fontWeight: 700 }}>
-                          📤 Upload your UPI payment QR (one time)
-                          <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadQr(e.target.files && e.target.files[0])} />
+                          📤 Upload the organiser's UPI payment QR
+                          <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { uploadQr(e.target.files && e.target.files[0]); e.target.value = ""; }} />
                         </label>
                       )}
                     </div>
@@ -3645,6 +3689,15 @@ function CheckInSheet({ event, onClose }) {
     const num = (g.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "");
     return num ? `https://wa.me/${num}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
   };
+  const shareGuest = async (g) => {
+    const text = `🎟️ ${event.title}\nGuest ticket for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nCode: ${g.code}\nTicket: https://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
+    try {
+      const blob = await makeTicketBlob({ emoji: "🎟️", title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code });
+      const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: event.title, text }); return; }
+    } catch (e2) {}
+    window.open(guestWa(g), "_blank");
+  };
   const toggle = async (uid, present) => {
     setList(l => l.map(x => x.user_id === uid ? { ...x, present } : x));
     await supabase.rpc("set_attendance", { p_event: event.id, p_user: uid, p_present: present });
@@ -3723,7 +3776,7 @@ function CheckInSheet({ event, onClose }) {
                 <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</div>
                 <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
               </div>
-              <a href={guestWa(g)} target="_blank" rel="noreferrer" title="Send ticket on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12, textDecoration: "none" }}><MessageCircle size={13} /></a>
+              <button onClick={() => shareGuest(g)} title="Send ticket with QR on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12 }}><MessageCircle size={13} /></button>
               <button onClick={() => { if (window.confirm(`Remove ${g.name} from the guest list?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove guest" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
               <div onClick={() => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, checked_in: !g.checked_in } : x)); supabase.rpc("set_guest_checkin", { p_id: g.id, p_in: !g.checked_in }); }} style={{ width: 26, height: 26, borderRadius: "50%", border: `2px solid ${g.checked_in ? W.teal : W.line}`, background: g.checked_in ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>{g.checked_in && <Check size={15} />}</div>
             </div>
@@ -4613,7 +4666,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • door ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • multiqr ✅</div>
       </div>
     </div>
   );
