@@ -744,6 +744,21 @@ function SortSheet({ value, onPick, onClose }) {
     </div>
   );
 }
+function CitySheet({ cities, value, onPick, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", borderRadius: "18px 18px 0 0", maxHeight: "70vh", overflowY: "auto", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div style={{ padding: "16px 18px", fontWeight: 800, fontSize: 18, color: W.ink }}>Choose your city</div>
+        {["All cities", ...cities].map(c => (
+          <div key={c} onClick={() => onPick(c)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}>
+            <span style={{ fontWeight: value === c ? 800 : 600, color: value === c ? W.teal : W.ink, fontSize: 15 }}>{c === "All cities" ? "🌏 All cities" : `📍 ${c}`}</span>
+            <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${value === c ? W.teal : W.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{value === c && <div style={{ width: 11, height: 11, borderRadius: "50%", background: W.teal }} />}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 function FilterSheet({ events, dims, getMin, value, onApply, onClose }) {
   const [sel, setSel] = useState(() => ({ date: [...value.date], category: [...value.category], city: [...value.city], price: [...value.price], venue: [...value.venue], tags: JSON.parse(JSON.stringify(value.tags || {})) }));
   const [active, setActive] = useState(0);
@@ -1090,6 +1105,7 @@ function PublicLanding() {
   const [sortBy, setSortBy] = useState("relevance");
   const [fsheet, setFsheet] = useState(false);
   const [ssheet, setSsheet] = useState(false);
+  const [citySheet, setCitySheet] = useState(false);
   const [custom, setCustom] = useState([]);
   const [pop, setPop] = useState({});
   const [addonsMap, setAddonsMap] = useState({});
@@ -1160,12 +1176,15 @@ function PublicLanding() {
         </div>
       )}
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
-        <div style={{ fontWeight: 800, fontSize: wide ? 26 : 19, color: W.ink, padding: wide ? "0 0 8px" : "18px 16px 4px" }}>Upcoming events</div>
-        <div style={{ display: "flex", gap: 10, padding: wide ? "4px 0 12px" : "10px 14px", overflowX: "auto" }}>
+        <div style={{ padding: wide ? "0 0 6px" : "18px 16px 4px" }}>
+          <div style={{ fontWeight: 800, fontSize: wide ? 28 : 21.5, color: W.ink, letterSpacing: -0.3 }}>Your city. Your people. ✨</div>
+          <div onClick={() => setCitySheet(true)} style={{ color: W.teal, fontWeight: 800, fontSize: 14, marginTop: 3, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>{flt.city.length === 1 ? flt.city[0] : "All cities"}&nbsp;{"\u203a"}</div>
+        </div>
+        <CategoryTiles cats={optCats.length ? optCats : cats.map(n => ({ name: n }))} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
+        <div style={{ display: "flex", gap: 10, padding: wide ? "8px 0 12px" : "10px 14px", overflowX: "auto" }}>
           <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
           <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
         </div>
-        <CategoryTiles cats={optCats.length ? optCats : cats.map(n => ({ name: n }))} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
         <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "repeat(2,1fr)", gap: 14, padding: wide ? "8px 0 0" : "6px 14px" }}>
           {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events yet — check back soon!</Center></div>}
           {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={false} onOpen={openDetail} />)}
@@ -1173,6 +1192,7 @@ function PublicLanding() {
       </div>
       {fsheet && <FilterSheet events={events} dims={dimsL} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
       {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
+      {citySheet && <CitySheet cities={cityList} value={flt.city.length === 1 ? flt.city[0] : "All cities"} onPick={c => { setFlt(f => ({ ...f, city: c === "All cities" ? [] : [c] })); setCitySheet(false); }} onClose={() => setCitySheet(false)} />}
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
@@ -1843,6 +1863,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const [sortBy, setSortBy] = useState("relevance");
   const [fsheet, setFsheet] = useState(false);
   const [ssheet, setSsheet] = useState(false);
+  const [citySheet, setCitySheet] = useState(false);
   const [custom, setCustom] = useState([]);
   useEffect(() => { supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || [])); }, []);
   useEffect(() => { if (focus) { onOpenDetail && onOpenDetail(focus); onFocusDone && onFocusDone(); } }, [focus]);
@@ -1862,18 +1883,23 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   return (
     <div>
       <TopBar title="Events" />
-      {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
-      <div style={{ display: "flex", gap: 10, padding: "12px 14px", overflowX: "auto", borderBottom: `1px solid ${W.line}`, background: "#fff", position: "sticky", top: 0, zIndex: 5 }}>
+      <div style={{ padding: "14px 16px 4px", background: "#fff" }}>
+        <div style={{ fontWeight: 800, fontSize: 21.5, color: W.ink, letterSpacing: -0.3 }}>Your city. Your people. ✨</div>
+        <div onClick={() => setCitySheet(true)} style={{ color: W.teal, fontWeight: 800, fontSize: 14, marginTop: 3, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>{flt.city.length === 1 ? flt.city[0] : "All cities"}&nbsp;{"\u203a"}</div>
+      </div>
+      <CategoryTiles cats={catTiles} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
+      <div style={{ display: "flex", gap: 10, padding: "10px 14px", overflowX: "auto", borderBottom: `1px solid ${W.line}`, background: "#fff", position: "sticky", top: 0, zIndex: 5 }}>
         <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
         <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
       </div>
-      <CategoryTiles cats={catTiles} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
+      {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
         {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events here yet.</Center></div>}
         {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
       </div>
       {fsheet && <FilterSheet events={events} dims={dims} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
       {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
+      {citySheet && <CitySheet cities={cityNames} value={flt.city.length === 1 ? flt.city[0] : "All cities"} onPick={c => { setFlt(f => ({ ...f, city: c === "All cities" ? [] : [c] })); setCitySheet(false); }} onClose={() => setCitySheet(false)} />}
     </div>
   );
 }
@@ -4095,7 +4121,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • bms-filter ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • home ✅</div>
       </div>
     </div>
   );
