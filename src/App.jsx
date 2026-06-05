@@ -481,37 +481,12 @@ function FiltersPanel({ categories, cities, dims, optsAll, onAddOption, onDelOpt
 function SettlementsPanel({ isSuper }) {
   const [rows, setRows] = useState(null);
   const [draft, setDraft] = useState({});
+  const [gwDraft, setGwDraft] = useState(null);
   const [saving, setSaving] = useState(null);
   const load = () => supabase.rpc("organiser_settlements").then(({ data, error }) => setRows(error ? [] : (data || [])));
   useEffect(() => { load(); }, []);
+  const gwPct = rows && rows.length ? rows[0].gateway_pct : null;
   const inr = n => n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
-  const exportPdf = (subset, label) => {
-    const w = window.open("", "_blank", "width=820,height=940"); if (!w) return;
-    const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-    const f = n => n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
-    const tot = k => subset.reduce((a, r) => a + (Number(r[k]) || 0), 0);
-    const allPct = subset.every(r => r.pct != null);
-    const rowsHtml = subset.map(r => `<tr><td>${escapeHtml(r.host_name || "Organiser")}</td><td class="r">${r.events_count}</td><td class="r">${r.tickets_sold}</td><td class="r">${f(r.gross)}</td><td class="r">${r.pct == null ? "—" : r.pct + "%"}</td><td class="r">${r.pct == null ? "—" : f(r.platform_cut)}</td><td class="r"><b>${r.pct == null ? "—" : f(r.payable)}</b></td></tr>`).join("");
-    w.document.write(`<!doctype html><html><head><title>Glasswings — Organiser settlement</title><style>
-      body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:34px}
-      .br{font-size:12px;letter-spacing:4px;font-weight:800;color:#008069}
-      h1{font-size:22px;margin:6px 0 2px} .sub{color:#5d6f6b;font-size:13px;margin-bottom:22px}
-      table{width:100%;border-collapse:collapse;font-size:13px}
-      th{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:#5d6f6b;text-align:left;padding:8px 9px;border-bottom:2px solid #008069}
-      td{padding:9px;border-bottom:1px solid #e4ecea} .r{text-align:right} th.r{text-align:right}
-      tfoot td{font-weight:800;border-top:2px solid #008069;border-bottom:none}
-      .ft{margin-top:26px;font-size:11.5px;color:#8a9b97}
-    </style></head><body>
-      <div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
-      <h1>Organiser settlement statement</h1>
-      <div class="sub">${escapeHtml(label)} · Generated on ${today} · Paid ticket revenue only</div>
-      <table><thead><tr><th>Organiser</th><th class="r">Events</th><th class="r">Tickets</th><th class="r">Gross</th><th class="r">Platform %</th><th class="r">Platform cut</th><th class="r">Payable</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-      <tfoot><tr><td>Total</td><td class="r">${tot("events_count")}</td><td class="r">${tot("tickets_sold")}</td><td class="r">${f(tot("gross"))}</td><td class="r"></td><td class="r">${allPct ? f(tot("platform_cut")) : "—"}</td><td class="r">${allPct ? f(tot("payable")) : "—"}</td></tr></tfoot></table>
-      <div class="ft">Glasswings Events · glass-wings.com · This statement is generated from recorded payments and is subject to reconciliation.</div>
-      <script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`);
-    w.document.close();
-  };
   const savePct = async (uid) => {
     setSaving(uid);
     const v = (draft[uid] ?? "").toString().trim();
@@ -521,13 +496,92 @@ function SettlementsPanel({ isSuper }) {
     setDraft(d => { const n = { ...d }; delete n[uid]; return n; });
     load();
   };
+  const saveGw = async () => {
+    setSaving("gw");
+    const v = (gwDraft ?? "").toString().trim();
+    const { error } = await supabase.rpc("set_gateway_fee", { p_pct: v === "" ? null : Number(v) });
+    setSaving(null);
+    if (error) return alert(error.message);
+    setGwDraft(null); load();
+  };
+  const exportPdf = (subset, label) => {
+    const w = window.open("", "_blank", "width=860,height=960"); if (!w) return;
+    const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    const f = n => n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+    const tot = k => subset.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    const allOk = subset.every(r => r.pct != null && r.gateway_pct != null);
+    const rowsHtml = subset.map((r, i2) => `<tr style="background:${i2 % 2 ? "#F4FAF8" : "#fff"}">
+      <td><b>${escapeHtml(r.host_name || "Organiser")}</b></td>
+      <td class="r">${r.events_count}</td><td class="r">${r.tickets_sold}</td>
+      <td class="r"><b>${f(r.gross)}</b></td>
+      <td class="r rz">${r.gateway_pct == null ? "—" : `${r.gateway_pct}%<br><b>− ${f(r.gateway_fee)}</b>`}</td>
+      <td class="r pf">${r.pct == null ? "—" : `${r.pct}%<br><b>− ${f(r.platform_cut)}</b>`}</td>
+      <td class="r pay"><b>${r.payable == null ? "—" : f(r.payable)}</b></td>
+    </tr>`).join("");
+    const single = subset.length === 1 ? subset[0] : null;
+    const sumBoxes = single ? `
+      <div class="boxes">
+        <div class="bx" style="background:#E8F2FB;color:#1B6FB8"><div class="bl">GROSS COLLECTED</div><div class="bv">${f(single.gross)}</div></div>
+        <div class="bx" style="background:#FBE9E7;color:#C0392B"><div class="bl">RAZORPAY FEE ${single.gateway_pct == null ? "" : "(" + single.gateway_pct + "%)"}</div><div class="bv">${single.gateway_fee == null ? "—" : "− " + f(single.gateway_fee)}</div></div>
+        <div class="bx" style="background:#FDF6EC;color:#B45309"><div class="bl">PLATFORM CUT ${single.pct == null ? "" : "(" + single.pct + "%)"}</div><div class="bv">${single.platform_cut == null ? "—" : "− " + f(single.platform_cut)}</div></div>
+        <div class="bx" style="background:#E7F6EF;color:#008069"><div class="bl">PAYABLE TO ORGANISER</div><div class="bv">${single.payable == null ? "—" : f(single.payable)}</div></div>
+      </div>` : "";
+    w.document.write(`<!doctype html><html><head><title>Glasswings — Organiser settlement</title><style>
+      body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:0}
+      .band{background:linear-gradient(135deg,#008069,#04B08F);color:#fff;padding:30px 36px}
+      .br{font-size:11px;letter-spacing:4px;font-weight:800;opacity:.92}
+      h1{font-size:23px;margin:8px 0 3px} .sub{font-size:13px;opacity:.92}
+      .wrap{padding:26px 36px}
+      .boxes{display:flex;gap:12px;margin-bottom:22px}
+      .bx{flex:1;border-radius:14px;padding:14px}
+      .bl{font-size:9.5px;font-weight:800;letter-spacing:.8px}
+      .bv{font-size:21px;font-weight:800;margin-top:5px}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      thead th{background:#008069;color:#fff;font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;text-align:left;padding:10px 9px}
+      thead th.r{text-align:right}
+      td{padding:10px 9px;border-bottom:1px solid #e4ecea;vertical-align:top} .r{text-align:right}
+      .rz{color:#C0392B} .pf{color:#B45309} .pay{color:#008069;font-size:14px}
+      tfoot td{font-weight:800;border-top:2.5px solid #008069;border-bottom:none;background:#F4FAF8}
+      .note{margin-top:16px;font-size:11.5px;color:#5d6f6b;background:#F4FAF8;border-radius:10px;padding:11px 14px}
+      .ft{margin-top:18px;font-size:11px;color:#8a9b97}
+      @media print{.band{-webkit-print-color-adjust:exact;print-color-adjust:exact}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+      <div class="band"><div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
+        <h1>Organiser settlement statement</h1>
+        <div class="sub">${escapeHtml(label)} · Generated on ${today} · Paid ticket revenue only</div></div>
+      <div class="wrap">
+        ${sumBoxes}
+        <table><thead><tr><th>Organiser</th><th class="r">Events</th><th class="r">Tickets</th><th class="r">Gross</th><th class="r">Razorpay fee</th><th class="r">Platform cut</th><th class="r">Payable</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot><tr><td>Total</td><td class="r">${tot("events_count")}</td><td class="r">${tot("tickets_sold")}</td><td class="r">${f(tot("gross"))}</td><td class="r rz">${allOk ? "− " + f(tot("gateway_fee")) : "—"}</td><td class="r pf">${allOk ? "− " + f(tot("platform_cut")) : "—"}</td><td class="r pay">${allOk ? f(tot("payable")) : "—"}</td></tr></tfoot></table>
+        <div class="note"><b>How payable is calculated:</b> Payable = Gross − Razorpay gateway fee − Glasswings platform cut. Both percentages are applied on the gross amount collected.</div>
+        <div class="ft">Glasswings Events · glass-wings.com · This statement is generated from recorded payments and is subject to reconciliation.</div>
+      </div>
+      <script>window.onload=function(){setTimeout(function(){window.print()},380)}<\/script></body></html>`);
+    w.document.close();
+  };
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
         <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink }}>Organiser payouts</div>
         {rows && rows.length > 0 && <button onClick={() => exportPdf(rows, isSuper ? "All organisers" : "Your settlement")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 13px", fontSize: 12.5 }}>📄 Export PDF</button>}
       </div>
-      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Paid ticket revenue per organiser. Platform % is negotiated per organiser{isSuper ? " — set it on each card" : ""}. Payable = gross minus the platform cut.</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Payable = Gross − Razorpay fee − Platform cut (both % of gross). Platform % is negotiated per organiser{isSuper ? "; the Razorpay % applies to everyone" : ""}.</div>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: "12px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>Razorpay gateway fee</div>
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 2 }}>Charged by Razorpay on every transaction — update here if their rate changes.</div>
+        </div>
+        {isSuper ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input value={gwDraft ?? (gwPct ?? "")} onChange={ev => setGwDraft(ev.target.value.replace(/[^\d.]/g, ""))} placeholder="—" inputMode="decimal" style={{ width: 58, padding: "7px 9px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13.5, outline: "none", textAlign: "center" }} />
+            <span style={{ fontSize: 13, color: W.soft, fontWeight: 700 }}>%</span>
+            <button onClick={saveGw} disabled={saving === "gw"} style={{ ...btn(W.teal, "#fff"), padding: "7px 13px", fontSize: 12.5 }}>{saving === "gw" ? "…" : "Save"}</button>
+          </div>
+        ) : (
+          <span style={{ fontWeight: 800, color: "#C0392B", fontSize: 14 }}>{gwPct == null ? "to be set" : `${gwPct}%`}</span>
+        )}
+      </div>
       {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No organiser revenue yet.</Center> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {rows.map(r => (
@@ -551,8 +605,9 @@ function SettlementsPanel({ isSuper }) {
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>EVENTS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{r.events_count}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>TICKETS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{r.tickets_sold}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>GROSS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{inr(r.gross)}</div></div>
-                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PLATFORM CUT</div><div style={{ fontWeight: 800, color: "#B45309", fontSize: 16 }}>{r.pct == null ? "set % first" : inr(r.platform_cut)}</div></div>
-                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PAYABLE</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{r.pct == null ? "—" : inr(r.payable)}</div></div>
+                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>RAZORPAY FEE</div><div style={{ fontWeight: 800, color: "#C0392B", fontSize: 16 }}>{r.gateway_pct == null ? "set % first" : "− " + inr(r.gateway_fee)}</div></div>
+                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PLATFORM CUT</div><div style={{ fontWeight: 800, color: "#B45309", fontSize: 16 }}>{r.pct == null ? "set % first" : "− " + inr(r.platform_cut)}</div></div>
+                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PAYABLE</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{r.payable == null ? "—" : inr(r.payable)}</div></div>
               </div>
             </div>
           ))}
@@ -3909,7 +3964,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • dims-pdf ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gateway ✅</div>
       </div>
     </div>
   );
