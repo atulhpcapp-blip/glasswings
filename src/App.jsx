@@ -17,20 +17,18 @@ function netPrice(t, subs) {
   const d = t.discount_kind === "flat" ? t.discount_value : Math.round(base * t.discount_value / 100);
   return Math.max(0, base - d);
 }
-// Availability for a ticket type: capacity sell-out + men-released-as-women-join rule
+function genderNet(t, subs, profile) {
+  let n = netPrice(t, subs);
+  const pct = profile?.gender === "female" ? Number(t.disc_female_pct) : profile?.gender === "male" ? Number(t.disc_male_pct) : 0;
+  if (pct > 0) n = Math.max(0, Math.round(n * (100 - Math.min(pct, 100)) / 100));
+  return n;
+}
+// Availability for a ticket type: capacity only
 function ticketStatus(t, e, stats, typeSold) {
   const sold = (typeSold && typeSold[t.id]) || 0;
   const hasCap = t.capacity != null && t.capacity !== "";
   if (hasCap && t.capacity - sold <= 0) return { ok: false, label: "Sold out" };
-  if (t.gender_restrict === "male" && e && e.balance_on === true) {
-    const s = (stats && stats[e.id]) || { male: 0, female: 0 };
-    const ratio = e.men_per_woman == null ? 2 : Number(e.men_per_woman);
-    const budget = (Number(e.men_open_start) || 0) + Math.floor((s.female || 0) * ratio);
-    const menLeft = budget - (s.male || 0);
-    if (menLeft <= 0) return { ok: false, label: "Opens as more women join" };
-    return { ok: true, label: hasCap ? `${Math.min(t.capacity - sold, menLeft)} left` : `${menLeft} left` };
-  }
-  return { ok: true, label: hasCap ? `${t.capacity - sold} left` : null };
+  return { ok: true, label: hasCap ? `${t.capacity - sold} left` : "" };
 }
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
 function loadRazorpay() {
@@ -825,16 +823,16 @@ function CategoryTiles({ cats, val, set }) {
     </div>
   );
 }
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold }) {
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart }) {
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
   const link = `${window.location.origin}/?event=${e.id}`;
   const share = async () => { try { if (navigator.share) await navigator.share({ title: e.title, url: link }); else { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } } catch {} };
-  const visTypes = profile ? types.filter(t => t.gender_restrict === "any" || t.gender_restrict === profile.gender) : types;
+  const visTypes = types;
   const prices = visTypes.length ? visTypes.map(t => t.price || 0) : [e.ticket_price || 0];
   const minPrice = Math.min(...prices);
   const MAX_TIX = 10;
-  const [qtyMap, setQtyMap] = useState({});
+  const [qtyMap, setQtyMap] = useState(() => initialCart || {});
   const totalQty = m => Object.values(m).reduce((a, q) => a + q, 0);
   const setQ = (key, q) => setQtyMap(m => {
     const n = { ...m };
@@ -846,7 +844,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     .map(([k, q]) => ({ type: k === "__base" ? null : visTypes.find(t => t.id === k), qty: q }))
     .filter(c => c.type !== undefined || c.type === null);
   const selQty = cart.reduce((a, c) => a + c.qty, 0);
-  const selTotal = cart.reduce((a, c) => a + (c.type ? (c.type.price || 0) : (e.ticket_price || 0)) * c.qty, 0);
+  const selTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
   const stepper = (key, q, max) => (
     <div style={{ display: "flex", alignItems: "center", gap: 0, border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden" }}>
@@ -893,8 +891,11 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         return (
         <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}`, opacity: soldOut ? .5 : 1 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>{t.name} {aud(t.gender_restrict)}</div>
-            <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(t.price || 0) === 0 ? "Free" : `₹${t.price}`}</div>
+            <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>{t.name}
+              {Number(t.disc_female_pct) > 0 && <span style={{ background: "#FCE7F1", color: "#D6618F", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_female_pct}% off for women</span>}
+              {Number(t.disc_male_pct) > 0 && <span style={{ background: "#E8F2FB", color: "#1B6FB8", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_male_pct}% off for men</span>}
+            </div>
+            <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? "Free" : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
           </div>
           {!st.ok
@@ -1126,7 +1127,14 @@ function PublicLanding() {
   useEffect(() => { if (detail && events.length && !events.find(x => x.id === detail)) setDetail(null); }, [events, detail]);
   const openDetail = (id) => { setDetail(id); try { history.replaceState(null, "", `/?event=${id}`); } catch {} window.scrollTo(0, 0); };
   const closeDetail = () => { setDetail(null); try { history.replaceState(null, "", "/"); } catch {} };
-  const buyNow = (ev) => { try { localStorage.setItem("gw_buy", ev.id); localStorage.setItem("gw_event", ev.id); } catch {} setAuthMode("signup"); };
+  const buyNow = (ev, cart) => {
+    try {
+      localStorage.setItem("gw_buy", ev.id); localStorage.setItem("gw_event", ev.id);
+      if (cart && cart.length) { const m = {}; cart.forEach(c => { m[c.type ? c.type.id : "__base"] = c.qty || 1; }); localStorage.setItem("gw_buy_cart", JSON.stringify(m)); }
+      else localStorage.removeItem("gw_buy_cart");
+    } catch {}
+    setAuthMode("signup");
+  };
   const popSet = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
   const evSlide = ({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
   const promoSlides = events
@@ -1543,8 +1551,6 @@ function Main({ user }) {
     if (!cart.length) cart = [{ type: null, qty: 1 }];
     for (const c of cart) {
       if (c.type) {
-        if (c.type.gender_restrict && c.type.gender_restrict !== "any" && c.type.gender_restrict !== profile?.gender)
-          return setNotice(c.type.gender_restrict === "female" ? "Some of these tickets are for women only." : "Some of these tickets are for men only.");
       } else if ((ticketTypes[e.id] || []).length) {
         return setNotice("Please choose a ticket type for this event.");
       }
@@ -1554,18 +1560,22 @@ function Main({ user }) {
   const joinEvent = (e, type = null) => {
     if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
     if (type) {
-      if (type.gender_restrict && type.gender_restrict !== "any" && type.gender_restrict !== profile?.gender) return setNotice(type.gender_restrict === "female" ? "These tickets are for women only." : "These tickets are for men only.");
     } else if ((ticketTypes[e.id] || []).length) {
       return setNotice("Please choose a ticket type for this event.");
     }
     setBuyTarget({ event: e, type });
   };
+  const [resumeCart, setResumeCart] = useState(null);
   useEffect(() => {
     if (!events.length) return;
-    let buy = null; try { buy = localStorage.getItem("gw_buy"); } catch {}
+    let buy = null, cartRaw = null; try { buy = localStorage.getItem("gw_buy"); cartRaw = localStorage.getItem("gw_buy_cart"); } catch {}
     if (!buy) return;
     const e = events.find(x => x.id === buy);
-    if (e) { try { localStorage.removeItem("gw_buy"); } catch {} setTab("events"); setEventPage(e.id); }
+    if (e) {
+      try { localStorage.removeItem("gw_buy"); localStorage.removeItem("gw_buy_cart"); } catch {}
+      if (cartRaw) { try { setResumeCart(JSON.parse(cartRaw)); } catch {} }
+      setTab("events"); setEventPage(e.id);
+    }
   }, [events]);
   const grantRoom = async (userId, roomId) => {
     const { error } = await supabase.rpc("admin_grant_room", { p_user: userId, p_room: roomId });
@@ -1617,14 +1627,13 @@ function Main({ user }) {
     }
     for (const c of cart) {
       if (c.type) {
-        if (c.type.gender_restrict && c.type.gender_restrict !== "any" && c.type.gender_restrict !== profile?.gender) { setBuyTarget(null); return setNotice(c.type.gender_restrict === "female" ? "Some of these tickets are for women only." : "Some of these tickets are for men only."); }
         const st = ticketStatus(c.type, e, eventStats, typeSold);
         if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? `"${c.type.name}" is sold out.` : "Men's tickets aren't open yet — they release as more women join."); }
       } else if ((ticketTypes[e.id] || []).length) { setBuyTarget(null); return setNotice("Please choose a ticket type for this event."); }
     }
     const chosen = sel.filter(a => (a.qty || 0) > 0);
     const addonTotal = chosen.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
-    const ticketTotal = cart.reduce((s2, c) => s2 + (c.type ? netPrice(c.type, subs) : e.ticket_price || 0) * c.qty, 0);
+    const ticketTotal = cart.reduce((s2, c) => s2 + (c.type ? genderNet(c.type, subs, profile) : e.ticket_price || 0) * c.qty, 0);
     const total = ticketTotal + addonTotal;
     if (total > 0) {
       setBuyTarget(null);
@@ -1783,7 +1792,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
@@ -1836,7 +1845,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
@@ -1918,10 +1927,10 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   useEffect(() => { if (focus) { onOpenDetail && onOpenDetail(focus); onFocusDone && onFocusDone(); } }, [focus]);
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
-  const getMin = e => { const ts = (ticketTypes[e.id] || []).filter(t => !profile || t.gender_restrict === "any" || t.gender_restrict === profile.gender); const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0]; return Math.min(...prices); };
+  const getMin = e => { const ts = ticketTypes[e.id] || []; const prices = ts.length ? ts.map(t => genderNet(t, null, profile)) : [e.ticket_price || 0]; return Math.min(...prices); };
   const list = sortEvents(events.filter(e => eventMatches(e, flt, getMin)), sortBy, getMin);
   const priceFrom = (e) => {
-    const ts = (ticketTypes[e.id] || []).filter(t => !profile || t.gender_restrict === "any" || t.gender_restrict === profile.gender);
+    const ts = ticketTypes[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
     const m = Math.min(...prices);
     return m === 0 ? "Free" : `From ₹${m}`;
@@ -2883,7 +2892,7 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose })
   const needAgree = !!(e.terms && e.terms.trim());
   const sel = addons.map(a => ({ ...a, qty: addQ[a.id] || 0 }));
   const addonTotal = sel.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
-  const unitOf = c => c.type ? netPrice(c.type, subs) : (e.ticket_price || 0);
+  const unitOf = c => c.type ? genderNet(c.type, subs, profile) : (e.ticket_price || 0);
   const grossOf = c => c.type ? (c.type.price || 0) : (e.ticket_price || 0);
   const totalQty = cart.reduce((a, c) => a + c.qty, 0);
   const ticketTotal = cart.reduce((a, c) => a + unitOf(c) * c.qty, 0);
@@ -3058,14 +3067,15 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   );
 }
 function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
-  const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [g, setG] = useState("any"); const [cap, setCap] = useState("");
+  const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [cap, setCap] = useState("");
+  const [wf, setWf] = useState(""); const [wm, setWm] = useState("");
   const [dRoom, setDRoom] = useState(""); const [dKind, setDKind] = useState("percent"); const [dVal, setDVal] = useState("");
   const gl = { any: "Anyone", male: "Men", female: "Women" };
   const roomName = id => ((rooms || []).find(r => r.id === id) || {}).name || "room";
   const add = async () => {
     if (!name.trim()) return;
-    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: g, capacity: cap === "" ? null : Number(cap), discount_room_id: dRoom || null, discount_kind: dKind, discount_value: Number(dVal) || 0 });
-    setName(""); setPrice(""); setG("any"); setCap(""); setDRoom(""); setDKind("percent"); setDVal("");
+    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom || null, discount_kind: dKind, discount_value: Number(dVal) || 0 });
+    setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setDRoom(""); setDKind("percent"); setDVal("");
   };
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
   const audBadge = (gr) => {
@@ -3094,11 +3104,8 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Men)" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
         <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 64 }} />
-        <select value={g} onChange={e => setG(e.target.value)} style={ip}>
-          <option value="any">Anyone</option>
-          <option value="male">Men</option>
-          <option value="female">Women</option>
-        </select>
+        <input value={wf} onChange={e => setWf(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♀ % off" title="Optional discount for women, e.g. 20" inputMode="decimal" style={{ ...ip, width: 76 }} />
+        <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Optional discount for men" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
       </div>
       <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
@@ -4255,7 +4262,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lite ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • open-tickets ✅</div>
       </div>
     </div>
   );
