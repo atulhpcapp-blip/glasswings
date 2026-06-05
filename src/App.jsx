@@ -1165,24 +1165,13 @@ function PublicLanding() {
   return (
     <div style={{ minHeight: "100vh", background: W.bg, fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif" }}>
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}`}</style>
-      <div style={{ position: "sticky", top: 0, zIndex: 20, background: "rgba(8,18,24,.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "14px 7%" : "11px 15px" }}>
-        <img src="/logo-white.png" alt="Glasswings Events" style={{ height: wide ? 34 : 28, objectFit: "contain" }} />
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => setAuthMode("login")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.45)", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Log in</button>
-          <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ background: W.teal, color: "#fff", border: "none", borderRadius: 9, padding: "9px 17px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Sign up</button>
+      <div style={{ position: "sticky", top: 0, zIndex: 20, background: W.teal, display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "13px 7%" : "12px 15px" }}>
+        <img src="/logo-white.png" alt="Glasswings Events" style={{ height: wide ? 32 : 27, objectFit: "contain" }} />
+        <div style={{ display: "flex", gap: 9 }}>
+          <button onClick={() => setAuthMode("login")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.6)", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Log in</button>
+          <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ background: "#fff", color: W.teal, border: "none", borderRadius: 9, padding: "9px 17px", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Sign up</button>
         </div>
       </div>
-      {heroSlides.length ? (
-        <HeroSlider slides={heroSlides} wide={wide} onSlide={(s) => { if (s.id) openDetail(s.id); else setAuthMode("signup"); }} />
-      ) : (
-        <div style={{ backgroundImage: "linear-gradient(rgba(6,18,26,.5),rgba(6,14,22,.82)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center", padding: wide ? "96px 7%" : "40px 20px 34px", color: "#fff" }}>
-          <div style={{ maxWidth: 1180, margin: "0 auto", textAlign: wide ? "left" : "center" }}>
-            <div style={{ fontSize: wide ? 50 : 26, fontWeight: 800, lineHeight: 1.1, maxWidth: 720, margin: wide ? "0" : "0 auto" }}>Discover top events &amp; meetups in your city</div>
-            <div style={{ fontSize: wide ? 18 : 14, opacity: 0.9, maxWidth: 560, margin: wide ? "14px 0 0" : "8px auto 0" }}>Parties, socials and community meetups — see what's on and grab your tickets in seconds.</div>
-            <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ ...btn(W.teal, "#fff"), marginTop: 22, padding: "13px 24px", fontSize: 15 }}><Ticket size={17} />Join free</button>
-          </div>
-        </div>
-      )}
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
         <div style={{ padding: wide ? "0 0 6px" : "18px 16px 4px" }}>
           <div style={{ fontWeight: 800, fontSize: wide ? 28 : 21.5, color: W.ink, letterSpacing: -0.3 }}>Your city. Your people. ✨</div>
@@ -1193,6 +1182,7 @@ function PublicLanding() {
           <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
           <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
         </div>
+        {heroSlides.length > 0 && <div style={{ marginBottom: 6 }}><HeroSlider slides={heroSlides} wide={wide} onSlide={(s) => { if (s.id) openDetail(s.id); else setAuthMode("signup"); }} /></div>}
         <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "repeat(2,1fr)", gap: 14, padding: wide ? "8px 0 0" : "6px 14px" }}>
           {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events yet — check back soon!</Center></div>}
           {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={false} onOpen={openDetail} />)}
@@ -4208,7 +4198,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • profile-page ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • public-home ✅</div>
       </div>
     </div>
   );
