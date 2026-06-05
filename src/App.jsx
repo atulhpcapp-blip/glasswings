@@ -1304,16 +1304,20 @@ function ProfileGate({ user, profile, reload }) {
   const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph + " *"} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${tried && !String(v || "").trim() ? "#C0392B" : W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
   return (
     <div style={{ minHeight: "100vh", background: W.bg }}>
-      <TopBar title="Complete your profile" />
+      <div style={{ background: W.teal, color: "#fff", padding: "16px 18px", position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", gap: 12 }}>
+        <ArrowLeft size={23} style={{ cursor: "pointer", flexShrink: 0 }} onClick={async () => { if (window.confirm("Go back to login? Your details on this page won't be saved.")) { await supabase.auth.signOut(); window.location.reload(); } }} />
+        <span style={{ fontSize: 21, fontWeight: 700 }}>Complete your profile</span>
+      </div>
       <div style={{ padding: 18 }}>
         <div style={{ color: W.soft, fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>Welcome to Glasswings! Add your photo and details to join rooms and events. Your phone number stays private — only the organiser can see it.</div>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
-          <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 18 }}>
+          <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", borderRadius: "50%", border: `3px solid ${tried && !avatar ? "#C0392B" : "transparent"}` }}>
             <PersonAvatar url={avatar} name={name} size={96} />
             <div style={{ position: "absolute", bottom: 0, right: 0, width: 30, height: 30, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}><Camera size={16} /></div>
             {uploading && <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,.4)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>…</div>}
           </div>
           <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 8, color: tried && !avatar ? "#C0392B" : W.soft }}>Profile photo * (required)</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           {inp("Full name", name, setName)}
@@ -4204,7 +4208,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • required ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • profile-page ✅</div>
       </div>
     </div>
   );
