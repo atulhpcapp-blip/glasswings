@@ -134,6 +134,7 @@ async function uploadPhoto(userId, file) {
 }
 
 async function uploadChatFile(roomId, file) {
+  file = await compressImage(file);
   const ext = (file.name.split(".").pop() || "bin").toLowerCase();
   const path = `${roomId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
   const { error } = await supabase.storage.from("chat").upload(path, file, { contentType: file.type });
@@ -409,6 +410,33 @@ function RecoverPassword({ onDone }) {
     </div>
   );
 }
+function EventMediaEditor({ event: e, onUpdate }) {
+  const pRef = useRef(null), bRef = useRef(null);
+  const [up, setUp] = useState(false);
+  const pick = async (file, kind) => {
+    if (!file) return;
+    setUp(true);
+    try {
+      const url = await uploadChatFile("banners", file);
+      if (kind === "poster") await onUpdate(e.id, { poster_url: url });
+      else await onUpdate(e.id, { banner_url: url, banner_type: file.type.startsWith("video") ? "video" : "image" });
+    } catch (x) { alert("Upload failed: " + x.message); }
+    setUp(false);
+  };
+  const tile = { flex: 1, minWidth: 0, padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 12.5, color: W.ink, fontWeight: 600, cursor: "pointer", textAlign: "center" };
+  return (
+    <div style={{ marginTop: 16 }}>
+      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Event media</label>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={() => pRef.current?.click()} disabled={up} style={tile}>{up ? "Uploading…" : (e.poster_url ? "Replace poster (3:4)" : "+ Poster (3:4)")}</button>
+        <button onClick={() => bRef.current?.click()} disabled={up} style={tile}>{up ? "Uploading…" : (e.banner_url ? "Replace banner / video" : "+ Banner / video")}</button>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Poster shows on event cards; banner (or video) shows on the slider and event page.</div>
+      <input ref={pRef} type="file" accept="image/*" onChange={ev => { pick(ev.target.files?.[0], "poster"); ev.target.value = ""; }} style={{ display: "none" }} />
+      <input ref={bRef} type="file" accept="image/*,video/*" onChange={ev => { pick(ev.target.files?.[0], "banner"); ev.target.value = ""; }} style={{ display: "none" }} />
+    </div>
+  );
+}
 function RideButtons({ e, compact }) {
   const hasGeo = e.venue_lat && e.venue_lng;
   if (!hasGeo && !e.venue) return null;
@@ -434,8 +462,8 @@ function PosterCard({ e, price, popular, going, onOpen, date }) {
   return (
     <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
       <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
-        {e.banner_url && e.banner_type !== "video"
-          ? <img src={e.banner_url} alt={e.title} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        {(e.poster_url || (e.banner_url && e.banner_type !== "video"))
+          ? <img src={e.poster_url || e.banner_url} alt={e.title} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{e.emoji || "🎟️"}</div>}
         {popular && <span style={{ position: "absolute", top: 8, left: 8, background: "#D35400", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔥 Popular</span>}
         {going && <span style={{ position: "absolute", top: 8, right: 8, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Going</span>}
@@ -561,12 +589,12 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         <img src="/logo-white.png" alt="Glasswings" style={{ height: 26, objectFit: "contain" }} />
         <button onClick={share} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(255,255,255,.4)", color: "#fff", borderRadius: 9, padding: "7px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}><Share2 size={14} />{copied ? "Copied ✓" : "Share"}</button>
       </div>
-      {e.banner_url && (e.banner_type === "video" ? (
+      {(e.banner_url || e.poster_url) && (e.banner_type === "video" && e.banner_url ? (
         <div style={{ background: "#0b1f1c" }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
       ) : (
         <div style={{ position: "relative", height: wide ? 420 : 235, background: "#0b1f1c", overflow: "hidden" }}>
-          <img src={e.banner_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(26px) brightness(.62)", transform: "scale(1.15)" }} />
-          <img src={e.banner_url} alt={e.title} decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+          <img src={(e.banner_type !== "video" && e.banner_url) || e.poster_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(26px) brightness(.62)", transform: "scale(1.15)" }} />
+          <img src={(e.banner_type !== "video" && e.banner_url) || e.poster_url} alt={e.title} decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
       ))}
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: wide ? "28px 24px 60px" : "20px 16px 110px", display: "flex", gap: 36, alignItems: "flex-start" }}>
@@ -762,7 +790,7 @@ function PublicLanding() {
   const popSet = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
   const heroSlides = custom.length
     ? custom.map(s => ({ url: s.url, id: s.event_id || undefined }))
-    : events.filter(e => e.banner_url && e.banner_type !== "video").slice(0, 6).map(e => ({ url: e.banner_url, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
+    : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
   if (detailEvent) {
@@ -1494,7 +1522,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   };
   const heroSlides = custom.length
     ? custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }))
-    : events.filter(e => e.banner_url && e.banner_type !== "video").slice(0, 6).map(e => ({ url: e.banner_url, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
+    : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   const Chips = ({ label, opts, val, set }) => opts.length ? (
     <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}`, alignItems: "center" }}>
       <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{label}</span>
@@ -2966,7 +2994,7 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
 }
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
@@ -2974,6 +3002,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   useEffect(() => { supabase.from("profiles").select("id, gender, member_details(age, profession, city)").then(({ data }) => setMembers(data || [])); }, []);
   const reset = () => setF(blankF);
   const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
+  const pRef = useRef(null);
+  const pickPoster = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, poster: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }); };
   const withTime = lbl => lbl + (f.time ? ` · ${f.time}` : "");
   const occ = iso => ({ label: withTime(fmtDay(iso)), iso });
@@ -2993,7 +3023,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
+    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -3016,16 +3046,16 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New ticketed event</div>
-          {f.banner ? (
-            <div onClick={() => bRef.current?.click()} style={{ borderRadius: 12, overflow: "hidden", marginBottom: 12, cursor: "pointer", border: `1px solid ${W.line}` }}>
-              <BannerMedia url={f.banner} type={f.bannerType} style={{ width: "100%", height: "auto", display: "block" }} />
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            <div onClick={() => pRef.current?.click()} style={{ width: 108, flexShrink: 0, aspectRatio: "3/4", borderRadius: 12, overflow: "hidden", border: f.poster ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textAlign: "center", color: W.soft, fontSize: 11.5, fontWeight: 600, padding: f.poster ? 0 : 8 }}>
+              {f.poster ? <img src={f.poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? "Uploading…" : "+ Poster\u00A0· portrait 3:4 (event cards)")}
             </div>
-          ) : (
-            <div onClick={() => bRef.current?.click()} style={{ height: 120, borderRadius: 12, border: `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft, cursor: "pointer", marginBottom: 12, fontSize: 13, fontWeight: 600 }}>
-              {up ? "Uploading…" : "+ Add banner image or video"}
+            <div onClick={() => bRef.current?.click()} style={{ flex: 1, minWidth: 0, borderRadius: 12, overflow: "hidden", border: f.banner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textAlign: "center", color: W.soft, fontSize: 12, fontWeight: 600, padding: f.banner ? 0 : 8 }}>
+              {f.banner ? <BannerMedia url={f.banner} type={f.bannerType} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? "Uploading…" : "+ Banner · landscape (slider & event page) — or a video")}
             </div>
-          )}
+          </div>
           <input ref={bRef} type="file" accept="image/*,video/*" onChange={pickBanner} style={{ display: "none" }} />
+          <input ref={pRef} type="file" accept="image/*" onChange={pickPoster} style={{ display: "none" }} />
           <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
             <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Event title" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
@@ -3108,6 +3138,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
                 <EventBanner ev={e} onUpdate={onUpdate} />
                 <EventShare event={e} />
                 <GuestTickets event={e} />
+                <EventMediaEditor event={e} onUpdate={onUpdate} />
                 <div style={{ marginTop: 16 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Category &amp; city</label>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -3182,7 +3213,7 @@ function EventShare({ event }) {
     setPoster(true);
     try {
       const place = [event.venue, event.city].filter(Boolean).join(", ");
-      const blob = await makePosterBlob({ emoji: event.emoji, title: event.title, dateStr: event.event_date, place, bannerUrl: event.banner_url, bannerType: event.banner_type, link });
+      const blob = await makePosterBlob({ emoji: event.emoji, title: event.title, dateStr: event.event_date, place, bannerUrl: event.poster_url || event.banner_url, bannerType: event.poster_url ? "image" : event.banner_type, link });
       const file = new File([blob], "event-poster.png", { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: event.title });
       else { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${(event.title || "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-poster.png`; a.click(); URL.revokeObjectURL(url); }
@@ -3693,7 +3724,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • cart ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • media ✅</div>
       </div>
     </div>
   );
