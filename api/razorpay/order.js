@@ -97,15 +97,15 @@ export default async function handler(req, res) {
         if (it.ticket_type_id) {
           const t = typeMap[it.ticket_type_id];
           if (!t || t.event_id !== event_id) return res.status(400).json({ error: "Ticket not found." });
-          if (t.gender_restrict !== "any" && t.gender_restrict !== me?.gender) return res.status(403).json({ error: `You're not eligible for "${t.name}".` });
           let net = t.price || 0;
           if (t.discount_room_id && t.discount_value && mySubs.has(t.discount_room_id)) {
             const d = t.discount_kind === "flat" ? t.discount_value : Math.round(net * t.discount_value / 100);
             net = Math.max(0, net - d);
           }
+          const gp = me?.gender === "female" ? Number(t.disc_female_pct) : me?.gender === "male" ? Number(t.disc_male_pct) : 0;
+          if (gp > 0) net = Math.max(0, Math.round(net * (100 - Math.min(gp, 100)) / 100));
           const soldQty = soldBy[t.id] || 0;
           if (t.capacity != null && t.capacity - soldQty - it.quantity < 0) return res.status(409).json({ error: `Not enough "${t.name}" tickets left.` });
-          if (t.gender_restrict === "male") maleWantQty += it.quantity;
           subtotal += net * it.quantity;
           lineItems.push({ ticket_type_id: t.id, quantity: it.quantity, net });
         } else {
@@ -113,12 +113,6 @@ export default async function handler(req, res) {
           subtotal += net * it.quantity;
           lineItems.push({ ticket_type_id: null, quantity: it.quantity, net });
         }
-      }
-
-      if (maleWantQty > 0 && ev?.balance_on === true) {
-        const ratio = ev.men_per_woman == null ? 2 : Number(ev.men_per_woman);
-        const budget = (Number(ev.men_open_start) || 0) + Math.floor(femaleSold * ratio);
-        if (budget - maleSold - maleWantQty < 0) return res.status(409).json({ error: "Men's tickets aren't open yet — they release as more women join." });
       }
 
       const grand = subtotal + addonSum;
