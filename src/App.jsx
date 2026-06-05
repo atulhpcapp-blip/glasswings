@@ -1311,11 +1311,15 @@ function ProfileGate({ user, profile, reload }) {
     setUploading(false);
   };
   const [tried, setTried] = useState(false);
+  const buyLite = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   const save = async () => {
     setErr(""); setTried(true);
-    const miss = [["Full name", name], ["Phone number", phone], ["Age", age], ["Area / locality", area], ["City", city], ["Profession", prof]].find(([, v]) => !String(v || "").trim());
-    if (miss) return setErr(`${miss[0]} is required to become a member.`);
-    if (!avatar) return setErr("Please add a profile photo.");
+    const fields = buyLite
+      ? [["Full name", name], ["Phone number", phone]]
+      : [["Full name", name], ["Phone number", phone], ["Age", age], ["Area / locality", area], ["City", city], ["Profession", prof]];
+    const miss = fields.find(([, v]) => !String(v || "").trim());
+    if (miss) return setErr(`${miss[0]} is required${buyLite ? "" : " to become a member"}.`);
+    if (!buyLite && !avatar) return setErr("Please add a profile photo.");
     setBusy(true);
     const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city });
     await supabase.from("member_phone").upsert({ user_id: user.id, phone });
@@ -1324,7 +1328,7 @@ function ProfileGate({ user, profile, reload }) {
     if (e1 || e2) return setErr((e1 || e2).message);
     reload();
   };
-  const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph + " *"} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${tried && !String(v || "").trim() ? "#C0392B" : W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
+  const inp = (ph, v, s, t = "text", req = true) => <input value={v} onChange={e => s(e.target.value)} placeholder={ph + (req ? " *" : "")} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${req && tried && !String(v || "").trim() ? "#C0392B" : W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
   return (
     <div style={{ minHeight: "100vh", background: W.bg }}>
       <div style={{ background: W.teal, color: "#fff", padding: "16px 18px", position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", gap: 12 }}>
@@ -1332,23 +1336,23 @@ function ProfileGate({ user, profile, reload }) {
         <span style={{ fontSize: 21, fontWeight: 700 }}>Complete your profile</span>
       </div>
       <div style={{ padding: 18 }}>
-        <div style={{ color: W.soft, fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>Welcome to Glasswings! Add your photo and details to join rooms and events. Your phone number stays private — only the organiser can see it.</div>
+        <div style={{ color: W.soft, fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>{buyLite ? "🎟️ Almost there — just your name and phone number and your tickets are a tap away. You can complete the rest of your profile anytime from the Profile tab." : "Welcome to Glasswings! Add your photo and details to join rooms and events. Your phone number stays private — only the organiser can see it."}</div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 18 }}>
-          <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", borderRadius: "50%", border: `3px solid ${tried && !avatar ? "#C0392B" : "transparent"}` }}>
+          <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", borderRadius: "50%", border: `3px solid ${!buyLite && tried && !avatar ? "#C0392B" : "transparent"}` }}>
             <PersonAvatar url={avatar} name={name} size={96} />
             <div style={{ position: "absolute", bottom: 0, right: 0, width: 30, height: 30, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}><Camera size={16} /></div>
             {uploading && <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,.4)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>…</div>}
           </div>
           <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
-          <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 8, color: tried && !avatar ? "#C0392B" : W.soft }}>Profile photo * (required)</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 8, color: !buyLite && tried && !avatar ? "#C0392B" : W.soft }}>{buyLite ? "Profile photo (optional for now)" : "Profile photo * (required)"}</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           {inp("Full name", name, setName)}
           {inp("Phone number", phone, setPhone, "tel")}
-          {inp("Age", age, setAge, "number")}
-          {inp("Area / locality", area, setArea)}
-          {inp("City", city, setCity)}
-          {inp("Profession", prof, setProf)}
+          {inp("Age", age, setAge, "number", !buyLite)}
+          {inp("Area / locality", area, setArea, "text", !buyLite)}
+          {inp("City", city, setCity, "text", !buyLite)}
+          {inp("Profession", prof, setProf, "text", !buyLite)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
           <button onClick={save} disabled={busy || uploading} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: (busy || uploading) ? .6 : 1 }}>{busy ? "Saving…" : "Save & continue"}</button>
         </div>
@@ -3901,8 +3905,11 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
       setEvHolders(new Set((data || []).map(r => r.user_id)));
     });
   }, [evFlt]);
+  const [pending, setPending] = useState(null);
+  const [pendOpen, setPendOpen] = useState(false);
   const reload = () => {
     supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
+    supabase.rpc("pending_signups").then(({ data, error }) => setPending(error ? null : (data || [])));
     if (isSuper) supabase.from("profiles").select("id, blocked").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.id] = !!r.blocked; }); setBlockedMap(m); });
   };
   useEffect(() => { reload(); }, []);
@@ -3953,6 +3960,20 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
       {editing && <EditMemberSheet member={editing} isSuper={isSuper} cities={cities} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
       {rolesFor && <MemberRolesSheet member={rolesFor} cities={cities} onSetRoles={onSetRoles} onClose={() => setRolesFor(null)} onSaved={() => { setRolesFor(null); reload(); }} />}
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 12, marginBottom: 12 }}>
+        {pending && pending.length > 0 && (
+          <div style={{ background: "#FDF6EC", border: "1px solid #F2E2C4", borderRadius: 12, padding: "11px 13px", marginBottom: 12 }}>
+            <div onClick={() => setPendOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", cursor: "pointer", fontWeight: 800, color: "#B45309", fontSize: 13.5 }}>
+              <span>⏳ Pending signups ({pending.length})</span><span>{pendOpen ? "Hide ▴" : "View ▾"}</span>
+            </div>
+            {pendOpen && pending.map(r => (
+              <div key={r.user_id} style={{ borderTop: "1px solid #F2E2C4", marginTop: 9, paddingTop: 9 }}>
+                <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{r.full_name || "No name yet"}</div>
+                <div style={{ fontSize: 12.5, color: W.soft, wordBreak: "break-all" }}>{r.email}{r.phone ? ` · ${r.phone}` : ""} · signed up {r.created_at ? new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""}</div>
+              </div>
+            ))}
+            {pendOpen && <div style={{ fontSize: 11.5, color: "#7a5a1e", marginTop: 9 }}>These people created an account but haven't finished their profile yet — a quick WhatsApp or email nudge usually gets them in.</div>}
+          </div>
+        )}
         <input value={q} onChange={e => setQ(e.target.value)} placeholder={isSuper ? "Search by name or phone…" : "Search by name…"} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink, marginBottom: 10 }} />
         <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
           {chip("all", "Everyone")}{chip("male", "Men")}{chip("female", "Women")}
@@ -4234,7 +4255,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticket-fixes ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lite ✅</div>
       </div>
     </div>
   );
