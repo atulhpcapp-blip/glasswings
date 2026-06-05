@@ -1362,7 +1362,7 @@ function Main({ user }) {
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} />}
       {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
@@ -2065,7 +2065,7 @@ function Dashboard() {
     </div>
   );
 }
-function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage }) {
+function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
@@ -2087,7 +2087,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
       </div>
       {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
         : seg === "dash" ? <Dashboard />
-        : seg === "events" ? <AdminEvents events={events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -3724,7 +3724,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • media ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • org-isolation ✅</div>
       </div>
     </div>
   );
