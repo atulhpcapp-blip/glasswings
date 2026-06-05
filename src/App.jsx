@@ -4001,6 +4001,72 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
     </div>
   );
 }
+function parseTimeStr(t) {
+  t = (t || "").trim().toUpperCase(); if (!t) return "20:00";
+  const m = t.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/); if (!m) return "20:00";
+  let h = +m[1]; const mn = m[2] ? +m[2] : 0; const ap = m[3];
+  if (ap === "PM" && h < 12) h += 12; if (ap === "AM" && h === 12) h = 0;
+  return String(h).padStart(2, "0") + ":" + String(mn).padStart(2, "0");
+}
+function EventDetailsEditor({ event, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const ta = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", marginBottom: 9, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" };
+  const ip = { ...ta, resize: "none" };
+  const start = () => {
+    setD({
+      emoji: event.emoji || "", title: event.title || "", description: event.description || "",
+      schedule: event.schedule || "", food_dining: event.food_dining || "", facilities: event.facilities || "",
+      dress_code: event.dress_code || "", venue: event.venue || "", venue_lat: event.venue_lat || null, venue_lng: event.venue_lng || null,
+      date: event.event_at ? new Date(event.event_at).toISOString().slice(0, 10) : "", time: ""
+    });
+    setOpen(true);
+  };
+  const save = async () => {
+    setSaving(true);
+    const patch = {
+      emoji: d.emoji || "🎟️", title: d.title, description: d.description, schedule: d.schedule,
+      food_dining: d.food_dining, facilities: d.facilities, dress_code: d.dress_code,
+      venue: d.venue, venue_lat: d.venue_lat, venue_lng: d.venue_lng
+    };
+    if (d.date) {
+      const iso = new Date(d.date + "T" + parseTimeStr(d.time) + ":00").toISOString();
+      patch.event_at = iso;
+      const dt = new Date(iso);
+      patch.event_date = dt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) + (d.time ? " · " + d.time.trim() : "");
+    }
+    await onUpdate(event.id, patch);
+    setSaving(false); setOpen(false);
+  };
+  if (!open) return (
+    <button onClick={start} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "9px 14px", fontSize: 13, alignSelf: "flex-start" }}>✏️ Edit event details</button>
+  );
+  return (
+    <div style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 13 }}>
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>✏️ Edit event details</div>
+      <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+        <input value={d.emoji} onChange={e => setD({ ...d, emoji: e.target.value })} maxLength={2} style={{ width: 50, textAlign: "center", fontSize: 20, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
+        <input value={d.title} onChange={e => setD({ ...d, title: e.target.value })} placeholder="Event title" style={{ ...ip, marginBottom: 0, flex: 1 }} />
+      </div>
+      <input value={d.description} onChange={e => setD({ ...d, description: e.target.value })} placeholder="Short description" style={ip} />
+      <textarea value={d.schedule} onChange={e => setD({ ...d, schedule: e.target.value })} rows={3} placeholder={"Schedule — one item per line"} style={ta} />
+      <textarea value={d.food_dining} onChange={e => setD({ ...d, food_dining: e.target.value })} rows={2} placeholder={"Food & dining — one item per line"} style={ta} />
+      <textarea value={d.facilities} onChange={e => setD({ ...d, facilities: e.target.value })} rows={2} placeholder="Facilities — comma separated" style={ta} />
+      <input value={d.dress_code} onChange={e => setD({ ...d, dress_code: e.target.value })} placeholder="Dress code" style={ip} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 9, flexWrap: "wrap" }}>
+        <label style={{ flex: "1 1 150px", fontSize: 12, color: W.soft }}>Date<input type="date" value={d.date} onChange={e => setD({ ...d, date: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink }} /></label>
+        <label style={{ flex: "1 1 110px", fontSize: 12, color: W.soft }}>Time<input value={d.time} onChange={e => setD({ ...d, time: e.target.value })} placeholder={event.event_date || "8PM"} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none" }} /></label>
+      </div>
+      <div style={{ fontSize: 11, color: W.soft, marginBottom: 9 }}>Leave date blank to keep the current date{event.event_date ? ` (${event.event_date})` : ""}. Set both date and time to change it.</div>
+      <VenueAutocomplete value={d.venue} onChange={({ venue, lat, lng }) => setD({ ...d, venue, venue_lat: lat, venue_lng: lng })} />
+      <div style={{ display: "flex", gap: 9, marginTop: 10 }}>
+        <button onClick={() => setOpen(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+        <button onClick={save} disabled={saving || !d.title} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: (saving || !d.title) ? .6 : 1 }}>{saving ? "Saving…" : "Save details"}</button>
+      </div>
+    </div>
+  );
+}
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
@@ -4174,6 +4240,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
                 <EventShare event={e} />
                 <GuestTickets event={e} />
                 <EventMediaEditor event={e} onUpdate={onUpdate} />
+                <EventDetailsEditor event={e} onUpdate={onUpdate} />
                 <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
                 <div style={{ marginTop: 16 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Category &amp; city</label>
@@ -4801,7 +4868,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ana2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • editdetails ✅</div>
       </div>
     </div>
   );
