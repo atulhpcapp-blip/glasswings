@@ -2585,6 +2585,101 @@ function Dashboard() {
     </div>
   );
 }
+function AnalyticsPanel({ events, myEventsOnly, meId }) {
+  const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
+  const [evId, setEvId] = useState("");
+  const [a, setA] = useState(null);
+  const ev = manageable.find(e => e.id === evId);
+  useEffect(() => { if (!evId) { setA(null); return; } setA(undefined); supabase.rpc("event_ticket_analysis", { p_event: evId }).then(({ data, error }) => setA(error ? null : data)); }, [evId]);
+  const ip2 = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", background: "#fff", color: W.ink };
+  const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const Tile = ({ label, val, color }) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", flex: "1 1 90px", minWidth: 90 }}><div style={{ fontSize: 10, color: W.soft, fontWeight: 800, letterSpacing: .3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 800, color: color || W.ink, marginTop: 3 }}>{val}</div></div>;
+  const total = a ? Number(a.paid_gross || 0) + Number(a.door_cash || 0) + Number(a.door_upi || 0) : 0;
+  const ciRate = a && a.tickets ? Math.round((a.checked_in / a.tickets) * 100) : 0;
+  const fill = a && a.total_capacity ? Math.round((a.tickets / a.total_capacity) * 100) : null;
+  const maxDay = a && (a.sales_by_day || []).length ? Math.max(...a.sales_by_day.map(d => d.q)) : 0;
+  return (
+    <div style={{ padding: "16px 16px 40px", maxWidth: 640, margin: "0 auto" }}>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>📊 Analytics</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 14px" }}>Sales, revenue, check-ins and capacity for any of your events.</div>
+      <select value={evId} onChange={e => setEvId(e.target.value)} style={{ ...ip2, width: "100%", marginBottom: 16 }}>
+        <option value="">Choose event…</option>
+        {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
+      </select>
+      {a === undefined && <Center>crunching numbers…</Center>}
+      {a === null && evId && <Center>No data yet.</Center>}
+      {a && (
+        <>
+          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 12 }}>
+            <Tile label="MEMBERS" val={a.members} />
+            <Tile label="TICKETS" val={a.tickets} />
+            <Tile label="CHECKED IN" val={`${a.checked_in} · ${ciRate}%`} color={W.teal} />
+            <Tile label="♂ / ♀" val={`${a.male} / ${a.female}`} />
+          </div>
+
+          <div style={{ background: "linear-gradient(135deg,#063b32,#0C1A16)", borderRadius: 14, padding: "15px 17px", color: "#fff", marginBottom: 14 }}>
+            <div style={{ fontSize: 11, letterSpacing: 1, color: "#2FD4A8", fontWeight: 800 }}>TOTAL COLLECTED</div>
+            <div style={{ fontSize: 28, fontWeight: 900, margin: "2px 0 10px" }}>{money(total)}</div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5 }}>
+              <span>🟢 Online (Razorpay): <b>{money(a.paid_gross)}</b></span>
+              <span>💵 Door cash: <b>{money(a.door_cash)}</b></span>
+              <span>📱 Door UPI: <b>{money(a.door_upi)}</b></span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 14 }}>
+            <Tile label="ONLINE TICKETS" val={a.online_tickets} />
+            <Tile label="DOOR ENTRIES" val={a.door_count} />
+            <Tile label="COMP GUESTS" val={a.comp_count} />
+            <Tile label="GUESTS IN" val={`${a.guests_in}/${a.guests}`} color="#7C3AED" />
+          </div>
+
+          {fill != null && (
+            <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}><span style={{ fontWeight: 800, color: W.ink }}>Capacity filled</span><span style={{ fontWeight: 800, color: fill >= 90 ? "#C0392B" : W.teal }}>{a.tickets} / {a.total_capacity} · {fill}%</span></div>
+              <div style={{ height: 9, borderRadius: 6, background: "#E2EBE8", overflow: "hidden" }}><div style={{ width: `${Math.min(100, fill)}%`, height: "100%", background: fill >= 90 ? "#C0392B" : W.teal }} /></div>
+            </div>
+          )}
+
+          {(a.types || []).length > 0 && (
+            <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>By ticket type</div>
+              {a.types.map((t, i) => {
+                const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
+                const pct = cap ? Math.min(100, Math.round((t.sold / cap) * 100)) : null;
+                return (
+                  <div key={i} style={{ marginBottom: 9 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 3 }}>
+                      <span style={{ fontWeight: 700, color: W.ink }}>{t.name} <span style={{ color: W.soft, fontWeight: 600 }}>· ₹{t.price}</span></span>
+                      <span style={{ color: W.soft, fontWeight: 700 }}>{t.sold}{cap ? ` / ${cap}` : " sold"} · {money(t.revenue)}</span>
+                    </div>
+                    {cap && <div style={{ height: 7, borderRadius: 5, background: "#E2EBE8", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: pct >= 90 ? "#C0392B" : W.teal }} /></div>}
+                  </div>
+                );
+              })}
+              {Number(a.base_sold) > 0 && <div style={{ fontSize: 12, color: W.soft }}>+ {a.base_sold} standard (base) ticket{a.base_sold > 1 ? "s" : ""}</div>}
+            </div>
+          )}
+
+          {(a.sales_by_day || []).length > 0 && (
+            <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px" }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 12 }}>Sales trend (last 3 weeks)</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 110 }}>
+                {a.sales_by_day.map((d, i) => (
+                  <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700, marginBottom: 3 }}>{d.q}</div>
+                    <div style={{ height: maxDay ? Math.max(4, Math.round((d.q / maxDay) * 78)) : 4, background: W.teal, borderRadius: 4 }} />
+                    <div style={{ fontSize: 9.5, color: W.soft, marginTop: 4, whiteSpace: "nowrap" }}>{d.d}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 function QrScanner({ onCode }) {
   const vref = useRef(); const [err, setErr] = useState("");
   useEffect(() => {
@@ -2637,6 +2732,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const types = ev ? (ticketTypes[ev.id] || []) : [];
   const selType = types.find(t => t.id === sType);
   useEffect(() => { const unit = selType ? (selType.price || 0) : 0; setSAmt(String(unit * (Number(sQty) || 1))); }, [sType, sQty]);
+  useEffect(() => { if (sType) setSMethod("upi"); }, [sType]);
   const submitSale = async () => {
     if (!sName.trim()) return alert("Buyer name is required.");
     setSBusy(true);
@@ -2652,6 +2748,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const selQr = qrs.find(q => q.id === qrSel);
   const uploadQr = async (file) => {
     if (!file) return;
+    if (qrs.length >= 5) { alert("You can save up to 5 payment QRs."); return; }
     const label = window.prompt("Label for this QR (e.g. GPay / PhonePe / Account 2):", "") || "";
     try {
       const url = await uploadPhoto(meId, file);
@@ -2798,6 +2895,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["door", "Door"]] : []),
+    ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
     ...((canApprove || caps.host) ? [["settle", "Payouts"]] : []),
     ...(canApprove ? [["filters", "Filters"]] : []),
   ];
@@ -2816,6 +2914,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "dash" ? <Dashboard />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
+        : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
         : seg === "events" ? <AdminEvents canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
@@ -3601,11 +3700,7 @@ function TimeCapsule({ event: e, profile }) {
 function EventMembersSheet({ event, onClose }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState("");
-  const [ana, setAna] = useState(null);
-  const load = () => {
-    supabase.rpc("event_member_list", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
-    supabase.rpc("event_ticket_analysis", { p_event: event.id }).then(({ data, error }) => { if (!error) setAna(data); });
-  };
+  const load = () => supabase.rpc("event_member_list", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
   useEffect(() => { load(); }, [event.id]);
   const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
   const withdraw = (m) => {
@@ -3622,36 +3717,7 @@ function EventMembersSheet({ event, onClose }) {
         </div>
         <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} member${rows.length === 1 ? "" : "s"} · ${totQty} ticket${totQty === 1 ? "" : "s"} · ${rows.filter(r => r.checked_in).length} checked in`}</div>
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
-        {ana && (
-          <div style={{ background: "#F4FAF8", border: `1px solid ${W.line}`, borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>📊 Ticket analysis</div>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: (ana.types || []).length ? 12 : 0 }}>
-              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>MEMBERS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{ana.members}</div></div>
-              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>TICKETS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{ana.tickets}</div></div>
-              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>♂ / ♀</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{ana.male} / {ana.female}</div></div>
-              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>CHECKED IN</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{ana.checked_in}</div></div>
-              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>PAID GROSS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>₹{Number(ana.paid_gross || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div></div>
-              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>GUESTS</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>{ana.guests_in}/{ana.guests} in</div></div>
-              {Number(ana.door_cash) > 0 && <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>DOOR CASH</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>₹{Number(ana.door_cash).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div></div>}
-              {Number(ana.door_upi) > 0 && <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>DOOR UPI</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>₹{Number(ana.door_upi).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div></div>}
-            </div>
-            {(ana.types || []).map((t, i) => {
-              const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
-              const pct = cap ? Math.min(100, Math.round((t.sold / cap) * 100)) : null;
-              return (
-                <div key={i} style={{ marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 3 }}>
-                    <span style={{ fontWeight: 700, color: W.ink }}>{t.name} <span style={{ color: W.soft, fontWeight: 600 }}>· ₹{t.price}</span></span>
-                    <span style={{ color: W.soft, fontWeight: 700 }}>{t.sold}{cap ? ` / ${cap}` : " sold"}</span>
-                  </div>
-                  {cap && <div style={{ height: 7, borderRadius: 5, background: "#E2EBE8", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: pct >= 90 ? "#C0392B" : W.teal }} /></div>}
-                </div>
-              );
-            })}
-            {Number(ana.base_sold) > 0 && <div style={{ fontSize: 12, color: W.soft }}>+ {ana.base_sold} standard (base) ticket{ana.base_sold > 1 ? "s" : ""}</div>}
-          </div>
-        )}
-        {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
+                {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
           <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
             <PersonAvatar url={m.avatar_url} name={m.full_name} size={40} />
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -4666,7 +4732,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • multiqr ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • analytics ✅</div>
       </div>
     </div>
   );
