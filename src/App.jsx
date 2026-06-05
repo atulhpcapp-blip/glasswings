@@ -1128,9 +1128,17 @@ function PublicLanding() {
   const closeDetail = () => { setDetail(null); try { history.replaceState(null, "", "/"); } catch {} };
   const buyNow = (ev) => { try { localStorage.setItem("gw_buy", ev.id); localStorage.setItem("gw_event", ev.id); } catch {} setAuthMode("signup"); };
   const popSet = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
-  const heroSlides = custom.length
-    ? custom.map(s => ({ url: s.url, id: s.event_id || undefined }))
-    : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
+  const evSlide = ({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
+  const promoSlides = events
+    .filter(e => Number(e.promo_pct) > 0 && e.approved !== false)
+    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
+    .filter(x => x.img)
+    .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
+    .map(evSlide);
+  const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }));
+  const fallbackSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(evSlide);
+  const featured = [...promoSlides, ...customSlides.filter(c => !promoSlides.some(ps => ps.id && ps.id === c.id))].slice(0, 6);
+  const heroSlides = featured.length ? featured : fallbackSlides;
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
   if (detailEvent) {
@@ -1877,9 +1885,17 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     const m = Math.min(...prices);
     return m === 0 ? "Free" : `From ₹${m}`;
   };
-  const heroSlides = custom.length
-    ? custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }))
-    : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
+  const evSlide = ({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
+  const promoSlides = events
+    .filter(e => Number(e.promo_pct) > 0 && e.approved !== false)
+    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
+    .filter(x => x.img)
+    .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
+    .map(evSlide);
+  const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }));
+  const fallbackSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(evSlide);
+  const featured = [...promoSlides, ...customSlides.filter(c => !promoSlides.some(ps => ps.id && ps.id === c.id))].slice(0, 6);
+  const heroSlides = featured.length ? featured : fallbackSlides;
   return (
     <div>
       <TopBar title="Events" />
@@ -4121,7 +4137,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • home ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • promo-slider ✅</div>
       </div>
     </div>
   );
