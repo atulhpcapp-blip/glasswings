@@ -1187,6 +1187,39 @@ function PublicLanding() {
           {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events yet — check back soon!</Center></div>}
           {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={false} onOpen={openDetail} />)}
         </div>
+        <div style={{ padding: wide ? "46px 0 8px" : "36px 16px 4px" }}>
+          <div style={{ fontWeight: 800, fontSize: wide ? 26 : 20.5, color: W.ink, letterSpacing: -0.3 }}>More than tickets — it's a community 💚</div>
+          <div style={{ fontSize: 14, color: W.soft, marginTop: 4 }}>Inside Glasswings you don't just attend. You belong.</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(3,1fr)" : "1fr", gap: 14, padding: wide ? "14px 0 0" : "12px 16px 0" }}>
+          <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 18 }}>
+            <div style={{ fontSize: 30 }}>💬</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 16.5, marginTop: 8 }}>Rooms inside</div>
+            <div style={{ fontSize: 13.5, color: W.soft, lineHeight: 1.55, marginTop: 5 }}>Themed members-only rooms — girls-only, couples, premium lounges and more. Find your circle, chat every day, and plan your next night out together.</div>
+          </div>
+          <div style={{ background: "radial-gradient(ellipse at 50% 30%, #11332c, #0b1f1c)", borderRadius: 16, padding: 18, color: "#fff", position: "relative", overflow: "hidden" }}>
+            <svg viewBox="0 0 300 100" style={{ position: "absolute", top: 0, left: 0, width: "100%", opacity: .9 }}>
+              <line x1="40" y1="58" x2="105" y2="30" stroke="#2e6e5f" strokeWidth="1.2" />
+              <line x1="105" y1="30" x2="170" y2="62" stroke="#2e6e5f" strokeWidth="1.2" />
+              <line x1="170" y1="62" x2="236" y2="34" stroke="#2e6e5f" strokeWidth="1.2" />
+              <line x1="105" y1="30" x2="236" y2="34" stroke="#24574b" strokeWidth="1" />
+              <circle cx="40" cy="58" r="4" fill="#7AD6C0" /><circle cx="105" cy="30" r="5.5" fill="#fff" />
+              <circle cx="170" cy="62" r="4" fill="#7AD6C0" /><circle cx="236" cy="34" r="4.5" fill="#F2C94C" />
+              <circle cx="272" cy="68" r="2.5" fill="#5a8f84" /><circle cx="18" cy="22" r="2" fill="#5a8f84" />
+            </svg>
+            <div style={{ fontSize: 30, position: "relative" }}>✨</div>
+            <div style={{ fontWeight: 800, fontSize: 16.5, marginTop: 8, position: "relative" }}>The Constellation</div>
+            <div style={{ fontSize: 13.5, color: "#bfe3d9", lineHeight: 1.55, marginTop: 5, position: "relative" }}>Every member is a star. Meet someone at an event and a line connects your stars — for real, on a living map of the community. The more you show up, the brighter your universe gets.</div>
+          </div>
+          <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 18 }}>
+            <div style={{ fontSize: 30 }}>🎟️</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 16.5, marginTop: 8 }}>Event rooms</div>
+            <div style={{ fontSize: 13.5, color: W.soft, lineHeight: 1.55, marginTop: 5 }}>Every event has its own room with everyone who's going — see who's coming, hype it up before, and share the photos and memories after.</div>
+          </div>
+        </div>
+        <div style={{ textAlign: "center", padding: "24px 0 4px" }}>
+          <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15 }}>Join the community — it's free</button>
+        </div>
       </div>
       {fsheet && <FilterSheet events={events} dims={dimsL} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
       {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
@@ -4198,7 +4231,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • public-home ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • community ✅</div>
       </div>
     </div>
   );
