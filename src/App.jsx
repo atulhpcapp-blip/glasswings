@@ -670,7 +670,7 @@ function RideButtons({ e, compact }) {
     </div>
   );
 }
-function PosterCard({ e, price, popular, going, onOpen, date }) {
+function PosterCard({ e, price, popular, going, onOpen, date, unpublished }) {
   return (
     <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
       <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
@@ -679,6 +679,7 @@ function PosterCard({ e, price, popular, going, onOpen, date }) {
           : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{e.emoji || "🎟️"}</div>}
         {popular && <span style={{ position: "absolute", top: 8, left: 8, background: "#D35400", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔥 Popular</span>}
         {going && <span style={{ position: "absolute", top: 8, right: 8, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Going</span>}
+        {unpublished && <div style={{ position: "absolute", top: 0, left: 0, right: 0, background: "rgba(40,48,46,.9)", color: "#fff", fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textAlign: "center", padding: "5px 0" }}>UNPUBLISHED</div>}
         {date && <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "linear-gradient(transparent, rgba(0,0,0,.74))", padding: "26px 10px 8px", color: "#fff", fontSize: 11.5, fontWeight: 700 }}>{date}</div>}
       </div>
       <div style={{ padding: "8px 2px 0" }}>
@@ -801,6 +802,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         <img src="/logo-white.png" alt="Glasswings" style={{ height: 26, objectFit: "contain" }} />
         <button onClick={share} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(255,255,255,.4)", color: "#fff", borderRadius: 9, padding: "7px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}><Share2 size={14} />{copied ? "Copied ✓" : "Share"}</button>
       </div>
+      {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>⏳ UNPUBLISHED — members and the public can't see this event yet. Approve it from Admin → Events.</div>}
       {(e.banner_url || e.poster_url) && (e.banner_type === "video" && e.banner_url ? (
         <div style={{ background: "#0b1f1c" }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
       ) : (
@@ -1006,7 +1008,7 @@ function PublicLanding() {
   const popSet = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
   const heroSlides = custom.length
     ? custom.map(s => ({ url: s.url, id: s.event_id || undefined }))
-    : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
+    : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
   if (detailEvent) {
@@ -1754,7 +1756,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   };
   const heroSlides = custom.length
     ? custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }))
-    : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
+    : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
   const Chips = ({ label, opts, val, set }) => opts.length ? (
     <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}`, alignItems: "center" }}>
       <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{label}</span>
@@ -1775,7 +1777,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
       })}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
         {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events here yet.</Center></div>}
-        {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
+        {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
       </div>
     </div>
   );
@@ -1908,7 +1910,7 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
               <div>
                 <div style={{ fontWeight: 800, fontSize: 15.5, color: W.ink, margin: "4px 0 10px" }}>Next meetups</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12 }}>
-                  {upcoming.slice(0, 4).map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={(e.ticket_price || 0) === 0 ? "Free" : `From ₹${e.ticket_price}`} popular={false} going={false} onOpen={onOpenEvent} />)}
+                  {upcoming.slice(0, 4).map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={(e.ticket_price || 0) === 0 ? "Free" : `From ₹${e.ticket_price}`} popular={false} going={false} unpublished={e.approved === false} onOpen={onOpenEvent} />)}
                 </div>
               </div>
             )}
@@ -1920,11 +1922,11 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
             {upcoming.length === 0 && past.length === 0 && <Center>No meetups yet.</Center>}
             {upcoming.length > 0 && <div style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>Upcoming</div>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12 }}>
-              {upcoming.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={(e.ticket_price || 0) === 0 ? "Free" : `From ₹${e.ticket_price}`} popular={false} going={false} onOpen={onOpenEvent} />)}
+              {upcoming.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={(e.ticket_price || 0) === 0 ? "Free" : `From ₹${e.ticket_price}`} popular={false} going={false} unpublished={e.approved === false} onOpen={onOpenEvent} />)}
             </div>
             {past.length > 0 && <div style={{ fontWeight: 800, fontSize: 15, color: W.ink, marginTop: 6 }}>Memories</div>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12 }}>
-              {past.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price="" popular={false} going={false} onOpen={onOpenEvent} />)}
+              {past.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price="" popular={false} going={false} unpublished={e.approved === false} onOpen={onOpenEvent} />)}
             </div>
           </>
         )}
@@ -3998,7 +4000,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • promo ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • unpub ✅</div>
       </div>
     </div>
   );
