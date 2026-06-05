@@ -2144,7 +2144,41 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
     </div>
   );
 }
+function RoomMembersSheet({ room, onClose }) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => { supabase.rpc("room_members_admin", { p_room: room.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); }); }, [room.id]);
+  const Row = m => (
+    <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 0" }}>
+      {m.avatar_url
+        ? <img src={m.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+        : <div style={{ width: 40, height: 40, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, flexShrink: 0 }}>{(m.full_name || "?").trim().charAt(0).toUpperCase()}</div>}
+      <div style={{ fontWeight: 600, color: W.ink, fontSize: 14.5 }}>{m.full_name || "Member"}</div>
+    </div>
+  );
+  const guys = (rows || []).filter(m => m.gender === "male");
+  const girls = (rows || []).filter(m => m.gender === "female");
+  const other = (rows || []).filter(m => m.gender !== "male" && m.gender !== "female");
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", borderRadius: "18px 18px 0 0", maxHeight: "85vh", overflowY: "auto", padding: "18px 18px calc(18px + env(safe-area-inset-bottom))" }}>
+        <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{room.emoji || "💬"} {room.name}</div>
+        {err ? <div style={{ marginTop: 12, color: "#C0392B", fontSize: 13.5 }}>{err}</div>
+          : rows === null ? <Center>loading members…</Center>
+          : <>
+            <div style={{ fontSize: 13, color: W.soft, fontWeight: 700, marginTop: 4 }}>{rows.length} member{rows.length === 1 ? "" : "s"} · 👨 {guys.length} · 👩 {girls.length}</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginTop: 16, paddingBottom: 6, borderBottom: `2px solid ${W.teal}` }}>👨 Guys in room ({guys.length})</div>
+            {guys.length ? guys.map(Row) : <div style={{ color: W.soft, fontSize: 13, padding: "10px 0" }}>None yet.</div>}
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginTop: 18, paddingBottom: 6, borderBottom: "2px solid #D6618F" }}>👩 Girls in room ({girls.length})</div>
+            {girls.length ? girls.map(Row) : <div style={{ color: W.soft, fontSize: 13, padding: "10px 0" }}>None yet.</div>}
+            {other.length > 0 && <><div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginTop: 18, paddingBottom: 6, borderBottom: `2px solid ${W.line}` }}>Not specified ({other.length})</div>{other.map(Row)}</>}
+          </>}
+      </div>
+    </div>
+  );
+}
 function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, readOnly = false, wide = false, sidebar = 0 }) {
+  const [showMembers, setShowMembers] = useState(false);
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
   const [senders, setSenders] = useState({});
@@ -2212,11 +2246,12 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
           <Avatar room={room} size={38} />
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div onClick={() => { if (isAdmin && groupType === "room") setShowMembers(true); }} style={{ flex: 1, minWidth: 0, cursor: isAdmin && groupType === "room" ? "pointer" : "default" }}>
             <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
-            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Messages from the organiser" : `${memberCount} members`}</div>
+            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Messages from the organiser" : `${memberCount} members${isAdmin && groupType === "room" ? " · tap for list" : ""}`}</div>
           </div>
         </div>
+        {showMembers && <RoomMembersSheet room={room} onClose={() => setShowMembers(false)} />}
         {(room.pinned || isAdmin) && (
           <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9 }}>
             <Pin size={15} color={W.teal} style={{ flexShrink: 0 }} />
@@ -2470,7 +2505,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <AdminMembers onSendDM={onSendDM} rooms={rooms} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} />}
+                : <AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} />}
     </div>
   );
 }
@@ -3801,13 +3836,23 @@ function MemberRolesSheet({ member: m, cities, onSetRoles, onClose, onSaved }) {
     </Sheet>
   );
 }
-function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities, onSetRoles }) {
+function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities, onSetRoles }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
   const [editing, setEditing] = useState(null);
   const [rolesFor, setRolesFor] = useState(null);
   const [blockedMap, setBlockedMap] = useState({});
   const [g, setG] = useState("all"); const [age, setAge] = useState("all"); const [prof, setProf] = useState("all"); const [area, setArea] = useState("all"); const [city, setCity] = useState("all"); const [q, setQ] = useState("");
+  const [evFlt, setEvFlt] = useState("all");
+  const [evHolders, setEvHolders] = useState(null);
+  useEffect(() => {
+    if (evFlt === "all") { setEvHolders(null); return; }
+    setEvHolders(new Set());
+    supabase.rpc("event_attendees", { p_event: evFlt }).then(({ data, error }) => {
+      if (error) { alert(error.message); setEvFlt("all"); setEvHolders(null); return; }
+      setEvHolders(new Set((data || []).map(r => r.user_id)));
+    });
+  }, [evFlt]);
   const reload = () => {
     supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
     if (isSuper) supabase.from("profiles").select("id, blocked").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.id] = !!r.blocked; }); setBlockedMap(m); });
@@ -3847,6 +3892,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
     if (prof !== "all" && m.profession !== prof) return false;
     if (area !== "all" && m.area !== area) return false;
     if (city !== "all" && m.city !== city) return false;
+    if (evHolders && !evHolders.has(m.id)) return false;
     if (q.trim()) { const s = q.trim().toLowerCase(); if (!((m.full_name || "").toLowerCase().includes(s) || (m.phone || "").toLowerCase().includes(s))) return false; }
     return true;
   });
@@ -3868,6 +3914,7 @@ function AdminMembers({ onSendDM, rooms, onGrantRoom, onRemoveRoom, canAdd, canR
           {hasField("profession") && <select value={prof} onChange={e => setProf(e.target.value)} style={sel}><option value="all">All work</option>{profs.map(p => <option key={p} value={p}>{p}</option>)}</select>}
           {hasField("area") && <select value={area} onChange={e => setArea(e.target.value)} style={sel}><option value="all">All areas</option>{areas.map(a => <option key={a} value={a}>{a}</option>)}</select>}
           {hasField("city") && <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{cityVals.map(c => <option key={c} value={c}>{c}</option>)}</select>}
+          <select value={evFlt} onChange={e => setEvFlt(e.target.value)} style={{ ...sel, maxWidth: 190 }}><option value="all">🎟️ All events</option>{(events || []).map(ev => <option key={ev.id} value={ev.id}>{ev.title}</option>)}</select>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
@@ -4137,7 +4184,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • promo-slider ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • crm ✅</div>
       </div>
     </div>
   );
