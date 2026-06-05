@@ -929,7 +929,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       {profile && types.length > 0 && visTypes.length === 0 ? (
         <div style={{ padding: "14px 0", fontSize: 13.5, color: W.soft }}>These tickets aren't available for your profile.</div>
       ) : visTypes.length ? (<>
-      <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order.</div>
+      <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order. Prices include processing fee.</div>
       {visTypes.map(t => {
         const st = ticketStatus(t, e, stats, typeSold);
         const soldOut = !st.ok && st.label === "Sold out";
@@ -2732,7 +2732,12 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const types = ev ? (ticketTypes[ev.id] || []) : [];
   const selType = types.find(t => t.id === sType);
   useEffect(() => { const unit = selType ? (selType.price || 0) : 0; setSAmt(String(unit * (Number(sQty) || 1))); }, [sType, sQty]);
-  useEffect(() => { if (sType) setSMethod("upi"); }, [sType]);
+  useEffect(() => {
+    if (!sType) return;
+    setSMethod("upi");
+    const ti = types.findIndex(t => t.id === sType);
+    if (ti >= 0 && qrs.length) { const q = qrs[Math.min(ti, qrs.length - 1)]; if (q) setQrSel(q.id); }
+  }, [sType]);
   const submitSale = async () => {
     if (!sName.trim()) return alert("Buyer name is required.");
     setSBusy(true);
@@ -2837,6 +2842,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       <input value={sAmt} onChange={e => setSAmt(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" style={{ ...ip2, width: "100%", fontWeight: 800 }} />
                     </div>
                   </div>
+                  <div style={{ fontSize: 11, color: W.soft, marginTop: -4, marginBottom: 10 }}>Amount includes processing fee.</div>
                   {sMethod === "upi" && (
                     <div style={{ textAlign: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 10 }}>
                       {qrs.length > 1 && (
@@ -3737,6 +3743,7 @@ function CheckInSheet({ event, onClose }) {
   const [err, setErr] = useState("");
   const [guests, setGuests] = useState([]);
   const [gName, setGName] = useState(""); const [gPhone, setGPhone] = useState(""); const [gEmail, setGEmail] = useState(""); const [gQty, setGQty] = useState("1");
+  const [gAge, setGAge] = useState(""); const [gLoc, setGLoc] = useState("");
   const [gBusy, setGBusy] = useState(false);
   const loadGuests = () => supabase.rpc("guest_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setGuests(data || []); });
   const load = () => { supabase.rpc("event_attendees", { p_event: event.id }).then(({ data, error }) => { setErr(error ? (error.message || "Could not load attendees.") : ""); setList(data || []); }); loadGuests(); };
@@ -3744,10 +3751,10 @@ function CheckInSheet({ event, onClose }) {
   const addGuest = async () => {
     if (!gName.trim()) return alert("Guest name is required.");
     setGBusy(true);
-    const { error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1 });
+    const { error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc });
     setGBusy(false);
     if (error) return alert(error.message);
-    setGName(""); setGPhone(""); setGEmail(""); setGQty("1");
+    setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc("");
     loadGuests();
   };
   const guestWa = (g) => {
@@ -3804,7 +3811,7 @@ function CheckInSheet({ event, onClose }) {
             {guests.length > 0 && <button onClick={() => {
               const w = window.open("", "_blank", "width=800,height=940"); if (!w) return;
               const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
+              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml(g.location || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
               w.document.write(`<!doctype html><html><head><title>Guest checklist — ${escapeHtml(event.title)}</title><style>
                 body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:30px}
                 .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#008069}
@@ -3820,7 +3827,7 @@ function CheckInSheet({ event, onClose }) {
                 <div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
                 <h1>Guest checklist — ${escapeHtml(event.title)}</h1>
                 <div class="sub">${escapeHtml(event.event_date || "")} · Printed ${today} · ${guests.length} guest${guests.length === 1 ? "" : "s"} · ${guests.reduce((a, g) => a + (g.quantity || 1), 0)} entries</div>
-                <table><thead><tr><th>#</th><th>In</th><th>Guest name</th><th>Qty</th><th>Phone</th><th>Code</th><th>Time in</th></tr></thead><tbody>${rowsH}</tbody></table>
+                <table><thead><tr><th>#</th><th>In</th><th>Guest name</th><th>Qty</th><th>Phone</th><th>Email</th><th>Age</th><th>Location</th><th>Code</th><th>Time in</th></tr></thead><tbody>${rowsH}</tbody></table>
                 <div class="ft">Tick "In" on arrival and note the time. Codes must match the WhatsApp ticket. — Glasswings Events · glass-wings.com</div>
                 <script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`);
               w.document.close();
@@ -3831,8 +3838,12 @@ function CheckInSheet({ event, onClose }) {
             <input value={gName} onChange={e => setGName(e.target.value)} placeholder="Guest name *" style={{ flex: "1 1 140px", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
             <input value={gPhone} onChange={e => setGPhone(e.target.value)} placeholder="Phone" inputMode="tel" style={{ flex: "1 1 120px", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
           </div>
-          <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
             <input value={gEmail} onChange={e => setGEmail(e.target.value)} placeholder="Email (optional)" type="email" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
+            <input value={gAge} onChange={e => setGAge(e.target.value.replace(/\D/g, ""))} placeholder="Age" inputMode="numeric" style={{ width: 56, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", textAlign: "center" }} />
+          </div>
+          <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
+            <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
             <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ width: 58, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", textAlign: "center" }} />
             <button onClick={addGuest} disabled={gBusy} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, opacity: gBusy ? .6 : 1 }}>{gBusy ? "…" : "+ Add"}</button>
           </div>
@@ -3840,7 +3851,7 @@ function CheckInSheet({ event, onClose }) {
             <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</div>
-                <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
+                <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
               </div>
               <button onClick={() => shareGuest(g)} title="Send ticket with QR on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12 }}><MessageCircle size={13} /></button>
               <button onClick={() => { if (window.confirm(`Remove ${g.name} from the guest list?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove guest" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
@@ -4732,7 +4743,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • analytics ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • guestinfo ✅</div>
       </div>
     </div>
   );
