@@ -876,7 +876,7 @@ function CategoryTiles({ cats, val, set }) {
 function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart }) {
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
-  const link = `${window.location.origin}/?event=${e.id}`;
+  const link = `${window.location.origin}/e/${e.id}`;
   const share = async () => { try { if (navigator.share) await navigator.share({ title: e.title, url: link }); else { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } } catch {} };
   const visTypes = types;
   const prices = visTypes.length ? visTypes.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -4316,7 +4316,7 @@ function GuestTickets({ event }) {
   );
 }
 function EventShare({ event }) {
-  const link = `${window.location.origin}/?event=${event.id}`;
+  const link = `${window.location.origin}/e/${event.id}`;
   const [copied, setCopied] = useState(false);
   const [poster, setPoster] = useState(false);
   const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(link)}`;
@@ -4868,7 +4868,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • editdetails ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ogshare ✅</div>
       </div>
     </div>
   );
