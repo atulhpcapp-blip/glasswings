@@ -2149,29 +2149,35 @@ function RoomMembersSheet({ room, onClose }) {
   const [err, setErr] = useState(null);
   useEffect(() => { supabase.rpc("room_members_admin", { p_room: room.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); }); }, [room.id]);
   const Row = m => (
-    <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 0" }}>
+    <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
       {m.avatar_url
-        ? <img src={m.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-        : <div style={{ width: 40, height: 40, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, flexShrink: 0 }}>{(m.full_name || "?").trim().charAt(0).toUpperCase()}</div>}
-      <div style={{ fontWeight: 600, color: W.ink, fontSize: 14.5 }}>{m.full_name || "Member"}</div>
+        ? <img src={m.avatar_url} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+        : <div style={{ width: 44, height: 44, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 17, flexShrink: 0 }}>{(m.full_name || "?").trim().charAt(0).toUpperCase()}</div>}
+      <div style={{ fontWeight: 600, color: W.ink, fontSize: 15 }}>{m.full_name || "Member"}</div>
     </div>
   );
   const guys = (rows || []).filter(m => m.gender === "male");
   const girls = (rows || []).filter(m => m.gender === "female");
   const other = (rows || []).filter(m => m.gender !== "male" && m.gender !== "female");
+  const Head = (label, n, color) => <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, marginTop: 22, paddingBottom: 7, borderBottom: `2px solid ${color}` }}>{label} ({n})</div>;
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", borderRadius: "18px 18px 0 0", maxHeight: "85vh", overflowY: "auto", padding: "18px 18px calc(18px + env(safe-area-inset-bottom))" }}>
-        <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{room.emoji || "💬"} {room.name}</div>
-        {err ? <div style={{ marginTop: 12, color: "#C0392B", fontSize: 13.5 }}>{err}</div>
+    <div style={{ position: "fixed", inset: 0, zIndex: 80, background: "#fff", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 16px 12px", borderBottom: `1px solid ${W.line}`, background: W.teal, color: "#fff" }}>
+        <ArrowLeft size={24} onClick={onClose} style={{ cursor: "pointer", flexShrink: 0 }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 17, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.emoji || "💬"} {room.name}</div>
+          <div style={{ fontSize: 12.5, opacity: .9 }}>{rows === null ? "loading…" : `${rows.length} member${rows.length === 1 ? "" : "s"} · 👨 ${guys.length} · 👩 ${girls.length}`}</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "4px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+        {err ? <div style={{ marginTop: 16, color: "#C0392B", fontSize: 13.5 }}>{err}</div>
           : rows === null ? <Center>loading members…</Center>
           : <>
-            <div style={{ fontSize: 13, color: W.soft, fontWeight: 700, marginTop: 4 }}>{rows.length} member{rows.length === 1 ? "" : "s"} · 👨 {guys.length} · 👩 {girls.length}</div>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginTop: 16, paddingBottom: 6, borderBottom: `2px solid ${W.teal}` }}>👨 Guys in room ({guys.length})</div>
+            {Head("👨 Guys in room", guys.length, W.teal)}
             {guys.length ? guys.map(Row) : <div style={{ color: W.soft, fontSize: 13, padding: "10px 0" }}>None yet.</div>}
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginTop: 18, paddingBottom: 6, borderBottom: "2px solid #D6618F" }}>👩 Girls in room ({girls.length})</div>
+            {Head("👩 Girls in room", girls.length, "#D6618F")}
             {girls.length ? girls.map(Row) : <div style={{ color: W.soft, fontSize: 13, padding: "10px 0" }}>None yet.</div>}
-            {other.length > 0 && <><div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginTop: 18, paddingBottom: 6, borderBottom: `2px solid ${W.line}` }}>Not specified ({other.length})</div>{other.map(Row)}</>}
+            {other.length > 0 && <>{Head("Not specified", other.length, W.line)}{other.map(Row)}</>}
           </>}
       </div>
     </div>
@@ -2242,6 +2248,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
+      {showMembers && <RoomMembersSheet room={room} onClose={() => setShowMembers(false)} />}
       <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30, ...bar }}>
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
@@ -2251,7 +2258,6 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Messages from the organiser" : `${memberCount} members${isAdmin && groupType === "room" ? " · tap for list" : ""}`}</div>
           </div>
         </div>
-        {showMembers && <RoomMembersSheet room={room} onClose={() => setShowMembers(false)} />}
         {(room.pinned || isAdmin) && (
           <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9 }}>
             <Pin size={15} color={W.teal} style={{ flexShrink: 0 }} />
@@ -4184,7 +4190,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • crm ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • crm2 ✅</div>
       </div>
     </div>
   );
