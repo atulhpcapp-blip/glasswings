@@ -437,7 +437,21 @@ function EventMediaEditor({ event: e, onUpdate }) {
     </div>
   );
 }
-function FiltersPanel({ categories, cities, onAddOption, onDelOption, onSetOptionImage }) {
+function FiltersPanel({ categories, cities, dims, optsAll, onAddOption, onDelOption, onSetOptionImage, onChanged }) {
+  const [newDim, setNewDim] = useState("");
+  const addDim = async () => {
+    const n = newDim.trim(); if (!n) return;
+    const { error } = await supabase.from("filter_dimensions").insert({ name: n });
+    if (error) return alert(error.message);
+    setNewDim(""); onChanged && onChanged();
+  };
+  const delDim = async (d) => {
+    if (!window.confirm(`Delete the "${d.name}" filter and all its options?`)) return;
+    await supabase.from("event_options").delete().eq("kind", d.name);
+    const { error } = await supabase.from("filter_dimensions").delete().eq("id", d.id);
+    if (error) return alert(error.message);
+    onChanged && onChanged();
+  };
   return (
     <div>
       <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink, marginBottom: 4 }}>Event filters</div>
@@ -446,7 +460,21 @@ function FiltersPanel({ categories, cities, onAddOption, onDelOption, onSetOptio
         <OptionList label="Categories" kind="category" items={categories} onAdd={onAddOption} onDel={onDelOption} onSetImage={onSetOptionImage} />
         <OptionList label="Cities" kind="city" items={cities} onAdd={onAddOption} onDel={onDelOption} />
       </div>
-      <div style={{ fontSize: 12, color: W.soft, marginTop: 12 }}>Need another filter dimension someday — languages, age groups, vibes? This tab is built to take more lists; just ask.</div>
+      <div style={{ fontWeight: 800, fontSize: 15.5, color: W.ink, margin: "20px 0 4px" }}>Custom filter dimensions</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>Add your own filter — e.g. Language, Age group, Vibe. It appears in the create-event form and as filter chips on the browse pages.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input value={newDim} onChange={ev => setNewDim(ev.target.value)} placeholder="New dimension name… e.g. Language" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
+        <button onClick={addDim} style={btn(W.teal, "#fff")}>Add</button>
+      </div>
+      {(dims || []).map(d => (
+        <div key={d.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontWeight: 800, color: W.ink }}>{d.name}</span>
+            <button onClick={() => delDim(d)} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "5px 11px", fontSize: 12 }}>Delete dimension</button>
+          </div>
+          <OptionList label={`${d.name} options`} kind={d.name} items={(optsAll || []).filter(o => o.kind === d.name)} onAdd={onAddOption} onDel={onDelOption} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -457,6 +485,33 @@ function SettlementsPanel({ isSuper }) {
   const load = () => supabase.rpc("organiser_settlements").then(({ data, error }) => setRows(error ? [] : (data || [])));
   useEffect(() => { load(); }, []);
   const inr = n => n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const exportPdf = (subset, label) => {
+    const w = window.open("", "_blank", "width=820,height=940"); if (!w) return;
+    const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    const f = n => n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+    const tot = k => subset.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    const allPct = subset.every(r => r.pct != null);
+    const rowsHtml = subset.map(r => `<tr><td>${escapeHtml(r.host_name || "Organiser")}</td><td class="r">${r.events_count}</td><td class="r">${r.tickets_sold}</td><td class="r">${f(r.gross)}</td><td class="r">${r.pct == null ? "—" : r.pct + "%"}</td><td class="r">${r.pct == null ? "—" : f(r.platform_cut)}</td><td class="r"><b>${r.pct == null ? "—" : f(r.payable)}</b></td></tr>`).join("");
+    w.document.write(`<!doctype html><html><head><title>Glasswings — Organiser settlement</title><style>
+      body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:34px}
+      .br{font-size:12px;letter-spacing:4px;font-weight:800;color:#008069}
+      h1{font-size:22px;margin:6px 0 2px} .sub{color:#5d6f6b;font-size:13px;margin-bottom:22px}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      th{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:#5d6f6b;text-align:left;padding:8px 9px;border-bottom:2px solid #008069}
+      td{padding:9px;border-bottom:1px solid #e4ecea} .r{text-align:right} th.r{text-align:right}
+      tfoot td{font-weight:800;border-top:2px solid #008069;border-bottom:none}
+      .ft{margin-top:26px;font-size:11.5px;color:#8a9b97}
+    </style></head><body>
+      <div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
+      <h1>Organiser settlement statement</h1>
+      <div class="sub">${escapeHtml(label)} · Generated on ${today} · Paid ticket revenue only</div>
+      <table><thead><tr><th>Organiser</th><th class="r">Events</th><th class="r">Tickets</th><th class="r">Gross</th><th class="r">Platform %</th><th class="r">Platform cut</th><th class="r">Payable</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot><tr><td>Total</td><td class="r">${tot("events_count")}</td><td class="r">${tot("tickets_sold")}</td><td class="r">${f(tot("gross"))}</td><td class="r"></td><td class="r">${allPct ? f(tot("platform_cut")) : "—"}</td><td class="r">${allPct ? f(tot("payable")) : "—"}</td></tr></tfoot></table>
+      <div class="ft">Glasswings Events · glass-wings.com · This statement is generated from recorded payments and is subject to reconciliation.</div>
+      <script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`);
+    w.document.close();
+  };
   const savePct = async (uid) => {
     setSaving(uid);
     const v = (draft[uid] ?? "").toString().trim();
@@ -468,14 +523,20 @@ function SettlementsPanel({ isSuper }) {
   };
   return (
     <div>
-      <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink, marginBottom: 4 }}>Organiser payouts</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink }}>Organiser payouts</div>
+        {rows && rows.length > 0 && <button onClick={() => exportPdf(rows, isSuper ? "All organisers" : "Your settlement")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 13px", fontSize: 12.5 }}>📄 Export PDF</button>}
+      </div>
       <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Paid ticket revenue per organiser. Platform % is negotiated per organiser{isSuper ? " — set it on each card" : ""}. Payable = gross minus the platform cut.</div>
       {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No organiser revenue yet.</Center> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {rows.map(r => (
             <div key={r.host_id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{r.host_name || "Organiser"}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{r.host_name || "Organiser"}</span>
+                  <button onClick={() => exportPdf([r], r.host_name || "Organiser")} title="Export this organiser's statement" style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, padding: "4px 9px", fontSize: 11.5 }}>📄</button>
+                </div>
                 {isSuper ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 12, color: W.soft, fontWeight: 700 }}>Platform %</span>
@@ -838,13 +899,17 @@ function PublicLanding() {
   const [addonsMap, setAddonsMap] = useState({});
   const [detail, setDetail] = useState(() => { try { return new URLSearchParams(window.location.search).get("event"); } catch { return null; } });
   const [optCats, setOptCats] = useState([]);
+  const [optsAllL, setOptsAllL] = useState([]);
+  const [dimsL, setDimsL] = useState([]);
+  const [tagSelL, setTagSelL] = useState({});
   useEffect(() => {
     supabase.from("events").select("*").order("created_at", { ascending: false }).then(({ data }) => setEvents(data || []));
     supabase.from("event_ticket_types").select("*").then(({ data }) => { const m = {}; (data || []).forEach(t => { (m[t.event_id] = m[t.event_id] || []).push(t); }); setTypes(m); });
     supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || []));
     supabase.rpc("event_popularity").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.event_id] = Number(r.sold); }); setPop(m); });
     supabase.from("event_addons").select("*").then(({ data }) => { const m = {}; (data || []).forEach(a => { (m[a.event_id] = m[a.event_id] || []).push(a); }); setAddonsMap(m); });
-    supabase.from("event_options").select("*").eq("kind", "category").order("name").then(({ data }) => setOptCats(data || []));
+    supabase.from("event_options").select("*").order("name").then(({ data }) => { setOptCats((data || []).filter(o => o.kind === "category")); setOptsAllL(data || []); });
+    supabase.from("filter_dimensions").select("*").order("name").then(({ data }) => setDimsL(data || []));
   }, []);
   useEffect(() => { if (detail && events.length && !events.find(x => x.id === detail)) setDetail(null); }, [events, detail]);
   const openDetail = (id) => { setDetail(id); try { history.replaceState(null, "", `/?event=${id}`); } catch {} window.scrollTo(0, 0); };
@@ -862,7 +927,7 @@ function PublicLanding() {
   }
   const cats = Array.from(new Set(events.map(e => e.category).filter(Boolean)));
   const cityList = Array.from(new Set(events.map(e => e.city).filter(Boolean)));
-  const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city));
+  const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city) && (dimsL || []).every(d => { const v = tagSelL[d.name]; return !v || v === "All" || ((e.tags || {})[d.name] === v); }));
   const priceFrom = (e) => {
     const ts = types[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -903,6 +968,16 @@ function PublicLanding() {
         {cityList.length > 0 && <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "4px 0 8px" : "0 14px 8px", alignItems: "center" }}>
           {["All", ...cityList].map(o => <button key={o} onClick={() => setCity(o)} style={chip(city === o)}>{o}</button>)}
         </div>}
+        {(dimsL || []).map(d => {
+          const dopts = (optsAllL || []).filter(o => o.kind === d.name).map(o => o.name);
+          if (!dopts.length) return null;
+          return (
+            <div key={d.id} style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "0 0 8px" : "0 14px 8px", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{d.name}</span>
+              {["All", ...dopts].map(o => <button key={o} onClick={() => setTagSelL(t => ({ ...t, [d.name]: o }))} style={chip((tagSelL[d.name] || "All") === o)}>{o}</button>)}
+            </div>
+          );
+        })}
         <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "repeat(2,1fr)", gap: 14, padding: wide ? "8px 0 0" : "6px 14px" }}>
           {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events yet — check back soon!</Center></div>}
           {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={false} onOpen={openDetail} />)}
@@ -1057,6 +1132,8 @@ function Main({ user }) {
   const [eventCounts, setEventCounts] = useState({});
   const [categories, setCategories] = useState([]);
   const [cities, setCities] = useState([]);
+  const [optsAll, setOptsAll] = useState([]);
+  const [dims, setDims] = useState([]);
   const [ticketTypes, setTicketTypes] = useState({});  const [myTickets, setMyTickets] = useState({});
   const [eventStats, setEventStats] = useState({});
   const [typeSold, setTypeSold] = useState({});
@@ -1107,6 +1184,8 @@ function Main({ user }) {
     const am = {}; (ad || []).forEach(a => { if (!am[a.event_id]) am[a.event_id] = []; am[a.event_id].push(a); }); setAddons(am);
     setCategories((opts || []).filter(o => o.kind === "category"));
     setCities((opts || []).filter(o => o.kind === "city"));
+    setOptsAll(opts || []);
+    supabase.from("filter_dimensions").select("*").order("name").then(({ data }) => setDims(data || []));
     const tm = {}; (tt || []).forEach(t => { if (!tm[t.event_id]) tm[t.event_id] = []; tm[t.event_id].push(t); }); setTicketTypes(tm);
     setHasDM((dm || []).length > 0);
     setReady(true);
@@ -1425,8 +1504,8 @@ function Main({ user }) {
     <>
       {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} />}
-      {tab === "events" && <Events events={events} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "events" && <Events events={events} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
@@ -1565,7 +1644,7 @@ function Chats({ chats, onOpen, onExplore }) {
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll }) {
   const popSet = (() => {
     const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
     return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
@@ -1577,7 +1656,8 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   useEffect(() => { if (focus) { onOpenDetail && onOpenDetail(focus); onFocusDone && onFocusDone(); } }, [focus]);
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
-  const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city));
+  const [tagSel, setTagSel] = useState({});
+  const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city) && (dims || []).every(d => { const v = tagSel[d.name]; return !v || v === "All" || ((e.tags || {})[d.name] === v); }));
   const priceFrom = (e) => {
     const ts = (ticketTypes[e.id] || []).filter(t => !profile || t.gender_restrict === "any" || t.gender_restrict === profile.gender);
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -1601,6 +1681,10 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
       {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
       <CategoryTiles cats={catTiles} val={cat} set={setCat} />
       <Chips label="City" opts={cityNames} val={city} set={setCity} />
+      {(dims || []).map(d => {
+        const dopts = (optsAll || []).filter(o => o.kind === d.name).map(o => o.name);
+        return dopts.length ? <Chips key={d.id} label={d.name} opts={dopts} val={tagSel[d.name] || "All"} set={v => setTagSel(t => ({ ...t, [d.name]: v }))} /> : null;
+      })}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
         {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events here yet.</Center></div>}
         {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
@@ -2129,7 +2213,7 @@ function Dashboard() {
     </div>
   );
 }
-function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove }) {
+function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
@@ -2153,9 +2237,9 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
       </div>
       {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
         : seg === "dash" ? <Dashboard />
-        : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} />
+        : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
-        : seg === "events" ? <AdminEvents canApprove={canApprove} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -3060,12 +3144,12 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const todayISO = new Date().toISOString().slice(0, 10);
   const visEvents = events.filter(e => view === "past" ? (e.event_at && e.event_at < todayISO) : (!e.event_at || e.event_at >= todayISO));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
@@ -3094,7 +3178,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
+    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -3123,6 +3207,18 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
             {categories.length === 0 ? <span style={{ fontSize: 12.5, color: W.soft }}>Add categories with "Manage" above first.</span> : categories.map(c => chip(c.name, f.category === c.name, () => setF({ ...f, category: f.category === c.name ? "" : c.name })))}
           </div>
+          {(dims || []).map(d => {
+            const dopts = (optsAll || []).filter(o => o.kind === d.name);
+            if (!dopts.length) return null;
+            return (
+              <div key={d.id}>
+                <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>{d.name}</div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+                  {dopts.map(o => chip(o.name, f.tags[d.name] === o.name, () => setF({ ...f, tags: { ...f.tags, [d.name]: f.tags[d.name] === o.name ? undefined : o.name } })))}
+                </div>
+              </div>
+            );
+          })}
           <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>City</div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
             {cities.length === 0 ? <span style={{ fontSize: 12.5, color: W.soft }}>Add cities with "Manage" above first.</span> : cities.map(c => chip(c.name, f.city === c.name, () => setF({ ...f, city: f.city === c.name ? "" : c.name })))}
@@ -3230,6 +3326,16 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
                       {cities.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
                     </select>
                   </div>
+                  {(dims || []).map(d => {
+                    const dopts = (optsAll || []).filter(o => o.kind === d.name);
+                    if (!dopts.length) return null;
+                    return (
+                      <select key={d.id} value={(e.tags || {})[d.name] || ""} onChange={ev => { const t = { ...(e.tags || {}) }; if (ev.target.value) t[d.name] = ev.target.value; else delete t[d.name]; onUpdate(e.id, { tags: t }); }} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" }}>
+                        <option value="">{d.name}: any</option>
+                        {dopts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
+                      </select>
+                    );
+                  })}
                   <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Changes save instantly — works on already-posted events.</div>
                 </div>
                 <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
@@ -3803,7 +3909,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • tabs ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • dims-pdf ✅</div>
       </div>
     </div>
   );
