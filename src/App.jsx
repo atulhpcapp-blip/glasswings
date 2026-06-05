@@ -225,6 +225,46 @@ function PushToggle({ user }) {
   );
 }
 
+function GuestTicketPage({ code }) {
+  const [t, setT] = useState(undefined);
+  useEffect(() => { supabase.rpc("guest_ticket_public", { p_code: code }).then(({ data, error }) => setT(error ? null : (data || null))); }, [code]);
+  if (t === undefined) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#5d6f6b", fontSize: 14 }}>Loading your ticket…</div>;
+  if (!t) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#eef2f1", padding: 20 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: "28px 24px", textAlign: "center", maxWidth: 380 }}>
+        <div style={{ fontSize: 34 }}>🎟️</div>
+        <div style={{ fontWeight: 800, fontSize: 17, color: "#1b2a27", marginTop: 8 }}>Ticket not found</div>
+        <div style={{ fontSize: 13.5, color: "#5d6f6b", marginTop: 6 }}>This ticket link is invalid or has been removed. Please contact the organiser.</div>
+      </div>
+    </div>
+  );
+  const qr = "https://api.qrserver.com/v1/create-qr-code/?size=210x210&margin=0&data=" + encodeURIComponent(t.code);
+  const place = [t.venue, t.city].filter(Boolean).join(", ");
+  return (
+    <div style={{ minHeight: "100vh", background: "#eef2f1", padding: "26px 14px", display: "flex", justifyContent: "center" }}>
+      <div style={{ maxWidth: 420, width: "100%" }}>
+        <div style={{ background: "#0C1A16", borderRadius: 20, overflow: "hidden", boxShadow: "0 12px 34px rgba(0,0,0,.25)" }}>
+          <div style={{ padding: "22px 22px 18px", borderLeft: "6px solid #2FD4A8" }}>
+            <div style={{ fontSize: 11, letterSpacing: 4, fontWeight: 800, color: "#2FD4A8" }}>GLASSWINGS EVENTS</div>
+            <div style={{ fontSize: 25, fontWeight: 900, marginTop: 8, lineHeight: 1.15, color: "#fff" }}>{t.title}</div>
+            <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.9)", marginTop: 8 }}>{t.event_date || ""}{place ? ` · ${place}` : ""}</div>
+          </div>
+          <div style={{ borderTop: "2px dashed rgba(255,255,255,.25)", padding: "18px 22px", display: "flex", gap: 18, alignItems: "center" }}>
+            <img src={qr} alt="Entry QR" width={132} height={132} style={{ background: "#fff", padding: 8, borderRadius: 10, flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", fontWeight: 700 }}>GUEST</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#fff" }}>{t.name}</div>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", fontWeight: 700, marginTop: 8 }}>ENTRIES</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#fff" }}>{t.qty}{t.ticket_type ? ` · ${t.ticket_type}` : ""}</div>
+              <div style={{ display: "inline-block", marginTop: 10, fontSize: 16, fontWeight: 800, color: "#08130F", background: "#2FD4A8", fontFamily: "ui-monospace,monospace", letterSpacing: 1, padding: "5px 12px", borderRadius: 8 }}>{t.code}</div>
+            </div>
+          </div>
+          <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>{t.checked_in ? "✓ Already checked in" : "Show this QR at the door"}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
@@ -238,6 +278,8 @@ export default function App() {
   }, []);
   if (loading) return <Shell><Splash /></Shell>;
   if (recovery) return <Shell><RecoverPassword onDone={() => setRecovery(false)} /></Shell>;
+  let gtCode = null; try { gtCode = new URLSearchParams(window.location.search).get("gt"); } catch {}
+  if (gtCode) return <Shell><GuestTicketPage code={gtCode} /></Shell>;
   if (!session) return <PublicLanding />;
   return <Shell><Main user={session.user} /></Shell>;
 }
@@ -2535,6 +2577,174 @@ function Dashboard() {
     </div>
   );
 }
+function QrScanner({ onCode }) {
+  const vref = useRef(); const [err, setErr] = useState("");
+  useEffect(() => {
+    let stream, raf, stop = false;
+    (async () => {
+      try {
+        if (!("BarcodeDetector" in window)) { setErr("This browser can't scan QR — type the code below instead."); return; }
+        const det = new window.BarcodeDetector({ formats: ["qr_code"] });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (!vref.current) { stream.getTracks().forEach(t => t.stop()); return; }
+        vref.current.srcObject = stream; await vref.current.play();
+        const tick = async () => {
+          if (stop) return;
+          try { const cs = await det.detect(vref.current); if (cs && cs.length && cs[0].rawValue) onCode(cs[0].rawValue); } catch (e2) {}
+          raf = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (e2) { setErr("Camera unavailable — allow camera permission, or type the code below."); }
+    })();
+    return () => { stop = true; if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach(t => t.stop()); };
+  }, []);
+  return err
+    ? <div style={{ background: "#FFF6E5", border: "1px solid #F2DFB8", color: "#9A6B00", borderRadius: 10, padding: "10px 13px", fontSize: 13 }}>📷 {err}</div>
+    : <div style={{ textAlign: "center" }}><video ref={vref} muted playsInline style={{ width: "100%", maxWidth: 340, borderRadius: 14, background: "#000", aspectRatio: "3/4", objectFit: "cover" }} /><div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Point the camera at the ticket QR</div></div>;
+}
+function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent }) {
+  const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
+  const [evId, setEvId] = useState("");
+  const ev = manageable.find(e => e.id === evId);
+  const [scanOn, setScanOn] = useState(false);
+  const [manual, setManual] = useState("");
+  const [res, setRes] = useState(null);
+  const [log, setLog] = useState([]);
+  const lastRef = useRef({ code: "", t: 0 });
+  const check = async (raw) => {
+    const code = (raw || "").trim(); if (!code || !ev) return;
+    const now = Date.now();
+    if (lastRef.current.code === code.toUpperCase() && now - lastRef.current.t < 4000) return;
+    lastRef.current = { code: code.toUpperCase(), t: now };
+    const { data, error } = await supabase.rpc("checkin_by_code", { p_event: ev.id, p_code: code });
+    const r = error ? { status: "error", name: error.message } : { ...(data || { status: "notfound" }) };
+    r.code = code.toUpperCase(); r.time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    setRes(r); setLog(l => [r, ...l].slice(0, 30)); setManual("");
+    if (navigator.vibrate) try { navigator.vibrate(r.status === "ok" ? 90 : [60, 60, 60]); } catch (e2) {}
+  };
+  const [saleOpen, setSaleOpen] = useState(false);
+  const [sName, setSName] = useState(""); const [sPhone, setSPhone] = useState(""); const [sQty, setSQty] = useState("1");
+  const [sType, setSType] = useState(""); const [sMethod, setSMethod] = useState("cash"); const [sAmt, setSAmt] = useState("0");
+  const [sBusy, setSBusy] = useState(false); const [sDone, setSDone] = useState(null);
+  const types = ev ? (ticketTypes[ev.id] || []) : [];
+  const selType = types.find(t => t.id === sType);
+  useEffect(() => { const unit = selType ? (selType.price || 0) : 0; setSAmt(String(unit * (Number(sQty) || 1))); }, [sType, sQty]);
+  const submitSale = async () => {
+    if (!sName.trim()) return alert("Buyer name is required.");
+    setSBusy(true);
+    const { data, error } = await supabase.rpc("door_sale", { p_event: ev.id, p_name: sName, p_phone: sPhone, p_type: selType ? selType.name : "Door entry", p_qty: Number(sQty) || 1, p_method: sMethod, p_amount: Number(sAmt) || 0 });
+    setSBusy(false);
+    if (error) return alert(error.message);
+    setSDone({ code: data && data.code, name: sName.trim(), qty: Number(sQty) || 1, phone: sPhone });
+    setSName(""); setSPhone(""); setSQty("1");
+  };
+  const uploadQr = async (file) => {
+    if (!file) return;
+    try { const url = await uploadPhoto(meId, file); await onUpdateEvent(ev.id, { upi_qr_url: url }); } catch (e2) { alert(e2.message || "Upload failed"); }
+  };
+  const stStyle = st => st === "ok" ? ["#E7F6EF", W.teal, "✓ ADMITTED"] : st === "already" ? ["#FFF6E5", "#9A6B00", "⚠ ALREADY CHECKED IN"] : ["#FBE9E7", "#C0392B", st === "error" ? "✕ ERROR" : "✕ NOT FOUND"];
+  const ip2 = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", background: "#fff", color: W.ink };
+  return (
+    <div style={{ padding: "16px 16px 40px", maxWidth: 620, margin: "0 auto" }}>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>🎫 Door check-in</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 14px" }}>Scan ticket QRs to admit, or sell at the door with cash / your UPI QR.</div>
+      <select value={evId} onChange={e => { setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
+        <option value="">Choose event…</option>
+        {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
+      </select>
+      {ev && (
+        <>
+          <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
+            <button onClick={() => { setScanOn(v => !v); setSaleOpen(false); }} style={{ ...btn(scanOn ? W.ink : W.teal, "#fff"), flex: 1, justifyContent: "center" }}>📷 {scanOn ? "Stop scanning" : "Scan tickets"}</button>
+            <button onClick={() => { setSaleOpen(v => !v); setScanOn(false); setSDone(null); }} style={{ ...btn(saleOpen ? W.ink : "#7C3AED", "#fff"), flex: 1, justifyContent: "center" }}>💵 Door sale</button>
+          </div>
+          {scanOn && <div style={{ marginBottom: 12 }}><QrScanner onCode={check} /></div>}
+          {!saleOpen && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <input value={manual} onChange={e => setManual(e.target.value)} placeholder="Or type code (GW-… / guest code)" style={{ ...ip2, flex: 1, minWidth: 0, fontFamily: "ui-monospace,monospace" }} onKeyDown={e => { if (e.key === "Enter") check(manual); }} />
+              <button onClick={() => check(manual)} style={{ ...btn(W.teal, "#fff"), padding: "10px 18px" }}>Check</button>
+            </div>
+          )}
+          {res && !saleOpen && (() => { const [bg, c, label] = stStyle(res.status); return (
+            <div style={{ background: bg, border: `1.5px solid ${c}`, borderRadius: 14, padding: "14px 16px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 900, color: c, fontSize: 15, letterSpacing: .5 }}>{label}</div>
+              {res.status !== "notfound" && <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, marginTop: 4 }}>{res.name}</div>}
+              {(res.status === "ok" || res.status === "already") && <div style={{ fontSize: 13, color: W.soft, marginTop: 2 }}>{res.kind === "guest" ? "Guest" : "Member"} · {res.info || ""} · {res.qty} entr{res.qty === 1 ? "y" : "ies"} · {res.code}</div>}
+              {res.status === "notfound" && <div style={{ fontSize: 13, color: W.soft, marginTop: 4 }}>Code {res.code} isn't valid for this event.</div>}
+            </div>
+          ); })()}
+          {saleOpen && (
+            <div style={{ background: "#F7F4FD", border: "1px solid #E2D9F6", borderRadius: 14, padding: "14px 15px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, color: "#5B21B6", fontSize: 14.5, marginBottom: 10 }}>💵 Sell at the door</div>
+              {sDone ? (
+                <div style={{ textAlign: "center", padding: "8px 0" }}>
+                  <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>✓ Sold & checked in</div>
+                  <div style={{ fontSize: 14, color: W.ink, marginTop: 4 }}>{sDone.name} · {sDone.qty} entr{sDone.qty === 1 ? "y" : "ies"} · code <b style={{ fontFamily: "ui-monospace,monospace" }}>{sDone.code}</b></div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
+                    <a href={`https://wa.me/${(sDone.phone || "").replace(/[^\d]/g, "")}?text=${encodeURIComponent(`🎟️ ${ev.title}\nYour ticket — show the QR at the door:\nhttps://glass-wings.com/?gt=${sDone.code}\n— Glasswings Events`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", fontSize: 13 }}>Send ticket on WhatsApp</a>
+                    <button onClick={() => setSDone(null)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, fontSize: 13 }}>+ Next sale</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7 }}>
+                    <input value={sName} onChange={e => setSName(e.target.value)} placeholder="Buyer name *" style={{ ...ip2, flex: "1 1 130px" }} />
+                    <input value={sPhone} onChange={e => setSPhone(e.target.value)} placeholder="Phone (for WhatsApp ticket)" inputMode="tel" style={{ ...ip2, flex: "1 1 130px" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
+                    <select value={sType} onChange={e => setSType(e.target.value)} style={{ ...ip2, flex: 1, minWidth: 0 }}>
+                      <option value="">{types.length ? "Ticket type…" : "Door entry"}</option>
+                      {types.map(t => <option key={t.id} value={t.id}>{t.name} — ₹{t.price}</option>)}
+                    </select>
+                    <input value={sQty} onChange={e => setSQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ ...ip2, width: 56, textAlign: "center" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ display: "flex", borderRadius: 9, overflow: "hidden", border: `1px solid ${W.line}` }}>
+                      <button onClick={() => setSMethod("cash")} style={{ border: "none", padding: "9px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", background: sMethod === "cash" ? W.teal : "#fff", color: sMethod === "cash" ? "#fff" : W.soft }}>💵 Cash</button>
+                      <button onClick={() => setSMethod("upi")} style={{ border: "none", padding: "9px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", background: sMethod === "upi" ? W.teal : "#fff", color: sMethod === "upi" ? "#fff" : W.soft }}>📱 UPI QR</button>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+                      <span style={{ color: W.soft, fontWeight: 700 }}>₹</span>
+                      <input value={sAmt} onChange={e => setSAmt(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" style={{ ...ip2, width: "100%", fontWeight: 800 }} />
+                    </div>
+                  </div>
+                  {sMethod === "upi" && (
+                    <div style={{ textAlign: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                      {ev.upi_qr_url ? (
+                        <>
+                          <img src={ev.upi_qr_url} alt="UPI QR" style={{ width: 200, maxWidth: "100%", borderRadius: 8 }} />
+                          <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Buyer scans this to pay ₹{sAmt || 0} · <label style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Replace<input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadQr(e.target.files && e.target.files[0])} /></label></div>
+                        </>
+                      ) : (
+                        <label style={{ display: "block", cursor: "pointer", padding: "16px 10px", border: `2px dashed ${W.line}`, borderRadius: 10, color: W.soft, fontSize: 13.5, fontWeight: 700 }}>
+                          📤 Upload your UPI payment QR (one time)
+                          <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => uploadQr(e.target.files && e.target.files[0])} />
+                        </label>
+                      )}
+                    </div>
+                  )}
+                  <button onClick={submitSale} disabled={sBusy} style={{ ...btn("#7C3AED", "#fff"), width: "100%", justifyContent: "center", opacity: sBusy ? .6 : 1 }}>{sBusy ? "Saving…" : `Mark ${sMethod === "upi" ? "UPI" : "cash"} received — admit`}</button>
+                </>
+              )}
+            </div>
+          )}
+          {log.length > 0 && !saleOpen && (
+            <div>
+              <div style={{ fontSize: 12, color: W.soft, fontWeight: 800, marginBottom: 6 }}>RECENT SCANS</div>
+              {log.map((r, i) => { const [, c, label] = stStyle(r.status); return (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, padding: "6px 0", borderTop: `1px solid ${W.line}` }}>
+                  <span style={{ color: c, fontWeight: 800, width: 84, flexShrink: 0 }}>{label.replace(/[✓⚠✕] /, "")}</span>
+                  <span style={{ flex: 1, minWidth: 0, color: W.ink, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name || r.code}</span>
+                  <span style={{ color: W.soft }}>{r.time}</span>
+                </div>
+              ); })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
@@ -2543,6 +2753,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
+    ...((canApprove || caps.host) ? [["door", "Door"]] : []),
     ...((canApprove || caps.host) ? [["settle", "Payouts"]] : []),
     ...(canApprove ? [["filters", "Filters"]] : []),
   ];
@@ -2560,6 +2771,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
       {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
         : seg === "dash" ? <Dashboard />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
+        : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
         : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
         : seg === "events" ? <AdminEvents canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
@@ -3376,6 +3588,8 @@ function EventMembersSheet({ event, onClose }) {
               <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>CHECKED IN</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{ana.checked_in}</div></div>
               <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>PAID GROSS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>₹{Number(ana.paid_gross || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div></div>
               <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>GUESTS</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>{ana.guests_in}/{ana.guests} in</div></div>
+              {Number(ana.door_cash) > 0 && <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>DOOR CASH</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>₹{Number(ana.door_cash).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div></div>}
+              {Number(ana.door_upi) > 0 && <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>DOOR UPI</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>₹{Number(ana.door_upi).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div></div>}
             </div>
             {(ana.types || []).map((t, i) => {
               const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
@@ -3427,7 +3641,7 @@ function CheckInSheet({ event, onClose }) {
     loadGuests();
   };
   const guestWa = (g) => {
-    const text = `🎟️ ${event.title}\nGuest ticket for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nEntry code: ${g.code}\nShow this message at the door.\n— Glasswings Events`;
+    const text = `🎟️ ${event.title}\nGuest ticket for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nYour ticket — open & show the QR at the door:\nhttps://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
     const num = (g.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "");
     return num ? `https://wa.me/${num}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
   };
@@ -4399,7 +4613,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • analysis ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • door ✅</div>
       </div>
     </div>
   );
