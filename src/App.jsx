@@ -2589,8 +2589,19 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
   const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
   const [evId, setEvId] = useState("");
   const [a, setA] = useState(null);
+  const [aErr, setAErr] = useState("");
+  const [roster, setRoster] = useState(null);
   const ev = manageable.find(e => e.id === evId);
-  useEffect(() => { if (!evId) { setA(null); return; } setA(undefined); supabase.rpc("event_ticket_analysis", { p_event: evId }).then(({ data, error }) => setA(error ? null : data)); }, [evId]);
+  const loadAll = (eid) => {
+    supabase.rpc("event_ticket_analysis", { p_event: eid }).then(({ data, error }) => { setA(error ? null : data); setAErr(error ? (error.message || "Could not load analytics.") : ""); });
+    supabase.rpc("event_member_list", { p_event: eid }).then(({ data, error }) => { if (!error) setRoster(data || []); });
+  };
+  useEffect(() => { if (!evId) { setA(null); setAErr(""); setRoster(null); return; } setA(undefined); setAErr(""); setRoster(null); loadAll(evId); }, [evId]);
+  const waLink2 = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
+  const withdraw2 = (m) => {
+    if (!window.confirm(`Withdraw ${m.full_name || "this member"}'s ticket${m.qty > 1 ? "s" : ""}?`)) return;
+    supabase.rpc("withdraw_ticket", { p_event: evId, p_user: m.user_id }).then(({ error }) => error ? alert(error.message) : loadAll(evId));
+  };
   const ip2 = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", background: "#fff", color: W.ink };
   const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   const Tile = ({ label, val, color }) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", flex: "1 1 90px", minWidth: 90 }}><div style={{ fontSize: 10, color: W.soft, fontWeight: 800, letterSpacing: .3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 800, color: color || W.ink, marginTop: 3 }}>{val}</div></div>;
@@ -2607,7 +2618,8 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
       </select>
       {a === undefined && <Center>crunching numbers…</Center>}
-      {a === null && evId && <Center>No data yet.</Center>}
+      {a === null && evId && aErr && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "11px 14px", fontSize: 13 }}>⚠️ {aErr}</div>}
+      {a === null && evId && !aErr && <Center>No data yet.</Center>}
       {a && (
         <>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 12 }}>
@@ -2634,6 +2646,36 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
             <Tile label="GUESTS IN" val={`${a.guests_in}/${a.guests}`} color="#7C3AED" />
           </div>
 
+          <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>Audience</div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 12, fontSize: 12.5 }}>
+              <span>🆕 New: <b>{Math.max(0, (a.members || 0) - (a.returning || 0))}</b></span>
+              <span>🔁 Returning: <b>{a.returning || 0}</b></span>
+              <span>🎟️ Avg tickets/buyer: <b>{a.members ? (a.tickets / a.members).toFixed(1) : "—"}</b></span>
+              <span>🧾 Paid orders: <b>{a.paid_orders || 0}</b>{a.paid_orders > 0 && <> · avg ₹{Math.round(Number(a.paid_gross || 0) / a.paid_orders).toLocaleString("en-IN")}</>}</span>
+              <span>✅ In: ♂ <b>{a.ci_male || 0}</b> / ♀ <b>{a.ci_female || 0}</b></span>
+            </div>
+            {(a.age_groups || []).length > 0 && (() => { const mx = Math.max(...a.age_groups.map(g => g.c)); return (
+              <div style={{ marginBottom: (a.areas || []).length ? 12 : 0 }}>
+                <div style={{ fontSize: 11, color: W.soft, fontWeight: 800, marginBottom: 6 }}>AGE GROUPS (BUYERS)</div>
+                {a.age_groups.map((g, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ width: 56, fontSize: 12, color: W.ink, fontWeight: 700, flexShrink: 0 }}>{g.g}</span>
+                    <div style={{ flex: 1, height: 9, borderRadius: 5, background: "#E2EBE8", overflow: "hidden" }}><div style={{ width: `${mx ? Math.max(4, Math.round((g.c / mx) * 100)) : 4}%`, height: "100%", background: "#7C3AED" }} /></div>
+                    <span style={{ width: 22, fontSize: 12, color: W.soft, fontWeight: 700, textAlign: "right" }}>{g.c}</span>
+                  </div>
+                ))}
+              </div>
+            ); })()}
+            {(a.areas || []).length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: W.soft, fontWeight: 800, marginBottom: 6 }}>TOP AREAS</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {a.areas.map((ar, i) => <span key={i} style={{ background: "#F4FAF8", border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 11px", fontSize: 12, fontWeight: 700, color: W.ink }}>{ar.name} <span style={{ color: W.soft }}>· {ar.c}</span></span>)}
+                </div>
+              </div>
+            )}
+          </div>
           {fill != null && (
             <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}><span style={{ fontWeight: 800, color: W.ink }}>Capacity filled</span><span style={{ fontWeight: 800, color: fill >= 90 ? "#C0392B" : W.teal }}>{a.tickets} / {a.total_capacity} · {fill}%</span></div>
@@ -2676,6 +2718,22 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
             </div>
           )}
         </>
+      )}
+      {evId && roster !== null && (
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginTop: 14 }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 6 }}>👥 Members ({roster.length})</div>
+          {roster.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No ticket holders yet.</div> : roster.map(m => (
+            <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
+              <PersonAvatar url={m.avatar_url} name={m.full_name} size={36} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{m.full_name || "—"} {m.checked_in && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 9.5, fontWeight: 800, padding: "1px 6px", borderRadius: 8 }}>✓ IN</span>}</div>
+                <div style={{ fontSize: 11.5, color: W.soft }}>{m.types || "Standard"} ×{m.qty}{m.phone ? ` · ${m.phone}` : ""}</div>
+              </div>
+              {m.phone && <a href={waLink2(m.phone)} target="_blank" rel="noreferrer" title="WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "5px 8px", fontSize: 11, textDecoration: "none" }}><MessageCircle size={12} /></a>}
+              <button onClick={() => withdraw2(m)} title="Withdraw ticket" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -4743,7 +4801,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • doorfees ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ana2 ✅</div>
       </div>
     </div>
   );
