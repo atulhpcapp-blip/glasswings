@@ -43,8 +43,17 @@ export default async function handler(req, res) {
     if (pay.status === "paid") return res.status(200).json({ ok: true });   // idempotent
 
     if (pay.purpose === "ticket") {
-      const { error: insErr } = await sb.from("event_tickets").insert({ event_id: pay.event_id, user_id: uid, ticket_type_id: pay.ticket_type_id, quantity: pay.quantity, addons: pay.addons || [], referrer_id: pay.referrer_id || null, razorpay_order_id });
-      if (insErr && insErr.code !== "23505") throw insErr;   // 23505 = webhook already granted it
+      const lines = (Array.isArray(pay.items) && pay.items.length)
+        ? pay.items
+        : [{ ticket_type_id: pay.ticket_type_id, quantity: pay.quantity }];
+      for (let li = 0; li < lines.length; li++) {
+        const { error: insErr } = await sb.from("event_tickets").insert({
+          event_id: pay.event_id, user_id: uid, ticket_type_id: lines[li].ticket_type_id || null,
+          quantity: lines[li].quantity || 1, addons: li === 0 ? (pay.addons || []) : [],
+          referrer_id: pay.referrer_id || null, razorpay_order_id,
+        });
+        if (insErr && insErr.code !== "23505") throw insErr;   // 23505 = already granted
+      }
     } else if (pay.purpose === "room") {
       await sb.from("room_subscriptions").insert({ room_id: pay.room_id, user_id: uid, status: "active" });
     }
