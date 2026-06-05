@@ -2144,10 +2144,14 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
     </div>
   );
 }
-function RoomMembersSheet({ room, onClose }) {
+function RoomMembersSheet({ room, groupType = "room", onClose }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
-  useEffect(() => { supabase.rpc("room_members_admin", { p_room: room.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); }); }, [room.id]);
+  useEffect(() => {
+    const call = groupType === "event" ? supabase.rpc("event_members", { p_event: room.id }) : supabase.rpc("room_members_admin", { p_room: room.id });
+    call.then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
+  }, [room.id, groupType]);
+  const suffix = groupType === "event" ? "at this event" : "in room";
   const Row = m => (
     <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
       {m.avatar_url
@@ -2173,9 +2177,9 @@ function RoomMembersSheet({ room, onClose }) {
         {err ? <div style={{ marginTop: 16, color: "#C0392B", fontSize: 13.5 }}>{err}</div>
           : rows === null ? <Center>loading members…</Center>
           : <>
-            {Head("👨 Guys in room", guys.length, W.teal)}
+            {Head(`👨 Guys ${suffix}`, guys.length, W.teal)}
             {guys.length ? guys.map(Row) : <div style={{ color: W.soft, fontSize: 13, padding: "10px 0" }}>None yet.</div>}
-            {Head("👩 Girls in room", girls.length, "#D6618F")}
+            {Head(`👩 Girls ${suffix}`, girls.length, "#D6618F")}
             {girls.length ? girls.map(Row) : <div style={{ color: W.soft, fontSize: 13, padding: "10px 0" }}>None yet.</div>}
             {other.length > 0 && <>{Head("Not specified", other.length, W.line)}{other.map(Row)}</>}
           </>}
@@ -2248,14 +2252,14 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
-      {showMembers && <RoomMembersSheet room={room} onClose={() => setShowMembers(false)} />}
+      {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} />}
       <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30, ...bar }}>
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
           <Avatar room={room} size={38} />
-          <div onClick={() => { if (isAdmin && groupType === "room") setShowMembers(true); }} style={{ flex: 1, minWidth: 0, cursor: isAdmin && groupType === "room" ? "pointer" : "default" }}>
+          <div onClick={() => { if (groupType !== "dm") setShowMembers(true); }} style={{ flex: 1, minWidth: 0, cursor: groupType !== "dm" ? "pointer" : "default" }}>
             <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
-            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Messages from the organiser" : `${memberCount} members${isAdmin && groupType === "room" ? " · tap for list" : ""}`}</div>
+            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Messages from the organiser" : `${memberCount} members · tap for list`}</div>
           </div>
         </div>
         {(room.pinned || isAdmin) && (
@@ -4190,7 +4194,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • crm2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • chat-members ✅</div>
       </div>
     </div>
   );
