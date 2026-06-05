@@ -1637,7 +1637,7 @@ function Main({ user }) {
     for (let ci = 0; ci < cart.length; ci++) {
       const c = cart[ci];
       const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: c.type ? c.type.id : null, quantity: c.qty, addons: ci === 0 ? chosen.map(a => ({ id: a.id, name: a.name, price: a.price, qty: a.qty })) : [], referrer_id });
-      if (error) { setBuyTarget(null); return setNotice(error.message); }
+      if (error && error.code !== "23505") { setBuyTarget(null); return setNotice(error.message); }
     }
     setBuyTarget(null);
     await load();
@@ -3347,6 +3347,7 @@ function CheckInSheet({ event, onClose }) {
         <div key={m.user_id} onClick={() => toggle(m.user_id, !m.present)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 0", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}>
           <PersonAvatar url={m.avatar_url} name={m.full_name} size={38} />
           <span style={{ flex: 1, minWidth: 0, fontWeight: 600, color: W.ink, fontSize: 14.5 }}>{m.full_name || "—"}</span>
+          <button onClick={(ev) => { ev.stopPropagation(); if (window.confirm(`Withdraw ${m.full_name || "this member"}'s ticket? They'll be removed from this event.`)) supabase.rpc("withdraw_ticket", { p_event: event.id, p_user: m.user_id }).then(({ error }) => error ? alert(error.message) : load()); }} title="Withdraw ticket" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4, flexShrink: 0 }}><Trash2 size={15} /></button>
           <div style={{ width: 26, height: 26, borderRadius: "50%", border: `2px solid ${m.present ? W.teal : W.line}`, background: m.present ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>{m.present && <Check size={15} />}</div>
         </div>
       ))}
@@ -3979,7 +3980,9 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
                   ? <div style={{ fontSize: 13, color: W.soft, display: "flex", alignItems: "center", gap: 5 }}><Phone size={12} />{m.phone}</div>
                   : <div style={{ fontSize: 12.5, color: W.soft }}>{{ male: "Man", female: "Woman", other: "—" }[m.gender] || "—"}</div>}
               </div>
-              {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "7px 10px", fontSize: 12.5, textDecoration: "none" }}><MessageCircle size={14} />WhatsApp</a>}
+            </div>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }}>
+              {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "7px 12px", fontSize: 12.5, textDecoration: "none" }}><MessageCircle size={14} />WhatsApp</a>}
               {canEdit && <button onClick={() => setEditing(m)} title="Edit profile" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 10px", fontSize: 12.5 }}><Settings size={14} /></button>}
               {isSuper && !(m.roles || []).includes("superadmin") && <button onClick={() => setRolesFor(m)} title="Roles & promotion" style={{ ...btn("#fff", "#7C3AED"), border: "1px solid #E4D5FB", padding: "7px 10px", fontSize: 12.5 }}><Crown size={14} /></button>}
               <button onClick={() => { const text = window.prompt(`Send an in-app message to ${m.full_name || "this member"}:`); if (text && text.trim()) onSendDM([m.id], text); }} style={{ ...btn(W.teal, "#fff"), padding: "7px 10px", fontSize: 12.5 }}><Send size={14} /></button>
@@ -4231,7 +4234,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • community ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticket-fixes ✅</div>
       </div>
     </div>
   );
