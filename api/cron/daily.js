@@ -28,6 +28,7 @@ export default async function handler(req, res) {
     // ---- 1) Upcoming-events digest -------------------------------------
     const { data: ups } = await sb.from("events")
       .select("title, emoji, event_date, event_at, city")
+      .eq("approved", true)
       .gte("event_at", today).order("event_at", { ascending: true }).limit(15);
 
     if (ups && ups.length) {
