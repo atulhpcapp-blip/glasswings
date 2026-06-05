@@ -410,6 +410,36 @@ function RecoverPassword({ onDone }) {
     </div>
   );
 }
+function PromoPctEditor({ event: e, onUpdate, canApprove }) {
+  const [v, setV] = useState(e.promo_pct ?? "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setV(e.promo_pct ?? ""); }, [e.id, e.promo_pct]);
+  if (!canApprove) {
+    return e.promo_pct != null ? (
+      <div style={{ marginTop: 16 }}>
+        <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Promotion service</label>
+        <div style={{ marginTop: 8, background: "#EFEAFB", border: "1px solid #E4D5FB", color: "#7C3AED", borderRadius: 10, padding: "10px 13px", fontSize: 13, fontWeight: 700 }}>📣 Glasswings promotion on this event · {e.promo_pct}% of ticket sales</div>
+      </div>
+    ) : null;
+  }
+  const save = async () => {
+    setBusy(true);
+    const val = (v ?? "").toString().trim();
+    await onUpdate(e.id, { promo_pct: val === "" ? null : Number(val) });
+    setBusy(false);
+  };
+  return (
+    <div style={{ marginTop: 16 }}>
+      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Promotion service % <span style={{ fontWeight: 500, color: W.soft }}>(this event only — leave blank for none)</span></label>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+        <input value={v} onChange={ev => setV(ev.target.value.replace(/[^\d.]/g, ""))} placeholder="—" inputMode="decimal" style={{ width: 70, padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13.5, outline: "none", textAlign: "center" }} />
+        <span style={{ fontSize: 13, color: W.soft, fontWeight: 700 }}>% of this event's ticket sales</span>
+        <button onClick={save} disabled={busy} style={{ ...btn("#7C3AED", "#fff"), padding: "8px 14px", fontSize: 12.5, marginLeft: "auto" }}>{busy ? "…" : "Save"}</button>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Charged as a deduction in the organiser's settlement, only for events where promotion was agreed.</div>
+    </div>
+  );
+}
 function EventMediaEditor({ event: e, onUpdate }) {
   const pRef = useRef(null), bRef = useRef(null);
   const [up, setUp] = useState(false);
@@ -516,6 +546,7 @@ function SettlementsPanel({ isSuper }) {
       <td class="r"><b>${f(r.gross)}</b></td>
       <td class="r rz">${r.gateway_pct == null ? "—" : `${r.gateway_pct}%<br><b>− ${f(r.gateway_fee)}</b>`}</td>
       <td class="r pf">${r.pct == null ? "—" : `${r.pct}%<br><b>− ${f(r.platform_cut)}</b>`}</td>
+      <td class="r pm">${Number(r.promo_fees) > 0 ? `<b>− ${f(r.promo_fees)}</b>` : "—"}</td>
       <td class="r pay"><b>${r.payable == null ? "—" : f(r.payable)}</b></td>
     </tr>`).join("");
     const single = subset.length === 1 ? subset[0] : null;
@@ -524,6 +555,7 @@ function SettlementsPanel({ isSuper }) {
         <div class="bx" style="background:#E8F2FB;color:#1B6FB8"><div class="bl">GROSS COLLECTED</div><div class="bv">${f(single.gross)}</div></div>
         <div class="bx" style="background:#FBE9E7;color:#C0392B"><div class="bl">RAZORPAY FEE ${single.gateway_pct == null ? "" : "(" + single.gateway_pct + "%)"}</div><div class="bv">${single.gateway_fee == null ? "—" : "− " + f(single.gateway_fee)}</div></div>
         <div class="bx" style="background:#FDF6EC;color:#B45309"><div class="bl">PLATFORM CUT ${single.pct == null ? "" : "(" + single.pct + "%)"}</div><div class="bv">${single.platform_cut == null ? "—" : "− " + f(single.platform_cut)}</div></div>
+        ${Number(single.promo_fees) > 0 ? `<div class="bx" style="background:#EFEAFB;color:#7C3AED"><div class="bl">PROMOTION FEES</div><div class="bv">− ${f(single.promo_fees)}</div></div>` : ""}
         <div class="bx" style="background:#E7F6EF;color:#008069"><div class="bl">PAYABLE TO ORGANISER</div><div class="bv">${single.payable == null ? "—" : f(single.payable)}</div></div>
       </div>` : "";
     w.document.write(`<!doctype html><html><head><title>Glasswings — Organiser settlement</title><style>
@@ -540,7 +572,7 @@ function SettlementsPanel({ isSuper }) {
       thead th{background:#008069;color:#fff;font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;text-align:left;padding:10px 9px}
       thead th.r{text-align:right}
       td{padding:10px 9px;border-bottom:1px solid #e4ecea;vertical-align:top} .r{text-align:right}
-      .rz{color:#C0392B} .pf{color:#B45309} .pay{color:#008069;font-size:14px}
+      .rz{color:#C0392B} .pf{color:#B45309} .pm{color:#7C3AED} .pay{color:#008069;font-size:14px}
       tfoot td{font-weight:800;border-top:2.5px solid #008069;border-bottom:none;background:#F4FAF8}
       .note{margin-top:16px;font-size:11.5px;color:#5d6f6b;background:#F4FAF8;border-radius:10px;padding:11px 14px}
       .ft{margin-top:18px;font-size:11px;color:#8a9b97}
@@ -551,10 +583,10 @@ function SettlementsPanel({ isSuper }) {
         <div class="sub">${escapeHtml(label)} · Generated on ${today} · Paid ticket revenue only</div></div>
       <div class="wrap">
         ${sumBoxes}
-        <table><thead><tr><th>Organiser</th><th class="r">Events</th><th class="r">Tickets</th><th class="r">Gross</th><th class="r">Razorpay fee</th><th class="r">Platform cut</th><th class="r">Payable</th></tr></thead>
+        <table><thead><tr><th>Organiser</th><th class="r">Events</th><th class="r">Tickets</th><th class="r">Gross</th><th class="r">Razorpay fee</th><th class="r">Platform cut</th><th class="r">Promo fees</th><th class="r">Payable</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
-        <tfoot><tr><td>Total</td><td class="r">${tot("events_count")}</td><td class="r">${tot("tickets_sold")}</td><td class="r">${f(tot("gross"))}</td><td class="r rz">${allOk ? "− " + f(tot("gateway_fee")) : "—"}</td><td class="r pf">${allOk ? "− " + f(tot("platform_cut")) : "—"}</td><td class="r pay">${allOk ? f(tot("payable")) : "—"}</td></tr></tfoot></table>
-        <div class="note"><b>How payable is calculated:</b> Payable = Gross − Razorpay gateway fee − Glasswings platform cut. Both percentages are applied on the gross amount collected.</div>
+        <tfoot><tr><td>Total</td><td class="r">${tot("events_count")}</td><td class="r">${tot("tickets_sold")}</td><td class="r">${f(tot("gross"))}</td><td class="r rz">${allOk ? "− " + f(tot("gateway_fee")) : "—"}</td><td class="r pf">${allOk ? "− " + f(tot("platform_cut")) : "—"}</td><td class="r pm">${tot("promo_fees") > 0 ? "− " + f(tot("promo_fees")) : "—"}</td><td class="r pay">${allOk ? f(tot("payable")) : "—"}</td></tr></tfoot></table>
+        <div class="note"><b>How payable is calculated:</b> Payable = Gross − Razorpay gateway fee − Glasswings platform cut − Promotion fees. Gateway and platform percentages apply on total gross; promotion fees apply per event, only on events where the promotion service was agreed.</div>
         <div class="ft">Glasswings Events · glass-wings.com · This statement is generated from recorded payments and is subject to reconciliation.</div>
       </div>
       <script>window.onload=function(){setTimeout(function(){window.print()},380)}<\/script></body></html>`);
@@ -566,7 +598,7 @@ function SettlementsPanel({ isSuper }) {
         <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink }}>Organiser payouts</div>
         {rows && rows.length > 0 && <button onClick={() => exportPdf(rows, isSuper ? "All organisers" : "Your settlement")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 13px", fontSize: 12.5 }}>📄 Export PDF</button>}
       </div>
-      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Payable = Gross − Razorpay fee − Platform cut (both % of gross). Platform % is negotiated per organiser{isSuper ? "; the Razorpay % applies to everyone" : ""}.</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Payable = Gross − Razorpay fee − Platform cut − Promotion fees (per-event, only where opted). Platform % is negotiated per organiser{isSuper ? "; the Razorpay % applies to everyone; promotion % is set on each event\u2019s manage panel" : ""}.</div>
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: "12px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>Razorpay gateway fee</div>
@@ -607,6 +639,7 @@ function SettlementsPanel({ isSuper }) {
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>GROSS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{inr(r.gross)}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>RAZORPAY FEE</div><div style={{ fontWeight: 800, color: "#C0392B", fontSize: 16 }}>{r.gateway_pct == null ? "set % first" : "− " + inr(r.gateway_fee)}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PLATFORM CUT</div><div style={{ fontWeight: 800, color: "#B45309", fontSize: 16 }}>{r.pct == null ? "set % first" : "− " + inr(r.platform_cut)}</div></div>
+                {Number(r.promo_fees) > 0 && <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PROMO FEES</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>− {inr(r.promo_fees)}</div></div>}
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PAYABLE</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{r.payable == null ? "—" : inr(r.payable)}</div></div>
               </div>
             </div>
@@ -3345,7 +3378,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
                 <div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.ticket_price === 0 ? "Free" : `₹${e.ticket_price}/ticket`}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div>
-                <div style={{ marginTop: 4 }}>{e.approved
+                <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>{e.promo_pct != null && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>📣 Promo {e.promo_pct}%</span>}{e.approved
                   ? <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>● Live</span>
                   : <span style={{ background: "#FDF6EC", color: "#B45309", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>⏳ Pending approval{canApprove ? "" : " — visible only to you"}</span>}</div>
               </div>
@@ -3369,6 +3402,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
                 <EventShare event={e} />
                 <GuestTickets event={e} />
                 <EventMediaEditor event={e} onUpdate={onUpdate} />
+                <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
                 <div style={{ marginTop: 16 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Category &amp; city</label>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -3964,7 +3998,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gateway ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • promo ✅</div>
       </div>
     </div>
   );
