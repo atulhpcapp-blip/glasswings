@@ -1287,8 +1287,11 @@ function ProfileGate({ user, profile, reload }) {
     try { setAvatar(await uploadPhoto(user.id, file)); } catch (x) { setErr("Photo upload failed: " + x.message); }
     setUploading(false);
   };
+  const [tried, setTried] = useState(false);
   const save = async () => {
-    setErr(""); if (!name || !phone || !age || !area || !prof || !city) return setErr("Please complete every field.");
+    setErr(""); setTried(true);
+    const miss = [["Full name", name], ["Phone number", phone], ["Age", age], ["Area / locality", area], ["City", city], ["Profession", prof]].find(([, v]) => !String(v || "").trim());
+    if (miss) return setErr(`${miss[0]} is required to become a member.`);
     if (!avatar) return setErr("Please add a profile photo.");
     setBusy(true);
     const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city });
@@ -1298,7 +1301,7 @@ function ProfileGate({ user, profile, reload }) {
     if (e1 || e2) return setErr((e1 || e2).message);
     reload();
   };
-  const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
+  const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph + " *"} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${tried && !String(v || "").trim() ? "#C0392B" : W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
   return (
     <div style={{ minHeight: "100vh", background: W.bg }}>
       <TopBar title="Complete your profile" />
@@ -1574,6 +1577,13 @@ function Main({ user }) {
   };
   const confirmPurchase = async (cart, sel = []) => {
     const { event: e } = buyTarget;
+    const { data: phRow } = await supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle();
+    if (((phRow?.phone || "").replace(/\D/g, "")).length < 8) {
+      const entered = window.prompt("Please enter your phone number — your ticket and event updates are sent here. It stays private; only the organiser can see it.");
+      if (entered === null) return;
+      if ((entered.replace(/\D/g, "")).length < 8) { setBuyTarget(null); return setNotice("A valid phone number is required to buy tickets."); }
+      await supabase.from("member_phone").upsert({ user_id: user.id, phone: entered.trim() });
+    }
     for (const c of cart) {
       if (c.type) {
         if (c.type.gender_restrict && c.type.gender_restrict !== "any" && c.type.gender_restrict !== profile?.gender) { setBuyTarget(null); return setNotice(c.type.gender_restrict === "female" ? "Some of these tickets are for women only." : "Some of these tickets are for men only."); }
@@ -4194,7 +4204,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • chat-members ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • required ✅</div>
       </div>
     </div>
   );
