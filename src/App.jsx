@@ -689,6 +689,110 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished }) {
     </div>
   );
 }
+const PRICE_BANDS = ["Free", "\u20b91\u2013500", "\u20b9501\u20131000", "\u20b91001\u20131500", "Above \u20b91500"];
+function priceBand(n) {
+  if (n == null || isNaN(n)) return null;
+  if (n === 0) return "Free";
+  if (n <= 500) return "\u20b91\u2013500";
+  if (n <= 1000) return "\u20b9501\u20131000";
+  if (n <= 1500) return "\u20b91001\u20131500";
+  return "Above \u20b91500";
+}
+function dateBucketSet() {
+  const iso = d => d.toISOString().slice(0, 10);
+  const today = new Date();
+  const tm = new Date(today); tm.setDate(tm.getDate() + 1);
+  const sat = new Date(today); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7));
+  const sun = new Date(sat); sun.setDate(sun.getDate() + 1);
+  return { "Today": new Set([iso(today)]), "Tomorrow": new Set([iso(tm)]), "This weekend": new Set([iso(sat), iso(sun)]) };
+}
+const DATE_LABELS = ["Today", "Tomorrow", "This weekend"];
+const SORT_OPTS = [["relevance", "Relevance", "Best picks first"], ["price_lo", "Price: low to high", "Lowest price first"], ["price_hi", "Price: high to low", "Highest price first"], ["date", "Date", "Earliest event first"], ["newest", "Newest added", "Recently added first"]];
+function emptyFlt() { return { date: [], category: [], city: [], price: [], venue: [], tags: {} }; }
+function fltCount(f) { return f.date.length + f.category.length + f.city.length + f.price.length + f.venue.length + Object.values(f.tags || {}).reduce((a, v) => a + v.length, 0); }
+function eventMatches(e, f, getMin) {
+  const b = dateBucketSet();
+  if (f.date.length && !f.date.some(d => b[d] && b[d].has(e.event_at))) return false;
+  if (f.category.length && !f.category.includes(e.category)) return false;
+  if (f.city.length && !f.city.includes(e.city)) return false;
+  if (f.venue.length && !f.venue.includes(e.venue)) return false;
+  if (f.price.length && !f.price.includes(priceBand(getMin(e)))) return false;
+  for (const dim in (f.tags || {})) { const arr = f.tags[dim]; if (arr && arr.length && !arr.includes((e.tags || {})[dim])) return false; }
+  return true;
+}
+function sortEvents(list, sortBy, getMin) {
+  const a = [...list];
+  if (sortBy === "price_lo") a.sort((x, y) => getMin(x) - getMin(y));
+  else if (sortBy === "price_hi") a.sort((x, y) => getMin(y) - getMin(x));
+  else if (sortBy === "date") a.sort((x, y) => (x.event_at || "9999").localeCompare(y.event_at || "9999"));
+  else if (sortBy === "newest") a.sort((x, y) => String(y.created_at || y.id).localeCompare(String(x.created_at || x.id)));
+  return a;
+}
+const filterPill = (active) => ({ flexShrink: 0, padding: "8px 16px", borderRadius: 20, border: `1px solid ${active ? W.teal : W.line}`, background: active ? W.teal : "#fff", color: active ? "#fff" : W.ink, fontWeight: 700, fontSize: 13.5, cursor: "pointer" });
+function SortSheet({ value, onPick, onClose }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", borderRadius: "18px 18px 0 0", maxHeight: "80vh", overflowY: "auto", paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div style={{ padding: "16px 18px", fontWeight: 800, fontSize: 18, color: W.ink }}>Sort By</div>
+        {SORT_OPTS.map(([k, t, sub]) => (
+          <div key={k} onClick={() => onPick(k)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}>
+            <div><div style={{ fontWeight: 700, color: W.ink, fontSize: 15 }}>{t}</div><div style={{ fontSize: 12.5, color: W.soft }}>{sub}</div></div>
+            <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${value === k ? W.teal : W.line}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{value === k && <div style={{ width: 11, height: 11, borderRadius: "50%", background: W.teal }} />}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+function FilterSheet({ events, dims, getMin, value, onApply, onClose }) {
+  const [sel, setSel] = useState(() => ({ date: [...value.date], category: [...value.category], city: [...value.city], price: [...value.price], venue: [...value.venue], tags: JSON.parse(JSON.stringify(value.tags || {})) }));
+  const [active, setActive] = useState(0);
+  const distinct = key => { const m = {}; events.forEach(e => { const v = e[key]; if (v) m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const tagDistinct = name => { const m = {}; events.forEach(e => { const v = (e.tags || {})[name]; if (v) m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const dateOpts = (() => { const b = dateBucketSet(); return DATE_LABELS.map(l => [l, events.filter(e => b[l].has(e.event_at)).length]).filter(([, n]) => n > 0); })();
+  const priceOpts = PRICE_BANDS.map(bnd => [bnd, events.filter(e => priceBand(getMin(e)) === bnd).length]).filter(([, n]) => n > 0);
+  const toggleArr = (key, v) => setSel(s => ({ ...s, [key]: s[key].includes(v) ? s[key].filter(x => x !== v) : [...s[key], v] }));
+  const toggleTag = (name, v) => setSel(s => { const cur = s.tags[name] || []; return { ...s, tags: { ...s.tags, [name]: cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v] } }; });
+  const sections = [
+    { key: "date", label: "Date", opts: dateOpts, get: () => sel.date, toggle: v => toggleArr("date", v) },
+    { key: "category", label: "Category", opts: distinct("category"), get: () => sel.category, toggle: v => toggleArr("category", v) },
+    { key: "city", label: "City", opts: distinct("city"), get: () => sel.city, toggle: v => toggleArr("city", v) },
+    ...(dims || []).map(d => ({ key: "t:" + d.name, label: d.name, opts: tagDistinct(d.name), get: () => sel.tags[d.name] || [], toggle: v => toggleTag(d.name, v) })),
+    { key: "price", label: "Price", opts: priceOpts, get: () => sel.price, toggle: v => toggleArr("price", v) },
+    { key: "venue", label: "Venue", opts: distinct("venue"), get: () => sel.venue, toggle: v => toggleArr("venue", v) },
+  ].filter(sec => sec.opts.length);
+  const sec = sections[active] || sections[0];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "#fff", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 16px 12px", borderBottom: `1px solid ${W.line}` }}>
+        <ArrowLeft size={24} onClick={onClose} style={{ cursor: "pointer" }} />
+        <div style={{ fontWeight: 800, fontSize: 20, color: W.ink }}>Filter</div>
+        <button onClick={() => setSel(emptyFlt())} style={{ marginLeft: "auto", background: "none", border: "none", color: W.teal, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>Reset</button>
+      </div>
+      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        <div style={{ width: 132, flexShrink: 0, background: "#F4F4F5", overflowY: "auto" }}>
+          {sections.map((x, i) => (
+            <div key={x.key} onClick={() => setActive(i)} style={{ padding: "16px 14px", fontWeight: active === i ? 800 : 500, color: active === i ? W.ink : W.soft, background: active === i ? "#fff" : "transparent", cursor: "pointer", fontSize: 14.5 }}>
+              {x.label}{x.get().length > 0 && <span style={{ marginLeft: 5, color: W.teal, fontSize: 11.5, fontWeight: 800 }}>({x.get().length})</span>}
+            </div>
+          ))}
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "2px 16px 2px 18px" }}>
+          {sec.opts.map(([name, n]) => { const on = sec.get().includes(name); return (
+            <div key={name} onClick={() => sec.toggle(name)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 0", cursor: "pointer", borderBottom: `1px solid ${W.bg}` }}>
+              <span style={{ fontSize: 15.5, color: W.ink, paddingRight: 10 }}>{name} <span style={{ color: W.soft }}>({n})</span></span>
+              <div style={{ width: 24, height: 24, borderRadius: 6, border: `2px solid ${on ? W.teal : "#aab"}`, background: on ? W.teal : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{on && <Check size={15} color="#fff" />}</div>
+            </div>
+          ); })}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 12, padding: "12px 16px calc(12px + env(safe-area-inset-bottom))", borderTop: `1px solid ${W.line}` }}>
+        <button onClick={onClose} style={{ flex: 1, padding: 14, borderRadius: 10, border: `1px solid ${W.teal}`, background: "#fff", color: W.teal, fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Close</button>
+        <button onClick={() => onApply(sel)} style={{ flex: 1, padding: 14, borderRadius: 10, border: "none", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>Apply All</button>
+      </div>
+    </div>
+  );
+}
 function CategoryTiles({ cats, val, set }) {
   if (!cats || !cats.length) return null;
   const tile = (key, name, img, emoji) => (
@@ -982,8 +1086,10 @@ function PublicLanding() {
   const [authMode, setAuthMode] = useState(null);
   const [events, setEvents] = useState([]);
   const [types, setTypes] = useState({});
-  const [cat, setCat] = useState("All");
-  const [city, setCity] = useState("All");
+  const [flt, setFlt] = useState(emptyFlt());
+  const [sortBy, setSortBy] = useState("relevance");
+  const [fsheet, setFsheet] = useState(false);
+  const [ssheet, setSsheet] = useState(false);
   const [custom, setCustom] = useState([]);
   const [pop, setPop] = useState({});
   const [addonsMap, setAddonsMap] = useState({});
@@ -1017,7 +1123,8 @@ function PublicLanding() {
   }
   const cats = Array.from(new Set(events.map(e => e.category).filter(Boolean)));
   const cityList = Array.from(new Set(events.map(e => e.city).filter(Boolean)));
-  const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city) && (dimsL || []).every(d => { const v = tagSelL[d.name]; return !v || v === "All" || ((e.tags || {})[d.name] === v); }));
+  const getMin = e => e.ticket_price || 0;
+  const list = sortEvents(events.filter(e => eventMatches(e, flt, getMin)), sortBy, getMin);
   const priceFrom = (e) => {
     const ts = types[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -1054,25 +1161,18 @@ function PublicLanding() {
       )}
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
         <div style={{ fontWeight: 800, fontSize: wide ? 26 : 19, color: W.ink, padding: wide ? "0 0 8px" : "18px 16px 4px" }}>Upcoming events</div>
-        <CategoryTiles cats={optCats.length ? optCats : cats.map(n => ({ name: n }))} val={cat} set={setCat} />
-        {cityList.length > 0 && <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "4px 0 8px" : "0 14px 8px", alignItems: "center" }}>
-          {["All", ...cityList].map(o => <button key={o} onClick={() => setCity(o)} style={chip(city === o)}>{o}</button>)}
-        </div>}
-        {(dimsL || []).map(d => {
-          const dopts = (optsAllL || []).filter(o => o.kind === d.name).map(o => o.name);
-          if (!dopts.length) return null;
-          return (
-            <div key={d.id} style={{ display: "flex", gap: 8, overflowX: "auto", padding: wide ? "0 0 8px" : "0 14px 8px", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{d.name}</span>
-              {["All", ...dopts].map(o => <button key={o} onClick={() => setTagSelL(t => ({ ...t, [d.name]: o }))} style={chip((tagSelL[d.name] || "All") === o)}>{o}</button>)}
-            </div>
-          );
-        })}
+        <div style={{ display: "flex", gap: 10, padding: wide ? "4px 0 12px" : "10px 14px", overflowX: "auto" }}>
+          <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
+          <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
+        </div>
+        <CategoryTiles cats={optCats.length ? optCats : cats.map(n => ({ name: n }))} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
         <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "repeat(2,1fr)", gap: 14, padding: wide ? "8px 0 0" : "6px 14px" }}>
           {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events yet — check back soon!</Center></div>}
           {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={false} onOpen={openDetail} />)}
         </div>
       </div>
+      {fsheet && <FilterSheet events={events} dims={dimsL} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
+      {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
@@ -1739,15 +1839,17 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
     return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
   })();
-  const [cat, setCat] = useState("All");
-  const [city, setCity] = useState("All");
+  const [flt, setFlt] = useState(emptyFlt());
+  const [sortBy, setSortBy] = useState("relevance");
+  const [fsheet, setFsheet] = useState(false);
+  const [ssheet, setSsheet] = useState(false);
   const [custom, setCustom] = useState([]);
   useEffect(() => { supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || [])); }, []);
   useEffect(() => { if (focus) { onOpenDetail && onOpenDetail(focus); onFocusDone && onFocusDone(); } }, [focus]);
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
-  const [tagSel, setTagSel] = useState({});
-  const list = events.filter(e => (cat === "All" || e.category === cat) && (city === "All" || e.city === city) && (dims || []).every(d => { const v = tagSel[d.name]; return !v || v === "All" || ((e.tags || {})[d.name] === v); }));
+  const getMin = e => { const ts = (ticketTypes[e.id] || []).filter(t => !profile || t.gender_restrict === "any" || t.gender_restrict === profile.gender); const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0]; return Math.min(...prices); };
+  const list = sortEvents(events.filter(e => eventMatches(e, flt, getMin)), sortBy, getMin);
   const priceFrom = (e) => {
     const ts = (ticketTypes[e.id] || []).filter(t => !profile || t.gender_restrict === "any" || t.gender_restrict === profile.gender);
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -1757,28 +1859,21 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const heroSlides = custom.length
     ? custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }))
     : events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id }));
-  const Chips = ({ label, opts, val, set }) => opts.length ? (
-    <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}`, alignItems: "center" }}>
-      <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, flexShrink: 0 }}>{label}</span>
-      {["All", ...opts].map(o => (
-        <button key={o} onClick={() => set(o)} style={{ flexShrink: 0, padding: "6px 13px", borderRadius: 20, border: `1px solid ${val === o ? W.teal : W.line}`, background: val === o ? W.teal : "#fff", color: val === o ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{o}</button>
-      ))}
-    </div>
-  ) : null;
   return (
     <div>
       <TopBar title="Events" />
       {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
-      <CategoryTiles cats={catTiles} val={cat} set={setCat} />
-      <Chips label="City" opts={cityNames} val={city} set={setCity} />
-      {(dims || []).map(d => {
-        const dopts = (optsAll || []).filter(o => o.kind === d.name).map(o => o.name);
-        return dopts.length ? <Chips key={d.id} label={d.name} opts={dopts} val={tagSel[d.name] || "All"} set={v => setTagSel(t => ({ ...t, [d.name]: v }))} /> : null;
-      })}
+      <div style={{ display: "flex", gap: 10, padding: "12px 14px", overflowX: "auto", borderBottom: `1px solid ${W.line}`, background: "#fff", position: "sticky", top: 0, zIndex: 5 }}>
+        <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
+        <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
+      </div>
+      <CategoryTiles cats={catTiles} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
         {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events here yet.</Center></div>}
         {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
       </div>
+      {fsheet && <FilterSheet events={events} dims={dims} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
+      {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
     </div>
   );
 }
@@ -4000,7 +4095,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • unpub ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • bms-filter ✅</div>
       </div>
     </div>
   );
