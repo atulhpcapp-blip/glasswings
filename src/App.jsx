@@ -634,7 +634,7 @@ function SettlementsPanel({ isSuper }) {
         <table><thead><tr><th>Organiser</th><th class="r">Events</th><th class="r">Tickets</th><th class="r">Gross</th><th class="r">Razorpay fee</th><th class="r">Platform cut</th><th class="r">Promo fees</th><th class="r">Payable</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
         <tfoot><tr><td>Total</td><td class="r">${tot("events_count")}</td><td class="r">${tot("tickets_sold")}</td><td class="r">${f(tot("gross"))}</td><td class="r rz">${allOk ? "− " + f(tot("gateway_fee")) : "—"}</td><td class="r pf">${allOk ? "− " + f(tot("platform_cut")) : "—"}</td><td class="r pm">${tot("promo_fees") > 0 ? "− " + f(tot("promo_fees")) : "—"}</td><td class="r pay">${allOk ? f(tot("payable")) : "—"}</td></tr></tfoot></table>
-        <div class="note"><b>How payable is calculated:</b> Payable = Gross − Razorpay gateway fee − Glasswings platform cut − Promotion fees. Gateway and platform percentages apply on total gross; promotion fees apply per event, only on events where the promotion service was agreed.</div>
+        <div class="note"><b>How payable is calculated:</b> Payable = Online gross − Razorpay gateway fee − Glasswings platform cut − Promotion fees. The platform and promotion percentages apply on TOTAL sales (online + door cash/UPI); the Razorpay fee applies on online sales only. Door money is collected directly by the organiser, so its fees are recovered from the online payout.</div>
         <div class="ft">Glasswings Events · glass-wings.com · This statement is generated from recorded payments and is subject to reconciliation.</div>
       </div>
       <script>window.onload=function(){setTimeout(function(){window.print()},380)}<\/script></body></html>`);
@@ -646,7 +646,7 @@ function SettlementsPanel({ isSuper }) {
         <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink }}>Organiser payouts</div>
         {rows && rows.length > 0 && <button onClick={() => exportPdf(rows, isSuper ? "All organisers" : "Your settlement")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 13px", fontSize: 12.5 }}>📄 Export PDF</button>}
       </div>
-      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Payable = Gross − Razorpay fee − Platform cut − Promotion fees (per-event, only where opted). Platform % is negotiated per organiser{isSuper ? "; the Razorpay % applies to everyone; promotion % is set on each event\u2019s manage panel" : ""}.</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Gross = online + door sales (cash/UPI). Platform % and promotion % are charged on the full gross; the Razorpay fee only on online sales. Payable = Online gross − Razorpay fee − Platform cut − Promotion fees.</div>
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: "12px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>Razorpay gateway fee</div>
@@ -684,7 +684,7 @@ function SettlementsPanel({ isSuper }) {
               <div style={{ display: "flex", gap: 18, marginTop: 11, flexWrap: "wrap" }}>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>EVENTS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{r.events_count}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>TICKETS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{r.tickets_sold}</div></div>
-                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>GROSS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{inr(r.gross)}</div></div>
+                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>GROSS (ALL)</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{inr(r.gross)}</div><div style={{ fontSize: 10.5, color: W.soft, marginTop: 1 }}>online {inr(r.online_gross)} · door {inr(r.door_gross)}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>RAZORPAY FEE</div><div style={{ fontWeight: 800, color: "#C0392B", fontSize: 16 }}>{r.gateway_pct == null ? "set % first" : "− " + inr(r.gateway_fee)}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PLATFORM CUT</div><div style={{ fontWeight: 800, color: "#B45309", fontSize: 16 }}>{r.pct == null ? "set % first" : "− " + inr(r.platform_cut)}</div></div>
                 {Number(r.promo_fees) > 0 && <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PROMO FEES</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>− {inr(r.promo_fees)}</div></div>}
@@ -4743,7 +4743,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • guestinfo ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • doorfees ✅</div>
       </div>
     </div>
   );
