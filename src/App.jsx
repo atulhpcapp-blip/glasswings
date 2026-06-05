@@ -3345,8 +3345,26 @@ function TimeCapsule({ event: e, profile }) {
 function CheckInSheet({ event, onClose }) {
   const [list, setList] = useState(null);
   const [err, setErr] = useState("");
-  const load = () => supabase.rpc("event_attendees", { p_event: event.id }).then(({ data, error }) => { setErr(error ? (error.message || "Could not load attendees.") : ""); setList(data || []); });
+  const [guests, setGuests] = useState([]);
+  const [gName, setGName] = useState(""); const [gPhone, setGPhone] = useState(""); const [gEmail, setGEmail] = useState(""); const [gQty, setGQty] = useState("1");
+  const [gBusy, setGBusy] = useState(false);
+  const loadGuests = () => supabase.rpc("guest_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setGuests(data || []); });
+  const load = () => { supabase.rpc("event_attendees", { p_event: event.id }).then(({ data, error }) => { setErr(error ? (error.message || "Could not load attendees.") : ""); setList(data || []); }); loadGuests(); };
   useEffect(() => { load(); }, [event.id]);
+  const addGuest = async () => {
+    if (!gName.trim()) return alert("Guest name is required.");
+    setGBusy(true);
+    const { error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1 });
+    setGBusy(false);
+    if (error) return alert(error.message);
+    setGName(""); setGPhone(""); setGEmail(""); setGQty("1");
+    loadGuests();
+  };
+  const guestWa = (g) => {
+    const text = `🎟️ ${event.title}\nGuest ticket for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nEntry code: ${g.code}\nShow this message at the door.\n— Glasswings Events`;
+    const num = (g.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "");
+    return num ? `https://wa.me/${num}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+  };
   const toggle = async (uid, present) => {
     setList(l => l.map(x => x.user_id === uid ? { ...x, present } : x));
     await supabase.rpc("set_attendance", { p_event: event.id, p_user: uid, p_present: present });
@@ -3381,6 +3399,30 @@ function CheckInSheet({ event, onClose }) {
         {list === null ? <Center>loading…</Center> : list.length === 0 ? <Center>No ticket holders yet.</Center> : (
           <>{seg("Guys", guys)}{seg("Girls", girls)}{others.length > 0 && seg("Other", others)}</>
         )}
+        <div style={{ marginTop: 18, borderTop: `2px solid ${W.line}`, paddingTop: 14 }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, marginBottom: 4 }}>📋 Guest list (manual) {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guests.filter(g => g.checked_in).length}/{guests.length} in</span>}</div>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10 }}>Free entry for non-members — add them here, share the code on WhatsApp, tick them in at the door.</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 6 }}>
+            <input value={gName} onChange={e => setGName(e.target.value)} placeholder="Guest name *" style={{ flex: "1 1 140px", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
+            <input value={gPhone} onChange={e => setGPhone(e.target.value)} placeholder="Phone" inputMode="tel" style={{ flex: "1 1 120px", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
+          </div>
+          <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
+            <input value={gEmail} onChange={e => setGEmail(e.target.value)} placeholder="Email (optional)" type="email" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
+            <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ width: 58, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", textAlign: "center" }} />
+            <button onClick={addGuest} disabled={gBusy} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, opacity: gBusy ? .6 : 1 }}>{gBusy ? "…" : "+ Add"}</button>
+          </div>
+          {guests.map(g => (
+            <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</div>
+                <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
+              </div>
+              <a href={guestWa(g)} target="_blank" rel="noreferrer" title="Send ticket on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12, textDecoration: "none" }}><MessageCircle size={13} /></a>
+              <button onClick={() => { if (window.confirm(`Remove ${g.name} from the guest list?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove guest" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
+              <div onClick={() => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, checked_in: !g.checked_in } : x)); supabase.rpc("set_guest_checkin", { p_id: g.id, p_in: !g.checked_in }); }} style={{ width: 26, height: 26, borderRadius: "50%", border: `2px solid ${g.checked_in ? W.teal : W.line}`, background: g.checked_in ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>{g.checked_in && <Check size={15} />}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -4262,7 +4304,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • card-price ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • guestlist ✅</div>
       </div>
     </div>
   );
