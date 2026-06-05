@@ -3345,7 +3345,11 @@ function TimeCapsule({ event: e, profile }) {
 function EventMembersSheet({ event, onClose }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState("");
-  const load = () => supabase.rpc("event_member_list", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
+  const [ana, setAna] = useState(null);
+  const load = () => {
+    supabase.rpc("event_member_list", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
+    supabase.rpc("event_ticket_analysis", { p_event: event.id }).then(({ data, error }) => { if (!error) setAna(data); });
+  };
   useEffect(() => { load(); }, [event.id]);
   const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
   const withdraw = (m) => {
@@ -3362,6 +3366,33 @@ function EventMembersSheet({ event, onClose }) {
         </div>
         <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} member${rows.length === 1 ? "" : "s"} · ${totQty} ticket${totQty === 1 ? "" : "s"} · ${rows.filter(r => r.checked_in).length} checked in`}</div>
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
+        {ana && (
+          <div style={{ background: "#F4FAF8", border: `1px solid ${W.line}`, borderRadius: 12, padding: "12px 14px", marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>📊 Ticket analysis</div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: (ana.types || []).length ? 12 : 0 }}>
+              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>MEMBERS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{ana.members}</div></div>
+              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>TICKETS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{ana.tickets}</div></div>
+              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>♂ / ♀</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{ana.male} / {ana.female}</div></div>
+              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>CHECKED IN</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{ana.checked_in}</div></div>
+              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>PAID GROSS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>₹{Number(ana.paid_gross || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div></div>
+              <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>GUESTS</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>{ana.guests_in}/{ana.guests} in</div></div>
+            </div>
+            {(ana.types || []).map((t, i) => {
+              const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
+              const pct = cap ? Math.min(100, Math.round((t.sold / cap) * 100)) : null;
+              return (
+                <div key={i} style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 3 }}>
+                    <span style={{ fontWeight: 700, color: W.ink }}>{t.name} <span style={{ color: W.soft, fontWeight: 600 }}>· ₹{t.price}</span></span>
+                    <span style={{ color: W.soft, fontWeight: 700 }}>{t.sold}{cap ? ` / ${cap}` : " sold"}</span>
+                  </div>
+                  {cap && <div style={{ height: 7, borderRadius: 5, background: "#E2EBE8", overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: pct >= 90 ? "#C0392B" : W.teal }} /></div>}
+                </div>
+              );
+            })}
+            {Number(ana.base_sold) > 0 && <div style={{ fontSize: 12, color: W.soft }}>+ {ana.base_sold} standard (base) ticket{ana.base_sold > 1 ? "s" : ""}</div>}
+          </div>
+        )}
         {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
           <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
             <PersonAvatar url={m.avatar_url} name={m.full_name} size={40} />
@@ -3435,7 +3466,33 @@ function CheckInSheet({ event, onClose }) {
           <>{seg("Guys", guys)}{seg("Girls", girls)}{others.length > 0 && seg("Other", others)}</>
         )}
         <div style={{ marginTop: 18, borderTop: `2px solid ${W.line}`, paddingTop: 14 }}>
-          <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, marginBottom: 4 }}>📋 Guest list (manual) {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guests.filter(g => g.checked_in).length}/{guests.length} in</span>}</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest list (manual) {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guests.filter(g => g.checked_in).length}/{guests.length} in</span>}</div>
+            {guests.length > 0 && <button onClick={() => {
+              const w = window.open("", "_blank", "width=800,height=940"); if (!w) return;
+              const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
+              w.document.write(`<!doctype html><html><head><title>Guest checklist — ${escapeHtml(event.title)}</title><style>
+                body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:30px}
+                .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#008069}
+                h1{font-size:20px;margin:6px 0 2px}.sub{color:#5d6f6b;font-size:12.5px;margin-bottom:18px}
+                table{width:100%;border-collapse:collapse;font-size:13px}
+                th{background:#008069;color:#fff;font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;text-align:left;padding:8px}
+                td{padding:9px 8px;border-bottom:1px solid #d8e4e0;vertical-align:middle}
+                .c{text-align:center}.bx{font-size:18px;text-align:center}.code{font-family:ui-monospace,monospace;font-weight:800}
+                .sig{border-bottom:1px solid #d8e4e0;min-width:110px}
+                .ft{margin-top:18px;font-size:11px;color:#8a9b97}
+                @media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+              </style></head><body>
+                <div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
+                <h1>Guest checklist — ${escapeHtml(event.title)}</h1>
+                <div class="sub">${escapeHtml(event.event_date || "")} · Printed ${today} · ${guests.length} guest${guests.length === 1 ? "" : "s"} · ${guests.reduce((a, g) => a + (g.quantity || 1), 0)} entries</div>
+                <table><thead><tr><th>#</th><th>In</th><th>Guest name</th><th>Qty</th><th>Phone</th><th>Code</th><th>Time in</th></tr></thead><tbody>${rowsH}</tbody></table>
+                <div class="ft">Tick "In" on arrival and note the time. Codes must match the WhatsApp ticket. — Glasswings Events · glass-wings.com</div>
+                <script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`);
+              w.document.close();
+            }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 11px", fontSize: 12 }}>🖨️ Print checklist</button>}
+          </div>
           <div style={{ fontSize: 12, color: W.soft, marginBottom: 10 }}>Free entry for non-members — add them here, share the code on WhatsApp, tick them in at the door.</div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 6 }}>
             <input value={gName} onChange={e => setGName(e.target.value)} placeholder="Guest name *" style={{ flex: "1 1 140px", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
@@ -4342,7 +4399,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • roster ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • analysis ✅</div>
       </div>
     </div>
   );
