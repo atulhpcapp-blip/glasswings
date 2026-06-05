@@ -437,6 +437,19 @@ function EventMediaEditor({ event: e, onUpdate }) {
     </div>
   );
 }
+function FiltersPanel({ categories, cities, onAddOption, onDelOption, onSetOptionImage }) {
+  return (
+    <div>
+      <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink, marginBottom: 4 }}>Event filters</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>These power the browse experience — categories appear as image tiles, cities as filter chips, on the events page and public landing.</div>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, display: "flex", flexDirection: "column", gap: 18 }}>
+        <OptionList label="Categories" kind="category" items={categories} onAdd={onAddOption} onDel={onDelOption} onSetImage={onSetOptionImage} />
+        <OptionList label="Cities" kind="city" items={cities} onAdd={onAddOption} onDel={onDelOption} />
+      </div>
+      <div style={{ fontSize: 12, color: W.soft, marginTop: 12 }}>Need another filter dimension someday — languages, age groups, vibes? This tab is built to take more lists; just ask.</div>
+    </div>
+  );
+}
 function SettlementsPanel({ isSuper }) {
   const [rows, setRows] = useState(null);
   const [draft, setDraft] = useState({});
@@ -2125,6 +2138,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["settle", "Payouts"]] : []),
+    ...(canApprove ? [["filters", "Filters"]] : []),
   ];
   const [seg, setSeg] = useState(tabs[0]?.[0] || "none");
   if (!tabs.length) return <div><TopBar title="Staff" /><Center>You don't have any staff tools enabled yet.</Center></div>;
@@ -2139,6 +2153,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
       </div>
       {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
         : seg === "dash" ? <Dashboard />
+        : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} />
         : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
         : seg === "events" ? <AdminEvents canApprove={canApprove} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
@@ -3046,7 +3061,10 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
   );
 }
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove }) {
-  const [creating, setCreating] = useState(false), [manage, setManage] = useState(null), [taxOpen, setTaxOpen] = useState(false);
+  const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
+  const [view, setView] = useState("upcoming");
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const visEvents = events.filter(e => view === "past" ? (e.event_at && e.event_at < todayISO) : (!e.event_at || e.event_at >= todayISO));
   const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
@@ -3084,18 +3102,6 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
     <div style={{ padding: 14 }}>
       {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
       {checkIn && <CheckInSheet event={checkIn} onClose={() => setCheckIn(null)} />}
-      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
-        <div onClick={() => setTaxOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
-          <span style={{ fontWeight: 700, color: W.ink }}>Categories &amp; cities</span>
-          <span style={{ color: W.soft, fontSize: 13 }}>{taxOpen ? "Hide ▲" : "Manage ▼"}</span>
-        </div>
-        {taxOpen && (
-          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 16 }}>
-            <OptionList label="Categories" kind="category" items={categories} onAdd={onAddOption} onDel={onDelOption} onSetImage={onSetOptionImage} />
-            <OptionList label="Cities" kind="city" items={cities} onAdd={onAddOption} onDel={onDelOption} />
-          </div>
-        )}
-      </div>
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New ticketed event</div>
@@ -3173,8 +3179,15 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
       ) : (
         <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 }}><Plus size={18} />Create ticketed event</button>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {events.map(e => (
+      {!creating && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          {[["upcoming", "Upcoming"], ["past", "Past"]].map(([v, l]) => (
+            <button key={v} onClick={() => setView(v)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${view === v ? W.teal : W.line}`, background: view === v ? W.teal : "#fff", color: view === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>{l}</button>
+          ))}
+        </div>
+      )}
+      {!creating && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {visEvents.map(e => (
           <div key={e.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
@@ -3229,8 +3242,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
             )}
           </div>
         ))}
-        {events.length === 0 && <Center>No events yet.</Center>}
-      </div>
+        {visEvents.length === 0 && <Center>{view === "past" ? "No past events." : "No upcoming events — create one!"}</Center>}
+      </div>}
     </div>
   );
 }
@@ -3790,7 +3803,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • approval ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • tabs ✅</div>
       </div>
     </div>
   );
