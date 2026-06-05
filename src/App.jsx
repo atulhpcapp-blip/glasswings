@@ -370,6 +370,7 @@ function Auth({ initialMode = "login", onClose }) {
         try {
           const buying = localStorage.getItem("gw_buy");
           if (buying && data?.session?.user) await supabase.from("profiles").update({ full_name: name, gender, profile_completed: true }).eq("id", data.session.user.id);
+          if (data?.session?.user) { try { localStorage.setItem("gw_open_explore", "1"); } catch {} }
         } catch {}
         if (!data?.session) setNote("Account created! Please log in to continue.");
       }
@@ -1382,6 +1383,7 @@ function ProfileGate({ user, profile, reload }) {
     const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city });
     await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
+    try { localStorage.setItem("gw_open_explore", "1"); } catch {}
     setBusy(false);
     if (e1 || e2) return setErr((e1 || e2).message);
     reload();
@@ -1454,7 +1456,10 @@ function Main({ user }) {
   const openEvent = (id) => { setOpen(null); setTab("events"); setEventPage(id); };
   useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setEventPage(ev); } } catch {} }, []);
   useEffect(() => { loadRazorpay(); }, []);
-  const [tab, setTab] = useState("chats");
+  const [tab, setTab] = useState(() => {
+    try { if (localStorage.getItem("gw_open_explore") === "1") { localStorage.removeItem("gw_open_explore"); return "explore"; } } catch {}
+    return "chats";
+  });
   const [open, setOpen] = useState(null); // { id, type }
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
@@ -4753,6 +4758,7 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
     const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city });
     if (phone) await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name.trim(), gender, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
+    try { localStorage.setItem("gw_open_explore", "1"); } catch {}
     setBusy(false);
     if (e1 || e2) return setErr((e1 || e2).message);
     reload(); onClose();
@@ -4868,7 +4874,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ogshare ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • newuser-explore ✅</div>
       </div>
     </div>
   );
