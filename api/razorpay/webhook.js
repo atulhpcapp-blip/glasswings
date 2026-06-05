@@ -52,13 +52,18 @@ export default async function handler(req, res) {
         .select().maybeSingle();
       if (claimed) {
         if (claimed.purpose === "ticket" && claimed.event_id) {
-          const { error: insErr } = await sb.from("event_tickets").insert({
-            event_id: claimed.event_id, user_id: claimed.user_id,
-            ticket_type_id: claimed.ticket_type_id, quantity: claimed.quantity || 1,
-            addons: claimed.addons || [], referrer_id: claimed.referrer_id || null,
-            razorpay_order_id: orderId,
-          });
-          if (insErr && insErr.code !== "23505") throw insErr;
+          const lines = (Array.isArray(claimed.items) && claimed.items.length)
+            ? claimed.items
+            : [{ ticket_type_id: claimed.ticket_type_id, quantity: claimed.quantity || 1 }];
+          for (let li = 0; li < lines.length; li++) {
+            const { error: insErr } = await sb.from("event_tickets").insert({
+              event_id: claimed.event_id, user_id: claimed.user_id,
+              ticket_type_id: lines[li].ticket_type_id || null, quantity: lines[li].quantity || 1,
+              addons: li === 0 ? (claimed.addons || []) : [], referrer_id: claimed.referrer_id || null,
+              razorpay_order_id: orderId,
+            });
+            if (insErr && insErr.code !== "23505") throw insErr;
+          }
         } else if (claimed.purpose === "room" && claimed.room_id) {
           const { data: existing } = await sb.from("room_subscriptions").select("id")
             .eq("room_id", claimed.room_id).eq("user_id", claimed.user_id).maybeSingle();
