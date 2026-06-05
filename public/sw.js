@@ -1,6 +1,11 @@
-/* Glasswings service worker — handles background push notifications */
+/* Glasswings service worker — push notifications + installability (v2) */
 self.addEventListener("install", (e) => { self.skipWaiting(); });
 self.addEventListener("activate", (e) => { e.waitUntil(self.clients.claim()); });
+
+/* A fetch handler is required for Chrome to treat this as an installable PWA
+   (without it, Android only offers "Add shortcut" → generic letter icon).
+   Pass-through: we don't intercept, the browser fetches normally. */
+self.addEventListener("fetch", (event) => { return; });
 
 self.addEventListener("push", (event) => {
   let data = {};
