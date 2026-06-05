@@ -3342,6 +3342,41 @@ function TimeCapsule({ event: e, profile }) {
     </div>
   );
 }
+function EventMembersSheet({ event, onClose }) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState("");
+  const load = () => supabase.rpc("event_member_list", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
+  useEffect(() => { load(); }, [event.id]);
+  const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
+  const withdraw = (m) => {
+    if (!window.confirm(`Withdraw ${m.full_name || "this member"}'s ticket${m.qty > 1 ? "s" : ""}? They'll be removed from this event.`)) return;
+    supabase.rpc("withdraw_ticket", { p_event: event.id, p_user: m.user_id }).then(({ error }) => error ? alert(error.message) : load());
+  };
+  const totQty = (rows || []).reduce((a, r) => a + (r.qty || 0), 0);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: "24px 12px" }}>
+      <div onClick={e2 => e2.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 560, width: "100%", padding: "20px 20px 26px", margin: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, minWidth: 0 }}>👥 Members · {event.title}</div>
+          <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} member${rows.length === 1 ? "" : "s"} · ${totQty} ticket${totQty === 1 ? "" : "s"} · ${rows.filter(r => r.checked_in).length} checked in`}</div>
+        {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
+        {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
+          <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
+            <PersonAvatar url={m.avatar_url} name={m.full_name} size={40} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: W.ink, fontSize: 14.5 }}>{m.full_name || "—"} {m.checked_in && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>✓ IN</span>}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{m.types || "Standard"} ×{m.qty}{m.phone ? ` · ${m.phone}` : ""}</div>
+            </div>
+            {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" title="WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12, textDecoration: "none" }}><MessageCircle size={13} /></a>}
+            <button onClick={() => withdraw(m)} title="Withdraw ticket" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 function CheckInSheet({ event, onClose }) {
   const [list, setList] = useState(null);
   const [err, setErr] = useState("");
@@ -3510,6 +3545,7 @@ function PerkPicker({ kind, label, color, value, onChange, library, onAddPerk, o
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
+  const [membersFor, setMembersFor] = useState(null);
   const todayISO = new Date().toISOString().slice(0, 10);
   const visEvents = events.filter(e => view === "past" ? (e.event_at && e.event_at < todayISO) : (!e.event_at || e.event_at >= todayISO));
   const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
@@ -3549,6 +3585,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
     <div style={{ padding: 14 }}>
       {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
       {checkIn && <CheckInSheet event={checkIn} onClose={() => setCheckIn(null)} />}
+      {membersFor && <EventMembersSheet event={membersFor} onClose={() => setMembersFor(null)} />}
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New ticketed event</div>
@@ -3668,6 +3705,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button onClick={() => onBroadcastEvent(e)} title="Post to all group chats" style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />Post</button>
+              <button onClick={() => setMembersFor(e)} title="Who's coming — list, contact, withdraw" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Members</button>
               <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Check-in</button>
               <button onClick={() => setSendFor(e)} title="Message members" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Send size={14} />Notify</button>
             </div>
@@ -4304,7 +4342,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • guestlist ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • roster ✅</div>
       </div>
     </div>
   );
