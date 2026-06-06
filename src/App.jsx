@@ -1633,9 +1633,11 @@ function Main({ user }) {
     }
   }, [events]);
   const grantRoom = async (userId, roomId) => {
+    const { data: ex } = await supabase.from("room_subscriptions").select("id").eq("room_id", roomId).eq("user_id", userId).maybeSingle();
+    if (ex) return setNotice("⚠️ Member is already in this room.");
     const { error } = await supabase.rpc("admin_grant_room", { p_user: userId, p_room: roomId });
-    if (error) return setNotice(error.message);
-    setNotice("Member added to the room.");
+    if (error) return setNotice(/duplicate|unique/i.test(error.message) ? "⚠️ Member is already in this room." : error.message);
+    setNotice("Member added to the room ✅");
     await load();
   };
   const savePerm = async (roleName, patch) => {
@@ -4992,7 +4994,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • support ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • norepeat ✅</div>
       </div>
     </div>
   );
