@@ -2148,8 +2148,10 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
   const wave = async (node) => {
     try {
       const first = (node.name || "").split(" ")[0];
-      const { error } = await supabase.from("messages").insert({ group_type: "dm", group_id: node.id, sender_id: profile.id, body: `👋 Hi${first ? " " + first : ""}! We've crossed paths at ${r.name} meetups — I'm ${profile.full_name}. Say hi back!` });
-      onNotice(error ? "Couldn't send the wave right now." : `Wave sent to ${node.name} 👋 — check Chats for their reply.`);
+      const { data: tid, error: te } = await supabase.rpc("get_dm_thread", { p_other: node.id });
+      if (te) return onNotice("Could not start the chat right now.");
+      const { error } = await supabase.from("messages").insert({ group_type: "p2p", group_id: tid, sender_id: profile.id, body: `👋 Hi${first ? " " + first : ""}! We've crossed paths at ${r.name} meetups — I'm ${profile.full_name}. Say hi back!` });
+      onNotice(error ? "Couldn't send the wave right now." : `Wave sent to ${node.name} 👋 — your chat is in the Chats tab.`);
     } catch { onNotice("Couldn't send the wave right now."); }
   };
   const tabBtn = (v, l) => <button key={v} onClick={() => v === "chat" ? (isMember ? onOpenChat() : onNotice("Join the room to enter the chat.")) : setTab(v)} style={{ flex: 1, padding: "11px 0", border: "none", background: "transparent", borderBottom: `2.5px solid ${tab === v ? W.teal : "transparent"}`, color: tab === v ? W.teal : W.soft, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{l}</button>;
@@ -2309,6 +2311,10 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
   }, [room.id, groupType]);
   const dot = <span style={{ position: "absolute", right: 0, bottom: 0, width: 13, height: 13, borderRadius: "50%", background: "#22C55E", border: "2.5px solid #fff" }} />;
   const [staffSet, setStaffSet] = useState(() => new Set());
+  const [connSet, setConnSet] = useState(() => new Set());
+  useEffect(() => {
+    supabase.rpc("my_connections").then(({ data }) => setConnSet(new Set((data || []).map(r2 => (r2 && typeof r2 === "object") ? Object.values(r2)[0] : r2))));
+  }, []);
   useEffect(() => {
     const ids = (rows || []).map(m => m.user_id);
     if (!ids.length) return;
@@ -2322,7 +2328,8 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
   }, [rows]);
   const suffix = groupType === "event" ? "at this event" : "in room";
   const Row = m => {
-    const tappable = !!onOpenDM && m.user_id !== viewerId && (canDM || staffSet.has(m.user_id));
+    const isConn = connSet.has(m.user_id);
+    const tappable = !!onOpenDM && m.user_id !== viewerId && (canDM || staffSet.has(m.user_id) || isConn);
     return (
     <div key={m.user_id} onClick={tappable ? () => { onOpenDM(m.user_id, m.full_name || "Member"); onClose && onClose(); } : undefined}
       style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", cursor: tappable ? "pointer" : "default" }}>
@@ -2334,7 +2341,7 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, color: W.ink, fontSize: 15 }}>{m.full_name || "Member"} {staffSet.has(m.user_id) && <span style={{ fontSize: 10.5, background: "#E7F6EF", color: W.teal, fontWeight: 800, padding: "2px 7px", borderRadius: 7, verticalAlign: "middle" }}>👑 TEAM</span>}</div>
-        {tappable && <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>Tap to message</div>}
+        {tappable && <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>{(!canDM && !staffSet.has(m.user_id) && isConn) ? "⭐ Crossed paths · tap to message" : "Tap to message"}</div>}
       </div>
       {tappable && <MessageCircle size={18} style={{ color: W.teal, flexShrink: 0 }} />}
     </div>
@@ -2428,6 +2435,19 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   const addQR = async () => { const t = newQR.trim(); if (!t) return; const { data, error } = await supabase.from("quick_replies").insert({ owner_id: user.id, text: t }).select().single(); if (!error) { setQrs(p => [...p, data]); setNewQR(""); } };
   const delQR = async (id) => { await supabase.from("quick_replies").delete().eq("id", id); setQrs(p => p.filter(q => q.id !== id)); };
   const savePin = async () => { await onUpdatePinned(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
+  const [otherRead, setOtherRead] = useState(null);
+  useEffect(() => {
+    if (groupType !== "p2p" || msgs === null) return;
+    supabase.rpc("mark_dm_read", { p_thread: room.id });
+  }, [groupType, room.id, msgs ? msgs.length : 0]);
+  useEffect(() => {
+    if (groupType !== "p2p") return;
+    const loadReads = () => supabase.from("dm_reads").select("user_id, last_read_at").eq("thread_id", room.id)
+      .then(({ data }) => { const o = (data || []).find(r2 => r2.user_id !== user.id); setOtherRead(o ? o.last_read_at : null); });
+    loadReads();
+    const iv = setInterval(loadReads, 10000);
+    return () => clearInterval(iv);
+  }, [groupType, room.id]);
 
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
@@ -2484,7 +2504,12 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
                   {m.media_url && m.media_type === "image" && <img src={m.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block", marginBottom: m.body ? 4 : 0 }} />}
                   {m.media_url && m.media_type === "file" && <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: W.ink, background: "#F0F2F5", borderRadius: 8, padding: "8px 10px", marginBottom: m.body ? 4 : 0 }}><Paperclip size={16} color={W.teal} /><span style={{ fontSize: 13.5, wordBreak: "break-all" }}>{m.file_name || "file"}</span></a>}
                   {m.body && <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35 }}>{m.body}</div>}
-                  <div style={{ fontSize: 11, color: W.soft, textAlign: "right", marginTop: 2 }}>{fmtTime(m.created_at)}</div>
+                  <div style={{ fontSize: 11, color: W.soft, textAlign: "right", marginTop: 2, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                    {fmtTime(m.created_at)}
+                    {mine && groupType === "p2p" && (
+                      <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: -2.5, color: (otherRead && m.created_at <= otherRead) ? "#34B7F1" : "#9aa7a3" }}>{(otherRead && m.created_at <= otherRead) ? "✓✓" : "✓"}</span>
+                    )}
+                  </div>
                 </div>
                 {mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
               </div>
@@ -5081,7 +5106,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • p2p ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticks ✅</div>
       </div>
     </div>
   );
