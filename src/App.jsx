@@ -1494,7 +1494,7 @@ function Main({ user }) {
   }, [user, open]);
   useEffect(() => {
     if (!user) return;
-    const ping = () => { supabase.rpc("touch_presence"); };
+    const ping = () => { supabase.rpc("touch_presence").then(() => { }); };
     ping();
     const iv = setInterval(() => { if (document.visibilityState === "visible") ping(); }, 60000);
     const onVis = () => { if (document.visibilityState === "visible") ping(); };
@@ -2620,7 +2620,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   }, [groupType, room.otherId]);
   useEffect(() => {
     if (groupType !== "p2p" || msgs === null) return;
-    supabase.rpc("mark_dm_read", { p_thread: room.id });
+    supabase.rpc("mark_dm_read", { p_thread: room.id }).then(() => { });
   }, [groupType, room.id, msgs ? msgs.length : 0]);
   useEffect(() => {
     if (groupType !== "p2p") return;
@@ -5303,7 +5303,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • noembed ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pulse ✅</div>
       </div>
     </div>
   );
