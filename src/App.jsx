@@ -2979,7 +2979,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} />
+      {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
@@ -3198,7 +3198,30 @@ function AdminBroadcast({ events, onBroadcast, onBroadcastEvent, onSendDM, onSen
     </div>
   );
 }
-function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete }) {
+function RoomPriceEditor({ room, onUpdate }) {
+  const [v, setV] = useState(String(room.price_monthly ?? 0));
+  const [saving, setSaving] = useState(false);
+  const dirty = String(room.price_monthly ?? 0) !== v;
+  const save = async () => {
+    setSaving(true);
+    await onUpdate(room.id, { price_monthly: Math.max(0, Number(v) || 0) });
+    setSaving(false);
+  };
+  return (
+    <div>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Monthly subscription (₹) — superadmin</label>
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <input value={v} onChange={e => setV(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="0 = free"
+          style={{ width: 110, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", fontWeight: 800 }} />
+        <button onClick={save} disabled={!dirty || saving} style={{ ...btn(dirty ? W.teal : "#ccd9d5", "#fff"), padding: "9px 16px", opacity: saving ? .6 : 1 }}>{saving ? "…" : "Save"}</button>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 5 }}>
+        {Number(v) === 0 ? "₹0 makes the room free to join for everyone." : "Applies to NEW subscribers (a fresh Razorpay plan is created automatically). Existing members keep billing at the price they signed up with until they cancel."}
+      </div>
+    </div>
+  );
+}
+function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isSuper }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [f, setF] = useState({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "" });
   const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "" });
@@ -3249,6 +3272,7 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete }) {
             {manage === r.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
                 <RoomName room={r} onUpdate={onUpdate} />
+                {isSuper && <RoomPriceEditor room={r} onUpdate={onUpdate} />}
                 <RoomPhoto room={r} onUpdate={onUpdate} />
                 <PinEditor room={r} onUpdate={onUpdate} />
                 <div>
@@ -4874,7 +4898,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • dimfix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • roomprice ✅</div>
       </div>
     </div>
   );
