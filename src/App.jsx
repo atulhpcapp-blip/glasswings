@@ -1470,12 +1470,12 @@ function Main({ user }) {
       const others = [...new Set((ths || []).map(t => (t.a === user.id ? t.b : t.a)))];
       let profs = {};
       if (others.length) {
-        const { data: ps } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", others);
+        const { data: ps } = await supabase.from("profiles").select("id, full_name, avatar_url, last_seen").in("id", others);
         (ps || []).forEach(pr => { profs[pr.id] = pr; });
       }
       if (live) setP2pThreads((ths || []).map(t => {
         const o = t.a === user.id ? t.b : t.a;
-        return { id: t.id, other: o, name: profs[o]?.full_name || "Member", avatar: profs[o]?.avatar_url || null };
+        return { id: t.id, other: o, name: profs[o]?.full_name || "Member", avatar: profs[o]?.avatar_url || null, seen: profs[o]?.last_seen || null };
       }));
     })();
     return () => { live = false; };
@@ -1839,7 +1839,7 @@ function Main({ user }) {
       chatEl = <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
     } else if (open.type === "p2p") {
       const t = p2pThreads.find(x => x.id === open.id);
-      chatEl = <RoomChat room={{ id: open.id, name: open.title || t?.name || "Member", emoji: "👤", logo_url: t?.avatar || null, pinned: "" }} groupType="p2p" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent}
+      chatEl = <RoomChat room={{ id: open.id, name: open.title || t?.name || "Member", emoji: "👤", logo_url: t?.avatar || null, pinned: "", otherId: t?.other || null, otherSeen: t?.seen || null }} groupType="p2p" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent}
         onDeleteThread={async () => {
           if (!window.confirm("Delete this chat? It disappears for both of you.")) return;
           const { error } = await supabase.rpc("delete_dm_thread", { p_thread: open.id });
@@ -1858,7 +1858,7 @@ function Main({ user }) {
 
   const myChats = [
     [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Message the Glasswings team 💚" }][0],
-    ...p2pThreads.map(t => ({ id: t.id, type: "p2p", name: t.name, emoji: "👤", logo_url: t.avatar, sub: "Direct chat" })),
+    ...p2pThreads.map(t => ({ id: t.id, type: "p2p", name: t.name, emoji: "👤", logo_url: t.avatar, sub: lastSeenStr(t.seen) || "Direct chat" })),
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
     ...events.filter(e => {
       if (!canAccessEvent(e)) return false;
@@ -2312,13 +2312,17 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
   const dot = <span style={{ position: "absolute", right: 0, bottom: 0, width: 13, height: 13, borderRadius: "50%", background: "#22C55E", border: "2.5px solid #fff" }} />;
   const [staffSet, setStaffSet] = useState(() => new Set());
   const [connSet, setConnSet] = useState(() => new Set());
+  const [seenMap, setSeenMap] = useState({});
   useEffect(() => {
     supabase.rpc("my_connections").then(({ data }) => setConnSet(new Set((data || []).map(r2 => (r2 && typeof r2 === "object") ? Object.values(r2)[0] : r2))));
   }, []);
   useEffect(() => {
     const ids = (rows || []).map(m => m.user_id);
     if (!ids.length) return;
-    supabase.from("profiles").select("id, roles, role").in("id", ids).then(({ data }) => {
+    supabase.from("profiles").select("id, roles, role, last_seen").in("id", ids).then(({ data }) => {
+      const sm = {};
+      (data || []).forEach(pr => { sm[pr.id] = pr.last_seen || null; });
+      setSeenMap(sm);
       const st = new Set();
       (data || []).forEach(pr => {
         if (["superadmin", "admin", "subadmin"].includes(pr.role) || (pr.roles || []).some(r => ["superadmin", "admin", "subadmin"].includes(r))) st.add(pr.id);
@@ -2341,7 +2345,9 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, color: W.ink, fontSize: 15 }}>{m.full_name || "Member"} {staffSet.has(m.user_id) && <span style={{ fontSize: 10.5, background: "#E7F6EF", color: W.teal, fontWeight: 800, padding: "2px 7px", borderRadius: 7, verticalAlign: "middle" }}>👑 TEAM</span>}</div>
-        {tappable && <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>{(!canDM && !staffSet.has(m.user_id) && isConn) ? "⭐ Crossed paths · tap to message" : "Tap to message"}</div>}
+        <div style={{ fontSize: 11.5, color: online.has(m.user_id) ? "#16A34A" : W.soft, fontWeight: online.has(m.user_id) ? 800 : 500 }}>
+          {online.has(m.user_id) ? "online" : (lastSeenStr(seenMap[m.user_id]) || " ")}{tappable && !canDM && !staffSet.has(m.user_id) && isConn ? " · ⭐ crossed paths" : ""}
+        </div>
       </div>
       {tappable && <MessageCircle size={18} style={{ color: W.teal, flexShrink: 0 }} />}
     </div>
@@ -2436,6 +2442,15 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   const delQR = async (id) => { await supabase.from("quick_replies").delete().eq("id", id); setQrs(p => p.filter(q => q.id !== id)); };
   const savePin = async () => { await onUpdatePinned(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
   const [otherRead, setOtherRead] = useState(null);
+  const [otherSeen, setOtherSeen] = useState(room.otherSeen || null);
+  useEffect(() => {
+    if (groupType !== "p2p" || !room.otherId) return;
+    const loadSeen = () => supabase.from("profiles").select("last_seen").eq("id", room.otherId).maybeSingle()
+      .then(({ data }) => setOtherSeen(data?.last_seen || null));
+    loadSeen();
+    const iv = setInterval(loadSeen, 30000);
+    return () => clearInterval(iv);
+  }, [groupType, room.otherId]);
   useEffect(() => {
     if (groupType !== "p2p" || msgs === null) return;
     supabase.rpc("mark_dm_read", { p_thread: room.id });
@@ -2458,7 +2473,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           <Avatar room={room} size={38} />
           <div onClick={() => { if (groupType !== "dm" && groupType !== "p2p") setShowMembers(true); }} style={{ flex: 1, minWidth: 0, cursor: (groupType !== "dm" && groupType !== "p2p") ? "pointer" : "default" }}>
             <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
-            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Glasswings team · we reply here" : groupType === "p2p" ? "Direct chat" : `${memberCount} members · tap for list`}</div>
+            <div style={{ fontSize: 12, opacity: .85, fontWeight: (groupType === "p2p" && lastSeenStr(otherSeen) === "online") ? 700 : 400 }}>{groupType === "dm" ? "Glasswings team · we reply here" : groupType === "p2p" ? (lastSeenStr(otherSeen) || "Direct chat") : `${memberCount} members · tap for list`}</div>
           </div>
           {groupType === "p2p" && onDeleteThread && <Trash2 size={19} onClick={onDeleteThread} style={{ cursor: "pointer", flexShrink: 0, opacity: .9 }} />}
         </div>
@@ -5106,7 +5121,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticks ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lastseen ✅</div>
       </div>
     </div>
   );
@@ -5125,6 +5140,19 @@ function PersonAvatar({ url, name, size }) {
 const Center = ({ children }) => <div style={{ textAlign: "center", color: W.soft, fontSize: 14, padding: "26px 0" }}>{children}</div>;
 const btn = (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 });
 function fmtTime(t) { return new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
+function lastSeenStr(ts) {
+  if (!ts) return "";
+  const d = Date.now() - new Date(ts).getTime();
+  if (d < 150000) return "online";
+  const m = Math.floor(d / 60000);
+  if (m < 60) return `last seen ${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `last seen ${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days === 1) return "last seen yesterday";
+  if (days < 7) return `last seen ${days}d ago`;
+  return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
 function Nav({ tab, setTab, isAdmin }) {
   const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
