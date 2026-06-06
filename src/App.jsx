@@ -1461,6 +1461,25 @@ function Main({ user }) {
     return "chats";
   });
   const [open, setOpen] = useState(null); // { id, type }
+  const [p2pThreads, setP2pThreads] = useState([]);
+  useEffect(() => {
+    if (!user) return;
+    let live = true;
+    (async () => {
+      const { data: ths } = await supabase.from("dm_threads").select("id, a, b, created_at").order("created_at", { ascending: false });
+      const others = [...new Set((ths || []).map(t => (t.a === user.id ? t.b : t.a)))];
+      let profs = {};
+      if (others.length) {
+        const { data: ps } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", others);
+        (ps || []).forEach(pr => { profs[pr.id] = pr; });
+      }
+      if (live) setP2pThreads((ths || []).map(t => {
+        const o = t.a === user.id ? t.b : t.a;
+        return { id: t.id, other: o, name: profs[o]?.full_name || "Member", avatar: profs[o]?.avatar_url || null };
+      }));
+    })();
+    return () => { live = false; };
+  }, [user, open]);
   useEffect(() => {
     if (!user) return;
     const ping = () => { supabase.rpc("touch_presence"); };
@@ -1818,18 +1837,28 @@ function Main({ user }) {
     if (open.type === "dm") {
       const isOwn = open.id === user.id;
       chatEl = <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
+    } else if (open.type === "p2p") {
+      const t = p2pThreads.find(x => x.id === open.id);
+      chatEl = <RoomChat room={{ id: open.id, name: open.title || t?.name || "Member", emoji: "👤", logo_url: t?.avatar || null, pinned: "" }} groupType="p2p" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent}
+        onDeleteThread={async () => {
+          if (!window.confirm("Delete this chat? It disappears for both of you.")) return;
+          const { error } = await supabase.rpc("delete_dm_thread", { p_thread: open.id });
+          if (error) return alert(error.message);
+          setOpen(null);
+        }} wide={wide} sidebar={convoLeft} />;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
-      if (r) chatEl = <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={(id, name) => setOpen({ id, type: "dm", title: name })} wide={wide} sidebar={convoLeft} />;
+      if (r) chatEl = <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     } else {
       const e = events.find(x => x.id === open.id);
-      if (e) chatEl = <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={(id, name) => setOpen({ id, type: "dm", title: name })} wide={wide} sidebar={convoLeft} />;
+      if (e) chatEl = <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     }
   }
   if (chatEl && !wide) return chatEl;
 
   const myChats = [
     [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Message the Glasswings team 💚" }][0],
+    ...p2pThreads.map(t => ({ id: t.id, type: "p2p", name: t.name, emoji: "👤", logo_url: t.avatar, sub: "Direct chat" })),
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
     ...events.filter(e => {
       if (!canAccessEvent(e)) return false;
@@ -2265,7 +2294,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
     </div>
   );
 }
-function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM }) {
+function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, viewerId }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
   const [online, setOnline] = useState(() => new Set());
@@ -2279,10 +2308,24 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM }
     return () => clearInterval(iv);
   }, [room.id, groupType]);
   const dot = <span style={{ position: "absolute", right: 0, bottom: 0, width: 13, height: 13, borderRadius: "50%", background: "#22C55E", border: "2.5px solid #fff" }} />;
+  const [staffSet, setStaffSet] = useState(() => new Set());
+  useEffect(() => {
+    const ids = (rows || []).map(m => m.user_id);
+    if (!ids.length) return;
+    supabase.from("profiles").select("id, roles, role").in("id", ids).then(({ data }) => {
+      const st = new Set();
+      (data || []).forEach(pr => {
+        if (["superadmin", "admin", "subadmin"].includes(pr.role) || (pr.roles || []).some(r => ["superadmin", "admin", "subadmin"].includes(r))) st.add(pr.id);
+      });
+      setStaffSet(st);
+    });
+  }, [rows]);
   const suffix = groupType === "event" ? "at this event" : "in room";
-  const Row = m => (
-    <div key={m.user_id} onClick={canDM ? () => { onOpenDM && onOpenDM(m.user_id, m.full_name || "Member"); onClose && onClose(); } : undefined}
-      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", cursor: canDM ? "pointer" : "default" }}>
+  const Row = m => {
+    const tappable = !!onOpenDM && m.user_id !== viewerId && (canDM || staffSet.has(m.user_id));
+    return (
+    <div key={m.user_id} onClick={tappable ? () => { onOpenDM(m.user_id, m.full_name || "Member"); onClose && onClose(); } : undefined}
+      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", cursor: tappable ? "pointer" : "default" }}>
       <div style={{ position: "relative", width: 44, height: 44, flexShrink: 0 }}>
         {m.avatar_url
           ? <img src={m.avatar_url} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover" }} />
@@ -2290,12 +2333,12 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM }
         {online.has(m.user_id) && dot}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, color: W.ink, fontSize: 15 }}>{m.full_name || "Member"}</div>
-        {canDM && <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>Tap to message</div>}
+        <div style={{ fontWeight: 600, color: W.ink, fontSize: 15 }}>{m.full_name || "Member"} {staffSet.has(m.user_id) && <span style={{ fontSize: 10.5, background: "#E7F6EF", color: W.teal, fontWeight: 800, padding: "2px 7px", borderRadius: 7, verticalAlign: "middle" }}>👑 TEAM</span>}</div>
+        {tappable && <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>Tap to message</div>}
       </div>
-      {canDM && <MessageCircle size={18} style={{ color: W.teal, flexShrink: 0 }} />}
+      {tappable && <MessageCircle size={18} style={{ color: W.teal, flexShrink: 0 }} />}
     </div>
-  );
+  ); };
   const guys = (rows || []).filter(m => m.gender === "male");
   const girls = (rows || []).filter(m => m.gender === "female");
   const other = (rows || []).filter(m => m.gender !== "male" && m.gender !== "female");
@@ -2323,7 +2366,7 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM }
     </div>
   );
 }
-function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, readOnly = false, wide = false, sidebar = 0 }) {
+function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, onDeleteThread, readOnly = false, wide = false, sidebar = 0 }) {
   const [showMembers, setShowMembers] = useState(false);
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
@@ -2388,15 +2431,16 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
-      {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} onOpenDM={onOpenDM} />}
+      {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
       <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30, ...bar }}>
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
           <Avatar room={room} size={38} />
-          <div onClick={() => { if (groupType !== "dm") setShowMembers(true); }} style={{ flex: 1, minWidth: 0, cursor: groupType !== "dm" ? "pointer" : "default" }}>
+          <div onClick={() => { if (groupType !== "dm" && groupType !== "p2p") setShowMembers(true); }} style={{ flex: 1, minWidth: 0, cursor: (groupType !== "dm" && groupType !== "p2p") ? "pointer" : "default" }}>
             <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
-            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Glasswings team · we reply here" : `${memberCount} members · tap for list`}</div>
+            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Glasswings team · we reply here" : groupType === "p2p" ? "Direct chat" : `${memberCount} members · tap for list`}</div>
           </div>
+          {groupType === "p2p" && onDeleteThread && <Trash2 size={19} onClick={onDeleteThread} style={{ cursor: "pointer", flexShrink: 0, opacity: .9 }} />}
         </div>
         {(room.pinned || isAdmin) && (
           <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "8px 14px", display: "flex", alignItems: "center", gap: 9 }}>
@@ -5037,7 +5081,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • online ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • p2p ✅</div>
       </div>
     </div>
   );
