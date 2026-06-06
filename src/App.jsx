@@ -1461,6 +1461,15 @@ function Main({ user }) {
     return "chats";
   });
   const [open, setOpen] = useState(null); // { id, type }
+  useEffect(() => {
+    if (!user) return;
+    const ping = () => { supabase.rpc("touch_presence"); };
+    ping();
+    const iv = setInterval(() => { if (document.visibilityState === "visible") ping(); }, 60000);
+    const onVis = () => { if (document.visibilityState === "visible") ping(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(iv); document.removeEventListener("visibilitychange", onVis); };
+  }, [user]);
   const [ready, setReady] = useState(false);
   const [notice, setNotice] = useState("");
 
@@ -1811,10 +1820,10 @@ function Main({ user }) {
       chatEl = <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
-      if (r) chatEl = <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
+      if (r) chatEl = <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={(id, name) => setOpen({ id, type: "dm", title: name })} wide={wide} sidebar={convoLeft} />;
     } else {
       const e = events.find(x => x.id === open.id);
-      if (e) chatEl = <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
+      if (e) chatEl = <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={(id, name) => setOpen({ id, type: "dm", title: name })} wide={wide} sidebar={convoLeft} />;
     }
   }
   if (chatEl && !wide) return chatEl;
@@ -2256,20 +2265,35 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
     </div>
   );
 }
-function RoomMembersSheet({ room, groupType = "room", onClose }) {
+function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
+  const [online, setOnline] = useState(() => new Set());
   useEffect(() => {
     const call = groupType === "event" ? supabase.rpc("event_members", { p_event: room.id }) : supabase.rpc("room_members_admin", { p_room: room.id });
     call.then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
+    const loadOnline = () => supabase.from("profiles").select("id").gt("last_seen", new Date(Date.now() - 150000).toISOString())
+      .then(({ data }) => setOnline(new Set((data || []).map(r => r.id))));
+    loadOnline();
+    const iv = setInterval(loadOnline, 45000);
+    return () => clearInterval(iv);
   }, [room.id, groupType]);
+  const dot = <span style={{ position: "absolute", right: 0, bottom: 0, width: 13, height: 13, borderRadius: "50%", background: "#22C55E", border: "2.5px solid #fff" }} />;
   const suffix = groupType === "event" ? "at this event" : "in room";
   const Row = m => (
-    <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0" }}>
-      {m.avatar_url
-        ? <img src={m.avatar_url} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-        : <div style={{ width: 44, height: 44, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 17, flexShrink: 0 }}>{(m.full_name || "?").trim().charAt(0).toUpperCase()}</div>}
-      <div style={{ fontWeight: 600, color: W.ink, fontSize: 15 }}>{m.full_name || "Member"}</div>
+    <div key={m.user_id} onClick={canDM ? () => { onOpenDM && onOpenDM(m.user_id, m.full_name || "Member"); onClose && onClose(); } : undefined}
+      style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", cursor: canDM ? "pointer" : "default" }}>
+      <div style={{ position: "relative", width: 44, height: 44, flexShrink: 0 }}>
+        {m.avatar_url
+          ? <img src={m.avatar_url} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover" }} />
+          : <div style={{ width: 44, height: 44, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 17 }}>{(m.full_name || "?").trim().charAt(0).toUpperCase()}</div>}
+        {online.has(m.user_id) && dot}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, color: W.ink, fontSize: 15 }}>{m.full_name || "Member"}</div>
+        {canDM && <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>Tap to message</div>}
+      </div>
+      {canDM && <MessageCircle size={18} style={{ color: W.teal, flexShrink: 0 }} />}
     </div>
   );
   const guys = (rows || []).filter(m => m.gender === "male");
@@ -2299,7 +2323,7 @@ function RoomMembersSheet({ room, groupType = "room", onClose }) {
     </div>
   );
 }
-function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, readOnly = false, wide = false, sidebar = 0 }) {
+function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, readOnly = false, wide = false, sidebar = 0 }) {
   const [showMembers, setShowMembers] = useState(false);
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
@@ -2364,7 +2388,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
-      {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} />}
+      {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} onOpenDM={onOpenDM} />}
       <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30, ...bar }}>
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
@@ -5013,7 +5037,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • guestmail ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • online ✅</div>
       </div>
     </div>
   );
