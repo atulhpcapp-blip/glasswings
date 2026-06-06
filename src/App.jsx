@@ -808,11 +808,11 @@ function CitySheet({ cities, value, onPick, onClose }) {
     </div>
   );
 }
-function FilterSheet({ events, dims, getMin, value, onApply, onClose }) {
+function FilterSheet({ events, dims, opts, getMin, value, onApply, onClose }) {
   const [sel, setSel] = useState(() => ({ date: [...value.date], category: [...value.category], city: [...value.city], price: [...value.price], venue: [...value.venue], tags: JSON.parse(JSON.stringify(value.tags || {})) }));
   const [active, setActive] = useState(0);
   const distinct = key => { const m = {}; events.forEach(e => { const v = e[key]; if (v) m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
-  const tagDistinct = name => { const m = {}; events.forEach(e => { const v = (e.tags || {})[name]; if (v) m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const tagDistinct = name => { const m = {}; (opts || []).filter(o => o.kind === name).forEach(o => { m[o.name] = 0; }); events.forEach(e => { const v = (e.tags || {})[name]; if (v) m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
   const dateOpts = (() => { const b = dateBucketSet(); return DATE_LABELS.map(l => [l, events.filter(e => b[l].has(e.event_at)).length]).filter(([, n]) => n > 0); })();
   const priceOpts = PRICE_BANDS.map(bnd => [bnd, events.filter(e => priceBand(getMin(e)) === bnd).length]).filter(([, n]) => n > 0);
   const toggleArr = (key, v) => setSel(s => ({ ...s, [key]: s[key].includes(v) ? s[key].filter(x => x !== v) : [...s[key], v] }));
@@ -1280,7 +1280,7 @@ function PublicLanding() {
           <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15 }}>Join the community — it's free</button>
         </div>
       </div>
-      {fsheet && <FilterSheet events={events} dims={dimsL} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
+      {fsheet && <FilterSheet events={events} dims={dimsL} opts={optsAllL} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
       {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
       {citySheet && <CitySheet cities={cityList} value={flt.city.length === 1 ? flt.city[0] : "All cities"} onPick={c => { setFlt(f => ({ ...f, city: c === "All cities" ? [] : [c] })); setCitySheet(false); }} onClose={() => setCitySheet(false)} />}
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
@@ -2018,7 +2018,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
         {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events here yet.</Center></div>}
         {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
       </div>
-      {fsheet && <FilterSheet events={events} dims={dims} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
+      {fsheet && <FilterSheet events={events} dims={dims} opts={optsAll} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
       {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
       {citySheet && <CitySheet cities={cityNames} value={flt.city.length === 1 ? flt.city[0] : "All cities"} onPick={c => { setFlt(f => ({ ...f, city: c === "All cities" ? [] : [c] })); setCitySheet(false); }} onClose={() => setCitySheet(false)} />}
     </div>
@@ -4874,7 +4874,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • newuser-explore ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • dimfix ✅</div>
       </div>
     </div>
   );
