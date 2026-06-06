@@ -1818,7 +1818,7 @@ function Main({ user }) {
   if (chatEl && !wide) return chatEl;
 
   const myChats = [
-    ...(hasDM ? [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Messages from the organiser" }] : []),
+    [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Message the Glasswings team 💚" }][0],
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
     ...events.filter(canAccessEvent).map(e => ({ id: e.id, type: "event", name: e.title, emoji: e.emoji, logo_url: null, sub: e.event_date || ((eventCounts[e.id] || 0) + " going") })),
   ];
@@ -2364,7 +2364,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           <Avatar room={room} size={38} />
           <div onClick={() => { if (groupType !== "dm") setShowMembers(true); }} style={{ flex: 1, minWidth: 0, cursor: groupType !== "dm" ? "pointer" : "default" }}>
             <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
-            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Messages from the organiser" : `${memberCount} members · tap for list`}</div>
+            <div style={{ fontSize: 12, opacity: .85 }}>{groupType === "dm" ? "Glasswings team · we reply here" : `${memberCount} members · tap for list`}</div>
           </div>
         </div>
         {(room.pinned || isAdmin) && (
@@ -4992,7 +4992,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • resend ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • support ✅</div>
       </div>
     </div>
   );
