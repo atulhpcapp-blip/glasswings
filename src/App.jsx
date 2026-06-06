@@ -3587,6 +3587,14 @@ function MyTicket({ event: e, profile, rows, onClose }) {
         <div style={{ display: "flex", gap: 10 }}>
         <button onClick={print} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}><Printer size={16} />Print</button>
         <button onClick={shareWhatsApp} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}><Share2 size={16} />{busy ? "Preparing…" : "WhatsApp"}</button>
+        <button onClick={async () => {
+          try {
+            const token = (await supabase.auth.getSession()).data.session?.access_token;
+            const r = await fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, event_id: e.id }) });
+            const out = await r.json();
+            alert(r.ok ? (out.skipped ? "Email not sent: " + out.skipped : "Ticket email sent ✅ — check your inbox (and spam).") : (out.error || "Could not send."));
+          } catch (e2) { alert("Could not send the email."); }
+        }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>📧 Email me</button>
       </div>
       <button onClick={onClose} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 10 }}>Close</button>
     </Sheet>
@@ -3896,6 +3904,14 @@ function EventMembersSheet({ event, onClose }) {
               <div style={{ fontSize: 12, color: W.soft }}>{m.types || "Standard"} ×{m.qty}{m.phone ? ` · ${m.phone}` : ""}</div>
             </div>
             {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" title="WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12, textDecoration: "none" }}><MessageCircle size={13} /></a>}
+            <button onClick={async () => {
+              try {
+                const token = (await supabase.auth.getSession()).data.session?.access_token;
+                const r = await fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, event_id: event.id, for_user: m.user_id }) });
+                const out = await r.json();
+                alert(r.ok ? (out.skipped ? "Not sent: " + out.skipped : `Ticket email sent to ${m.full_name || "member"} ✅`) : (out.error || "Could not send."));
+              } catch (e2) { alert("Could not send the email."); }
+            }} title="Resend ticket email" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>
             <button onClick={() => withdraw(m)} title="Withdraw ticket" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
           </div>
         ))}
@@ -4976,7 +4992,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • emailmkt ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • resend ✅</div>
       </div>
     </div>
   );
