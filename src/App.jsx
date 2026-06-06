@@ -1462,6 +1462,18 @@ function Main({ user }) {
   });
   const [open, setOpen] = useState(null); // { id, type }
   const [p2pThreads, setP2pThreads] = useState([]);
+  const [stories, setStories] = useState([]);
+  const loadStories = async () => {
+    const { data } = await supabase.from("stories").select("id, event_id, user_id, media_url, created_at")
+      .gt("created_at", new Date(Date.now() - 86400000).toISOString()).order("created_at", { ascending: true });
+    setStories(data || []);
+  };
+  useEffect(() => {
+    if (!user) return;
+    loadStories();
+    const iv = setInterval(loadStories, 60000);
+    return () => clearInterval(iv);
+  }, [user]);
   useEffect(() => {
     if (!user) return;
     let live = true;
@@ -1870,7 +1882,7 @@ function Main({ user }) {
 
   const screen = (
     <>
-      {tab === "chats" && <Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} />}
+      {tab === "chats" && <><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} />}
       {tab === "events" && <Events events={events} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
@@ -2294,6 +2306,115 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
         })}
       </div>
     </div>
+  );
+}
+function agoStr(ts) {
+  const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
+}
+function StoryViewer({ list, event, meId, isStaff, onClose, onDeleted }) {
+  const [i, setI] = useState(0);
+  const [names, setNames] = useState({});
+  const cur = list[i];
+  useEffect(() => {
+    const ids = [...new Set(list.map(x => x.user_id))];
+    supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids)
+      .then(({ data }) => { const m = {}; (data || []).forEach(pr => { m[pr.id] = pr; }); setNames(m); });
+  }, [list]);
+  useEffect(() => {
+    const t = setTimeout(() => { if (i < list.length - 1) setI(i + 1); else onClose(); }, 5000);
+    return () => clearTimeout(t);
+  }, [i, list.length]);
+  if (!cur) return null;
+  const who = names[cur.user_id];
+  const del = async () => {
+    if (!window.confirm("Delete this story?")) return;
+    await supabase.from("stories").delete().eq("id", cur.id);
+    onDeleted();
+    if (list.length <= 1) onClose(); else setI(Math.max(0, i - 1));
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", gap: 4, padding: "10px 10px 0" }}>
+        {list.map((x, k) => <div key={x.id} style={{ flex: 1, height: 3, borderRadius: 2, background: k <= i ? "#2FD4A8" : "rgba(255,255,255,.3)" }} />)}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", color: "#fff" }}>
+        {who?.avatar_url ? <img src={who.avatar_url} alt="" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }} />
+          : <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#2FD4A8", color: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>{(who?.full_name || "?").charAt(0)}</div>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14.5 }}>{who?.full_name || "Member"}</div>
+          <div style={{ fontSize: 11.5, opacity: .75 }}>{(event?.emoji || "🎟️")} {event?.title} · {agoStr(cur.created_at)}</div>
+        </div>
+        {(cur.user_id === meId || isStaff) && <Trash2 size={19} onClick={del} style={{ cursor: "pointer", opacity: .9 }} />}
+        <X size={24} onClick={onClose} style={{ cursor: "pointer" }} />
+      </div>
+      <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        <img src={cur.media_url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+        <div onClick={() => (i > 0 ? setI(i - 1) : onClose())} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "35%" }} />
+        <div onClick={() => (i < list.length - 1 ? setI(i + 1) : onClose())} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "65%" }} />
+      </div>
+    </div>
+  );
+}
+function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh }) {
+  const [viewer, setViewer] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [pickFor, setPickFor] = useState(null); // file waiting for event choice
+  const now = Date.now();
+  const evMap = {}; events.forEach(e => { evMap[e.id] = e; });
+  const groups = {}; stories.forEach(st => { if (evMap[st.event_id]) (groups[st.event_id] = groups[st.event_id] || []).push(st); });
+  const ids = Object.keys(groups);
+  const eligible = events.filter(e => canAccessEvent(e) && e.event_at && Math.abs(now - new Date(e.event_at).getTime()) < 36 * 3600000);
+  if (!ids.length && !eligible.length) return null;
+  const post = async (eventId, file) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const url = await uploadPhoto(meId, file);
+      const { error } = await supabase.from("stories").insert({ event_id: eventId, user_id: meId, media_url: url });
+      if (error) throw error;
+      onRefresh();
+    } catch (e2) { alert(e2.message || "Could not post the story."); }
+    setBusy(false); setPickFor(null);
+  };
+  const Bubble = ({ onClick, ring, inner, label }) => (
+    <div onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", width: 68, flexShrink: 0 }}>
+      <div style={{ width: 58, height: 58, borderRadius: "50%", padding: 3, background: ring, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>{inner}</div>
+      </div>
+      <div style={{ fontSize: 10.5, color: W.ink, fontWeight: 600, maxWidth: 66, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+    </div>
+  );
+  return (
+    <>
+      <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "12px 14px 4px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
+        {eligible.length > 0 && (
+          <label style={{ display: "block" }}>
+            <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add story" />
+            <input type="file" accept="image/*" style={{ display: "none" }} disabled={busy}
+              onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; if (eligible.length === 1) post(eligible[0].id, f); else setPickFor(f); }} />
+          </label>
+        )}
+        {ids.map(id => {
+          const e = evMap[id];
+          const thumb = (e.banner_url && e.banner_type !== "video") ? e.banner_url : e.poster_url;
+          return <Bubble key={id} onClick={() => setViewer(id)} ring="linear-gradient(135deg,#008069,#2FD4A8)"
+            inner={thumb ? <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 24 }}>{e.emoji || "🎟️"}</span>}
+            label={e.title} />;
+        })}
+      </div>
+      {pickFor && (
+        <div onClick={() => setPickFor(null)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
+          <div onClick={ev => ev.stopPropagation()} style={{ background: "#fff", width: "100%", borderRadius: "16px 16px 0 0", padding: "16px 16px calc(20px + env(safe-area-inset-bottom))" }}>
+            <div style={{ fontWeight: 800, color: W.ink, marginBottom: 10 }}>Add to which event's story?</div>
+            {eligible.map(e => <div key={e.id} onClick={() => post(e.id, pickFor)} style={{ padding: "12px 4px", borderBottom: `1px solid ${W.line}`, fontWeight: 600, color: W.ink, cursor: "pointer" }}>{e.emoji || "🎟️"} {e.title}</div>)}
+          </div>
+        </div>
+      )}
+      {viewer && groups[viewer] && <StoryViewer list={groups[viewer]} event={evMap[viewer]} meId={meId} isStaff={isStaff} onClose={() => setViewer(null)} onDeleted={onRefresh} />}
+    </>
   );
 }
 function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, viewerId }) {
@@ -5121,7 +5242,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lastseen ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • stories ✅</div>
       </div>
     </div>
   );
