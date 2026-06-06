@@ -2538,11 +2538,17 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   useEffect(() => {
     let channel;
     (async () => {
-      const { data } = await supabase.from("messages")
-        .select("id, body, media_url, media_type, file_name, event_ref, sender_id, created_at, sender:profiles(full_name, avatar_url)")
+      const { data, error: loadErr } = await supabase.from("messages")
+        .select("id, body, media_url, media_type, file_name, event_ref, sender_id, created_at")
         .eq("group_type", groupType).eq("group_id", room.id)
         .order("created_at", { ascending: true });
-      const sm = {}; (data || []).forEach(m => { if (m.sender) sm[m.sender_id] = { name: m.sender.full_name, avatar: m.sender.avatar_url || sm[m.sender_id]?.avatar }; });
+      if (loadErr) console.error("message load", loadErr);
+      const sm = {};
+      const sids = [...new Set((data || []).map(m => m.sender_id))];
+      if (sids.length) {
+        const { data: ps } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", sids);
+        (ps || []).forEach(pr => { sm[pr.id] = { name: pr.full_name, avatar: pr.avatar_url }; });
+      }
       sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url || sm[user.id]?.avatar }; sRef.current = sm; setSenders(sm);
       setMsgs((data || []).map(m => ({ id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, event_ref: m.event_ref, sender_id: m.sender_id, created_at: m.created_at })));
       channel = supabase.channel(groupType + "-" + room.id)
@@ -5297,7 +5303,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • reactions ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • noembed ✅</div>
       </div>
     </div>
   );
