@@ -51,7 +51,8 @@ export default async function handler(req, res) {
     } else if (m.group_type === "dm") {
       if (m.sender_id === m.group_id) {
         // member replied -> notify admins
-        const { data: admins } = await sb.from("profiles").select("id").eq("role", "admin");
+        const { data: admins } = await sb.from("profiles").select("id")
+          .or("role.in.(admin,superadmin,subadmin),roles.ov.{admin,superadmin,subadmin}");
         recipientIds = (admins || []).map((r) => r.id);
         const { data: who } = await sb.from("profiles").select("full_name").eq("id", m.sender_id).single();
         title = who?.full_name || "New reply";
