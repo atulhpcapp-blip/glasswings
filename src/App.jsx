@@ -2539,7 +2539,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
     let channel;
     (async () => {
       const { data, error: loadErr } = await supabase.from("messages")
-        .select("id, body, media_url, media_type, file_name, event_ref, sender_id, created_at")
+        .select("id, body, media_url, media_type, file_name, event_ref, reply_to, sender_id, created_at")
         .eq("group_type", groupType).eq("group_id", room.id)
         .order("created_at", { ascending: true });
       if (loadErr) console.error("message load", loadErr);
@@ -2550,7 +2550,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         (ps || []).forEach(pr => { sm[pr.id] = { name: pr.full_name, avatar: pr.avatar_url }; });
       }
       sm[user.id] = { name: profile.full_name, avatar: profile.avatar_url || sm[user.id]?.avatar }; sRef.current = sm; setSenders(sm);
-      setMsgs((data || []).map(m => ({ id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, event_ref: m.event_ref, sender_id: m.sender_id, created_at: m.created_at })));
+      setMsgs((data || []).map(m => ({ id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, event_ref: m.event_ref, reply_to: m.reply_to, sender_id: m.sender_id, created_at: m.created_at })));
       channel = supabase.channel(groupType + "-" + room.id)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `group_id=eq.${room.id}` }, async (payload) => {
           const m = payload.new;
@@ -2558,7 +2558,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             const { data: p } = await supabase.from("profiles").select("full_name, avatar_url").eq("id", m.sender_id).single();
             sRef.current = { ...sRef.current, [m.sender_id]: { name: p?.full_name || "Member", avatar: p?.avatar_url } }; setSenders(sRef.current);
           }
-          setMsgs(prev => (prev && prev.some(x => x.id === m.id)) ? prev : [...(prev || []), { id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, event_ref: m.event_ref, sender_id: m.sender_id, created_at: m.created_at }]);
+          setMsgs(prev => (prev && prev.some(x => x.id === m.id)) ? prev : [...(prev || []), { id: m.id, body: m.body, media_url: m.media_url, media_type: m.media_type, file_name: m.file_name, event_ref: m.event_ref, reply_to: m.reply_to, sender_id: m.sender_id, created_at: m.created_at }]);
         }).subscribe();
     })();
     return () => { if (channel) supabase.removeChannel(channel); };
@@ -2569,7 +2569,8 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
   const send = async () => {
     const body = text.trim(); if (!body) return; setText("");
-    const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, body }).select("id, body, media_url, media_type, file_name, sender_id, created_at").single();
+    const rt = replyTo?.id || null; setReplyTo(null);
+    const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, body, reply_to: rt }).select("id, body, media_url, media_type, file_name, reply_to, sender_id, created_at").single();
     if (error) { setText(body); return; }
     setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
   };
@@ -2608,6 +2609,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
       await supabase.from("message_reactions").upsert({ message_id: mid, user_id: user.id, emoji });
     }
   };
+  const [replyTo, setReplyTo] = useState(null);
   const [otherRead, setOtherRead] = useState(null);
   const [otherSeen, setOtherSeen] = useState(room.otherSeen || null);
   useEffect(() => {
@@ -2636,8 +2638,12 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
       {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
       {tray && (
         <div onClick={() => setTray(null)} style={{ position: "fixed", inset: 0, zIndex: 95 }}>
-          <div onClick={ev => ev.stopPropagation()} style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 30, boxShadow: "0 10px 34px rgba(0,0,0,.28)", padding: "11px 15px", display: "flex", gap: 11 }}>
-            {REACTS.map(em => <span key={em} onClick={() => reactTo(tray, em)} style={{ fontSize: 27, cursor: "pointer", userSelect: "none" }}>{em}</span>)}
+          <div onClick={ev => ev.stopPropagation()} style={{ position: "fixed", bottom: 118, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 22, boxShadow: "0 10px 34px rgba(0,0,0,.28)", padding: "11px 15px", display: "flex", flexDirection: "column", gap: 9, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 11 }}>
+              {REACTS.map(em => <span key={em} onClick={() => reactTo(tray, em)} style={{ fontSize: 27, cursor: "pointer", userSelect: "none" }}>{em}</span>)}
+            </div>
+            <div onClick={() => { const mm = (msgs || []).find(x => x.id === tray); if (mm) setReplyTo(mm); setTray(null); }}
+              style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "4px 14px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>↩️ Reply</div>
           </div>
         </div>
       )}
@@ -2690,6 +2696,12 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
                 <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ maxWidth: "78%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)" }}>
                   {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 700, color: W.teal, marginBottom: 1 }}>{s.name || "Member"}</div>}
+                  {m.reply_to && (() => { const rm = (msgs || []).find(x => x.id === m.reply_to); return (
+                    <div style={{ background: "rgba(0,128,105,.07)", borderLeft: `3px solid ${W.teal}`, borderRadius: 7, padding: "4px 8px", marginBottom: 4 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: W.teal }}>{rm ? (senders[rm.sender_id]?.name || "Member") : "Message"}</div>
+                      <div style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{rm ? (rm.body || (rm.media_type === "image" ? "📷 Photo" : "📎 Attachment")) : "Original message unavailable"}</div>
+                    </div>
+                  ); })()}
                   {m.media_url && m.media_type === "image" && <img src={m.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block", marginBottom: m.body ? 4 : 0 }} />}
                   {m.media_url && m.media_type === "file" && <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: W.ink, background: "#F0F2F5", borderRadius: 8, padding: "8px 10px", marginBottom: m.body ? 4 : 0 }}><Paperclip size={16} color={W.teal} /><span style={{ fontSize: 13.5, wordBreak: "break-all" }}>{m.file_name || "file"}</span></a>}
                   {m.body && <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35 }}>{m.body}</div>}
@@ -2736,6 +2748,18 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
       {readOnly ? (
         <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "12px", textAlign: "center", color: W.soft, fontSize: 12.5, ...bar }}>📣 Announcements from Glasswings</div>
       ) : (
+      <>
+      {replyTo && (
+        <div style={{ position: "fixed", bottom: 64, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 21, padding: "0 10px" }}>
+          <div style={{ background: "#fff", borderLeft: `4px solid ${W.teal}`, borderRadius: 10, padding: "7px 11px", display: "flex", alignItems: "center", gap: 9, boxShadow: "0 -2px 10px rgba(0,0,0,.08)" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: W.teal }}>{senders[replyTo.sender_id]?.name || "Member"}</div>
+              <div style={{ fontSize: 12.5, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{replyTo.body || (replyTo.media_type === "image" ? "📷 Photo" : "📎 Attachment")}</div>
+            </div>
+            <X size={17} color={W.soft} style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => setReplyTo(null)} />
+          </div>
+        </div>
+      )}
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7, ...bar }}>
         <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px" }}>
           <Zap size={21} color={showQR ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => setShowQR(v => !v)} />
@@ -2747,6 +2771,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={e => { sendFile(e.target.files?.[0], "image"); e.target.value = ""; }} style={{ display: "none" }} />
         <input ref={fileRef} type="file" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
       </div>
+      </>
       )}
     </div>
   );
@@ -5303,7 +5328,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pulse ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • replies ✅</div>
       </div>
     </div>
   );
