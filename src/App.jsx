@@ -2314,7 +2314,7 @@ function agoStr(ts) {
   if (m < 60) return `${m}m ago`;
   return `${Math.floor(m / 60)}h ago`;
 }
-function StoryViewer({ list, event, meId, isStaff, onClose, onDeleted }) {
+function StoryViewer({ list, event, owner, meId, isStaff, onClose, onDeleted }) {
   const [i, setI] = useState(0);
   const [names, setNames] = useState({});
   const cur = list[i];
@@ -2345,7 +2345,7 @@ function StoryViewer({ list, event, meId, isStaff, onClose, onDeleted }) {
           : <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#2FD4A8", color: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>{(who?.full_name || "?").charAt(0)}</div>}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 14.5 }}>{who?.full_name || "Member"}</div>
-          <div style={{ fontSize: 11.5, opacity: .75 }}>{(event?.emoji || "🎟️")} {event?.title} · {agoStr(cur.created_at)}</div>
+          <div style={{ fontSize: 11.5, opacity: .75 }}>{event ? `${event.emoji || "🎟️"} ${event.title}` : "✨ Daily story"} · {agoStr(cur.created_at)}</div>
         </div>
         {(cur.user_id === meId || isStaff) && <Trash2 size={19} onClick={del} style={{ cursor: "pointer", opacity: .9 }} />}
         <X size={24} onClick={onClose} style={{ cursor: "pointer" }} />
@@ -2359,15 +2359,26 @@ function StoryViewer({ list, event, meId, isStaff, onClose, onDeleted }) {
   );
 }
 function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh }) {
-  const [viewer, setViewer] = useState(null);
+  const [viewer, setViewer] = useState(null); // { k: "e"|"u", id }
   const [busy, setBusy] = useState(false);
-  const [pickFor, setPickFor] = useState(null); // file waiting for event choice
+  const [pickFile, setPickFile] = useState(null);
+  const [pp, setPp] = useState({});
   const now = Date.now();
   const evMap = {}; events.forEach(e => { evMap[e.id] = e; });
-  const groups = {}; stories.forEach(st => { if (evMap[st.event_id]) (groups[st.event_id] = groups[st.event_id] || []).push(st); });
-  const ids = Object.keys(groups);
+  const evGroups = {}; const meGroups = {};
+  stories.forEach(st => {
+    if (st.event_id) { if (evMap[st.event_id]) (evGroups[st.event_id] = evGroups[st.event_id] || []).push(st); }
+    else (meGroups[st.user_id] = meGroups[st.user_id] || []).push(st);
+  });
+  const evIds = Object.keys(evGroups);
+  const meIds = Object.keys(meGroups).sort((a, b) => (a === meId ? -1 : b === meId ? 1 : 0));
+  useEffect(() => {
+    const ids = Object.keys(meGroups);
+    if (!ids.length) return;
+    supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids)
+      .then(({ data }) => { const m = {}; (data || []).forEach(x => { m[x.id] = x; }); setPp(m); });
+  }, [stories.length]);
   const eligible = events.filter(e => e.event_at && Math.abs(now - new Date(e.event_at).getTime()) < 36 * 3600000);
-  if (!ids.length && !eligible.length) return null;
   const post = async (eventId, file) => {
     if (!file) return;
     setBusy(true);
@@ -2377,7 +2388,7 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
       if (error) throw error;
       onRefresh();
     } catch (e2) { alert(e2.message || "Could not post the story."); }
-    setBusy(false); setPickFor(null);
+    setBusy(false); setPickFile(null);
   };
   const Bubble = ({ onClick, ring, inner, label }) => (
     <div onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", width: 68, flexShrink: 0 }}>
@@ -2390,30 +2401,36 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
   return (
     <>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "12px 14px 4px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
-        {eligible.length > 0 && (
-          <label style={{ display: "block" }}>
-            <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add story" />
-            <input type="file" accept="image/*" style={{ display: "none" }} disabled={busy}
-              onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; if (eligible.length === 1) post(eligible[0].id, f); else setPickFor(f); }} />
-          </label>
-        )}
-        {ids.map(id => {
+        <label style={{ display: "block" }}>
+          <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add story" />
+          <input type="file" accept="image/*" style={{ display: "none" }} disabled={busy}
+            onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; if (!eligible.length) post(null, f); else setPickFile(f); }} />
+        </label>
+        {meIds.map(uid => {
+          const w = pp[uid];
+          return <Bubble key={"u" + uid} onClick={() => setViewer({ k: "u", id: uid })} ring="linear-gradient(135deg,#7C3AED,#EC4899)"
+            inner={w?.avatar_url ? <img src={w.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 20, fontWeight: 800, color: "#7C3AED" }}>{(w?.full_name || "?").charAt(0)}</span>}
+            label={uid === meId ? "My story" : (w?.full_name || "Member").split(" ")[0]} />;
+        })}
+        {evIds.map(id => {
           const e = evMap[id];
           const thumb = (e.banner_url && e.banner_type !== "video") ? e.banner_url : e.poster_url;
-          return <Bubble key={id} onClick={() => setViewer(id)} ring="linear-gradient(135deg,#008069,#2FD4A8)"
+          return <Bubble key={"e" + id} onClick={() => setViewer({ k: "e", id })} ring="linear-gradient(135deg,#008069,#2FD4A8)"
             inner={thumb ? <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 24 }}>{e.emoji || "🎟️"}</span>}
             label={e.title} />;
         })}
       </div>
-      {pickFor && (
-        <div onClick={() => setPickFor(null)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
+      {pickFile && (
+        <div onClick={() => setPickFile(null)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
           <div onClick={ev => ev.stopPropagation()} style={{ background: "#fff", width: "100%", borderRadius: "16px 16px 0 0", padding: "16px 16px calc(20px + env(safe-area-inset-bottom))" }}>
-            <div style={{ fontWeight: 800, color: W.ink, marginBottom: 10 }}>Add to which event's story?</div>
-            {eligible.map(e => <div key={e.id} onClick={() => post(e.id, pickFor)} style={{ padding: "12px 4px", borderBottom: `1px solid ${W.line}`, fontWeight: 600, color: W.ink, cursor: "pointer" }}>{e.emoji || "🎟️"} {e.title}</div>)}
+            <div style={{ fontWeight: 800, color: W.ink, marginBottom: 10 }}>Add to…</div>
+            <div onClick={() => post(null, pickFile)} style={{ padding: "12px 4px", borderBottom: `1px solid ${W.line}`, fontWeight: 700, color: W.ink, cursor: "pointer" }}>✨ My story (daily life)</div>
+            {eligible.map(e => <div key={e.id} onClick={() => post(e.id, pickFile)} style={{ padding: "12px 4px", borderBottom: `1px solid ${W.line}`, fontWeight: 600, color: W.ink, cursor: "pointer" }}>{e.emoji || "🎟️"} {e.title}</div>)}
           </div>
         </div>
       )}
-      {viewer && groups[viewer] && <StoryViewer list={groups[viewer]} event={evMap[viewer]} meId={meId} isStaff={isStaff} onClose={() => setViewer(null)} onDeleted={onRefresh} />}
+      {viewer && viewer.k === "e" && evGroups[viewer.id] && <StoryViewer list={evGroups[viewer.id]} event={evMap[viewer.id]} meId={meId} isStaff={isStaff} onClose={() => setViewer(null)} onDeleted={onRefresh} />}
+      {viewer && viewer.k === "u" && meGroups[viewer.id] && <StoryViewer list={meGroups[viewer.id]} event={null} meId={meId} isStaff={isStaff} onClose={() => setViewer(null)} onDeleted={onRefresh} />}
     </>
   );
 }
@@ -2562,6 +2579,29 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   const addQR = async () => { const t = newQR.trim(); if (!t) return; const { data, error } = await supabase.from("quick_replies").insert({ owner_id: user.id, text: t }).select().single(); if (!error) { setQrs(p => [...p, data]); setNewQR(""); } };
   const delQR = async (id) => { await supabase.from("quick_replies").delete().eq("id", id); setQrs(p => p.filter(q => q.id !== id)); };
   const savePin = async () => { await onUpdatePinned(room.id, { pinned: pinText.trim() }); room.pinned = pinText.trim(); setEditPin(false); };
+  const REACTS = ["🦋", "🌹", "🧿", "🌙", "💃", "🔥", "😂", "❤️"];
+  const [reacts, setReacts] = useState({});
+  const [tray, setTray] = useState(null);
+  useEffect(() => {
+    if (!msgs || !msgs.length) { setReacts({}); return; }
+    const ids = msgs.map(mm => mm.id);
+    const loadR = () => supabase.from("message_reactions").select("message_id, user_id, emoji").in("message_id", ids)
+      .then(({ data }) => { const g = {}; (data || []).forEach(r2 => { (g[r2.message_id] = g[r2.message_id] || []).push(r2); }); setReacts(g); });
+    loadR();
+    const iv = setInterval(loadR, 12000);
+    return () => clearInterval(iv);
+  }, [msgs ? msgs.length : 0, room.id]);
+  const reactTo = async (mid, emoji) => {
+    setTray(null);
+    const mineR = (reacts[mid] || []).find(r2 => r2.user_id === user.id);
+    if (mineR && mineR.emoji === emoji) {
+      setReacts(pr => ({ ...pr, [mid]: (pr[mid] || []).filter(r2 => r2.user_id !== user.id) }));
+      await supabase.from("message_reactions").delete().eq("message_id", mid).eq("user_id", user.id);
+    } else {
+      setReacts(pr => ({ ...pr, [mid]: [...(pr[mid] || []).filter(r2 => r2.user_id !== user.id), { user_id: user.id, emoji }] }));
+      await supabase.from("message_reactions").upsert({ message_id: mid, user_id: user.id, emoji });
+    }
+  };
   const [otherRead, setOtherRead] = useState(null);
   const [otherSeen, setOtherSeen] = useState(room.otherSeen || null);
   useEffect(() => {
@@ -2588,6 +2628,13 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   return (
     <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
       {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
+      {tray && (
+        <div onClick={() => setTray(null)} style={{ position: "fixed", inset: 0, zIndex: 95 }}>
+          <div onClick={ev => ev.stopPropagation()} style={{ position: "fixed", bottom: 130, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 30, boxShadow: "0 10px 34px rgba(0,0,0,.28)", padding: "11px 15px", display: "flex", gap: 11 }}>
+            {REACTS.map(em => <span key={em} onClick={() => reactTo(tray, em)} style={{ fontSize: 27, cursor: "pointer", userSelect: "none" }}>{em}</span>)}
+          </div>
+        </div>
+      )}
       <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30, ...bar }}>
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
@@ -2635,7 +2682,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             return (
               <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
-                <div style={{ maxWidth: "78%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)" }}>
+                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ maxWidth: "78%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)" }}>
                   {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 700, color: W.teal, marginBottom: 1 }}>{s.name || "Member"}</div>}
                   {m.media_url && m.media_type === "image" && <img src={m.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block", marginBottom: m.body ? 4 : 0 }} />}
                   {m.media_url && m.media_type === "file" && <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: W.ink, background: "#F0F2F5", borderRadius: 8, padding: "8px 10px", marginBottom: m.body ? 4 : 0 }}><Paperclip size={16} color={W.teal} /><span style={{ fontSize: 13.5, wordBreak: "break-all" }}>{m.file_name || "file"}</span></a>}
@@ -2646,6 +2693,14 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
                       <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: -2.5, color: (otherRead && m.created_at <= otherRead) ? "#34B7F1" : "#9aa7a3" }}>{(otherRead && m.created_at <= otherRead) ? "✓✓" : "✓"}</span>
                     )}
                   </div>
+                  {(reacts[m.id] || []).length > 0 && (
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 3 }}>
+                      {Object.entries((reacts[m.id] || []).reduce((a, r2) => { a[r2.emoji] = (a[r2.emoji] || 0) + 1; return a; }, {})).map(([em, n]) => {
+                        const mineHas = (reacts[m.id] || []).some(r2 => r2.user_id === user.id && r2.emoji === em);
+                        return <span key={em} onClick={() => reactTo(m.id, em)} style={{ fontSize: 12.5, background: mineHas ? "#D2F4E8" : "#F2F5F4", border: `1px solid ${mineHas ? "#2FD4A8" : W.line}`, borderRadius: 10, padding: "1px 7px", cursor: "pointer", userSelect: "none" }}>{em}{n > 1 ? " " + n : ""}</span>;
+                      })}
+                    </div>
+                  )}
                 </div>
                 {mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
               </div>
@@ -5242,7 +5297,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • stories2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • reactions ✅</div>
       </div>
     </div>
   );
