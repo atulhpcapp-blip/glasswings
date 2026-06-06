@@ -160,6 +160,62 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, recipients: uniq.length, sent, failed });
     }
 
+    // ================= GUEST MODE (manual guest-list ticket) =================
+    if (mode === "guest") {
+      const { data: caller } = await sb.from("profiles").select("roles, role").eq("id", callerId).single();
+      const staff = (caller?.roles || []).some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r)) || ["superadmin", "admin", "subadmin"].includes(caller?.role);
+      if (!staff) return res.status(403).json({ error: "Not allowed." });
+      const { data: g } = await sb.from("guest_tickets").select("*").eq("id", body.guest_id).maybeSingle();
+      if (!g) return res.status(400).json({ error: "Guest not found." });
+      if (!g.email) return res.status(200).json({ skipped: "guest has no email" });
+      const [{ data: gev }, gx] = await Promise.all([
+        sb.from("events").select("title, emoji, event_date, venue, city, banner_url, banner_type, poster_url").eq("id", g.event_id).single(),
+        getExtras(),
+      ]);
+      if (!gev) return res.status(200).json({ skipped: "no event" });
+      const gbanner = (gev.banner_url && gev.banner_type !== "video") ? gev.banner_url : (gev.poster_url || null);
+      const gplace = [gev.venue, gev.city].filter(Boolean).join(", ");
+      const gqr = "https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=1&data=" + encodeURIComponent(g.code);
+      const ginner = `
+      ${gbanner ? `<tr><td><img src="${esc(gbanner)}" alt="" width="100%" style="display:block;width:100%;max-height:240px;object-fit:cover" /></td></tr>` : ""}
+      <tr><td style="background:linear-gradient(135deg,#008069,#04B08F);padding:20px 24px;color:#fff">
+        <div style="font-size:11px;letter-spacing:3px;font-weight:800;opacity:.9">G L A S S W I N G S &nbsp; E V E N T S</div>
+        <div style="font-size:22px;font-weight:800;margin-top:8px">${esc((gev.emoji || "🎟️") + " " + gev.title)}</div>
+        ${gev.event_date ? `<div style="font-size:14px;margin-top:10px;opacity:.96">📅 ${esc(gev.event_date)}</div>` : ""}
+        ${gplace ? `<div style="font-size:14px;margin-top:5px;opacity:.96">📍 ${esc(gplace)}</div>` : ""}
+      </td></tr>
+      <tr><td style="padding:22px 24px 8px">
+        <div style="font-size:11px;letter-spacing:1.5px;color:#5a6b67;text-transform:uppercase;font-weight:700">Guest</div>
+        <div style="font-size:20px;font-weight:800;color:#0b1f1c;margin:2px 0 14px">${esc(g.name)}</div>
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="padding-right:32px;vertical-align:top">
+            <div style="font-size:11px;letter-spacing:1.5px;color:#5a6b67;text-transform:uppercase;font-weight:700">Entries</div>
+            <div style="font-size:24px;font-weight:800;color:#0b1f1c">${g.quantity || 1}</div>
+          </td>
+          <td style="vertical-align:top">
+            <div style="font-size:11px;letter-spacing:1.5px;color:#5a6b67;text-transform:uppercase;font-weight:700">Entry code</div>
+            <div style="display:inline-block;margin-top:4px;background:#E7F6EF;color:#008069;font-weight:800;letter-spacing:1.5px;font-family:monospace;font-size:18px;padding:6px 12px;border-radius:9px">${esc(g.code)}</div>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td align="center" style="padding:6px 24px 18px">
+        <div style="border:2px dashed #cfe3dd;border-radius:14px;display:inline-block;padding:14px 18px 10px">
+          <img src="${gqr}" alt="Entry QR ${esc(g.code)}" width="180" height="180" style="display:block;border-radius:8px" />
+          <div style="font-size:11px;letter-spacing:2px;color:#5a6b67;font-weight:800;margin-top:8px;text-align:center">SCAN AT ENTRY</div>
+        </div>
+        <div style="font-size:12px;margin-top:8px"><a href="https://glass-wings.com/?gt=${esc(g.code)}" style="color:#008069;font-weight:700">Open your ticket online →</a></div>
+      </td></tr>
+      ${communityHtml(gx.rooms)}
+      ${marketingHtml(gx.mktUrl)}
+      ${upcomingHtml(gx.ups, g.event_id)}
+      <tr><td style="padding:0 24px 22px">
+        <div style="border-top:1px solid #e6ebe9;padding-top:14px;font-size:12.5px;color:#5a6b67">Show the QR at the door. See you there!</div>
+      </td></tr>`;
+      const { ok: gok, out: gout } = await sendResend(API, FROM, g.email, `GLASSWINGS INVITATION FOR ${gev.title}`, wrap(ginner));
+      if (!gok) return res.status(502).json({ error: gout?.message || "Email failed." });
+      return res.status(200).json({ ok: true, id: gout.id });
+    }
+
     // ================= TICKET MODE (default) =================
     let uid = callerId;
     let to = ures?.user?.email;
