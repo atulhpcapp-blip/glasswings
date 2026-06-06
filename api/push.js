@@ -48,6 +48,13 @@ export default async function handler(req, res) {
       recipientIds = [...(tk || []), ...(mods || [])].map((r) => r.user_id);
       const { data: ev } = await sb.from("events").select("title").eq("id", m.group_id).single();
       title = ev?.title || "Glasswings";
+    } else if (m.group_type === "p2p") {
+      const { data: th } = await sb.from("dm_threads").select("a, b").eq("id", m.group_id).maybeSingle();
+      if (th) {
+        recipientIds = [th.a === m.sender_id ? th.b : th.a];
+        const { data: who } = await sb.from("profiles").select("full_name").eq("id", m.sender_id).single();
+        title = who?.full_name || "New message";
+      }
     } else if (m.group_type === "dm") {
       if (m.sender_id === m.group_id) {
         // member replied -> notify admins
