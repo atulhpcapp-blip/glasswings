@@ -226,7 +226,7 @@ export default async function handler(req, res) {
       <div style="border-top:1px solid #e6ebe9;padding-top:14px;font-size:12.5px;color:#5a6b67">Show the QR (or your in-app ticket) at the door. See you there!</div>
     </td></tr>`;
 
-    const { ok, out } = await sendResend(API, FROM, to, `🎟️ Your ticket — ${ev.title}`, wrap(inner));
+    const { ok, out } = await sendResend(API, FROM, to, `GLASSWINGS INVITATION FOR ${ev.title}`, wrap(inner));
     if (!ok) return res.status(502).json({ error: out?.message || "Email failed." });
     return res.status(200).json({ ok: true, id: out.id });
   } catch (e) {
