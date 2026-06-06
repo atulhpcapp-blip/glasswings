@@ -2590,6 +2590,82 @@ function Dashboard() {
     </div>
   );
 }
+function EmailMarketingPanel({ meId }) {
+  const [banner, setBanner] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [msg, setMsg] = useState("");
+  const [count, setCount] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+  const loadBanner = () => supabase.rpc("get_app_setting", { p_key: "marketing_banner_url" }).then(({ data }) => setBanner((data || "").trim() || null));
+  useEffect(() => {
+    loadBanner();
+    supabase.from("profiles").select("id", { count: "exact", head: true }).then(({ count: c }) => setCount(c ?? null));
+  }, []);
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try { const url = await uploadPhoto(meId, file); const { error } = await supabase.rpc("set_app_setting", { p_key: "marketing_banner_url", p_value: url }); if (error) throw error; await loadBanner(); }
+    catch (e2) { alert(e2.message || "Upload failed"); }
+    setBusy(false);
+  };
+  const removeBanner = async () => {
+    if (!window.confirm("Remove the marketing banner? The banner section will be hidden from all emails.")) return;
+    const { error } = await supabase.rpc("set_app_setting", { p_key: "marketing_banner_url", p_value: "" });
+    if (error) return alert(error.message);
+    loadBanner();
+  };
+  const send = async () => {
+    if (!subject.trim() || !msg.trim()) return alert("Subject and message are required.");
+    if (!window.confirm(`Send this email to ALL ${count ?? ""} members? This cannot be undone.`)) return;
+    setSending(true); setResult(null);
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      const r = await fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "blast", access_token: token, subject: subject.trim(), message: msg.trim() }) });
+      const out = await r.json();
+      if (!r.ok) throw new Error(out.error || "Send failed");
+      setResult(`✓ Sent to ${out.sent} of ${out.recipients} members${out.failed ? ` (${out.failed} failed)` : ""}.`);
+      setSubject(""); setMsg("");
+    } catch (e2) { setResult("⚠️ " + (e2.message || "Send failed")); }
+    setSending(false);
+  };
+  const ip3 = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", boxSizing: "border-box" };
+  return (
+    <div style={{ padding: "16px 16px 40px", maxWidth: 620, margin: "0 auto" }}>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>📧 Email marketing</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 16px" }}>Bulk emails to all members, and the marketing banner shown inside every ticket email.</div>
+
+      <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "15px 16px", marginBottom: 16 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginBottom: 4 }}>🖼️ Marketing banner</div>
+        <div style={{ fontSize: 12, color: W.soft, marginBottom: 12 }}>Appears in every ticket email (between the community section and upcoming events) and on top of bulk emails. Remove it and the section disappears from emails automatically. Ideal size ~800×300px.</div>
+        {banner ? (
+          <>
+            <img src={banner} alt="Marketing banner" style={{ width: "100%", borderRadius: 10, display: "block" }} />
+            <div style={{ display: "flex", gap: 12, marginTop: 9, fontSize: 13, fontWeight: 700 }}>
+              <label style={{ color: W.teal, cursor: "pointer" }}>{busy ? "Uploading…" : "Replace"}<input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { upload(e.target.files && e.target.files[0]); e.target.value = ""; }} /></label>
+              <span onClick={removeBanner} style={{ color: "#C0392B", cursor: "pointer" }}>Remove</span>
+            </div>
+          </>
+        ) : (
+          <label style={{ display: "block", cursor: "pointer", padding: "20px 12px", border: `2px dashed ${W.line}`, borderRadius: 12, color: W.soft, fontSize: 13.5, fontWeight: 700, textAlign: "center" }}>
+            {busy ? "Uploading…" : "📤 Upload a banner (none set — the section is hidden in emails)"}
+            <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { upload(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+          </label>
+        )}
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "15px 16px" }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginBottom: 4 }}>📨 Send to all members {count != null && <span style={{ color: W.soft, fontWeight: 700, fontSize: 12.5 }}>· {count} members</span>}</div>
+        <div style={{ fontSize: 12, color: W.soft, marginBottom: 12 }}>The email is wrapped in the Glasswings design automatically: your banner on top (if set), then your message, the community section and upcoming events.</div>
+        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" style={{ ...ip3, marginBottom: 9 }} />
+        <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={6} placeholder={"Your message…\n\nBlank lines become paragraphs."} style={{ ...ip3, resize: "vertical", fontFamily: "inherit", marginBottom: 11 }} />
+        <button onClick={send} disabled={sending} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: sending ? .6 : 1 }}>{sending ? "Sending… (can take a minute)" : "Send to all members"}</button>
+        {result && <div style={{ marginTop: 10, fontSize: 13.5, fontWeight: 700, color: result.startsWith("✓") ? W.teal : "#C0392B" }}>{result}</div>}
+      </div>
+    </div>
+  );
+}
 function AnalyticsPanel({ events, myEventsOnly, meId }) {
   const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
   const [evId, setEvId] = useState("");
@@ -2965,6 +3041,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["door", "Door"]] : []),
     ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
+    ...(isSuper ? [["emailmkt", "Email"]] : []),
     ...((canApprove || caps.host) ? [["settle", "Payouts"]] : []),
     ...(canApprove ? [["filters", "Filters"]] : []),
   ];
@@ -2984,6 +3061,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
+        : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
         : seg === "events" ? <AdminEvents canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
@@ -4898,7 +4976,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • roomprice ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • emailmkt ✅</div>
       </div>
     </div>
   );
