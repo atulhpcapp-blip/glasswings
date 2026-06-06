@@ -2366,7 +2366,7 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
   const evMap = {}; events.forEach(e => { evMap[e.id] = e; });
   const groups = {}; stories.forEach(st => { if (evMap[st.event_id]) (groups[st.event_id] = groups[st.event_id] || []).push(st); });
   const ids = Object.keys(groups);
-  const eligible = events.filter(e => canAccessEvent(e) && e.event_at && Math.abs(now - new Date(e.event_at).getTime()) < 36 * 3600000);
+  const eligible = events.filter(e => e.event_at && Math.abs(now - new Date(e.event_at).getTime()) < 36 * 3600000);
   if (!ids.length && !eligible.length) return null;
   const post = async (eventId, file) => {
     if (!file) return;
@@ -5242,7 +5242,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • stories ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • stories2 ✅</div>
       </div>
     </div>
   );
