@@ -2694,7 +2694,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             return (
               <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
-                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ maxWidth: "78%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)" }}>
+                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ maxWidth: "78%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
                   {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 700, color: W.teal, marginBottom: 1 }}>{s.name || "Member"}</div>}
                   {m.reply_to && (() => { const rm = (msgs || []).find(x => x.id === m.reply_to); return (
                     <div style={{ background: "rgba(0,128,105,.07)", borderLeft: `3px solid ${W.teal}`, borderRadius: 7, padding: "4px 8px", marginBottom: 4 }}>
@@ -5328,7 +5328,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • replies ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • noselect ✅</div>
       </div>
     </div>
   );
