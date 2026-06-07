@@ -7155,7 +7155,7 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
   const isWoman = profile?.gender === "female";
   const active = plans.filter(p => p.active);
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 220, background: "#0d1f2a", overflowY: "auto", maxWidth: 430, margin: "0 auto" }}>
+    <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, height: "100%", zIndex: 220, background: "#0d1f2a", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       <div style={{ background: "linear-gradient(135deg,#6D28D9,#EC4899)", color: "#fff", padding: "16px 16px 24px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer" }} />
@@ -7420,11 +7420,26 @@ function MembersOverview({ isSuper }) {
     window.addEventListener("resize", onR);
     return () => window.removeEventListener("resize", onR);
   }, []);
+  const [planBadge, setPlanBadge] = useState({});
   useEffect(() => {
     supabase.rpc("admin_member_overview").then(({ data, error }) => {
       if (error) { console.error(error); setRows([]); return; }
       setRows(data || []);
     });
+    (async () => {
+      const [{ data: mps }, { data: pls }] = await Promise.all([
+        supabase.from("member_plans").select("user_id, plan_id, expires_at"),
+        supabase.from("plans").select("id, name, emoji"),
+      ]);
+      const live = (mps || []).filter(m => !m.expires_at || new Date(m.expires_at).getTime() > Date.now());
+      const map = {};
+      live.forEach(m => {
+        const pl = (pls || []).find(p => p.id === m.plan_id);
+        const dl = m.expires_at ? Math.max(0, Math.ceil((new Date(m.expires_at).getTime() - Date.now()) / 86400000)) : null;
+        map[m.user_id] = { label: `${pl?.emoji || "💎"} ${pl?.name || "Plan"}`, days: dl };
+      });
+      setPlanBadge(map);
+    })();
   }, []);
   if (rows === null) return <div style={{ padding: 20, color: W.soft }}>Loading members…</div>;
   const now = Date.now();
@@ -7437,6 +7452,7 @@ function MembersOverview({ isSuper }) {
     ["subs", "💎 Room subscribers", r => (r.rooms || []).length > 0],
     ["buyers", "🎟️ Ticket buyers", r => (r.tickets || 0) > 0],
     ["paysubs", "💳 Paying room subscribers", r => (Array.isArray(r.rooms_detail) && r.rooms_detail.some(d => d.paying)) || (r.spend_rooms || 0) > 0],
+    ["planmembers", "💎 Plan members", r => !!planBadge[r.id]],
     ["paytix", "💸 Paid ticket buyers", r => (r.spend_tickets || 0) > 0],
     ["churned", "⌛ Subscription expired", r => (r.spend_rooms || 0) > 0 && !(Array.isArray(r.rooms_detail) && r.rooms_detail.some(d => d.paying))],
     ["women", "♀ Women", r => r.gender === "female"],
@@ -7451,7 +7467,9 @@ function MembersOverview({ isSuper }) {
   const roomsLine = r => {
     const det = Array.isArray(r.rooms_detail) ? r.rooms_detail : [];
     if (!det.length) return (r.rooms || []).join(", ");
-    return det.map(d => d.name + ((d.price || 0) > 0 && r.gender !== "female" ? (d.paying ? " (💳 paying)" : " (👑 added by admin)") : "")).join(", ");
+    const base = det.map(d => d.name + ((d.price || 0) > 0 && r.gender !== "female" ? (d.paying ? " (💳 paying)" : " (👑 added by admin)") : "")).join(", ");
+    const pb = planBadge[r.id];
+    return pb ? `${pb.label}${pb.days !== null ? ` (⌛${pb.days}d)` : ""}${base ? " · " + base : ""}` : base;
   };
   const fmtD = ts => ts ? new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "—";
   const stat = (label, val) => (
