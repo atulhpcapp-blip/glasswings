@@ -3248,6 +3248,13 @@ function BlindBanter({ meId, onClose }) {
               <div style={{ fontWeight: 800, fontSize: 15 }}>You both vibed! 💚</div>
               <div style={{ fontSize: 12, opacity: .92 }}>This is {st.match.peer?.full_name} — we've opened a real chat for you two in Chats.</div>
             </div>
+            <button onClick={async () => {
+              if (!window.confirm("Start a new Blind Banter? This mystery room closes — but your real chat with " + (st.match.peer?.full_name?.split(" ")[0] || "them") + " stays in your DMs.")) return;
+              await supabase.rpc("banter_finish").then(() => { });
+              const { error } = await supabase.rpc("banter_join");
+              if (error) { alert(error.message); loadStatus(); return; }
+              loadStatus();
+            }} style={{ background: "rgba(255,255,255,.2)", border: "1.5px solid rgba(255,255,255,.7)", color: "#fff", borderRadius: 10, padding: "8px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>🎭 New<br />mystery</button>
           </div>
         )}
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
@@ -7343,7 +7350,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • banter ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • banter2 ✅</div>
       </div>
     </div>
   );
