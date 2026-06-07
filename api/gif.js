@@ -1,18 +1,20 @@
-// GET /api/gif?q=term — Tenor v2 proxy (key stays server-side)
+// GET /api/gif?q=term — GIPHY proxy (key stays server-side)
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
-  const KEY = process.env.TENOR_API_KEY;
+  const KEY = process.env.GIPHY_API_KEY;
   if (!KEY) return res.status(503).json({ error: "setup" });
-  const q = (req.query.q || "trending").toString().slice(0, 60);
+  const q = (req.query.q || "").toString().slice(0, 60).trim();
   try {
-    const url = `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q)}&key=${KEY}&limit=24&media_filter=gif,tinygif&contentfilter=medium`;
+    const url = q
+      ? `https://api.giphy.com/v1/gifs/search?api_key=${KEY}&q=${encodeURIComponent(q)}&limit=24&rating=pg-13`
+      : `https://api.giphy.com/v1/gifs/trending?api_key=${KEY}&limit=24&rating=pg-13`;
     const r = await fetch(url);
     const data = await r.json();
-    if (!r.ok) return res.status(502).json({ error: data?.error?.message || "Tenor error" });
-    const gifs = (data.results || []).map(g => ({
+    if (!r.ok) return res.status(502).json({ error: data?.message || "GIPHY error" });
+    const gifs = (data.data || []).map(g => ({
       id: g.id,
-      tiny: g.media_formats?.tinygif?.url || g.media_formats?.gif?.url,
-      full: g.media_formats?.gif?.url || g.media_formats?.tinygif?.url,
+      tiny: g.images?.fixed_height_small?.url || g.images?.fixed_height?.url,
+      full: g.images?.downsized?.url || g.images?.original?.url,
     })).filter(g => g.tiny && g.full);
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
     return res.status(200).json({ gifs });
