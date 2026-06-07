@@ -13,7 +13,9 @@ function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/
 function waNum(p) { const d = String(p || "").replace(/\D/g, ""); if (!d) return ""; return d.length === 10 ? "91" + d : d; }
 function netPrice(t, subs) {
   const base = t.price || 0;
-  if (!t.discount_room_id || !t.discount_value || !(subs || []).includes(t.discount_room_id)) return base;
+  const planHit = t.discount_plan_id && t.discount_value && (window.__gwMyPlanIds || []).includes(t.discount_plan_id);
+  const roomHit = t.discount_room_id && t.discount_value && (subs || []).includes(t.discount_room_id);
+  if (!planHit && !roomHit) return base;
   const d = t.discount_kind === "flat" ? t.discount_value : Math.round(base * t.discount_value / 100);
   return Math.max(0, base - d);
 }
@@ -1646,6 +1648,7 @@ function Main({ user }) {
     setAllPlans(pls || []); setAllPlanRooms(prsAll || []);
     const live = (mps || []).filter(m => !m.expires_at || new Date(m.expires_at).getTime() > Date.now());
     setMyPlans(live);
+    try { window.__gwMyPlanIds = live.map(m => m.plan_id); } catch { }
     const liveIds = live.map(m => m.plan_id);
     setPlanRoomIds(liveIds.length ? [...new Set((prsAll || []).filter(x => liveIds.includes(x.plan_id)).map(x => x.room_id))] : []);
   };
@@ -5966,6 +5969,8 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   );
 }
 function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
+  const [plansList, setPlansList] = useState([]);
+  useEffect(() => { supabase.from("plans").select("id, name, emoji").eq("active", true).then(({ data }) => setPlansList(data || [])); }, []);
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [cap, setCap] = useState("");
   const [wf, setWf] = useState(""); const [wm, setWm] = useState("");
   const [dRoom, setDRoom] = useState(""); const [dKind, setDKind] = useState("percent"); const [dVal, setDVal] = useState("");
@@ -5973,7 +5978,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
   const roomName = id => ((rooms || []).find(r => r.id === id) || {}).name || "room";
   const add = async () => {
     if (!name.trim()) return;
-    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom || null, discount_kind: dKind, discount_value: Number(dVal) || 0 });
+    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0 });
     setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setDRoom(""); setDKind("percent"); setDVal("");
   };
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
@@ -5993,7 +5998,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
               <span style={{ color: W.soft }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
               {audBadge(t.gender_restrict)}
               {t.capacity != null && <span style={{ color: W.soft }}>· cap {t.capacity}</span>}
-              {t.discount_room_id && <span style={{ color: W.teal }}>· {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {roomName(t.discount_room_id)}</span>}
+              {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal }}>· {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
             </div>
             <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(t.id)} />
           </div>
@@ -6008,11 +6013,12 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
       </div>
       <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
-        <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Discount for room members (optional)</div>
+        <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Discount for members (optional) — 💎 plans or rooms</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <select value={dRoom} onChange={e => setDRoom(e.target.value)} style={{ ...ip, flex: "1 1 120px", minWidth: 0 }}>
             <option value="">No discount</option>
-            {(rooms || []).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            {plansList.map(pl => <option key={"plan:" + pl.id} value={"plan:" + pl.id}>{(pl.emoji || "💎") + " " + pl.name + " (plan)"}</option>)}
+            {(rooms || []).map(r => <option key={r.id} value={r.id}>{r.name} (room)</option>)}
           </select>
           <select value={dKind} onChange={e => setDKind(e.target.value)} style={ip}>
             <option value="percent">% off</option>
