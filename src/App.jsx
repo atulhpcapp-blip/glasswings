@@ -4240,6 +4240,13 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   }, [room.id]);
   useEffect(() => { endRef.current?.scrollIntoView(); }, [msgs]);
   useEffect(() => { if (headRef.current) setHeadPad(headRef.current.offsetHeight); }, [room.pinned, isAdmin, editPin, msgs === null]);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onVV = () => { if (headRef.current) headRef.current.style.transform = `translateX(-50%) translateY(${Math.max(0, vv.offsetTop)}px)`; };
+    vv.addEventListener("resize", onVV); vv.addEventListener("scroll", onVV); onVV();
+    return () => { vv.removeEventListener("resize", onVV); vv.removeEventListener("scroll", onVV); };
+  }, []);
   useEffect(() => { supabase.from("quick_replies").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).then(({ data }) => setQrs(data || [])); }, [user.id]);
 
   const send = async () => {
@@ -7612,7 +7619,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • chatprev ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • headpin ✅</div>
       </div>
     </div>
   );
