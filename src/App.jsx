@@ -2223,7 +2223,7 @@ function Chats({ chats, onOpen, onExplore, streaks = {} }) {
         <div key={c.type + c.id} onClick={() => onOpen({ id: c.id, type: c.type })} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
           <Avatar room={{ emoji: c.emoji, logo_url: c.logo_url }} size={52} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}{c.type === "dm" && streaks[c.id] && streaks[c.id].streak > 0 && (
+            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}{(c.type === "p2p" || c.type === "dm") && streaks[c.id] && streaks[c.id].streak > 0 && (
               <span style={{ marginLeft: 7, fontSize: 13, fontWeight: 800, color: "#E8590C", verticalAlign: "middle" }}>🔥{streaks[c.id].streak}{streaks[c.id].streak >= 30 ? "💍" : streaks[c.id].streak >= 7 ? "⭐" : ""}{!streaks[c.id].today && <span title="Message today to keep the streak!" style={{ marginLeft: 3 }}>⌛</span>}</span>
             )}</div>
             <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.sub} · tap to open</div>
@@ -7568,7 +7568,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • streaks ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • streaks2 ✅</div>
       </div>
     </div>
   );
