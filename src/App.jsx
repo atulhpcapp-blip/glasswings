@@ -380,40 +380,58 @@ function Auth({ initialMode = "login", onClose }) {
     }
     setBusy(false);
   };
-  const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink }} />;
+  const inp = (ph, v, set, t = "text") => <input value={v} onChange={e => set(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: "1.5px solid #E8E3F2", background: "#FAF9FE", fontSize: 14.5, outline: "none", boxSizing: "border-box", color: W.ink, fontWeight: 600 }} />;
+  const GENDERS = [["male", "Man 💙"], ["female", "Woman 💖"], ["other", "Other 💜"]];
   return (
-    <div style={{ minHeight: "100vh", padding: "0 22px 44px", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", backgroundImage: "linear-gradient(rgba(6,22,28,.72), rgba(6,18,26,.93)), url(/hero.jpg)", backgroundSize: "cover", backgroundPosition: "center" }}>
-      {onClose && <button onClick={onClose} style={{ position: "absolute", top: 14, left: 14, background: "rgba(255,255,255,.16)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer", zIndex: 3 }}>‹ Events</button>}
-      <div style={{ textAlign: "center", paddingTop: 56 }}>
-        <img src="/logo-white.png" alt="Glasswings Events" style={{ width: 200, maxWidth: "66%", objectFit: "contain" }} />
-        <div style={{ fontSize: 29, fontWeight: 800, color: "#fff", marginTop: 18, lineHeight: 1.18, letterSpacing: 0.3 }}>Discover the best<br />events &amp; meetups</div>
-        <div style={{ color: "rgba(255,255,255,.82)", marginTop: 9, fontSize: 14.5 }}>Tickets · Rooms · Community — all in one place</div>
+    <div style={{ minHeight: "100vh", padding: "0 22px 44px", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", overflow: "hidden", background: "linear-gradient(135deg,#008069 0%,#0E7490 28%,#6D28D9 62%,#EC4899 100%)", backgroundSize: "300% 300%", animation: "gwsky 14s ease infinite" }}>
+      <style>{`
+        @keyframes gwsky { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+        @keyframes gwfloat { 0%,100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-26px) rotate(8deg); } }
+        @keyframes gwpop { 0% { transform: scale(.96); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+      `}</style>
+      {["🦋", "🎉", "🎵", "💃", "✨", "🥂", "💘", "🪩"].map((e, k) => (
+        <div key={k} style={{ position: "absolute", left: `${[6, 84, 12, 78, 46, 90, 4, 60][k]}%`, top: `${[12, 8, 64, 56, 4, 78, 86, 90][k]}%`, fontSize: [30, 26, 34, 28, 22, 30, 26, 32][k], opacity: .5, animation: `gwfloat ${5 + k}s ease-in-out infinite`, animationDelay: `${k * 0.6}s`, pointerEvents: "none", filter: "drop-shadow(0 4px 8px rgba(0,0,0,.25))" }}>{e}</div>
+      ))}
+      {onClose && <button onClick={onClose} style={{ position: "absolute", top: 14, left: 14, background: "rgba(255,255,255,.16)", color: "#fff", border: "1px solid rgba(255,255,255,.4)", borderRadius: 10, padding: "7px 13px", fontWeight: 700, cursor: "pointer", zIndex: 2 }}>← Back</button>}
+      <div style={{ textAlign: "center", paddingTop: 52, position: "relative", zIndex: 1 }}>
+        <img src="/logo-white.png" alt="Glasswings Events" style={{ width: 190, maxWidth: "64%", objectFit: "contain", filter: "drop-shadow(0 4px 14px rgba(0,0,0,.3))" }} />
+        <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", marginTop: 16, lineHeight: 1.2, letterSpacing: 0.3, textShadow: "0 2px 12px rgba(0,0,0,.3)" }}>Where Hyderabad<br />comes alive 🎉</div>
+        <div style={{ color: "rgba(255,255,255,.92)", marginTop: 8, fontSize: 14, fontWeight: 600 }}>Events · Rooms · Games · Your people 💫</div>
       </div>
-      <div style={{ background: "#fff", borderRadius: 18, padding: 20, marginTop: 30, width: "100%", maxWidth: 384, boxShadow: "0 24px 60px rgba(0,0,0,.4)" }}>
-        {buying && mode === "signup" && <div style={{ background: "#E7F6EF", color: W.teal, fontSize: 13, fontWeight: 600, borderRadius: 10, padding: "10px 12px", marginBottom: 14, textAlign: "center", lineHeight: 1.4 }}>You're one step from your ticket — create your free account.</div>}
-        <div style={{ display: "flex", background: W.bg, borderRadius: 10, padding: 4, marginBottom: 16 }}>
-          {["login", "signup"].map(m => <button key={m} onClick={() => { setMode(m); setErr(""); setNote(""); }} style={{ flex: 1, padding: 9, border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 14, background: mode === m ? W.teal : "transparent", color: mode === m ? "#fff" : W.soft }}>{m === "login" ? "Log in" : "Sign up"}</button>)}
+      <div style={{ background: "rgba(255,255,255,.94)", backdropFilter: "blur(14px)", borderRadius: 24, padding: 22, marginTop: 26, width: "100%", maxWidth: 384, boxShadow: "0 24px 70px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.5)", position: "relative", zIndex: 1, animation: "gwpop .35s ease" }}>
+        {buying && mode === "signup" && <div style={{ background: "linear-gradient(95deg,#E7F6EF,#F3E8FF)", color: W.teal, fontSize: 13, fontWeight: 700, borderRadius: 12, padding: "10px 13px", marginBottom: 13 }}>🎟️ Create your account to finish grabbing your ticket!</div>}
+        <div style={{ display: "flex", background: "#F2EFF8", borderRadius: 14, padding: 4, marginBottom: 16 }}>
+          {["login", "signup"].map(m => (
+            <button key={m} onClick={() => { setMode(m); setErr(""); setNote(""); }} style={{ flex: 1, padding: 10, border: "none", borderRadius: 11, cursor: "pointer", fontWeight: 800, fontSize: 13.5, transition: "all .2s", background: mode === m ? "linear-gradient(95deg,#008069,#6D28D9)" : "transparent", color: mode === m ? "#fff" : "#7A7390", boxShadow: mode === m ? "0 4px 12px rgba(109,40,217,.35)" : "none" }}>
+              {m === "login" ? "Log in ✨" : "Join the fun 🎉"}
+            </button>
+          ))}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-          {mode === "signup" && inp("Full name", name, setName)}
+          {mode === "signup" && inp("Your name", name, setName)}
           {inp("Email", email, setEmail, "email")}
           {mode !== "reset" && inp("Password (min 6 characters)", pass, setPass, "password")}
-          {mode === "login" && <div style={{ textAlign: "right", marginTop: -4 }}><span onClick={() => { setMode("reset"); setErr(""); setNote(""); }} style={{ color: W.teal, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Forgot password?</span></div>}
-          {mode === "reset" && <div style={{ fontSize: 13, color: W.soft, lineHeight: 1.5 }}>Enter your account email and we'll send you a link to set a new password.</div>}
+          {mode === "login" && <div style={{ textAlign: "right", marginTop: -4 }}><span onClick={() => { setMode("reset"); setErr(""); setNote(""); }} style={{ color: "#6D28D9", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Forgot password?</span></div>}
+          {mode === "reset" && <div style={{ fontSize: 13, color: W.soft, lineHeight: 1.5 }}>Enter your account email and we'll send you a link to set a new password. 💌</div>}
           {mode === "signup" && (
             <div>
-              <div style={{ fontSize: 13, color: W.soft, marginBottom: 7, fontWeight: 600 }}>I am</div>
+              <div style={{ fontSize: 13, color: "#7A7390", marginBottom: 7, fontWeight: 700 }}>I am</div>
               <div style={{ display: "flex", gap: 8 }}>
-                {[["male", "Man"], ["female", "Woman"], ["other", "Other"]].map(([v, l]) => <button key={v} onClick={() => setGender(v)} style={{ flex: 1, padding: "10px 0", borderRadius: 10, cursor: "pointer", border: `1.5px solid ${gender === v ? W.teal : W.line}`, background: gender === v ? "#E7F6EF" : "#fff", color: W.ink, fontWeight: 600, fontSize: 14 }}>{l}</button>)}
+                {GENDERS.map(([v, l]) => (
+                  <button key={v} onClick={() => setGender(v)} style={{ flex: 1, padding: "10px 4px", borderRadius: 12, cursor: "pointer", fontWeight: 800, fontSize: 12.5, transition: "all .15s", border: gender === v ? "2px solid transparent" : "1.5px solid #E8E3F2", background: gender === v ? (v === "male" ? "linear-gradient(95deg,#2563EB,#06B6D4)" : v === "female" ? "linear-gradient(95deg,#EC4899,#F472B6)" : "linear-gradient(95deg,#7C3AED,#A78BFA)") : "#FAF9FE", color: gender === v ? "#fff" : "#7A7390", boxShadow: gender === v ? "0 4px 12px rgba(0,0,0,.18)" : "none" }}>{l}</button>
+                ))}
               </div>
             </div>
           )}
-          {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
-          {note && <div style={{ color: W.teal, fontSize: 13 }}>{note}</div>}
-          <button onClick={go} disabled={busy} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Please wait…" : mode === "login" ? "Log in" : mode === "signup" ? "Create account" : "Send reset link"}</button>
-          {mode === "reset" && <div style={{ textAlign: "center" }}><span onClick={() => { setMode("login"); setErr(""); setNote(""); }} style={{ color: W.soft, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>‹ Back to log in</span></div>}
+          {err && <div style={{ color: "#C0392B", fontSize: 13, fontWeight: 600, background: "#FDF0EF", borderRadius: 10, padding: "9px 12px" }}>{err}</div>}
+          {note && <div style={{ color: W.teal, fontSize: 13, fontWeight: 600, background: "#E7F6EF", borderRadius: 10, padding: "9px 12px" }}>{note}</div>}
+          <button onClick={go} disabled={busy} style={{ padding: 15, borderRadius: 14, border: "none", cursor: "pointer", background: "linear-gradient(95deg,#008069,#6D28D9,#EC4899)", backgroundSize: "200% 100%", color: "#fff", fontWeight: 800, fontSize: 15.5, opacity: busy ? .65 : 1, boxShadow: "0 8px 22px rgba(109,40,217,.4)", letterSpacing: .2 }}>
+            {busy ? "One sec…" : mode === "signup" ? "Let's go! 🚀" : mode === "reset" ? "Send reset link 💌" : "Welcome back ✨"}
+          </button>
+          {mode === "reset" && <div style={{ textAlign: "center" }}><span onClick={() => { setMode("login"); setErr(""); setNote(""); }} style={{ color: "#6D28D9", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>← Back to login</span></div>}
         </div>
       </div>
+      <div style={{ color: "rgba(255,255,255,.85)", fontSize: 12, fontWeight: 600, marginTop: 18, position: "relative", zIndex: 1 }}>900+ members already vibing 🦋</div>
     </div>
   );
 }
@@ -7422,7 +7440,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pending2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • authglow ✅</div>
       </div>
     </div>
   );
