@@ -3062,6 +3062,44 @@ function AntakshariRoom({ meId, onClose }) {
     </div>
   );
 }
+function BattleBanner() {
+  const [b, setB] = useState(null);
+  useEffect(() => {
+    supabase.rpc("battle_week").then(({ data, error }) => setB(error ? false : data));
+  }, []);
+  if (b === null || b === false) return null;
+  const G = b.girls || {}, Y = b.boys || {};
+  const gt = G.total || 0, bt = Y.total || 0;
+  const sum = Math.max(1, gt + bt);
+  const gPct = Math.max(10, Math.min(90, Math.round((gt / sum) * 100)));
+  const lead = gt === bt ? null : gt > bt ? "girls" : "boys";
+  const t = b.today || {};
+  const needSide = (t.girls_pts || 0) === (t.boys_pts || 0) ? null : (t.girls_pts || 0) < (t.boys_pts || 0) ? "Girls" : "Boys";
+  return (
+    <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "13px 16px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>⚔️ Battle of the Week</div>
+        <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>resets Monday</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#EC4899" }}>👧 Girls {gt}{lead === "girls" ? " 👑" : ""}</div>
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#3B82F6" }}>{lead === "boys" ? "👑 " : ""}{bt} Boys 👦</div>
+      </div>
+      <div style={{ position: "relative", height: 20, borderRadius: 12, overflow: "hidden", display: "flex", boxShadow: "inset 0 1px 3px rgba(0,0,0,.15)" }}>
+        <div style={{ width: gPct + "%", background: "linear-gradient(90deg,#F472B6,#EC4899)", transition: "width .6s" }} />
+        <div style={{ flex: 1, background: "linear-gradient(90deg,#3B82F6,#60A5FA)" }} />
+        <div style={{ position: "absolute", left: `calc(${gPct}% - 11px)`, top: -2, fontSize: 17, filter: "drop-shadow(0 1px 2px rgba(0,0,0,.4))" }}>⚔️</div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: W.soft, fontWeight: 700, marginTop: 7 }}>
+        <span>🧠 {G.trivia || 0} · 🎵 {G.songs || 0} · 🎲 {G.ludo || 0}×5</span>
+        <span>🧠 {Y.trivia || 0} · 🎵 {Y.songs || 0} · 🎲 {Y.ludo || 0}×5</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.ink, fontWeight: 600, marginTop: 7, background: "#FFF7FB", border: "1px solid #F8D8EB", borderRadius: 9, padding: "6px 10px" }}>
+        Today's quiz: 👧 {t.girls_pts || 0} pts ({t.girls_n || 0} played) vs 👦 {t.boys_pts || 0} pts ({t.boys_n || 0}){needSide ? ` — ${needSide}, your team needs you! 🎮` : " — dead heat! 🔥"}
+      </div>
+    </div>
+  );
+}
 function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial }) {
   const [playTrivia, setPlayTrivia] = useState(false);
   const [triviaDone, setTriviaDone] = useState(null);
@@ -3100,6 +3138,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
         <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6 }}>🎮 Game Zone</div>
         <div style={{ fontSize: 12.5, opacity: .9, marginTop: 3 }}>Free to play · climb the leaderboard · win real perks 🎁</div>
       </div>
+      <BattleBanner />
       <div style={{ padding: 14 }}>
         <Card emoji="🧠" title="Daily Trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
         <Card emoji="🎵" title="Antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
@@ -6824,7 +6863,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludo3 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • battle ✅</div>
       </div>
     </div>
   );
