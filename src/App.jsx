@@ -1496,6 +1496,17 @@ function Main({ user }) {
   const [open, setOpen] = useState(null); // { id, type }
   const [p2pThreads, setP2pThreads] = useState([]);
   const [stories, setStories] = useState([]);
+  const roomParamDone = useRef(false);
+  useEffect(() => {
+    if (roomParamDone.current || !rooms.length) return;
+    try {
+      const rid = new URLSearchParams(window.location.search).get("room");
+      if (!rid) { roomParamDone.current = true; return; }
+      const r = rooms.find(x => x.id === rid);
+      if (r) setOpen(canAccess(r) ? { id: r.id, type: "room" } : { id: r.id, type: "room-locked" });
+      roomParamDone.current = true;
+    } catch { roomParamDone.current = true; }
+  }, [rooms]);
   const loadStories = async () => {
     const { data } = await supabase.from("stories").select("id, event_id, user_id, media_url, created_at")
       .gt("created_at", new Date(Date.now() - 86400000).toISOString()).order("created_at", { ascending: true });
@@ -1881,10 +1892,10 @@ function Main({ user }) {
   if (open) {
     if (open.type === "dm") {
       const isOwn = open.id === user.id;
-      chatEl = <RoomChat room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
+      chatEl = <RoomChat allRooms={rooms} room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
     } else if (open.type === "p2p") {
       const t = p2pThreads.find(x => x.id === open.id);
-      chatEl = <RoomChat room={{ id: open.id, name: open.title || t?.name || "Member", emoji: "👤", logo_url: t?.avatar || null, pinned: "", otherId: t?.other || null, otherSeen: t?.seen || null }} groupType="p2p" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent}
+      chatEl = <RoomChat allRooms={rooms} room={{ id: open.id, name: open.title || t?.name || "Member", emoji: "👤", logo_url: t?.avatar || null, pinned: "", otherId: t?.other || null, otherSeen: t?.seen || null }} groupType="p2p" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent}
         onDeleteThread={async () => {
           if (!window.confirm("Delete this chat? It disappears for both of you.")) return;
           const { error } = await supabase.rpc("delete_dm_thread", { p_thread: open.id });
@@ -1896,10 +1907,10 @@ function Main({ user }) {
       chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} onJoin={() => joinRoom(r)} onBack={() => setOpen(null)} /> : null;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
-      if (r) chatEl = <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
+      if (r) chatEl = <RoomChat allRooms={rooms} room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     } else {
       const e = events.find(x => x.id === open.id);
-      if (e) chatEl = <RoomChat room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
+      if (e) chatEl = <RoomChat allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     }
   }
   if (chatEl && !wide) return chatEl;
@@ -2595,7 +2606,7 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
     </div>
   );
 }
-function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, onDeleteThread, readOnly = false, wide = false, sidebar = 0 }) {
+function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, onDeleteThread, allRooms = [], readOnly = false, wide = false, sidebar = 0 }) {
   const [showMembers, setShowMembers] = useState(false);
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
@@ -2688,6 +2699,31 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
     }
   };
   const [replyTo, setReplyTo] = useState(null);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [roomPick, setRoomPick] = useState(false);
+  const EMOJIS = ["😀","😂","🤣","😊","😍","😘","🥰","😎","🤩","🥳","😉","😜","🤗","🤔","😴","🙄","😮","🥺","😭","😡","👍","👎","👏","🙏","💪","🤝","👋","🤙","✌️","🤞","❤️","💚","💛","🔥","✨","🎉","🎊","🍻","🥂","☕","🍕","🎶","💃","🕺","🦋","🌹","🧿","🌙","⭐","💯"];
+  const sendSpecial = async (extra) => {
+    const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, ...extra }).select("id, body, media_url, media_type, file_name, reply_to, sender_id, created_at").single();
+    if (error) { alert(error.message); return; }
+    setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
+  };
+  const shareLocation = () => {
+    setPlusOpen(false);
+    if (!navigator.geolocation) return alert("Location is not available on this device.");
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude } = pos.coords;
+        sendSpecial({ body: "📍 Shared location", media_type: "location", media_url: `https://www.google.com/maps?q=${latitude},${longitude}` });
+      },
+      () => alert("Couldn't get your location — check location permission for your browser."),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+  const shareRoom = (r2) => {
+    setRoomPick(false); setPlusOpen(false);
+    sendSpecial({ body: r2.name, media_type: "roomlink", media_url: `${window.location.origin}/?room=${r2.id}`, file_name: r2.emoji || "💬" });
+  };
   const [otherRead, setOtherRead] = useState(null);
   const [otherSeen, setOtherSeen] = useState(room.otherSeen || null);
   useEffect(() => {
@@ -2781,8 +2817,20 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
                     </div>
                   ); })()}
                   {m.media_url && m.media_type === "image" && <img src={m.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block", marginBottom: m.body ? 4 : 0 }} />}
+                  {m.media_url && m.media_type === "location" && (
+                    <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none", background: "#E7F6EF", border: `1px solid #BFE8D9`, borderRadius: 10, padding: "10px 12px", marginBottom: 4 }}>
+                      <MapPin size={20} color={W.teal} />
+                      <div><div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5 }}>📍 Location shared</div><div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>Open in Google Maps →</div></div>
+                    </a>
+                  )}
+                  {m.media_url && m.media_type === "roomlink" && (
+                    <a href={m.media_url} style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none", background: "#E7F6EF", border: `1px solid #BFE8D9`, borderRadius: 10, padding: "10px 12px", marginBottom: 4 }}>
+                      <span style={{ fontSize: 22 }}>{m.file_name || "💬"}</span>
+                      <div><div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5 }}>{m.body}</div><div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>Tap to open this room →</div></div>
+                    </a>
+                  )}
                   {m.media_url && m.media_type === "file" && <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: W.ink, background: "#F0F2F5", borderRadius: 8, padding: "8px 10px", marginBottom: m.body ? 4 : 0 }}><Paperclip size={16} color={W.teal} /><span style={{ fontSize: 13.5, wordBreak: "break-all" }}>{m.file_name || "file"}</span></a>}
-                  {m.body && <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35 }}>{m.body}</div>}
+                  {m.body && m.media_type !== "location" && m.media_type !== "roomlink" && <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.body}</div>}
                   <div style={{ fontSize: 11, color: W.soft, textAlign: "right", marginTop: 2, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
                     {fmtTime(m.created_at)}
                     {mine && groupType === "p2p" && (
@@ -2827,6 +2875,35 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "12px", textAlign: "center", color: W.soft, fontSize: 12.5, ...bar }}>📣 Announcements from Glasswings</div>
       ) : (
       <>
+      {emojiOpen && (
+        <div style={{ position: "fixed", bottom: 64, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 22, padding: "0 10px" }}>
+          <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 -3px 16px rgba(0,0,0,.12)", padding: 10, display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 4, maxHeight: 180, overflowY: "auto" }}>
+            {EMOJIS.map(em => <span key={em} onClick={() => setText(t => t + em)} style={{ fontSize: 22, textAlign: "center", cursor: "pointer", userSelect: "none", padding: 2 }}>{em}</span>)}
+          </div>
+        </div>
+      )}
+      {plusOpen && (
+        <div style={{ position: "fixed", bottom: 64, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 22, padding: "0 10px" }}>
+          <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 -3px 16px rgba(0,0,0,.12)", padding: "6px 0" }}>
+            <div onClick={shareLocation} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14 }}><MapPin size={19} color={W.teal} /> Share my location</div>
+            <div onClick={() => { setRoomPick(true); setPlusOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14, borderTop: `1px solid ${W.line}` }}>💬 Share a room</div>
+            <div onClick={() => { setPlusOpen(false); fileRef.current?.click(); }} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14, borderTop: `1px solid ${W.line}` }}><Paperclip size={18} color={W.teal} /> Document / GIF / any file</div>
+          </div>
+        </div>
+      )}
+      {roomPick && (
+        <div onClick={() => setRoomPick(false)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
+          <div onClick={ev => ev.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "16px 16px 0 0", padding: "16px 16px calc(20px + env(safe-area-inset-bottom))", maxHeight: "60vh", overflowY: "auto" }}>
+            <div style={{ fontWeight: 800, color: W.ink, marginBottom: 10 }}>Share a room</div>
+            {(allRooms || []).map(r2 => (
+              <div key={r2.id} onClick={() => shareRoom(r2)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 4px", borderBottom: `1px solid ${W.line}`, cursor: "pointer" }}>
+                {r2.logo_url ? <img src={r2.logo_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} /> : <span style={{ fontSize: 22 }}>{r2.emoji || "💬"}</span>}
+                <div style={{ fontWeight: 700, color: W.ink, fontSize: 14.5 }}>{r2.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {replyTo && (
         <div style={{ position: "fixed", bottom: 64, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 21, padding: "0 10px" }}>
           <div style={{ background: "#fff", borderLeft: `4px solid ${W.teal}`, borderRadius: 10, padding: "7px 11px", display: "flex", alignItems: "center", gap: 9, boxShadow: "0 -2px 10px rgba(0,0,0,.08)" }}>
@@ -2841,7 +2918,13 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 20, background: W.bg, padding: "8px 9px", display: "flex", alignItems: "flex-end", gap: 7, ...bar }}>
         <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px" }}>
           <Zap size={21} color={showQR ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => setShowQR(v => !v)} />
-          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && send()} placeholder="Message" style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink }} />
+          <Smile size={21} color={emojiOpen ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => { setEmojiOpen(v => !v); setPlusOpen(false); }} />
+          <textarea value={text} rows={1}
+            onChange={e => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 110) + "px"; }}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); e.target.style.height = "auto"; } }}
+            placeholder="Message"
+            style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink, resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 110, overflowY: "auto", background: "transparent", padding: 0 }} />
+          <Plus size={22} color={plusOpen ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer", transform: plusOpen ? "rotate(45deg)" : "none", transition: "transform .15s" }} onClick={() => { setPlusOpen(v => !v); setEmojiOpen(false); }} />
           <Paperclip size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => fileRef.current?.click()} />
           <Camera size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => camRef.current?.click()} />
         </div>
@@ -5747,7 +5830,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • createfull ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • composer ✅</div>
       </div>
     </div>
   );
