@@ -804,6 +804,7 @@ function gwNameColor(id) {
   for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
   return GW_NAME_COLORS[h % GW_NAME_COLORS.length];
 }
+function rzpDesc(str) { return String(str || "").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim() || "Glasswings"; }
 function gwTimeAgo(ts) {
   if (!ts) return "";
   const diff = Date.now() - new Date(ts).getTime();
@@ -1234,16 +1235,18 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         {wide && (
           <div style={{ width: 330, flexShrink: 0, position: "sticky", top: 76 }}>
             <div style={{ border: `1px solid ${W.line}`, borderRadius: 16, padding: "8px 18px 16px", boxShadow: "0 8px 28px rgba(0,0,0,.07)" }}>
-              {(Number(e.member_discount_pct) || 0) > 0 && (
-                isPlanMember ? (
+              {isPlanMember ? (
+                (Number(e.member_discount_pct) || 0) > 0 && (
                   <div style={{ background: "linear-gradient(95deg,#F3E8FF,#FCE7F3)", border: "1px solid #E9D5FF", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#6D28D9" }}>
                     💎 Member perk active: {e.member_discount_pct}% OFF applies to your tickets at checkout{Number(e.member_discount_pct) >= 100 ? " — FREE for you!" : ""}
                   </div>
-                ) : (
-                  <div onClick={onViewPlans} style={{ background: "linear-gradient(95deg,#6D28D9,#EC4899)", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#fff", cursor: "pointer" }}>
-                    💎 Premium members get {e.member_discount_pct}% OFF this event — view plans →
-                  </div>
                 )
+              ) : (
+                <div onClick={onViewPlans} style={{ background: "linear-gradient(95deg,#6D28D9,#EC4899)", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#fff", cursor: "pointer" }}>
+                  {(Number(e.member_discount_pct) || 0) > 0
+                    ? `💎 Premium members get ${e.member_discount_pct}% OFF this event — view plans →`
+                    : "💎 Go Premium — perks, all rooms & ticket discounts → "}
+                </div>
               )}
               <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>Tickets</div>
               {ticketList}
@@ -1677,7 +1680,7 @@ function Main({ user }) {
       } catch { setPayBusy(false); return setNotice("Could not start the subscription. Please try again."); }
       const rzp2 = new window.Razorpay({
         key: sd.key_id, subscription_id: sd.subscription_id,
-        name: "Glasswings Events", description: `${plan.emoji || "💎"} ${plan.name} — renews every ${months} month${months > 1 ? "s" : ""}`,
+        name: "Glasswings Events", description: rzpDesc(`${plan.name} - renews every ${months} month${months > 1 ? "s" : ""}`),
         image: "/icon-192.png", theme: { color: "#0E8C7F" },
         prefill: { name: profile?.full_name || "", email: user.email || "" },
         handler: async (resp) => {
@@ -1704,7 +1707,7 @@ function Main({ user }) {
     } catch { setPayBusy(false); return setNotice("Could not start the payment. Please try again."); }
     const rzp = new window.Razorpay({
       key: od.key_id, order_id: od.order_id, amount: od.amount, currency: "INR",
-      name: "Glasswings Events", description: `${plan.emoji || "💎"} ${plan.name} — ${months} month${months > 1 ? "s" : ""}`,
+      name: "Glasswings Events", description: rzpDesc(`${plan.name} - ${months} month${months > 1 ? "s" : ""}`),
       image: "/icon-192.png", theme: { color: "#0E8C7F" },
       prefill: { name: profile?.full_name || "", email: user.email || "" },
       handler: async (resp) => {
@@ -1941,7 +1944,7 @@ function Main({ user }) {
     } catch { setPayBusy(false); return setNotice("Could not start the subscription. Please try again."); }
     const rzp = new window.Razorpay({
       key: sub.key_id, subscription_id: sub.subscription_id,
-      name: "Glasswings Events", description: `${room.name} — ₹${room.price_monthly}/month`,
+      name: "Glasswings Events", description: rzpDesc(`${room.name} - Rs ${room.price_monthly}/month`),
       image: "/icon-192.png", theme: { color: "#0E8C7F" },
       prefill: { name: profile?.full_name || "", email: user.email || "" },
       handler: async (resp) => {
@@ -1973,7 +1976,7 @@ function Main({ user }) {
     } catch { setPayBusy(false); return setNotice("Could not start the payment. Please try again."); }
     const rzp = new window.Razorpay({
       key: od.key_id, order_id: od.order_id, amount: od.amount, currency: "INR",
-      name: "Glasswings Events", description: `${room.name} — ${months} month${months > 1 ? "s" : ""} membership`,
+      name: "Glasswings Events", description: rzpDesc(`${room.name} - ${months} month${months > 1 ? "s" : ""} membership`),
       image: "/icon-192.png", theme: { color: "#0E8C7F" },
       prefill: { name: profile?.full_name || "", email: user.email || "" },
       handler: async (resp) => {
@@ -2274,7 +2277,7 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
-      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} /></>}
+      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
@@ -2404,10 +2407,20 @@ function Notice({ text, onClose }) {
 }
 
 /* ---------------- chats ---------------- */
-function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {} }) {
+function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremium, onUpgrade }) {
   return (
     <div>
       <TopBar title="Glasswings" />
+      {!isPremium && (
+        <div onClick={onUpgrade} style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(95deg,#6D28D9,#EC4899)", color: "#fff", padding: "11px 15px", cursor: "pointer" }}>
+          <span style={{ fontSize: 19 }}>💎</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 13.5 }}>Go Premium</div>
+            <div style={{ fontSize: 11, opacity: .92 }}>All rooms · all games · up to 100% off tickets</div>
+          </div>
+          <span style={{ fontWeight: 800, fontSize: 12.5, background: "rgba(255,255,255,.2)", padding: "6px 11px", borderRadius: 9 }}>View →</span>
+        </div>
+      )}
       {chats.length === 0 ? (
         <div style={{ textAlign: "center", padding: "80px 30px", color: W.soft }}>
           <MessageCircle size={42} color={W.teal} style={{ marginBottom: 14 }} />
