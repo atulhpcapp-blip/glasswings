@@ -352,6 +352,9 @@ function Auth({ initialMode = "login", onClose }) {
   const buying = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   const [name, setName] = useState(""), [email, setEmail] = useState(""), [pass, setPass] = useState(""), [gender, setGender] = useState("male");
   const [err, setErr] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
+  const VIBES = ["HOUSE PARTIES 🪩", "BLIND DATES 💘", "SINGLES MEETUPS 🥂", "GAME NIGHTS 🎲", "LIVE EVENTS 🎤"];
+  const [wi, setWi] = useState(0);
+  useEffect(() => { const iv = setInterval(() => setWi(w => (w + 1) % VIBES.length), 2200); return () => clearInterval(iv); }, []);
   const go = async () => {
     setErr(""); setNote("");
     if (mode === "reset") {
@@ -382,23 +385,48 @@ function Auth({ initialMode = "login", onClose }) {
   };
   const inp = (ph, v, set, t = "text") => <input value={v} onChange={e => set(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "13px 16px", borderRadius: 14, border: "1.5px solid #E8E3F2", background: "#FAF9FE", fontSize: 14.5, outline: "none", boxSizing: "border-box", color: W.ink, fontWeight: 600 }} />;
   const GENDERS = [["male", "Man 💙"], ["female", "Woman 💖"], ["other", "Other 💜"]];
+  const CONF = ["#FDD835", "#EC4899", "#22D3EE", "#A78BFA", "#34D399", "#FB923C", "#F472B6", "#60A5FA", "#FDE047", "#2DD4BF", "#F87171", "#C084FC"];
   return (
     <div style={{ minHeight: "100vh", padding: "0 22px 44px", display: "flex", flexDirection: "column", alignItems: "center", position: "relative", overflow: "hidden", background: "linear-gradient(135deg,#008069 0%,#0E7490 28%,#6D28D9 62%,#EC4899 100%)", backgroundSize: "300% 300%", animation: "gwsky 14s ease infinite" }}>
       <style>{`
         @keyframes gwsky { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
         @keyframes gwfloat { 0%,100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-26px) rotate(8deg); } }
         @keyframes gwpop { 0% { transform: scale(.96); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes gwfall { 0% { transform: translateY(-8vh) rotate(0deg); } 100% { transform: translateY(108vh) rotate(560deg); } }
+        @keyframes gwrise { 0% { transform: translateY(0) scale(1); opacity: .85; } 100% { transform: translateY(-105vh) scale(1.5); opacity: 0; } }
+        @keyframes gwswing { 0%,100% { transform: rotate(-13deg); } 50% { transform: rotate(13deg); } }
+        @keyframes gwglow { 0%,100% { opacity: .35; transform: translate(-50%,0) scale(1); } 50% { opacity: .7; transform: translate(-50%,0) scale(1.25); } }
+        @keyframes gwmarq { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        @keyframes gwwordin { 0% { transform: translateY(14px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        @keyframes gwbeat { 0%,100% { transform: scale(1); } 25% { transform: scale(1.25); } 40% { transform: scale(1); } 55% { transform: scale(1.18); } }
       `}</style>
-      {["🦋", "🎉", "🎵", "💃", "✨", "🥂", "💘", "🪩"].map((e, k) => (
-        <div key={k} style={{ position: "absolute", left: `${[6, 84, 12, 78, 46, 90, 4, 60][k]}%`, top: `${[12, 8, 64, 56, 4, 78, 86, 90][k]}%`, fontSize: [30, 26, 34, 28, 22, 30, 26, 32][k], opacity: .5, animation: `gwfloat ${5 + k}s ease-in-out infinite`, animationDelay: `${k * 0.6}s`, pointerEvents: "none", filter: "drop-shadow(0 4px 8px rgba(0,0,0,.25))" }}>{e}</div>
+      {CONF.map((c, k) => (
+        <div key={"cf" + k} style={{ position: "absolute", left: `${(k * 8.3 + 3) % 100}%`, top: 0, width: k % 3 === 0 ? 9 : 7, height: k % 2 === 0 ? 13 : 9, background: c, borderRadius: 2, opacity: .85, animation: `gwfall ${6 + (k % 5)}s linear infinite`, animationDelay: `${k * 0.7}s`, pointerEvents: "none", zIndex: 0 }} />
       ))}
-      {onClose && <button onClick={onClose} style={{ position: "absolute", top: 14, left: 14, background: "rgba(255,255,255,.16)", color: "#fff", border: "1px solid rgba(255,255,255,.4)", borderRadius: 10, padding: "7px 13px", fontWeight: 700, cursor: "pointer", zIndex: 2 }}>← Back</button>}
-      <div style={{ textAlign: "center", paddingTop: 52, position: "relative", zIndex: 1 }}>
-        <img src="/logo-white.png" alt="Glasswings Events" style={{ width: 190, maxWidth: "64%", objectFit: "contain", filter: "drop-shadow(0 4px 14px rgba(0,0,0,.3))" }} />
-        <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", marginTop: 16, lineHeight: 1.2, letterSpacing: 0.3, textShadow: "0 2px 12px rgba(0,0,0,.3)" }}>Where Hyderabad<br />comes alive 🎉</div>
-        <div style={{ color: "rgba(255,255,255,.92)", marginTop: 8, fontSize: 14, fontWeight: 600 }}>Events · Rooms · Games · Your people 💫</div>
+      {["❤️", "💖", "💘", "💕", "💗", "💞"].map((h, k) => (
+        <div key={"h" + k} style={{ position: "absolute", left: `${[8, 88, 22, 72, 50, 35][k]}%`, bottom: -44, fontSize: [22, 18, 26, 20, 17, 24][k], animation: `gwrise ${7 + k}s ease-in infinite`, animationDelay: `${k * 1.4}s`, pointerEvents: "none", zIndex: 0 }}>{h}</div>
+      ))}
+      {["🦋", "🎵", "💃", "🕺", "🥂", "🎭", "🎟️", "🎲"].map((e, k) => (
+        <div key={"f" + k} style={{ position: "absolute", left: `${[5, 85, 10, 80, 90, 4, 62, 38][k]}%`, top: `${[18, 14, 62, 58, 80, 84, 6, 88][k]}%`, fontSize: [28, 26, 32, 30, 28, 30, 24, 28][k], opacity: .5, animation: `gwfloat ${5 + k}s ease-in-out infinite`, animationDelay: `${k * 0.6}s`, pointerEvents: "none", filter: "drop-shadow(0 4px 8px rgba(0,0,0,.25))", zIndex: 0 }}>{e}</div>
+      ))}
+      <div style={{ position: "absolute", top: -6, left: "50%", transform: "translateX(-50%)", zIndex: 1, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", top: 18, left: "50%", width: 120, height: 120, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,.5), transparent 70%)", animation: "gwglow 2.6s ease infinite" }} />
+        <div style={{ fontSize: 46, transformOrigin: "top center", animation: "gwswing 3.2s ease-in-out infinite", filter: "drop-shadow(0 6px 14px rgba(0,0,0,.35))", position: "relative" }}>🪩</div>
       </div>
-      <div style={{ background: "rgba(255,255,255,.94)", backdropFilter: "blur(14px)", borderRadius: 24, padding: 22, marginTop: 26, width: "100%", maxWidth: 384, boxShadow: "0 24px 70px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.5)", position: "relative", zIndex: 1, animation: "gwpop .35s ease" }}>
+      {onClose && <button onClick={onClose} style={{ position: "absolute", top: 14, left: 14, background: "rgba(255,255,255,.16)", color: "#fff", border: "1px solid rgba(255,255,255,.4)", borderRadius: 10, padding: "7px 13px", fontWeight: 700, cursor: "pointer", zIndex: 3 }}>← Back</button>}
+      <div style={{ textAlign: "center", paddingTop: 64, position: "relative", zIndex: 2 }}>
+        <img src="/logo-white.png" alt="Glasswings Events" style={{ width: 178, maxWidth: "60%", objectFit: "contain", filter: "drop-shadow(0 4px 14px rgba(0,0,0,.3))" }} />
+        <div style={{ fontSize: 25, fontWeight: 800, color: "#fff", marginTop: 14, lineHeight: 1.2, textShadow: "0 2px 12px rgba(0,0,0,.3)" }}>One community for</div>
+        <div key={wi} style={{ fontSize: 27, fontWeight: 900, marginTop: 4, letterSpacing: .5, color: "#FDE047", textShadow: "0 3px 14px rgba(0,0,0,.35)", animation: "gwwordin .45s ease" }}>{VIBES[wi]}</div>
+        <div style={{ marginTop: 14, width: "100vw", overflow: "hidden", maskImage: "linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)" }}>
+          <div style={{ display: "flex", gap: 9, width: "max-content", animation: "gwmarq 19s linear infinite" }}>
+            {[...Array(2)].map((_, dup) => ["🪩 House parties", "💘 Blind Banter", "🥂 Singles meetups", "🎲 Ludo nights", "🎵 Antakshari", "🎤 Live events", "💃 Boys vs Girls", "🧠 Daily trivia"].map((c, k) => (
+              <span key={dup + "_" + k} style={{ flexShrink: 0, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "#fff", fontSize: 12.5, fontWeight: 800, padding: "7px 14px", borderRadius: 16, backdropFilter: "blur(6px)" }}>{c}</span>
+            )))}
+          </div>
+        </div>
+      </div>
+      <div style={{ background: "rgba(255,255,255,.94)", backdropFilter: "blur(14px)", borderRadius: 24, padding: 22, marginTop: 20, width: "100%", maxWidth: 384, boxShadow: "0 24px 70px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.5)", position: "relative", zIndex: 2, animation: "gwpop .35s ease" }}>
         {buying && mode === "signup" && <div style={{ background: "linear-gradient(95deg,#E7F6EF,#F3E8FF)", color: W.teal, fontSize: 13, fontWeight: 700, borderRadius: 12, padding: "10px 13px", marginBottom: 13 }}>🎟️ Create your account to finish grabbing your ticket!</div>}
         <div style={{ display: "flex", background: "#F2EFF8", borderRadius: 14, padding: 4, marginBottom: 16 }}>
           {["login", "signup"].map(m => (
@@ -431,7 +459,9 @@ function Auth({ initialMode = "login", onClose }) {
           {mode === "reset" && <div style={{ textAlign: "center" }}><span onClick={() => { setMode("login"); setErr(""); setNote(""); }} style={{ color: "#6D28D9", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>← Back to login</span></div>}
         </div>
       </div>
-      <div style={{ color: "rgba(255,255,255,.85)", fontSize: 12, fontWeight: 600, marginTop: 18, position: "relative", zIndex: 1 }}>900+ members already vibing 🦋</div>
+      <div style={{ color: "#fff", fontSize: 13, fontWeight: 800, marginTop: 18, position: "relative", zIndex: 2, display: "flex", alignItems: "center", gap: 7, textShadow: "0 2px 8px rgba(0,0,0,.3)" }}>
+        <span style={{ display: "inline-block", animation: "gwbeat 1.6s ease infinite" }}>🔥</span> 1,400+ members already vibing
+      </div>
     </div>
   );
 }
@@ -7440,7 +7470,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • authglow ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • authshow ✅</div>
       </div>
     </div>
   );
