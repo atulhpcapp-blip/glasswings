@@ -822,6 +822,7 @@ function gwPreviewText(m) {
   if (!m) return "";
   const t = m.media_type;
   if (t === "image") return "📷 Photo";
+  if (t === "snap") return "📷 Snap 🔥";
   if (t === "file") return "📎 " + (m.body || "File");
   if (t === "location") return "📍 Location";
   if (t === "roomlink") return "💬 Shared a room";
@@ -4404,6 +4405,20 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
     </div>
   );
 }
+function SnapViewer({ msg, onClose }) {
+  const [left, setLeft] = useState(10);
+  useEffect(() => {
+    const iv = setInterval(() => setLeft(v => { if (v <= 1) { clearInterval(iv); onClose(); return 0; } return v - 1; }), 1000);
+    return () => clearInterval(iv);
+  }, []);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, height: "100%", zIndex: 270, background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <img src={msg.media_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", userSelect: "none", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: 16, right: 18, width: 34, height: 34, borderRadius: "50%", background: "rgba(0,0,0,.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>{left}</div>
+      <div style={{ position: "absolute", bottom: 24, left: 0, right: 0, textAlign: "center", color: "rgba(255,255,255,.7)", fontSize: 12, fontWeight: 700 }}>👆 tap anywhere to close · view once</div>
+    </div>
+  );
+}
 const GW_FILTERS = [
   // [name, cssFilter, fx[]] — fx ops: ["grad",c1,c2,alpha,blend] ["wash",color,alpha,blend] ["vig",alpha] ["grain",alpha]
   ["Original", "none", []],
@@ -4832,9 +4847,13 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   const REACTS = ["🦋", "🌹", "🧿", "🌙", "💃", "🔥", "😂", "❤️"];
   const [reacts, setReacts] = useState({});
   const [tray, setTray] = useState(null);
+  const [snapViews, setSnapViews] = useState({});
+  const [snapOpen, setSnapOpen] = useState(null);
   useEffect(() => {
     if (!msgs || !msgs.length) { setReacts({}); return; }
     const ids = msgs.map(mm => mm.id);
+    supabase.from("snap_views").select("message_id, user_id").in("message_id", ids)
+      .then(({ data }) => { const g2 = {}; (data || []).forEach(r3 => { (g2[r3.message_id] = g2[r3.message_id] || new Set()).add(r3.user_id); }); setSnapViews(g2); });
     const loadR = () => supabase.from("message_reactions").select("message_id, user_id, emoji").in("message_id", ids)
       .then(({ data }) => { const g = {}; (data || []).forEach(r2 => { (g[r2.message_id] = g[r2.message_id] || []).push(r2); }); setReacts(g); });
     loadR();
@@ -4999,6 +5018,26 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
                     </div>
                   ); })()}
                   {m.media_url && m.media_type === "image" && <img src={m.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block", marginBottom: m.body ? 4 : 0 }} />}
+                  {m.media_url && m.media_type === "snap" && (() => {
+                    const viewed = snapViews[m.id]?.has(user.id);
+                    if (m.sender_id === user.id) return (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 2px" }}>
+                        <span style={{ fontSize: 20 }}>📷</span>
+                        <div><div style={{ fontWeight: 800, fontSize: 13.5 }}>Snap sent</div><div style={{ fontSize: 11, opacity: .75 }}>{(snapViews[m.id]?.size || 0)} opened 🔥 · vanishes in 24h</div></div>
+                      </div>
+                    );
+                    return viewed ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 2px", opacity: .7 }}>
+                        <span style={{ fontSize: 18 }}>🔥</span><div style={{ fontWeight: 800, fontSize: 13.5 }}>Opened</div>
+                      </div>
+                    ) : (
+                      <div onClick={async (ev) => { ev.stopPropagation(); setSnapOpen(m); supabase.from("snap_views").insert({ message_id: m.id, user_id: user.id }).then(() => { setSnapViews(p => { const c = { ...p }; (c[m.id] = c[m.id] || new Set()).add(user.id); return c; }); }); }}
+                        style={{ display: "flex", alignItems: "center", gap: 9, background: "linear-gradient(95deg,#EC4899,#7C3AED)", color: "#fff", borderRadius: 11, padding: "11px 14px", cursor: "pointer", minWidth: 150 }}>
+                        <span style={{ fontSize: 20 }}>📷</span>
+                        <div><div style={{ fontWeight: 800, fontSize: 13.5 }}>Snap!</div><div style={{ fontSize: 10.5, opacity: .9 }}>Tap to view · once only</div></div>
+                      </div>
+                    );
+                  })()}
                   {m.media_url && m.media_type === "location" && (
                     <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none", background: "#E7F6EF", border: `1px solid #BFE8D9`, borderRadius: 10, padding: "10px 12px", marginBottom: 4 }}>
                       <MapPin size={20} color={W.teal} />
@@ -5088,7 +5127,8 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
           </div>
         </>
       )}
-      {gwCamOpen && <GWCamera meId={user.id} events={gwEvents} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "image"); }} onClose={() => setGwCamOpen(false)} />}
+      {snapOpen && <SnapViewer msg={snapOpen} onClose={() => setSnapOpen(null)} />}
+      {gwCamOpen && <GWCamera meId={user.id} events={gwEvents} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "snap"); }} onClose={() => setGwCamOpen(false)} />}
       {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
         <div onClick={() => setRoomPick(false)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
@@ -5123,6 +5163,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); e.target.style.height = "auto"; } }}
             placeholder="Message"
             style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink, resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 110, overflowY: "auto", background: "transparent", padding: 0 }} />
+          <Camera size={21} color="#EC4899" style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => { setGwCamOpen(true); setPlusOpen(false); setEmojiOpen(false); }} />
           <Plus size={24} color={plusOpen ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer", transform: plusOpen ? "rotate(45deg)" : "none", transition: "transform .15s" }} onClick={() => { setPlusOpen(v => !v); setEmojiOpen(false); }} />
         </div>
         <button onMouseDown={e => e.preventDefault()} onTouchStart={e => { e.preventDefault(); send(); }} onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: "linear-gradient(135deg,#04B08F,#008069)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation", boxShadow: "0 3px 10px rgba(0,128,105,.35)" }}><Send size={20} /></button>
@@ -8297,6 +8338,7 @@ function MyAlbum({ meId }) {
         <div onClick={() => setFull(null)} style={{ position: "fixed", inset: 0, zIndex: 240, background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <img src={full.url} alt="" style={{ maxWidth: "100%", maxHeight: "86%", objectFit: "contain" }} />
           <div style={{ position: "absolute", top: 14, right: 16, display: "flex", gap: 20, alignItems: "center" }} onClick={e => e.stopPropagation()}>
+            <span onClick={async () => { const { error } = await supabase.from("stories").insert({ event_id: null, user_id: meId, media_url: full.url }); alert(error ? error.message : "📸 Posted to your story!"); }} style={{ fontSize: 13, fontWeight: 800, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)", borderRadius: 16, padding: "7px 13px", cursor: "pointer" }}>📸 Story</span>
             <span onClick={() => dl(full.url)} style={{ fontSize: 21, cursor: "pointer" }}>⬇️</span>
             <Trash2 size={21} color="#fff" onClick={() => del(full.id)} style={{ cursor: "pointer" }} />
             <X size={24} color="#fff" style={{ cursor: "pointer" }} onClick={() => setFull(null)} />
