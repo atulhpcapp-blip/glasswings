@@ -5014,6 +5014,7 @@ function MembersOverview({ isSuper }) {
   const [rows, setRows] = useState(null);
   const [seg, setSeg] = useState("all");
   const [q, setQ] = useState("");
+  const [roomF, setRoomF] = useState("all");
   const [composer, setComposer] = useState(null); // "broadcast" | "email"
   const [subj, setSubj] = useState("");
   const [msg, setMsg] = useState("");
@@ -5046,7 +5047,15 @@ function MembersOverview({ isSuper }) {
     ["noroom", "🚪 No room yet", r => !(r.rooms || []).length],
   ];
   const segFn = (segs.find(x => x[0] === seg) || segs[0])[2];
-  const list = rows.filter(segFn).filter(r => !q.trim() || (r.full_name || "").toLowerCase().includes(q.trim().toLowerCase()));
+  const list = rows.filter(segFn)
+    .filter(r => roomF === "all" || (r.rooms || []).includes(roomF))
+    .filter(r => !q.trim() || (r.full_name || "").toLowerCase().includes(q.trim().toLowerCase()));
+  const allRoomNames = [...new Set(rows.flatMap(r => r.rooms || []))].sort();
+  const roomsLine = r => {
+    const det = Array.isArray(r.rooms_detail) ? r.rooms_detail : [];
+    if (!det.length) return (r.rooms || []).join(", ");
+    return det.map(d => d.name + ((d.price || 0) > 0 && r.gender !== "female" ? (d.paying ? " 💳" : " 👑") : "")).join(", ");
+  };
   const fmtD = ts => ts ? new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "—";
   const stat = (label, val) => (
     <div style={{ flex: "1 1 100px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "12px 13px" }}>
@@ -5095,8 +5104,13 @@ function MembersOverview({ isSuper }) {
           </div>
         ))}
       </div>
+      <div style={{ fontSize: 11, color: W.soft, marginBottom: 7 }}>In paid rooms (men): 💳 paying subscriber · 👑 added by admin</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name…" style={{ flex: "1 1 160px", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 12px", fontSize: 13.5, outline: "none" }} />
+        <select value={roomF} onChange={e => setRoomF(e.target.value)} style={{ flex: "0 1 170px", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 10px", fontSize: 13, outline: "none", background: "#fff", color: W.ink }}>
+          <option value="all">All rooms</option>
+          {allRoomNames.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
         <button onClick={() => setComposer("broadcast")} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "9px 13px", fontSize: 12.5 }}>📢 Broadcast segment</button>
         {isSuper && <button onClick={() => setComposer("email")} style={{ ...btn(W.teal, "#fff"), padding: "9px 13px", fontSize: 12.5 }}>📧 Email segment</button>}
       </div>
@@ -5115,7 +5129,7 @@ function MembersOverview({ isSuper }) {
                   <td style={{ padding: "9px 12px", color: W.soft, fontSize: 12 }}>{r.phone || "—"}<br />{r.email || ""}</td>
                   <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{fmtD(r.created_at)}</td>
                   <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{lastSeenStr(r.last_seen).replace("last seen ", "") || "—"}</td>
-                  <td style={{ padding: "9px 12px", fontSize: 12 }}>{(r.rooms || []).join(", ") || "—"}</td>
+                  <td style={{ padding: "9px 12px", fontSize: 12 }}>{roomsLine(r) || "—"}</td>
                   <td style={{ padding: "9px 12px", textAlign: "center" }}>{r.tickets || 0}</td>
                   <td style={{ padding: "9px 12px", fontWeight: 700, whiteSpace: "nowrap" }}>₹{Math.round((r.spend || 0) / 100)}</td>
                 </tr>
@@ -5133,7 +5147,7 @@ function MembersOverview({ isSuper }) {
               </div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>{r.phone || "no phone"} · {r.email || "no email"}</div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Joined {fmtD(r.created_at)} · 🎟️ {r.tickets || 0} · ₹{Math.round((r.spend || 0) / 100)}</div>
-              <div style={{ fontSize: 12, color: W.ink, marginTop: 3 }}>💬 {(r.rooms || []).join(", ") || "No rooms yet"}</div>
+              <div style={{ fontSize: 12, color: W.ink, marginTop: 3 }}>💬 {roomsLine(r) || "No rooms yet"}</div>
             </div>
           ))}
         </div>
@@ -5525,7 +5539,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • members2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • roomfilter ✅</div>
       </div>
     </div>
   );
