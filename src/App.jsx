@@ -5079,7 +5079,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <><MembersOverview isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>}
+                : <><PendingSignups isSuper={isSuper} /><MembersOverview isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>}
     </div>
   );
 }
@@ -6784,6 +6784,54 @@ function MemberRolesSheet({ member: m, cities, onSetRoles, onClose, onSaved }) {
     </Sheet>
   );
 }
+function PendingSignups({ isSuper }) {
+  const [rows, setRows] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const load = () => supabase.rpc("admin_pending_users").then(({ data, error }) => setRows(error ? [] : (data || [])));
+  useEffect(() => { load(); }, []);
+  if (rows === null || !rows.length) return null;
+  const approve = async (u) => {
+    setBusy(u.id);
+    const { error } = await supabase.rpc("admin_confirm_user", { p_user: u.id });
+    setBusy(null);
+    if (error) return alert(error.message);
+    load();
+  };
+  const setPass = async (u) => {
+    const pw = window.prompt(`Set a temporary password for ${u.email}:\n(min 6 characters — share it with them on WhatsApp; they can change it later in Profile)`);
+    if (!pw) return;
+    if (pw.length < 6) return alert("Minimum 6 characters.");
+    setBusy(u.id);
+    const { error } = await supabase.rpc("admin_set_password", { p_user: u.id, p_password: pw });
+    setBusy(null);
+    if (error) return alert(error.message);
+    alert(`✅ Done! ${u.email} can now log in with:\n\n${pw}\n\n(Account auto-confirmed too.)`);
+    load();
+  };
+  return (
+    <div style={{ background: "#FFF8EC", border: "1px solid #F2DDB0", borderRadius: 14, padding: "13px 15px", marginBottom: 14 }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+        <span style={{ fontSize: 19 }}>⏳</span>
+        <div style={{ flex: 1, fontWeight: 800, color: "#7a5a14", fontSize: 14.5 }}>Pending signups ({rows.length})</div>
+        <span style={{ color: "#7a5a14", fontWeight: 800 }}>{open ? "▲" : "▼"}</span>
+      </div>
+      {open && <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 11.5, color: "#8a6d1d", marginBottom: 9 }}>These members signed up but never confirmed their email (usually because the email didn't arrive). Approve them, or set a temporary password and send it to them directly.</div>
+        {rows.map(u => (
+          <div key={u.id} style={{ background: "#fff", border: "1px solid #F0E2C0", borderRadius: 11, padding: "10px 12px", marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5 }}>{u.full_name || "(no profile yet)"}</div>
+            <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{u.email} · signed up {new Date(u.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</div>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button disabled={busy === u.id} onClick={() => approve(u)} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "8px", fontSize: 12.5 }}>✅ Approve (confirm email)</button>
+              {isSuper && <button disabled={busy === u.id} onClick={() => setPass(u)} style={{ ...btn("#fff", "#7a5a14"), border: "1px solid #E2C886", flex: 1, justifyContent: "center", padding: "8px", fontSize: 12.5 }}>🔑 Set password</button>}
+            </div>
+          </div>
+        ))}
+      </div>}
+    </div>
+  );
+}
 function MembersOverview({ isSuper }) {
   const [rows, setRows] = useState(null);
   const [seg, setSeg] = useState("all");
@@ -7371,7 +7419,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • cupid ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pending ✅</div>
       </div>
     </div>
   );
