@@ -1249,7 +1249,7 @@ function PublicLanding() {
   const cats = Array.from(new Set(events.map(e => e.category).filter(Boolean)));
   const cityList = Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const getMin = e => e.ticket_price || 0;
-  const list = sortEvents(events.filter(e => eventMatches(e, flt, getMin)), sortBy, getMin);
+  const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin)), sortBy, getMin);
   const priceFrom = (e) => {
     const ts = types[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -2157,7 +2157,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
   const getMin = e => { const ts = ticketTypes[e.id] || []; const prices = ts.length ? ts.map(t => genderNet(t, null, profile)) : [e.ticket_price || 0]; return Math.min(...prices); };
-  const list = sortEvents(events.filter(e => eventMatches(e, flt, getMin)), sortBy, getMin);
+  const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin)), sortBy, getMin);
   const priceFrom = (e) => {
     const ts = ticketTypes[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -6944,7 +6944,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • autoslider ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • homelive ✅</div>
       </div>
     </div>
   );
