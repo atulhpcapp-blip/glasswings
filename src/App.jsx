@@ -2453,7 +2453,7 @@ function GifPicker({ onPick, onClose }) {
             </div>
           )}
         </div>
-        <div style={{ fontSize: 10, color: W.soft, textAlign: "center", marginTop: 6 }}>Powered by Tenor</div>
+        <div style={{ fontSize: 10, color: W.soft, textAlign: "center", marginTop: 6 }}>Powered by GIPHY</div>
       </div>
     </div>
   );
@@ -6082,7 +6082,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • funday ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • giphy ✅</div>
       </div>
     </div>
   );
