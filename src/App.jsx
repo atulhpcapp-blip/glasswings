@@ -2643,12 +2643,114 @@ function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
     </div>
   );
 }
+function AntakshariRoom({ meId, onClose }) {
+  const [entries, setEntries] = useState(null);
+  const [names, setNames] = useState({});
+  const [title, setTitle] = useState("");
+  const [movie, setMovie] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showBoard, setShowBoard] = useState(false);
+  const [board, setBoard] = useState(null);
+  const endRef = useRef(null);
+  const load = async () => {
+    const { data } = await supabase.from("antakshari_entries")
+      .select("id, user_id, title, movie, next_letter, created_at")
+      .order("created_at", { ascending: false }).limit(60);
+    const list = (data || []).reverse();
+    setEntries(list);
+    const ids = [...new Set(list.map(e => e.user_id))].filter(id => !names[id]);
+    if (ids.length) {
+      const { data: ps } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids);
+      setNames(prev => { const m = { ...prev }; (ps || []).forEach(x => { m[x.id] = x; }); return m; });
+    }
+  };
+  useEffect(() => { load(); const iv = setInterval(load, 8000); return () => clearInterval(iv); }, []);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [entries ? entries.length : 0]);
+  useEffect(() => {
+    if (!showBoard) return;
+    supabase.rpc("antakshari_board").then(({ data }) => setBoard(data || []));
+  }, [showBoard]);
+  const required = (entries && entries.length ? entries[entries.length - 1].next_letter : "m") || "m";
+  const lastByMe = entries && entries.length && entries[entries.length - 1].user_id === meId;
+  const sing = async () => {
+    if (!title.trim()) return;
+    setBusy(true);
+    const { error } = await supabase.rpc("antakshari_post", { p_title: title.trim(), p_movie: movie.trim() || null });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setTitle(""); setMovie(""); load();
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#7C3AED,#EC4899)", color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+        <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer", flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800, fontSize: 17 }}>🎵 Antakshari</div>
+          <div style={{ fontSize: 11.5, opacity: .9 }}>Community song chain · +1 point per song</div>
+        </div>
+        <Trophy size={20} onClick={() => setShowBoard(true)} style={{ cursor: "pointer" }} />
+      </div>
+      <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "12px 16px", display: "flex", alignItems: "center", gap: 13 }}>
+        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,#7C3AED,#EC4899)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 26, flexShrink: 0 }}>{required.toUpperCase()}</div>
+        <div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>Sing a song starting with "{required.toUpperCase()}"</div>
+          <div style={{ fontSize: 11.5, color: W.soft }}>{lastByMe ? "You sang last — wait for someone else 🎤" : "Type the song name below and keep the chain alive!"}</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+        {entries === null ? <div style={{ color: W.soft, textAlign: "center", padding: 26 }}>Loading the chain…</div>
+          : !entries.length ? <div style={{ color: W.soft, textAlign: "center", padding: 26 }}>The chain starts with M — the classic opening. Be the first to sing! 🎶</div>
+          : entries.map(e => {
+            const w = names[e.user_id] || {};
+            const mine = e.user_id === meId;
+            return (
+              <div key={e.id} style={{ display: "flex", gap: 9, marginBottom: 10, flexDirection: mine ? "row-reverse" : "row" }}>
+                {w.avatar_url ? <img src={w.avatar_url} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  : <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#7C3AED", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>{(w.full_name || "?").charAt(0)}</div>}
+                <div style={{ background: mine ? "#F3E8FF" : "#fff", border: `1px solid ${mine ? "#E3CCF7" : W.line}`, borderRadius: 12, padding: "8px 12px", maxWidth: "75%" }}>
+                  <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>🎶 {e.title}</div>
+                  {e.movie && <div style={{ fontSize: 11.5, color: W.soft }}>{e.movie}</div>}
+                  <div style={{ fontSize: 10.5, color: "#9C6ECF", fontWeight: 700, marginTop: 2 }}>{(w.full_name || "Member").split(" ")[0]} · next: {String(e.next_letter || "").toUpperCase()}</div>
+                </div>
+              </div>
+            );
+          })}
+        <div ref={endRef} />
+      </div>
+      <div style={{ background: "#fff", borderTop: `1px solid ${W.line}`, padding: "10px 12px calc(12px + env(safe-area-inset-bottom))" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder={`Song starting with "${required.toUpperCase()}"…`} style={{ flex: 2, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none" }} />
+          <input value={movie} onChange={e => setMovie(e.target.value)} placeholder="Movie (optional)" style={{ flex: 1.2, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13, outline: "none" }} />
+        </div>
+        <button onClick={sing} disabled={busy || lastByMe} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", opacity: (busy || lastByMe) ? .55 : 1 }}>{busy ? "Singing…" : lastByMe ? "Waiting for the next singer…" : "Sing it! 🎤"}</button>
+      </div>
+      {showBoard && (
+        <div onClick={() => setShowBoard(false)} style={{ position: "fixed", inset: 0, zIndex: 195, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "16px 16px 0 0", padding: "18px 16px calc(22px + env(safe-area-inset-bottom))", maxHeight: "70vh", overflowY: "auto" }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 16, marginBottom: 12 }}>🏆 Antakshari legends</div>
+            {board === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div>
+              : !board.length ? <div style={{ color: W.soft, fontSize: 13 }}>No singers yet.</div>
+              : board.map((r, k) => (
+                <div key={r.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${W.line}` }}>
+                  <div style={{ width: 20, textAlign: "center", fontWeight: 800, color: k < 3 ? "#E67E22" : W.soft, fontSize: 13 }}>{k + 1}</div>
+                  {r.avatar_url ? <img src={r.avatar_url} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#7C3AED", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>{(r.full_name || "?").charAt(0)}</div>}
+                  <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{r.full_name || "Member"}</div>
+                  <div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 13 }}>🎶 {r.songs}</div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function GameZone({ meId, events, isStaff }) {
   const [playTrivia, setPlayTrivia] = useState(false);
   const [triviaDone, setTriviaDone] = useState(null);
   const [board, setBoard] = useState(null);
   const [awards, setAwards] = useState([]);
   const [awardOpen, setAwardOpen] = useState(false);
+  const [playAnt, setPlayAnt] = useState(false);
   const loadAwards = () => supabase.from("game_awards").select("id, prize, created_at, profiles:user_id(full_name, avatar_url)").order("created_at", { ascending: false }).limit(12)
     .then(({ data }) => setAwards(data || []));
   useEffect(() => {
@@ -2675,7 +2777,7 @@ function GameZone({ meId, events, isStaff }) {
       </div>
       <div style={{ padding: 14 }}>
         <Card emoji="🧠" title="Daily Trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
-        <Card emoji="🎵" title="Antakshari" sub="Song-chain showdown — coming soon" cta="Soon" />
+        <Card emoji="🎵" title="Antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
         <Card emoji="🎯" title="Bollywood Riddles" sub="Guess the film from emojis — coming soon" cta="Soon" />
         <Card emoji="🎲" title="Tambola / Housie" sub="Played live at our events 🎉" />
 
@@ -2712,6 +2814,7 @@ function GameZone({ meId, events, isStaff }) {
           ))}
       </div>
       {playTrivia && <TriviaSheet meId={meId} alreadyScore={triviaDone} onClose={() => setPlayTrivia(false)} />}
+      {playAnt && <AntakshariRoom meId={meId} onClose={() => setPlayAnt(false)} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -6394,7 +6497,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gamezone ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • antakshari ✅</div>
       </div>
     </div>
   );
