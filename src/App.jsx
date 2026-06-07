@@ -4203,6 +4203,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   const endRef = useRef(null);
   const sRef = useRef({});
   const headRef = useRef(null);
+  const composerRef = useRef(null);
   const [headPad, setHeadPad] = useState(112);
   const camRef = useRef(null);
   const fileRef = useRef(null);
@@ -4243,7 +4244,11 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
-    const onVV = () => { if (headRef.current) headRef.current.style.transform = `translateX(-50%) translateY(${Math.max(0, vv.offsetTop)}px)`; };
+    const onVV = () => {
+      if (headRef.current) headRef.current.style.transform = `translateX(-50%) translateY(${Math.max(0, vv.offsetTop)}px)`;
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      if (composerRef.current) composerRef.current.style.bottom = (kb > 40 ? kb : 63) + "px";
+    };
     vv.addEventListener("resize", onVV); vv.addEventListener("scroll", onVV); onVV();
     return () => { vv.removeEventListener("resize", onVV); vv.removeEventListener("scroll", onVV); };
   }, []);
@@ -4472,7 +4477,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         <div ref={endRef} />
       </div>
       {showQR && (
-        <div style={{ position: "fixed", bottom: 63, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 25, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -4px 16px rgba(0,0,0,.08)", maxHeight: "45vh", overflowY: "auto", padding: 12, ...bar }}>
+        <div ref={composerRef} style={{ position: "fixed", bottom: 63, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 25, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -4px 16px rgba(0,0,0,.08)", maxHeight: "45vh", overflowY: "auto", padding: 12, ...bar }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>Quick replies</span>
             <X size={18} style={{ cursor: "pointer" }} onClick={() => setShowQR(false)} />
@@ -7619,7 +7624,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • headpin ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • kbfix ✅</div>
       </div>
     </div>
   );
