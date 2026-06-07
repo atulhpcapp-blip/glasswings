@@ -802,6 +802,30 @@ function gwNameColor(id) {
   for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
   return GW_NAME_COLORS[h % GW_NAME_COLORS.length];
 }
+function gwTimeAgo(ts) {
+  if (!ts) return "";
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "now";
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h";
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + "d";
+  return new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+function gwPreviewText(m) {
+  if (!m) return "";
+  const t = m.media_type;
+  if (t === "image") return "📷 Photo";
+  if (t === "file") return "📎 " + (m.body || "File");
+  if (t === "location") return "📍 Location";
+  if (t === "roomlink") return "💬 Shared a room";
+  if (t === "gif") return "GIF";
+  if (t === "event") return "🎟️ " + ((m.body || "Event").split("\n")[0]);
+  if (t === "welcome") return "🌸 Joined the room";
+  return (m.body || "").split("\n")[0] || "Message";
+}
 function gwEventLive(e) {
   if (!e) return false;
   if (e.end_at) return Date.now() <= new Date(e.end_at).getTime();
@@ -1596,6 +1620,17 @@ function Main({ user }) {
   const [coupleFor, setCoupleFor] = useState(null);
   const eventLive = gwEventLive;
   const [dmStreaks, setDmStreaks] = useState({});
+  const [previews, setPreviews] = useState({});
+  useEffect(() => {
+    if (!user?.id || tab !== "chats") return;
+    supabase.from("messages").select("group_id, body, media_type, created_at")
+      .order("created_at", { ascending: false }).limit(500)
+      .then(({ data }) => {
+        const m = {};
+        (data || []).forEach(r => { if (!m[r.group_id]) m[r.group_id] = { text: gwPreviewText(r), at: new Date(r.created_at).getTime() }; });
+        setPreviews(m);
+      });
+  }, [user?.id, tab]);
   useEffect(() => {
     if (!user?.id) return;
     supabase.rpc("dm_streaks").then(({ data }) => {
@@ -2070,6 +2105,12 @@ function Main({ user }) {
       return true;
     }).map(e => ({ id: e.id, type: "event", name: e.title, emoji: e.emoji, logo_url: null, sub: e.event_date || ((eventCounts[e.id] || 0) + " going") })),
   ];
+  const _pinTypes = new Set(["room", "room-locked", "dm"]);
+  const _pvAt = (c) => (previews[c.type === "p2p" ? c.id : c.id]?.at) || 0;
+  const orderedChats = [
+    ...myChats.filter(c => _pinTypes.has(c.type)),
+    ...myChats.filter(c => !_pinTypes.has(c.type)).sort((a, b) => _pvAt(b) - _pvAt(a)),
+  ];
 
   const screen = (
     <>
@@ -2088,7 +2129,7 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
-      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} /></>}
+      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
@@ -2208,7 +2249,7 @@ function Notice({ text, onClose }) {
 }
 
 /* ---------------- chats ---------------- */
-function Chats({ chats, onOpen, onExplore, streaks = {} }) {
+function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {} }) {
   return (
     <div>
       <TopBar title="Glasswings" />
@@ -2223,10 +2264,13 @@ function Chats({ chats, onOpen, onExplore, streaks = {} }) {
         <div key={c.type + c.id} onClick={() => onOpen({ id: c.id, type: c.type })} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
           <Avatar room={{ emoji: c.emoji, logo_url: c.logo_url }} size={52} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}{(() => { const sk = c.type === "p2p" ? streaks[c.other] : (c.type === "dm" ? streaks[c.id] : null); return sk && sk.streak > 0 && (
-              <span style={{ marginLeft: 7, fontSize: 13, fontWeight: 800, color: "#E8590C", verticalAlign: "middle" }}>🔥{sk.streak}{sk.streak >= 30 ? "💍" : sk.streak >= 7 ? "⭐" : ""}{!sk.today && <span title="Message today to keep the streak!" style={{ marginLeft: 3 }}>⌛</span>}</span>
-            ); })()}</div>
-            <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.sub} · tap to open</div>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 16, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}{(() => { const sk = c.type === "p2p" ? streaks[c.other] : (c.type === "dm" ? streaks[c.id] : null); return sk && sk.streak > 0 && (
+                <span style={{ marginLeft: 7, fontSize: 13, fontWeight: 800, color: "#E8590C", verticalAlign: "middle" }}>🔥{sk.streak}{sk.streak >= 30 ? "💍" : sk.streak >= 7 ? "⭐" : ""}{!sk.today && <span title="Message today to keep the streak!" style={{ marginLeft: 3 }}>⌛</span>}</span>
+              ); })()}</div>
+              {previews[c.id]?.at ? <span style={{ fontSize: 11.5, color: W.soft, flexShrink: 0, marginLeft: 8 }}>{gwTimeAgo(previews[c.id].at)}</span> : null}
+            </div>
+            <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{previews[c.id]?.text || c.sub}</div>
           </div>
         </div>
       ))}
@@ -7568,7 +7612,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • streaks3 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • chatprev ✅</div>
       </div>
     </div>
   );
