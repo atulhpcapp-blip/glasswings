@@ -2736,10 +2736,10 @@ const LUDO_HOME = [
   [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7]],
 ];
 const LUDO_BASE = [
-  [[1, 1], [1, 3], [3, 1], [3, 3]],
-  [[1, 10], [1, 12], [3, 10], [3, 12]],
-  [[10, 10], [10, 12], [12, 10], [12, 12]],
-  [[10, 1], [10, 3], [12, 1], [12, 3]],
+  [[1, 1], [1, 4], [4, 1], [4, 4]],
+  [[1, 10], [1, 13], [4, 10], [4, 13]],
+  [[10, 10], [10, 13], [13, 10], [13, 13]],
+  [[10, 1], [10, 4], [13, 1], [13, 4]],
 ];
 const LUDO_START = [0, 13, 26, 39];
 const LUDO_SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]);
@@ -2951,7 +2951,7 @@ function LudoGame({ gameId, meId, onClose }) {
             return (
               <div key={"court" + pidx}>
                 <div style={{ position: "absolute", left: qc * cell + cell * .9, top: qr * cell + cell * .9, width: cell * 4.2, height: cell * 4.2, background: "#fff", borderRadius: 14, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
-                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = cell * 1.3; return (
+                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = cell * 1.18; return (
                   <div key={k} style={{ position: "absolute", left: (bc + 0.5) * cell - ps / 2, top: (br + 0.5) * cell - ps / 2, width: ps, height: ps, borderRadius: "50%", background: "#F2F6F4", boxShadow: `inset 0 0 0 3px ${LUDO_COLORS[pidx]}55, inset 0 2px 4px rgba(0,0,0,.12)` }} />
                 ); })}
               </div>
@@ -2964,9 +2964,9 @@ function LudoGame({ gameId, meId, onClose }) {
             const av = pavs[pl.uid];
             return (
               <div key={"badge" + pidx} style={{ position: "absolute", left: ccx, top: ccy, transform: "translate(-50%,-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, zIndex: 4, pointerEvents: "none" }}>
-                {av ? <img src={av} alt="" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: `2.5px solid ${LUDO_COLORS[pidx]}`, boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.25)", animation: active ? "gwpulse 1.2s infinite" : "none" }} />
-                  : <div style={{ width: 34, height: 34, borderRadius: "50%", background: LUDO_COLORS[pidx], color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, border: "2.5px solid #fff", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.25)", animation: active ? "gwpulse 1.2s infinite" : "none" }}>{(pl.name || "?").charAt(0)}</div>}
-                <div style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: active ? LUDO_COLORS[pidx] : "rgba(11,31,28,.75)", padding: "1.5px 7px", borderRadius: 8, maxWidth: cell * 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(pl.name || "P" + (pidx + 1)).split(" ")[0]}{active ? " 🎲" : ""}</div>
+                {av ? <img src={av} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: `2px solid ${LUDO_COLORS[pidx]}`, background: "#fff", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.3)", animation: active ? "gwpulse 1.2s infinite" : "none" }} />
+                  : <div style={{ width: 30, height: 30, borderRadius: "50%", background: LUDO_COLORS[pidx], color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, border: "2px solid #fff", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.3)", animation: active ? "gwpulse 1.2s infinite" : "none" }}>{(pl.name || "?").charAt(0)}</div>}
+                <div style={{ fontSize: 8.5, fontWeight: 800, color: "#fff", background: active ? LUDO_COLORS[pidx] : "rgba(11,31,28,.8)", padding: "1px 6px", borderRadius: 7, maxWidth: cell * 3.6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>{(pl.name || "P" + (pidx + 1)).split(" ")[0]}{active ? " 🎲" : ""}</div>
               </div>
             );
           })}
@@ -6944,7 +6944,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • homelive ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoalign ✅</div>
       </div>
     </div>
   );
