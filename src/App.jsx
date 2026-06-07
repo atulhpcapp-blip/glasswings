@@ -2233,10 +2233,10 @@ function Main({ user }) {
   if (open) {
     if (open.type === "dm") {
       const isOwn = open.id === user.id;
-      chatEl = <RoomChat allRooms={rooms} room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
+      chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: open.id, name: open.title || (isOwn ? "Glasswings" : "Member"), emoji: isOwn ? "📣" : "👤", logo_url: null, pinned: "" }} groupType="dm" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent} wide={wide} sidebar={convoLeft} />;
     } else if (open.type === "p2p") {
       const t = p2pThreads.find(x => x.id === open.id);
-      chatEl = <RoomChat allRooms={rooms} room={{ id: open.id, name: open.title || t?.name || "Member", emoji: "👤", logo_url: t?.avatar || null, pinned: "", otherId: t?.other || null, otherSeen: t?.seen || null }} groupType="p2p" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent}
+      chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: open.id, name: open.title || t?.name || "Member", emoji: "👤", logo_url: t?.avatar || null, pinned: "", otherId: t?.other || null, otherSeen: t?.seen || null }} groupType="p2p" user={user} profile={profile} isAdmin={false} memberCount={0} onBack={() => setOpen(null)} onUpdatePinned={() => { }} onOpenEvent={openEvent}
         onDeleteThread={async () => {
           if (!window.confirm("Delete this chat? It disappears for both of you.")) return;
           const { error } = await supabase.rpc("delete_dm_thread", { p_thread: open.id });
@@ -2248,10 +2248,10 @@ function Main({ user }) {
       chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} planLabel={(() => { const cp = coveringPlanId(r.id); const pl = cp ? allPlans.find(p => p.id === cp) : null; return pl ? `${pl.emoji || "💎"} ${pl.name}` : null; })()} onJoin={() => { const cp = coveringPlanId(r.id); if (cp && !freeForUser(r)) { setOpen(null); setSubPage({ highlight: cp }); } else joinRoom(r); }} onPlan={(mo) => buyRoomPlan(r, mo)} onBack={() => setOpen(null)} /> : null;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
-      if (r) chatEl = <RoomChat allRooms={rooms} room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
+      if (r) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     } else {
       const e = events.find(x => x.id === open.id);
-      if (e) chatEl = <RoomChat allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
+      if (e) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     }
   }
   if (chatEl && !wide) return chatEl;
@@ -4230,6 +4230,7 @@ function TriviaSheet({ meId, alreadyScore, onClose }) {
   );
 }
 function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh }) {
+  const [camOpen, setCamOpen] = useState(false);
   const [viewer, setViewer] = useState(null); // { k: "e"|"u", id }
   const [busy, setBusy] = useState(false);
   const [pickFile, setPickFile] = useState(null);
@@ -4271,7 +4272,11 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
   );
   return (
     <>
+      {camOpen && <GWCamera meId={meId} events={events} onClose={() => { setCamOpen(false); onRefresh(); }} />}
       <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "12px 14px 4px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
+        <div>
+          <Bubble onClick={() => setCamOpen(true)} ring={"2.5px solid #EC4899"} inner={<div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "linear-gradient(135deg,#7C3AED,#EC4899)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>📷</div>} label="GW Camera" />
+        </div>
         <label style={{ display: "block" }}>
           <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add story" />
           <input type="file" accept="image/*" style={{ display: "none" }} disabled={busy}
@@ -4412,12 +4417,14 @@ const GW_FILTERS = [
 ];
 const GW_FRAMES = ["None", "Glasswings", "Party", "Polaroid", "Retro"];
 const GW_STICKERS = ["🦋", "❤️", "🔥", "✨", "🪩", "🥂", "💃", "😎", "🎉", "💘", "🌙", "👑"];
-function GWCamera({ meId, onSend, onClose }) {
+function GWCamera({ meId, onSend, onClose, events = [] }) {
+  const liveEvents = (events || []).filter(e => e.event_at && Math.abs(Date.now() - new Date(e.event_at).getTime()) < 36 * 3600000).slice(0, 3);
   const [mode, setMode] = useState("cam");
   const [facing, setFacing] = useState("user");
   const [camErr, setCamErr] = useState(false);
   const [fi, setFi] = useState(0);
   const [frame, setFrame] = useState("None");
+  const [wm, setWm] = useState(true);
   const [stickers, setStickers] = useState([]);
   const [selIdx, setSelIdx] = useState(-1);
   const [capText, setCapText] = useState("");
@@ -4485,6 +4492,25 @@ function GWCamera({ meId, onSend, onClose }) {
       const d = new Date();
       x.fillText(`${String(d.getDate()).padStart(2, "0")} ${d.toLocaleString("en", { month: "short" }).toUpperCase()} '${String(d.getFullYear()).slice(2)}  🦋GW`, 34 * u, H0 - 40 * u);
       x.shadowBlur = 0;
+    } else if (frame.startsWith("event:")) {
+      const ev2 = liveEvents.find(e => "event:" + e.id === frame);
+      if (ev2) {
+        const gB = x.createLinearGradient(0, H0 - 260 * u, 0, H0); gB.addColorStop(0, "rgba(0,0,0,0)"); gB.addColorStop(1, "rgba(0,0,0,.7)");
+        x.fillStyle = gB; x.fillRect(0, H0 - 260 * u, W0, 260 * u);
+        x.textAlign = "center"; x.fillStyle = "#fff";
+        x.font = `800 ${44 * u}px sans-serif`;
+        x.fillText(`${ev2.emoji || "🎟️"} ${String(ev2.title || "").toUpperCase().slice(0, 26)}`, W0 / 2, H0 - 120 * u);
+        x.font = `700 ${26 * u}px sans-serif`; x.fillStyle = "#2FD4A8";
+        x.fillText("I WAS THERE ✨", W0 / 2, H0 - 76 * u);
+        x.font = `600 ${22 * u}px sans-serif`; x.fillStyle = "rgba(255,255,255,.85)";
+        x.fillText("🦋 GLASSWINGS · " + new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" }), W0 / 2, H0 - 38 * u);
+      }
+    }
+    if (wm && frame === "None") {
+      x.textAlign = "left"; x.font = `700 ${24 * u}px sans-serif`;
+      x.fillStyle = "rgba(255,255,255,.75)"; x.shadowColor = "rgba(0,0,0,.5)"; x.shadowBlur = 5 * u;
+      x.fillText("🦋 GLASSWINGS · glass-wings.com", 26 * u, H0 - 30 * u);
+      x.shadowBlur = 0;
     }
     stickers.forEach((st, i) => {
       x.textAlign = "center"; x.textBaseline = "middle";
@@ -4497,7 +4523,7 @@ function GWCamera({ meId, onSend, onClose }) {
     });
     setPreview(c.toDataURL("image/jpeg", .92));
   };
-  useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers]);
+  useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers, wm]);
   const relPt = (e) => { const r = boxRef.current.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
   const onDown = (e) => {
     const pt = relPt(e); let best = -1, bd = 0.12;
@@ -4576,6 +4602,8 @@ function GWCamera({ meId, onSend, onClose }) {
           </div>
           <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 2px" }}>
             {GW_FRAMES.map(fr => chip(fr === "None" ? "No frame" : fr, frame === fr, () => setFrame(fr)))}
+            {liveEvents.map(e2 => chip(`${e2.emoji || "🎟️"} ${(e2.title || "").slice(0, 16)}`, frame === "event:" + e2.id, () => setFrame("event:" + e2.id)))}
+            {chip(wm ? "🦋 watermark ✓" : "🦋 watermark", wm, () => setWm(v => !v))}
           </div>
           <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "8px 12px 2px" }}>
             {GW_STICKERS.map(em => <span key={em} onClick={() => addEmoji(em)} style={{ fontSize: 26, cursor: "pointer", flexShrink: 0 }}>{em}</span>)}
@@ -4594,7 +4622,7 @@ function GWCamera({ meId, onSend, onClose }) {
     </div>
   );
 }
-function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, onDeleteThread, allRooms = [], readOnly = false, wide = false, sidebar = 0 }) {
+function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, onDeleteThread, allRooms = [], readOnly = false, wide = false, sidebar = 0 }) {
   const [showMembers, setShowMembers] = useState(false);
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
@@ -4936,7 +4964,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           </div>
         </>
       )}
-      {gwCamOpen && <GWCamera meId={user.id} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "image"); }} onClose={() => setGwCamOpen(false)} />}
+      {gwCamOpen && <GWCamera meId={user.id} events={gwEvents} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "image"); }} onClose={() => setGwCamOpen(false)} />}
       {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
         <div onClick={() => setRoomPick(false)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
