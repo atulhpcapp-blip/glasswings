@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   if (!KEY || !SECRET) return res.status(500).json({ error: "Payments are not configured yet." });
 
   const body = (typeof req.body === "object" && req.body) ? req.body : await readBody(req);
-  const { access_token, purpose = "ticket", event_id, ticket_type_id, room_id, plan_months } = body;
+  const { access_token, purpose = "ticket", event_id, ticket_type_id, room_id, plan_id, plan_months } = body;
   const qty = Math.max(1, parseInt(body.quantity) || 1);
   // cart: [{ticket_type_id, quantity}] — falls back to the legacy single-type fields
   let items = Array.isArray(body.items) && body.items.length
@@ -121,6 +121,14 @@ export default async function handler(req, res) {
       amount = grand * 100;
       items = lineItems;
       Object.assign(notes, { event_id, qty: totalQty, lines: lineItems.length, addons: addonRows.length });
+    } else if (purpose === "plan") {
+      const { data: pl } = await sb.from("plans").select("id, name, active, price_1m, price_3m, price_6m, price_12m").eq("id", plan_id).single();
+      if (!pl || !pl.active) return res.status(400).json({ error: "Plan not found." });
+      const pm = Number(plan_months) || 1;
+      const planPrice = pm === 3 ? pl.price_3m : pm === 6 ? pl.price_6m : pm === 12 ? pl.price_12m : pl.price_1m;
+      if (!planPrice || planPrice <= 0) return res.status(400).json({ error: "That duration is not available." });
+      amount = planPrice * 100;
+      Object.assign(notes, { plan_id, plan_months: pm });
     } else if (purpose === "room") {
       const { data: r } = await sb.from("rooms").select("id, price_monthly, price_3m, price_6m, price_12m").eq("id", room_id).single();
       if (!r) return res.status(400).json({ error: "Room not found." });
@@ -156,7 +164,7 @@ export default async function handler(req, res) {
     await sb.from("payments").insert({
       user_id: uid, purpose, event_id: event_id || null,
       ticket_type_id: (purpose === "ticket" ? (items[0]?.ticket_type_id || null) : null),
-      room_id: room_id || null, plan_months: (purpose === "room" ? (Number(plan_months) || 1) : null), quantity: (purpose === "ticket" ? totalQty : qty), amount, status: "created", razorpay_order_id: order.id,
+      room_id: room_id || null, plan_id: (purpose === "plan" ? plan_id : null), plan_months: (purpose === "room" || purpose === "plan" ? (Number(plan_months) || 1) : null), quantity: (purpose === "ticket" ? totalQty : qty), amount, status: "created", razorpay_order_id: order.id,
       addons: addonRows, referrer_id, commission_amount,
       items: (purpose === "ticket" ? items : null),
     });
