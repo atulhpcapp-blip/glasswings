@@ -107,6 +107,53 @@ export default async function handler(req, res) {
     const callerId = ures?.user?.id;
     if (!callerId) return res.status(401).json({ error: "Please log in again." });
 
+    // ================= VIBE CHECK EMAIL =================
+    if (mode === "vibe_email") {
+      const { match_id } = body;
+      if (!match_id) return res.status(400).json({ error: "match_id required" });
+      const { data: m } = await sb.from("vibe_matches").select("id, a, b, a_answers, b_answers, created_at").eq("id", match_id).maybeSingle();
+      if (!m) return res.status(404).json({ error: "match not found" });
+      if (m.a !== callerId && m.b !== callerId) return res.status(403).json({ error: "not your match" });
+
+      // invite stage -> email b; answered stage -> email a
+      const isInvite = !m.b_answers;
+      const toId = isInvite ? m.b : m.a;
+      const fromId = isInvite ? m.a : m.b;
+      const { data: ppl } = await sb.from("profiles").select("id, full_name").in("id", [toId, fromId]);
+      const nameOf = (id) => (ppl || []).find(x => x.id === id)?.full_name || "Someone";
+      const { data: au } = await sb.auth.admin.getUserById(toId);
+      const toEmail = au?.user?.email;
+      if (!toEmail) return res.status(200).json({ skipped: "no email" });
+
+      const fromName = nameOf(fromId);
+      const subject = isInvite
+        ? `\uD83D\uDC98 ${fromName} sent you a Vibe Check!`
+        : `\u2728 ${fromName} answered \u2014 your match % is ready!`;
+      const inner = isInvite
+        ? `<p style="font-size:15px;color:#333;margin:0 0 14px"><b>${fromName}</b> wants to know how compatible you two are \uD83D\uDE0F</p>
+           <p style="font-size:14px;color:#555;margin:0 0 18px">Answer 10 quick questions and your match % gets revealed to both of you.</p>`
+        : `<p style="font-size:15px;color:#333;margin:0 0 14px"><b>${fromName}</b> just answered your Vibe Check \u2014 your compatibility score is waiting!</p>`;
+      const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;border:1px solid #eee;border-radius:14px;overflow:hidden">
+        <div style="background:linear-gradient(135deg,#EC4899,#8B5CF6);padding:26px 22px;text-align:center;color:#fff">
+          <div style="font-size:30px">\uD83D\uDC98</div>
+          <div style="font-size:20px;font-weight:800;margin-top:6px">Vibe Check</div>
+          <div style="font-size:12px;opacity:.9;letter-spacing:2px;margin-top:3px">GLASSWINGS</div>
+        </div>
+        <div style="padding:24px 22px">
+          ${inner}
+          <a href="https://glass-wings.com/?game=vibe" style="display:block;text-align:center;background:#EC4899;color:#fff;text-decoration:none;font-weight:800;padding:13px;border-radius:11px;font-size:15px">${isInvite ? "Answer now \uD83D\uDC95" : "See your match % \u2728"}</a>
+          <p style="font-size:11px;color:#999;text-align:center;margin:16px 0 0">Open the link, log in, and it takes you straight to the game.</p>
+        </div>
+      </div>`;
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${API}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: FROM, to: [toEmail], subject, html }),
+      });
+      const out = await r.json();
+      return res.status(200).json({ sent: true, id: out?.id });
+    }
+
     // ================= BLAST MODE (superadmin bulk email) =================
     if (mode === "blast") {
       const { data: caller } = await sb.from("profiles").select("roles, role").eq("id", callerId).single();
