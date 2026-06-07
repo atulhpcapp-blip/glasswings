@@ -1384,6 +1384,11 @@ function ProfileGate({ user, profile, reload }) {
     await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
+    try {
+      const tk = (await supabase.auth.getSession()).data.session?.access_token;
+      fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "signup_notify", access_token: tk }) }).then(() => { });
+    } catch { }
+
     setBusy(false);
     if (e1 || e2) return setErr((e1 || e2).message);
     reload();
@@ -3434,7 +3439,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} />}
+                : <><MembersOverview isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>}
     </div>
   );
 }
@@ -5005,6 +5010,148 @@ function MemberRolesSheet({ member: m, cities, onSetRoles, onClose, onSaved }) {
     </Sheet>
   );
 }
+function MembersOverview({ isSuper }) {
+  const [rows, setRows] = useState(null);
+  const [seg, setSeg] = useState("all");
+  const [q, setQ] = useState("");
+  const [composer, setComposer] = useState(null); // "broadcast" | "email"
+  const [subj, setSubj] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [wide2, setWide2] = useState(typeof window !== "undefined" && window.innerWidth > 760);
+  useEffect(() => {
+    const onR = () => setWide2(window.innerWidth > 760);
+    window.addEventListener("resize", onR);
+    return () => window.removeEventListener("resize", onR);
+  }, []);
+  useEffect(() => {
+    supabase.rpc("admin_member_overview").then(({ data, error }) => {
+      if (error) { console.error(error); setRows([]); return; }
+      setRows(data || []);
+    });
+  }, []);
+  if (rows === null) return <div style={{ padding: 20, color: W.soft }}>Loading members…</div>;
+  const now = Date.now();
+  const d30 = 30 * 86400000, d7 = 7 * 86400000;
+  const segs = [
+    ["all", "All", r => true],
+    ["new", "🆕 New (30d)", r => r.created_at && (now - new Date(r.created_at).getTime() < d30)],
+    ["active", "🟢 Active (7d)", r => r.last_seen && (now - new Date(r.last_seen).getTime() < d7)],
+    ["inactive", "😴 Inactive 30d+", r => !r.last_seen || (now - new Date(r.last_seen).getTime() > d30)],
+    ["subs", "💎 Room subscribers", r => (r.rooms || []).length > 0],
+    ["buyers", "🎟️ Ticket buyers", r => (r.tickets || 0) > 0],
+    ["spenders", "💰 Paid customers", r => (r.spend || 0) > 0],
+    ["women", "♀ Women", r => r.gender === "female"],
+    ["men", "♂ Men", r => r.gender === "male"],
+    ["noroom", "🚪 No room yet", r => !(r.rooms || []).length],
+  ];
+  const segFn = (segs.find(x => x[0] === seg) || segs[0])[2];
+  const list = rows.filter(segFn).filter(r => !q.trim() || (r.full_name || "").toLowerCase().includes(q.trim().toLowerCase()));
+  const fmtD = ts => ts ? new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "—";
+  const stat = (label, val) => (
+    <div style={{ flex: "1 1 100px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "12px 13px" }}>
+      <div style={{ fontSize: 22, fontWeight: 800, color: W.ink }}>{val}</div>
+      <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 600 }}>{label}</div>
+    </div>
+  );
+  const sendBulk = async () => {
+    if (!msg.trim()) return alert("Message is required.");
+    if (!window.confirm(`Send to ${list.length} members in this segment?`)) return;
+    setBusy(true);
+    try {
+      if (composer === "broadcast") {
+        const me = (await supabase.auth.getUser()).data.user;
+        for (let i = 0; i < list.length; i += 50) {
+          const chunk = list.slice(i, i + 50).map(r => ({ group_type: "dm", group_id: r.id, sender_id: me.id, body: msg.trim(), media_type: "broadcast" }));
+          const { error } = await supabase.from("messages").insert(chunk);
+          if (error) throw error;
+        }
+        alert(`📢 Broadcast sent to ${list.length} members (their Glasswings chat).`);
+      } else {
+        const emails = list.map(r => r.email).filter(Boolean);
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        const r2 = await fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "blast", access_token: token, subject: subj.trim() || "Glasswings", message: msg.trim(), emails }) });
+        const out = await r2.json();
+        if (!r2.ok) throw new Error(out.error || "Send failed");
+        alert(`📧 Emailed ${out.sent} of ${out.recipients} members.`);
+      }
+      setComposer(null); setSubj(""); setMsg("");
+    } catch (e2) { alert(e2.message || "Failed."); }
+    setBusy(false);
+  };
+  const ip4 = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 9 };
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 12 }}>
+        {stat("Total members", rows.length)}
+        {stat("New (30 days)", rows.filter(segs[1][2]).length)}
+        {stat("Active (7 days)", rows.filter(segs[2][2]).length)}
+        {stat("Paid customers", rows.filter(segs[6][2]).length)}
+      </div>
+      <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 6, marginBottom: 8 }}>
+        {segs.map(([k, label, fn]) => (
+          <div key={k} onClick={() => setSeg(k)} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 18, fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: seg === k ? W.teal : "#fff", color: seg === k ? "#fff" : W.ink, border: `1px solid ${seg === k ? W.teal : W.line}` }}>
+            {label} · {rows.filter(fn).length}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name…" style={{ flex: "1 1 160px", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 12px", fontSize: 13.5, outline: "none" }} />
+        <button onClick={() => setComposer("broadcast")} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "9px 13px", fontSize: 12.5 }}>📢 Broadcast segment</button>
+        {isSuper && <button onClick={() => setComposer("email")} style={{ ...btn(W.teal, "#fff"), padding: "9px 13px", fontSize: 12.5 }}>📧 Email segment</button>}
+      </div>
+      {wide2 ? (
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead><tr style={{ textAlign: "left", color: W.soft, fontSize: 11.5 }}>
+              {["Member", "Contact", "Joined", "Last active", "Rooms", "Tickets", "Spend"].map(h => <th key={h} style={{ padding: "10px 12px", borderBottom: `1px solid ${W.line}` }}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {list.map(r => (
+                <tr key={r.id} style={{ borderBottom: `1px solid ${W.line}` }}>
+                  <td style={{ padding: "9px 12px", fontWeight: 700, color: W.ink, whiteSpace: "nowrap" }}>
+                    {r.full_name || "Member"} <span style={{ color: W.soft, fontWeight: 500 }}>{r.gender === "female" ? "♀" : r.gender === "male" ? "♂" : ""}</span>
+                  </td>
+                  <td style={{ padding: "9px 12px", color: W.soft, fontSize: 12 }}>{r.phone || "—"}<br />{r.email || ""}</td>
+                  <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{fmtD(r.created_at)}</td>
+                  <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{lastSeenStr(r.last_seen).replace("last seen ", "") || "—"}</td>
+                  <td style={{ padding: "9px 12px", fontSize: 12 }}>{(r.rooms || []).join(", ") || "—"}</td>
+                  <td style={{ padding: "9px 12px", textAlign: "center" }}>{r.tickets || 0}</td>
+                  <td style={{ padding: "9px 12px", fontWeight: 700, whiteSpace: "nowrap" }}>₹{Math.round((r.spend || 0) / 100)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div>
+          {list.map(r => (
+            <div key={r.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{r.full_name || "Member"} <span style={{ color: W.soft, fontWeight: 500 }}>{r.gender === "female" ? "♀" : r.gender === "male" ? "♂" : ""}</span></div>
+                <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>{lastSeenStr(r.last_seen) || "never active"}</div>
+              </div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>{r.phone || "no phone"} · {r.email || "no email"}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Joined {fmtD(r.created_at)} · 🎟️ {r.tickets || 0} · ₹{Math.round((r.spend || 0) / 100)}</div>
+              <div style={{ fontSize: 12, color: W.ink, marginTop: 3 }}>💬 {(r.rooms || []).join(", ") || "No rooms yet"}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {composer && (
+        <div onClick={() => setComposer(null)} style={{ position: "fixed", inset: 0, zIndex: 160, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
+          <div onClick={ev => ev.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 520, margin: "0 auto", borderRadius: "16px 16px 0 0", padding: "18px 16px calc(22px + env(safe-area-inset-bottom))" }}>
+            <div style={{ fontWeight: 800, color: W.ink, marginBottom: 4 }}>{composer === "broadcast" ? "📢 In-app broadcast" : "📧 Email"} → segment ({list.length} members)</div>
+            <div style={{ fontSize: 12, color: W.soft, marginBottom: 12 }}>{composer === "broadcast" ? "Lands in each member's Glasswings chat with a push notification." : "Sent with the Glasswings email design (banner, community, upcoming events)."}</div>
+            {composer === "email" && <input value={subj} onChange={e => setSubj(e.target.value)} placeholder="Subject" style={ip4} />}
+            <textarea value={msg} onChange={e => setMsg(e.target.value)} rows={5} placeholder="Your message…" style={{ ...ip4, resize: "vertical", fontFamily: "inherit" }} />
+            <button onClick={sendBulk} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Sending…" : `Send to ${list.length} members`}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities, onSetRoles }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
@@ -5258,6 +5405,11 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
     if (phone) await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name.trim(), gender, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
+    try {
+      const tk = (await supabase.auth.getSession()).data.session?.access_token;
+      fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "signup_notify", access_token: tk }) }).then(() => { });
+    } catch { }
+
     setBusy(false);
     if (e1 || e2) return setErr((e1 || e2).message);
     reload(); onClose();
@@ -5373,7 +5525,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lockfix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • members2 ✅</div>
       </div>
     </div>
   );
