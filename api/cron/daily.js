@@ -31,13 +31,13 @@ export default async function handler(req, res) {
       .eq("approved", true)
       .gte("event_at", today).order("event_at", { ascending: true }).limit(15);
 
-    if (ups && ups.length) {
-      // sender = a superadmin
-      let senderId = null;
-      const { data: sa } = await sb.from("profiles").select("id").contains("roles", ["superadmin"]).limit(1);
-      if (sa && sa.length) senderId = sa[0].id;
-      if (!senderId) { const { data: sa2 } = await sb.from("profiles").select("id").eq("role", "superadmin").limit(1); if (sa2 && sa2.length) senderId = sa2[0].id; }
+    // sender = a superadmin (used by digest + reminders)
+    let senderId = null;
+    const { data: sa } = await sb.from("profiles").select("id").contains("roles", ["superadmin"]).limit(1);
+    if (sa && sa.length) senderId = sa[0].id;
+    if (!senderId) { const { data: sa2 } = await sb.from("profiles").select("id").eq("role", "superadmin").limit(1); if (sa2 && sa2.length) senderId = sa2[0].id; }
 
+    if (ups && ups.length) {
       if (senderId) {
         const lines = ups.map(e => `• ${e.emoji || "🎟️"} ${e.title} — ${e.event_date || ""}${e.city ? " · " + e.city : ""}`).join("\n");
         const body = `📅 Upcoming events\n\n${lines}\n\nTap Events to grab your tickets.`;
@@ -49,6 +49,32 @@ export default async function handler(req, res) {
         }
       }
     }
+
+    // ---- 1.5) Membership expiry reminders (T-7 and T-1) + cleanup ------
+    try {
+      const now = Date.now();
+      const winStart = (d) => new Date(now + (d - 0.5) * 86400000).toISOString();
+      const winEnd = (d) => new Date(now + (d + 0.5) * 86400000).toISOString();
+      const { data: plansList } = await sb.from("plans").select("id, name, emoji");
+      const planName = (id) => { const p = (plansList || []).find(x => x.id === id); return p ? `${p.emoji || "💎"} ${p.name}` : "💎 membership"; };
+      for (const d of [7, 1]) {
+        const { data: expiring } = await sb.from("member_plans")
+          .select("id, user_id, plan_id, expires_at")
+          .gte("expires_at", winStart(d)).lt("expires_at", winEnd(d));
+        for (const mp of (expiring || [])) {
+          const till = new Date(mp.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+          const body = d === 1
+            ? `⌛ Your ${planName(mp.plan_id)} expires TOMORROW (${till})!\n\nRenew from your Profile to keep your rooms, games and ticket discounts running without a break. 💚`
+            : `⌛ Heads up — your ${planName(mp.plan_id)} expires in 7 days (${till}).\n\nRenew anytime from your Profile and your validity simply extends. 💚`;
+          if (senderId) await sb.from("messages").insert({ group_type: "dm", group_id: mp.user_id, sender_id: senderId, media_type: "broadcast", body });
+          result.plan_reminders = (result.plan_reminders || 0) + 1;
+        }
+      }
+      // expired 3+ days ago → remove plan rows (grace over)
+      const { data: dead } = await sb.from("member_plans").select("id")
+        .not("expires_at", "is", null).lt("expires_at", new Date(now - 3 * 86400000).toISOString()).limit(200);
+      for (const m of (dead || [])) { await sb.from("member_plans").delete().eq("id", m.id); result.plans_expired = (result.plans_expired || 0) + 1; }
+    } catch (e) { result.plan_reminder_error = String(e && e.message || e); }
 
     // ---- 2) Clear chats of events finished 3+ days ago -----------------
     const { data: old } = await sb.from("events")
