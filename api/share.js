@@ -16,6 +16,10 @@ const GAMES = {
     title: "🎮 Daily Trivia — GLASSWINGS",
     descr: "5 fresh questions every day. Beat the community, build your streak 🔥 Free to play — join Glasswings and take today's quiz!",
   },
+  ludo: {
+    title: "🎲 Ludo — GLASSWINGS",
+    descr: "Classic Ludo with friends! Create a game, share the code, play 2-4 players. Free on Glasswings — join the fun 🎉",
+  },
 };
 
 export default async function handler(req, res) {
