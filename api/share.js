@@ -2902,6 +2902,13 @@ function LudoGame({ gameId, meId, onClose }) {
           <div style={{ fontWeight: 800, fontSize: 16 }}>🎲 Ludo · {g.code}</div>
           <div style={{ fontSize: 11, opacity: .9 }}>{g.status === "lobby" ? `${players.length}/4 players — waiting` : g.status === "done" ? "Game over" : "In progress"}</div>
         </div>
+        {players[0]?.uid === meId && g.status !== "done" && (
+          <button onClick={async () => {
+            if (!window.confirm(g.status === "lobby" ? "Cancel this game?" : "End this game for everyone?")) return;
+            const { error } = await supabase.rpc("ludo_end", { p_game: g.id });
+            if (error) alert(error.message); else load();
+          }} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>🛑 End</button>
+        )}
       </div>
       <div style={{ display: "flex", gap: 6, padding: "10px 12px", flexWrap: "wrap" }}>
         {players.map((pl, i) => (
@@ -3023,6 +3030,13 @@ function LudoGame({ gameId, meId, onClose }) {
               ? <button onClick={roll} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 16 }}>🎲 Roll the dice</button>
               : <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}><DiceFace n={g.dice} /> Tap a glowing token to move</div>
           ) : <div style={{ fontWeight: 700, color: W.soft, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>{g.dice != null && <DiceFace n={g.dice} size={34} />} Waiting for {(players[g.turn]?.name || "player").split(" ")[0]}'s move…</div>}
+        </div>
+      )}
+      {g.status === "done" && g.winner == null && (
+        <div style={{ padding: "14px 16px calc(24px + env(safe-area-inset-bottom))", textAlign: "center" }}>
+          <div style={{ fontSize: 34 }}>🛑</div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>Game ended by the host</div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No winner this time — rematch? 🎲</div>
         </div>
       )}
       {g.status === "done" && g.winner != null && (
@@ -3199,16 +3213,25 @@ function VibeCheck({ meId, isStaff, onClose }) {
     const next = [...ans, oi];
     if (next.length < qs.length) { setAns(next); setQi(qi + 1); return; }
     setBusy(true);
+    const vibeMail = async (matchId) => {
+      try {
+        const { data: ses } = await supabase.auth.getSession();
+        const tok = ses?.session?.access_token;
+        if (tok && matchId) fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "vibe_email", access_token: tok, match_id: matchId }) }).then(() => { }).catch(() => { });
+      } catch { }
+    };
     if (answerFor) {
       const { data, error } = await supabase.rpc("vibe_answer", { p_match: answerFor.id, p_answers: next });
       setBusy(false);
       if (error) return alert(error.message);
+      vibeMail(answerFor.id);
       await load();
       showResult({ ...answerFor, b_answers: next });
     } else {
-      const { error } = await supabase.rpc("vibe_start", { p_partner: partner.id, p_answers: next });
+      const { data, error } = await supabase.rpc("vibe_start", { p_partner: partner.id, p_answers: next });
       setBusy(false);
       if (error) return alert(error.message);
+      vibeMail(data?.id);
       await load();
       setView("sent");
     }
@@ -7170,7 +7193,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • vibegate ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoend ✅</div>
       </div>
     </div>
   );
