@@ -4412,6 +4412,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   const composerRef = useRef(null);
   const [headPad, setHeadPad] = useState(112);
   const camRef = useRef(null);
+  const galRef = useRef(null);
   const fileRef = useRef(null);
   const [qrs, setQrs] = useState([]);
   const [showQR, setShowQR] = useState(false);
@@ -4714,14 +4715,28 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         </div>
       )}
       {plusOpen && (
-        <div style={{ position: "fixed", bottom: 64, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 22, padding: "0 10px" }}>
-          <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 -3px 16px rgba(0,0,0,.12)", padding: "6px 0" }}>
-            <div onClick={shareLocation} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14 }}><MapPin size={19} color={W.teal} /> Share my location</div>
-            <div onClick={() => { setRoomPick(true); setPlusOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14, borderTop: `1px solid ${W.line}` }}>💬 Share a room</div>
-            <div onClick={() => { setGifOpen(true); setPlusOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14, borderTop: `1px solid ${W.line}` }}>🎞️ GIF search</div>
-            <div onClick={() => { setPlusOpen(false); fileRef.current?.click(); }} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14, borderTop: `1px solid ${W.line}` }}><Paperclip size={18} color={W.teal} /> Document / GIF / any file</div>
+        <>
+          <div onClick={() => setPlusOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 21 }} />
+          <div style={{ position: "fixed", bottom: 64, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 22, padding: "0 10px" }}>
+            <div style={{ background: "#fff", borderRadius: 18, boxShadow: "0 -3px 20px rgba(0,0,0,.16)", padding: "16px 10px 18px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                {[
+                  ["🖼️", "Gallery", "linear-gradient(135deg,#7C3AED,#A855F7)", () => { setPlusOpen(false); galRef.current?.click(); }],
+                  ["📷", "Camera", "linear-gradient(135deg,#EC4899,#F97316)", () => { setPlusOpen(false); camRef.current?.click(); }],
+                  ["📄", "Document", "linear-gradient(135deg,#0EA5E9,#2563EB)", () => { setPlusOpen(false); fileRef.current?.click(); }],
+                  ["📍", "Location", "linear-gradient(135deg,#04B08F,#008069)", () => { shareLocation(); }],
+                  ["💬", "Room", "linear-gradient(135deg,#F59E0B,#EF4444)", () => { setRoomPick(true); setPlusOpen(false); }],
+                  ["🎬", "GIF", "linear-gradient(135deg,#10B981,#059669)", () => { setGifOpen(true); setPlusOpen(false); }],
+                ].map(([emo, label, bg, fn]) => (
+                  <div key={label} onClick={fn} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "8px 2px", cursor: "pointer", borderRadius: 12 }}>
+                    <div style={{ width: 54, height: 54, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: "0 3px 8px rgba(0,0,0,.15)" }}>{emo}</div>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: W.soft }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
       {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
@@ -4757,12 +4772,11 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); e.target.style.height = "auto"; } }}
             placeholder="Message"
             style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink, resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 110, overflowY: "auto", background: "transparent", padding: 0 }} />
-          <Plus size={22} color={plusOpen ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer", transform: plusOpen ? "rotate(45deg)" : "none", transition: "transform .15s" }} onClick={() => { setPlusOpen(v => !v); setEmojiOpen(false); }} />
-          <Paperclip size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => fileRef.current?.click()} />
-          <Camera size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => camRef.current?.click()} />
+          <Plus size={24} color={plusOpen ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer", transform: plusOpen ? "rotate(45deg)" : "none", transition: "transform .15s" }} onClick={() => { setPlusOpen(v => !v); setEmojiOpen(false); }} />
         </div>
         <button onMouseDown={e => e.preventDefault()} onTouchStart={e => { e.preventDefault(); send(); }} onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: "linear-gradient(135deg,#04B08F,#008069)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation", boxShadow: "0 3px 10px rgba(0,128,105,.35)" }}><Send size={20} /></button>
         <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={e => { sendFile(e.target.files?.[0], "image"); e.target.value = ""; }} style={{ display: "none" }} />
+        <input ref={galRef} type="file" accept="image/*,video/*" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
         <input ref={fileRef} type="file" accept="*/*" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
       </div>
       </>
