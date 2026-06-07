@@ -19,12 +19,28 @@ function readBody(req) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "method" });
   const body = (typeof req.body === "object" && req.body) ? req.body : await readBody(req);
-  const { access_token, room_id } = body;
+  const { access_token, room_id, member_plan_id } = body;
 
   try {
     const { data: ures } = await sb.auth.getUser(access_token);
     const uid = ures?.user?.id;
     if (!uid) return res.status(401).json({ error: "Please log in again." });
+
+    // 💎 stop auto-renew on a membership plan (access stays till expiry)
+    if (member_plan_id) {
+      const { data: mp } = await sb.from("member_plans").select("id, user_id, razorpay_subscription_id").eq("id", member_plan_id).maybeSingle();
+      if (!mp || mp.user_id !== uid) return res.status(400).json({ error: "Membership not found." });
+      if (!mp.razorpay_subscription_id) return res.status(400).json({ error: "Auto-renew is not active on this membership." });
+      if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+        const auth2 = "Basic " + Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString("base64");
+        await fetch(`https://api.razorpay.com/v1/subscriptions/${mp.razorpay_subscription_id}/cancel`, {
+          method: "POST", headers: { Authorization: auth2, "Content-Type": "application/json" },
+          body: JSON.stringify({ cancel_at_cycle_end: 0 }),
+        }).catch(() => {});
+      }
+      await sb.from("member_plans").update({ razorpay_subscription_id: null }).eq("id", mp.id);
+      return res.status(200).json({ ok: true });
+    }
 
     const { data: row } = await sb.from("room_subscriptions").select("id, razorpay_subscription_id").eq("room_id", room_id).eq("user_id", uid).maybeSingle();
     if (!row) return res.status(400).json({ error: "You're not subscribed to this room." });
