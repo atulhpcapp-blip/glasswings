@@ -2798,6 +2798,13 @@ function LudoGame({ gameId, meId, onClose }) {
   const [busy, setBusy] = useState(false);
   const [rolling, setRolling] = useState(false);
   const [rollFace, setRollFace] = useState(1);
+  const [pavs, setPavs] = useState({});
+  useEffect(() => {
+    const uids = ((g && g.players) || []).map(pl => pl.uid).filter(u => u && !pavs[u]);
+    if (!uids.length) return;
+    supabase.from("profiles").select("id, avatar_url").in("id", uids)
+      .then(({ data }) => setPavs(prev => { const m = { ...prev }; (data || []).forEach(x => { m[x.id] = x.avatar_url || ""; }); return m; }));
+  }, [g ? (g.players || []).length : 0]);
   const load = async () => {
     const { data } = await supabase.from("ludo_games").select("*").eq("id", gameId).maybeSingle();
     if (data) setG(data);
@@ -2926,6 +2933,19 @@ function LudoGame({ gameId, meId, onClose }) {
                 {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = cell * 1.3; return (
                   <div key={k} style={{ position: "absolute", left: (bc + 0.5) * cell - ps / 2, top: (br + 0.5) * cell - ps / 2, width: ps, height: ps, borderRadius: "50%", background: "#F2F6F4", boxShadow: `inset 0 0 0 3px ${LUDO_COLORS[pidx]}55, inset 0 2px 4px rgba(0,0,0,.12)` }} />
                 ); })}
+              </div>
+            );
+          })}
+          {players.map((pl, pidx) => {
+            const [qr, qc] = [[0, 0], [0, 9], [9, 9], [9, 0]][pidx];
+            const ccx = (qc + 3) * cell, ccy = (qr + 3) * cell;
+            const active = g.status === "playing" && g.turn === pidx;
+            const av = pavs[pl.uid];
+            return (
+              <div key={"badge" + pidx} style={{ position: "absolute", left: ccx, top: ccy, transform: "translate(-50%,-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, zIndex: 4, pointerEvents: "none" }}>
+                {av ? <img src={av} alt="" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: `2.5px solid ${LUDO_COLORS[pidx]}`, boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.25)", animation: active ? "gwpulse 1.2s infinite" : "none" }} />
+                  : <div style={{ width: 34, height: 34, borderRadius: "50%", background: LUDO_COLORS[pidx], color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, border: "2.5px solid #fff", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.25)", animation: active ? "gwpulse 1.2s infinite" : "none" }}>{(pl.name || "?").charAt(0)}</div>}
+                <div style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: active ? LUDO_COLORS[pidx] : "rgba(11,31,28,.75)", padding: "1.5px 7px", borderRadius: 8, maxWidth: cell * 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(pl.name || "P" + (pidx + 1)).split(" ")[0]}{active ? " 🎲" : ""}</div>
               </div>
             );
           })}
@@ -6896,7 +6916,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • installbar ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludodp ✅</div>
       </div>
     </div>
   );
