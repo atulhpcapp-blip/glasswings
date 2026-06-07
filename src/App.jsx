@@ -4397,6 +4397,203 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
     </div>
   );
 }
+const GW_FILTERS = [
+  ["Original", "none", null],
+  ["Vivid", "saturate(1.5) contrast(1.12)", null],
+  ["Warm", "sepia(.28) saturate(1.35) brightness(1.06)", null],
+  ["Cool", "saturate(1.12) hue-rotate(14deg) brightness(1.04)", null],
+  ["B&W", "grayscale(1) contrast(1.18)", null],
+  ["Vintage", "sepia(.5) contrast(.95) brightness(1.06) saturate(.85)", null],
+  ["Glow", "brightness(1.13) contrast(.9) saturate(1.2)", null],
+  ["Night", "brightness(.9) contrast(1.2) saturate(1.3) hue-rotate(-8deg)", null],
+  ["Teal Dream", "saturate(1.2) brightness(1.04)", ["#04B08F", "#7C3AED", .20]],
+  ["Pink Party", "saturate(1.25) brightness(1.05)", ["#EC4899", "#7C3AED", .22]],
+  ["Disco", "saturate(1.3) contrast(1.08)", ["#2563EB", "#EC4899", .22]],
+];
+const GW_FRAMES = ["None", "Glasswings", "Party", "Polaroid", "Retro"];
+const GW_STICKERS = ["🦋", "❤️", "🔥", "✨", "🪩", "🥂", "💃", "😎", "🎉", "💘", "🌙", "👑"];
+function GWCamera({ meId, onSend, onClose }) {
+  const [mode, setMode] = useState("cam");
+  const [facing, setFacing] = useState("user");
+  const [camErr, setCamErr] = useState(false);
+  const [fi, setFi] = useState(0);
+  const [frame, setFrame] = useState("None");
+  const [stickers, setStickers] = useState([]);
+  const [selIdx, setSelIdx] = useState(-1);
+  const [capText, setCapText] = useState("");
+  const [capColor, setCapColor] = useState("#ffffff");
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const videoRef = useRef(null); const streamRef = useRef(null);
+  const rawRef = useRef(null); const outRef = useRef(null);
+  const boxRef = useRef(null); const dragRef = useRef(null);
+  useEffect(() => {
+    if (mode !== "cam") return;
+    let dead = false;
+    setCamErr(false);
+    (async () => {
+      try {
+        const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 } }, audio: false });
+        if (dead) { st.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = st;
+        if (videoRef.current) { videoRef.current.srcObject = st; videoRef.current.play().catch(() => { }); }
+      } catch { if (!dead) setCamErr(true); }
+    })();
+    return () => { dead = true; streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null; };
+  }, [mode, facing]);
+  const toRaw = (srcEl, w, h, mirror) => {
+    const cap = 1280; const sc = Math.min(1, cap / Math.max(w, h));
+    const c = rawRef.current; c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+    const x = c.getContext("2d");
+    if (mirror) { x.translate(c.width, 0); x.scale(-1, 1); }
+    x.drawImage(srcEl, 0, 0, c.width, c.height);
+    setMode("edit");
+  };
+  const shoot = () => { const v = videoRef.current; if (!v || !v.videoWidth) return; toRaw(v, v.videoWidth, v.videoHeight, facing === "user"); };
+  const importPic = (f) => { if (!f) return; const img = new Image(); img.onload = () => toRaw(img, img.width, img.height, false); img.src = URL.createObjectURL(f); };
+  const compose = () => {
+    const raw = rawRef.current, c = outRef.current; if (!raw || !raw.width || !c) return;
+    const W0 = raw.width, H0 = raw.height; c.width = W0; c.height = H0;
+    const x = c.getContext("2d");
+    x.filter = GW_FILTERS[fi][1]; x.drawImage(raw, 0, 0); x.filter = "none";
+    const ov = GW_FILTERS[fi][2];
+    if (ov) { const g = x.createLinearGradient(0, 0, W0, H0); g.addColorStop(0, ov[0]); g.addColorStop(1, ov[1]); x.globalAlpha = ov[2]; x.fillStyle = g; x.fillRect(0, 0, W0, H0); x.globalAlpha = 1; }
+    const u = W0 / 1000;
+    if (frame === "Glasswings") {
+      x.fillStyle = "rgba(0,0,0,.42)"; const bw = 320 * u, bh = 64 * u, bx = W0 - bw - 26 * u, by = H0 - bh - 26 * u;
+      x.beginPath(); x.roundRect(bx, by, bw, bh, 32 * u); x.fill();
+      x.fillStyle = "#fff"; x.font = `800 ${34 * u}px sans-serif`; x.textAlign = "center"; x.textBaseline = "middle";
+      x.fillText("🦋 GLASSWINGS", bx + bw / 2, by + bh / 2 + 2 * u);
+    } else if (frame === "Party") {
+      const gT = x.createLinearGradient(0, 0, 0, 150 * u); gT.addColorStop(0, "rgba(0,0,0,.55)"); gT.addColorStop(1, "rgba(0,0,0,0)");
+      x.fillStyle = gT; x.fillRect(0, 0, W0, 150 * u);
+      const gB = x.createLinearGradient(0, H0 - 230 * u, 0, H0); gB.addColorStop(0, "rgba(0,0,0,0)"); gB.addColorStop(1, "rgba(0,0,0,.62)");
+      x.fillStyle = gB; x.fillRect(0, H0 - 230 * u, W0, 230 * u);
+      x.fillStyle = "#fff"; x.textAlign = "center"; x.font = `800 ${44 * u}px sans-serif`;
+      x.fillText("✨ GLASSWINGS NIGHTS ✨", W0 / 2, H0 - 88 * u);
+      x.font = `600 ${26 * u}px sans-serif`; x.fillStyle = "rgba(255,255,255,.85)";
+      x.fillText(new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }), W0 / 2, H0 - 42 * u);
+    } else if (frame === "Polaroid") {
+      const b = 40 * u, bb = 170 * u;
+      x.fillStyle = "#fff";
+      x.fillRect(0, 0, W0, b); x.fillRect(0, 0, b, H0); x.fillRect(W0 - b, 0, b, H0); x.fillRect(0, H0 - bb, W0, bb);
+      x.fillStyle = "#3c4a47"; x.textAlign = "center"; x.font = `italic 700 ${40 * u}px cursive, sans-serif`;
+      x.fillText("🦋 glasswings moments", W0 / 2, H0 - bb / 2 + 12 * u);
+    } else if (frame === "Retro") {
+      x.fillStyle = "#FFB020"; x.textAlign = "left"; x.font = `700 ${34 * u}px monospace`;
+      x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 6 * u;
+      const d = new Date();
+      x.fillText(`${String(d.getDate()).padStart(2, "0")} ${d.toLocaleString("en", { month: "short" }).toUpperCase()} '${String(d.getFullYear()).slice(2)}  🦋GW`, 34 * u, H0 - 40 * u);
+      x.shadowBlur = 0;
+    }
+    stickers.forEach((st, i) => {
+      x.textAlign = "center"; x.textBaseline = "middle";
+      if (st.t === "emoji") { x.font = `${st.s * W0}px serif`; x.fillText(st.v, st.x * W0, st.y * H0); }
+      else {
+        x.font = `800 ${st.s * W0}px sans-serif`; x.fillStyle = st.color;
+        x.shadowColor = "rgba(0,0,0,.55)"; x.shadowBlur = 8 * u;
+        x.fillText(st.v, st.x * W0, st.y * H0); x.shadowBlur = 0;
+      }
+    });
+    setPreview(c.toDataURL("image/jpeg", .92));
+  };
+  useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers]);
+  const relPt = (e) => { const r = boxRef.current.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
+  const onDown = (e) => {
+    const pt = relPt(e); let best = -1, bd = 0.12;
+    stickers.forEach((st, i) => { const d = Math.hypot(st.x - pt.x, st.y - pt.y); if (d < bd) { bd = d; best = i; } });
+    setSelIdx(best);
+    if (best >= 0) { dragRef.current = best; e.preventDefault(); }
+  };
+  const onMove = (e) => { if (dragRef.current === null || dragRef.current === undefined || dragRef.current < 0) return; const pt = relPt(e); setStickers(p => p.map((st, i) => i === dragRef.current ? { ...st, x: Math.min(.98, Math.max(.02, pt.x)), y: Math.min(.98, Math.max(.02, pt.y)) } : st)); };
+  const onUp = () => { dragRef.current = -1; };
+  const addEmoji = (em) => { setStickers(p => [...p, { t: "emoji", v: em, x: .5, y: .42, s: .17 }]); setSelIdx(stickers.length); };
+  const addCaption = () => { const t = capText.trim(); if (!t) return; setStickers(p => [...p, { t: "text", v: t, x: .5, y: .82, s: .065, color: capColor }]); setSelIdx(stickers.length); setCapText(""); };
+  const toFile = () => new Promise(r => outRef.current.toBlob(b => r(new File([b], `glasswings-${Date.now()}.jpg`, { type: "image/jpeg" })), "image/jpeg", .92));
+  const doSave = () => { const a = document.createElement("a"); a.href = preview; a.download = `glasswings-${Date.now()}.jpg`; a.click(); };
+  const doStory = async () => {
+    setBusy(true);
+    try {
+      const f = await toFile();
+      const url = await uploadPhoto(meId, f);
+      const { error } = await supabase.from("stories").insert({ event_id: null, user_id: meId, media_url: url });
+      if (error) throw error;
+      alert("📸 Posted to your story! It glows for 24 hours. 💜");
+      onClose();
+    } catch (e2) { alert(e2.message || "Could not post the story."); }
+    setBusy(false);
+  };
+  const doSend = async () => { setBusy(true); try { const f = await toFile(); await onSend(f); } catch { } setBusy(false); };
+  const chip = (label, on, fn) => <div key={label} onClick={fn} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 16, fontSize: 12, fontWeight: 800, cursor: "pointer", background: on ? "#fff" : "rgba(255,255,255,.16)", color: on ? "#0b1f1c" : "#fff", border: "1px solid rgba(255,255,255,.25)" }}>{label}</div>;
+  const sel = stickers[selIdx];
+  return (
+    <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, height: "100%", zIndex: 260, background: "#000", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <canvas ref={rawRef} style={{ display: "none" }} /><canvas ref={outRef} style={{ display: "none" }} />
+      <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", gap: 10 }}>
+        <X size={24} color="#fff" style={{ cursor: "pointer" }} onClick={() => mode === "edit" ? setMode("cam") : onClose()} />
+        <div style={{ flex: 1, color: "#fff", fontWeight: 800, fontSize: 15 }}>🦋 Glasswings Camera</div>
+        {mode === "edit" && <span onClick={doSave} style={{ color: "#fff", fontSize: 19, cursor: "pointer" }}>⬇️</span>}
+      </div>
+      {mode === "cam" ? (
+        <>
+          <div style={{ flex: 1, position: "relative", overflow: "hidden", borderRadius: 18, margin: "0 8px" }}>
+            {!camErr ? (
+              <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", filter: GW_FILTERS[fi][1], transform: facing === "user" ? "scaleX(-1)" : "none" }} />
+            ) : (
+              <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", gap: 10, padding: 30, textAlign: "center" }}>
+                <span style={{ fontSize: 40 }}>📷</span>
+                <div style={{ fontWeight: 700 }}>Camera unavailable</div>
+                <div style={{ fontSize: 12.5, opacity: .8 }}>Allow camera permission, or pick a photo from your gallery below — all filters & frames still work!</div>
+              </div>
+            )}
+            {GW_FILTERS[fi][2] && !camErr && <div style={{ position: "absolute", inset: 0, background: `linear-gradient(135deg, ${GW_FILTERS[fi][2][0]}, ${GW_FILTERS[fi][2][1]})`, opacity: GW_FILTERS[fi][2][2], pointerEvents: "none" }} />}
+          </div>
+          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "12px 12px 4px" }}>
+            {GW_FILTERS.map((f, i) => chip(f[0], fi === i, () => setFi(i)))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 38px 26px" }}>
+            <label style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, cursor: "pointer" }}>
+              🖼️<input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { importPic(e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+            <div onClick={shoot} style={{ width: 76, height: 76, borderRadius: "50%", border: "5px solid #fff", background: "rgba(255,255,255,.25)", cursor: "pointer", boxShadow: "0 0 0 4px rgba(255,255,255,.18)" }} />
+            <div onClick={() => setFacing(f => f === "user" ? "environment" : "user")} style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, cursor: "pointer" }}>🔄</div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+            style={{ flex: 1, margin: "0 8px", borderRadius: 18, overflow: "hidden", position: "relative", touchAction: "none", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#111" }}>
+            {preview && <img src={preview} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", userSelect: "none" }} />}
+          </div>
+          {sel && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px" }}>
+              <input type="range" min="0.04" max="0.4" step="0.01" value={sel.s} onChange={e => setStickers(p => p.map((st, i) => i === selIdx ? { ...st, s: Number(e.target.value) } : st))} style={{ flex: 1 }} />
+              <span onClick={() => { setStickers(p => p.filter((_, i) => i !== selIdx)); setSelIdx(-1); }} style={{ color: "#FF6B6B", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>🗑️ Remove</span>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 2px" }}>
+            {GW_FILTERS.map((f, i) => chip(f[0], fi === i, () => setFi(i)))}
+          </div>
+          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 2px" }}>
+            {GW_FRAMES.map(fr => chip(fr === "None" ? "No frame" : fr, frame === fr, () => setFrame(fr)))}
+          </div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "8px 12px 2px" }}>
+            {GW_STICKERS.map(em => <span key={em} onClick={() => addEmoji(em)} style={{ fontSize: 26, cursor: "pointer", flexShrink: 0 }}>{em}</span>)}
+          </div>
+          <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "8px 12px 2px" }}>
+            <input value={capText} onChange={e => setCapText(e.target.value)} placeholder="Add a caption…" style={{ flex: 1, minWidth: 0, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.25)", borderRadius: 18, padding: "9px 14px", color: "#fff", fontSize: 13.5, outline: "none" }} />
+            {["#ffffff", "#FFD93B", "#2FD4A8", "#FF5C8A"].map(cl => <div key={cl} onClick={() => setCapColor(cl)} style={{ width: 22, height: 22, borderRadius: "50%", background: cl, cursor: "pointer", border: capColor === cl ? "2.5px solid #04B08F" : "2px solid rgba(255,255,255,.4)", flexShrink: 0 }} />)}
+            <button onClick={addCaption} style={{ ...btn("#fff", "#0b1f1c"), padding: "8px 13px", fontSize: 12.5, flexShrink: 0 }}>Add</button>
+          </div>
+          <div style={{ display: "flex", gap: 9, padding: "12px 12px 22px" }}>
+            <button onClick={doStory} disabled={busy} style={{ flex: 1, padding: "13px", border: "none", borderRadius: 14, background: "linear-gradient(95deg,#7C3AED,#EC4899)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? .6 : 1 }}>📸 My Story</button>
+            {onSend && <button onClick={doSend} disabled={busy} style={{ flex: 1, padding: "13px", border: "none", borderRadius: 14, background: "linear-gradient(95deg,#04B08F,#008069)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? .6 : 1 }}>Send to chat ➤</button>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, onDeleteThread, allRooms = [], readOnly = false, wide = false, sidebar = 0 }) {
   const [showMembers, setShowMembers] = useState(false);
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
@@ -4514,6 +4711,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
     setMsgs(prev => prev.filter(x => x.id !== mid));
   };
   const [plusOpen, setPlusOpen] = useState(false);
+  const [gwCamOpen, setGwCamOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [roomPick, setRoomPick] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
@@ -4722,7 +4920,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
                 {[
                   ["🖼️", "Gallery", "linear-gradient(135deg,#7C3AED,#A855F7)", () => { setPlusOpen(false); galRef.current?.click(); }],
-                  ["📷", "Camera", "linear-gradient(135deg,#EC4899,#F97316)", () => { setPlusOpen(false); camRef.current?.click(); }],
+                  ["📷", "Camera", "linear-gradient(135deg,#EC4899,#F97316)", () => { setPlusOpen(false); setGwCamOpen(true); }],
                   ["📄", "Document", "linear-gradient(135deg,#0EA5E9,#2563EB)", () => { setPlusOpen(false); fileRef.current?.click(); }],
                   ["📍", "Location", "linear-gradient(135deg,#04B08F,#008069)", () => { shareLocation(); }],
                   ["💬", "Room", "linear-gradient(135deg,#F59E0B,#EF4444)", () => { setRoomPick(true); setPlusOpen(false); }],
@@ -4738,6 +4936,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           </div>
         </>
       )}
+      {gwCamOpen && <GWCamera meId={user.id} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "image"); }} onClose={() => setGwCamOpen(false)} />}
       {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
         <div onClick={() => setRoomPick(false)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
