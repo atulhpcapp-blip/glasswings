@@ -3157,6 +3157,9 @@ function BlindBanter({ meId, onClose }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [cupid, setCupid] = useState(null); // {msg, onOk} or {msg}
+  const cupidAlert = (msg) => setCupid({ msg });
+  const cupidConfirm = (msg, onOk) => setCupid({ msg, onOk });
   const endRef = useRef(null);
   const loadStatus = async () => {
     const { data, error } = await supabase.rpc("banter_status");
@@ -3181,15 +3184,18 @@ function BlindBanter({ meId, onClose }) {
     setBusy(true);
     const { error } = await supabase.rpc("banter_join");
     setBusy(false);
-    if (error) return alert(error.message);
+    if (error) return cupidAlert(error.message);
     loadStatus();
   };
   const leave = async () => { await supabase.rpc("banter_leave").then(() => { }); loadStatus(); };
-  const vote = async (yes) => {
-    if (!yes && !window.confirm("End this banter? The mystery stays a mystery — they won't be told who passed.")) return;
+  const doVote = async (yes) => {
     const { error } = await supabase.rpc("banter_vote", { p_match: st.match.id, p_yes: yes });
-    if (error) return alert(error.message);
+    if (error) return cupidAlert(error.message);
     loadStatus();
+  };
+  const vote = (yes) => {
+    if (!yes) return cupidConfirm("End this banter? The mystery stays a mystery — they won't be told who passed. 🌙", () => doVote(false));
+    doVote(true);
   };
   const send = async () => {
     if (!text.trim()) return;
@@ -3248,13 +3254,13 @@ function BlindBanter({ meId, onClose }) {
               <div style={{ fontWeight: 800, fontSize: 15 }}>You both vibed! 💚</div>
               <div style={{ fontSize: 12, opacity: .92 }}>This is {st.match.peer?.full_name} — we've opened a real chat for you two in Chats.</div>
             </div>
-            <button onClick={async () => {
-              if (!window.confirm("Start a new Blind Banter? This mystery room closes — but your real chat with " + (st.match.peer?.full_name?.split(" ")[0] || "them") + " stays in your DMs.")) return;
-              await supabase.rpc("banter_finish").then(() => { });
-              const { error } = await supabase.rpc("banter_join");
-              if (error) { alert(error.message); loadStatus(); return; }
+            <button onClick={() => cupidConfirm("Start a new Blind Banter? This mystery room closes — but your real chat with " + (st.match.peer?.full_name?.split(" ")[0] || "them") + " stays in your DMs. 💬", async () => {
+              const { error: e1 } = await supabase.rpc("banter_finish");
+              if (e1) return cupidAlert(e1.message);
+              const { error: e2 } = await supabase.rpc("banter_join");
+              if (e2) { cupidAlert(e2.message); loadStatus(); return; }
               loadStatus();
-            }} style={{ background: "rgba(255,255,255,.2)", border: "1.5px solid rgba(255,255,255,.7)", color: "#fff", borderRadius: 10, padding: "8px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>🎭 New<br />mystery</button>
+            })} style={{ background: "rgba(255,255,255,.2)", border: "1.5px solid rgba(255,255,255,.7)", color: "#fff", borderRadius: 10, padding: "8px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>🎭 New<br />mystery</button>
           </div>
         )}
         <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
@@ -3300,6 +3306,21 @@ function BlindBanter({ meId, onClose }) {
           </div>
         )}
       </>}
+      {cupid && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 26 }}>
+          <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 330, overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,.4)" }}>
+            <div style={{ background: "linear-gradient(95deg,#EC4899,#8B5CF6)", color: "#fff", padding: "13px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 22 }}>💘</div>
+              <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: 2 }}>GLASSWINGS CUPID SAYS</div>
+            </div>
+            <div style={{ padding: "18px 18px 6px", fontSize: 14, color: W.ink, lineHeight: 1.5, textAlign: "center", fontWeight: 600 }}>{cupid.msg}</div>
+            <div style={{ display: "flex", gap: 9, padding: "14px 16px 16px" }}>
+              {cupid.onOk && <button onClick={() => setCupid(null)} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "11px" }}>Cancel</button>}
+              <button onClick={() => { const f = cupid.onOk; setCupid(null); if (f) f(); }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), background: "linear-gradient(95deg,#EC4899,#8B5CF6)", flex: 1, justifyContent: "center", padding: "11px" }}>{cupid.onOk ? "Yes 💘" : "OK"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -7350,7 +7371,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • banter2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • cupid ✅</div>
       </div>
     </div>
   );
