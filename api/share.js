@@ -24,6 +24,10 @@ const GAMES = {
     title: "💘 Vibe Check — GLASSWINGS",
     descr: "How compatible are you two? Answer 10 questions, get your match % and see where you click. Free on Glasswings 😏",
   },
+  banter: {
+    title: "🎭 Blind Banter — GLASSWINGS",
+    descr: "24-hour anonymous chat with a mystery match. Profiles reveal only if you BOTH vibe 💚 Girls play free — join Glasswings!",
+  },
 };
 
 export default async function handler(req, res) {
