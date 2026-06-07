@@ -1942,6 +1942,8 @@ function Main({ user }) {
     if (canAccess(r)) return setOpen({ id: r.id, type: "room" });
     if (r.gender_restrict === "male" && profile?.gender !== "male") return setNotice("This room is for men only.");
     if (r.gender_restrict === "female" && profile?.gender !== "female") return setNotice("This room is for women only.");
+    const cp = coveringPlanId(r.id);
+    if (cp && !freeForUser(r)) { setOpen(null); setSubPage({ highlight: cp }); return; }
     if (r.gender_restrict === "couple") return setCoupleFor(r);
     return finishJoin(r);
   };
