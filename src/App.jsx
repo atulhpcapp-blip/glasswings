@@ -2301,7 +2301,7 @@ function Main({ user }) {
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
-      {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
+      {tab === "gallery" && <><Gallery isAdmin={isAdmin} myAlbum={<MyAlbum meId={user.id} />} /></>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -4627,7 +4627,11 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
   const addEmoji = (em) => { setStickers(p => [...p, { t: "emoji", v: em, x: .5, y: .42, s: .17 }]); setSelIdx(stickers.length); };
   const addCaption = () => { const t = capText.trim(); if (!t) return; setStickers(p => [...p, { t: "text", v: t, x: .5, y: .82, s: .065, color: capColor }]); setSelIdx(stickers.length); setCapText(""); };
   const toFile = () => new Promise(r => outRef.current.toBlob(b => r(new File([b], `glasswings-${Date.now()}.jpg`, { type: "image/jpeg" })), "image/jpeg", .92));
-  const doSave = () => { const a = document.createElement("a"); a.href = preview; a.download = `glasswings-${Date.now()}.jpg`; a.click(); };
+  const doSave = async () => {
+    const a = document.createElement("a"); a.href = preview; a.download = `glasswings-${Date.now()}.jpg`; a.click();
+    try { const f = await toFile(); const url = await uploadPhoto(meId, f); await albumSave(url, "camera"); alert("💾 Saved to My Album (Glasswings Memories) + downloading!"); } catch { }
+  };
+  const albumSave = async (url, source) => { try { await supabase.from("my_album").insert({ user_id: meId, url, source }); } catch { } };
   const doStory = async () => {
     setBusy(true);
     try {
@@ -4635,12 +4639,21 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
       const url = await uploadPhoto(meId, f);
       const { error } = await supabase.from("stories").insert({ event_id: null, user_id: meId, media_url: url });
       if (error) throw error;
+      await albumSave(url, "story");
       alert("📸 Posted to your story! It glows for 24 hours. 💜");
       onClose();
     } catch (e2) { alert(e2.message || "Could not post the story."); }
     setBusy(false);
   };
-  const doSend = async () => { setBusy(true); try { const f = await toFile(); await onSend(f); } catch { } setBusy(false); };
+  const doSend = async () => {
+    setBusy(true);
+    try {
+      const f = await toFile();
+      uploadPhoto(meId, f).then(url => albumSave(url, "camera")).catch(() => { });
+      await onSend(f);
+    } catch { }
+    setBusy(false);
+  };
   const chip = (label, on, fn) => <div key={label} onClick={fn} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 16, fontSize: 12, fontWeight: 800, cursor: "pointer", background: on ? "#fff" : "rgba(255,255,255,.16)", color: on ? "#0b1f1c" : "#fff", border: "1px solid rgba(255,255,255,.25)" }}>{label}</div>;
   const sel = stickers[selIdx];
   return (
@@ -4910,6 +4923,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             </div>
             <div onClick={() => { const mm = (msgs || []).find(x => x.id === tray); if (mm) setReplyTo(mm); setTray(null); }}
               style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "4px 14px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>↩️ Reply</div>
+            {tray?.media_type === "image" && tray?.media_url && <div onClick={async () => { await supabase.from("my_album").insert({ user_id: user.id, url: tray.media_url, source: "saved" }); setTray(null); alert("💾 Saved to My Album!"); }} style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>💾 Save to My Album</div>}
             {canMod && <div onClick={() => deleteMsg(tray)} style={{ fontSize: 13.5, fontWeight: 800, color: "#C0392B", cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>🗑️ Delete (staff)</div>}
           </div>
         </div>
@@ -8244,7 +8258,55 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
 }
 
 /* ---------------- profile ---------------- */
-function Gallery({ isAdmin }) {
+function MyAlbum({ meId }) {
+  const [pics, setPics] = useState(null);
+  const [full, setFull] = useState(null);
+  const [openAll, setOpenAll] = useState(false);
+  const load = () => supabase.from("my_album").select("id, url, source, created_at").eq("user_id", meId)
+    .order("created_at", { ascending: false }).then(({ data, error }) => setPics(error ? [] : (data || [])));
+  useEffect(() => { load(); }, []);
+  const del = (id) => window.gwConfirm("Remove this photo from My Album?", async () => {
+    await supabase.from("my_album").delete().eq("id", id); setFull(null); load();
+  });
+  const dl = (url) => { const a = document.createElement("a"); a.href = url; a.download = "glasswings-memory.jpg"; a.target = "_blank"; a.click(); };
+  if (pics === null) return null;
+  const show = openAll ? pics : pics.slice(0, 6);
+  return (
+    <div style={{ background: "#fff", borderBottom: `8px solid ${W.bg}`, padding: "14px 14px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+        <span style={{ fontSize: 17 }}>📒</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>My Album</div>
+          <div style={{ fontSize: 11, color: W.soft }}>🔒 Only you can see this · {pics.length} photo{pics.length === 1 ? "" : "s"}</div>
+        </div>
+        {pics.length > 6 && <span onClick={() => setOpenAll(v => !v)} style={{ color: W.teal, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{openAll ? "Show less" : "See all"}</span>}
+      </div>
+      {!pics.length ? (
+        <div style={{ fontSize: 12.5, color: W.soft, padding: "6px 0 2px" }}>Photos you take with the 📷 Glasswings Camera, post to stories, or save from chats will appear here automatically. ✨</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
+          {show.map(ph => (
+            <div key={ph.id} onClick={() => setFull(ph)} style={{ position: "relative", cursor: "pointer" }}>
+              <img src={ph.url} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 9 }} />
+              {ph.source === "story" && <span style={{ position: "absolute", top: 5, right: 5, fontSize: 11 }}>📸</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {full && (
+        <div onClick={() => setFull(null)} style={{ position: "fixed", inset: 0, zIndex: 240, background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <img src={full.url} alt="" style={{ maxWidth: "100%", maxHeight: "86%", objectFit: "contain" }} />
+          <div style={{ position: "absolute", top: 14, right: 16, display: "flex", gap: 20, alignItems: "center" }} onClick={e => e.stopPropagation()}>
+            <span onClick={() => dl(full.url)} style={{ fontSize: 21, cursor: "pointer" }}>⬇️</span>
+            <Trash2 size={21} color="#fff" onClick={() => del(full.id)} style={{ cursor: "pointer" }} />
+            <X size={24} color="#fff" style={{ cursor: "pointer" }} onClick={() => setFull(null)} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+function Gallery({ isAdmin, myAlbum = null }) {
   const [albums, setAlbums] = useState([]);
   const [photos, setPhotos] = useState({});
   const [open, setOpen] = useState(null);
@@ -8290,7 +8352,8 @@ function Gallery({ isAdmin }) {
   }
   return (
     <div>
-      <TopBar title="Gallery" />
+      <TopBar title="Glasswings Memories" />
+      {myAlbum}
       <div style={{ padding: 14 }}>
         {isAdmin && <button onClick={newAlbum} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}><Plus size={18} />New album</button>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
