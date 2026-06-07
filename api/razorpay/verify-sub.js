@@ -54,6 +54,19 @@ export default async function handler(req, res) {
         });
         if (insErr && insErr.code !== "23505") throw insErr;   // 23505 = already granted
       }
+    } else if (pay.purpose === "plan") {
+      const pm = Number(pay.plan_months) || 1;
+      const { data: existing } = await sb.from("member_plans").select("id, expires_at")
+        .eq("user_id", uid).eq("plan_id", pay.plan_id)
+        .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
+        .limit(1).maybeSingle();
+      const base = existing?.expires_at ? new Date(existing.expires_at).getTime() : Date.now();
+      const expiresAt = new Date(Math.max(base, Date.now()) + pm * 30 * 86400000).toISOString();
+      if (existing) {
+        await sb.from("member_plans").update({ expires_at: expiresAt, razorpay_payment_id, source: "razorpay" }).eq("id", existing.id);
+      } else {
+        await sb.from("member_plans").insert({ user_id: uid, plan_id: pay.plan_id, months: pm, expires_at: expiresAt, source: "razorpay", razorpay_payment_id });
+      }
     } else if (pay.purpose === "room") {
       const pm = Number(pay.plan_months) || 1;
       const expiresAt = new Date(Date.now() + pm * 30 * 86400000).toISOString();
