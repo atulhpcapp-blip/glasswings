@@ -3150,6 +3150,152 @@ function AntakshariRoom({ meId, onClose }) {
     </div>
   );
 }
+const BANTER_PROMPTS = ["Describe your perfect Sunday in 5 words 😏", "Beach trip or mountain trip?", "What song is stuck in your head?", "Biggest ick on a first date? 😂", "Chai date or coffee date?", "Most spontaneous thing you've done?"];
+function BlindBanter({ meId, onClose }) {
+  const [st, setSt] = useState(null); // status payload
+  const [msgs, setMsgs] = useState([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(0);
+  const endRef = useRef(null);
+  const loadStatus = async () => {
+    const { data, error } = await supabase.rpc("banter_status");
+    if (!error) setSt(data);
+  };
+  const loadMsgs = async (mid) => {
+    const { data } = await supabase.from("banter_messages").select("id, sender, body, created_at").eq("match_id", mid).order("created_at").limit(200);
+    setMsgs(data || []);
+  };
+  useEffect(() => { loadStatus(); }, []);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setTick(t => t + 1);
+      if (st?.state === "queued") loadStatus();
+      if (st?.state === "chat") { loadMsgs(st.match.id); if (tick % 3 === 0) loadStatus(); }
+    }, 3500);
+    return () => clearInterval(iv);
+  }, [st, tick]);
+  useEffect(() => { if (st?.state === "chat") loadMsgs(st.match.id); }, [st?.state, st?.match?.id]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length]);
+  const join = async () => {
+    setBusy(true);
+    const { error } = await supabase.rpc("banter_join");
+    setBusy(false);
+    if (error) return alert(error.message);
+    loadStatus();
+  };
+  const leave = async () => { await supabase.rpc("banter_leave").then(() => { }); loadStatus(); };
+  const vote = async (yes) => {
+    if (!yes && !window.confirm("End this banter? The mystery stays a mystery — they won't be told who passed.")) return;
+    const { error } = await supabase.rpc("banter_vote", { p_match: st.match.id, p_yes: yes });
+    if (error) return alert(error.message);
+    loadStatus();
+  };
+  const send = async () => {
+    if (!text.trim()) return;
+    const body = text.trim(); setText("");
+    await supabase.from("banter_messages").insert({ match_id: st.match.id, sender: meId, body }).then(() => { });
+    loadMsgs(st.match.id);
+  };
+  const remain = () => {
+    if (!st?.match?.expires_at) return "";
+    const ms = new Date(st.match.expires_at).getTime() - Date.now();
+    if (ms <= 0) return "expired";
+    return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m left`;
+  };
+  const peerAlias = st?.match?.i_am === "boy" ? "Mystery Girl 🦋" : "Mystery Guy 🎭";
+  const Head = ({ title, sub }) => (
+    <div style={{ background: "linear-gradient(135deg,#1F2937,#6D28D9)", color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+      <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer", flexShrink: 0 }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
+        {sub && <div style={{ fontSize: 11.5, opacity: .9 }}>{sub}</div>}
+      </div>
+    </div>
+  );
+  if (st === null) return <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}>Loading…</div>;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto" }}>
+      {st.state === "none" && <>
+        <Head title="🎭 Blind Banter" sub="anonymous · 24 hours · reveal only if you both vibe" />
+        <div style={{ padding: "26px 22px", overflowY: "auto" }}>
+          <div style={{ fontSize: 44, textAlign: "center" }}>🎭</div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 19, textAlign: "center", marginTop: 8 }}>Talk first. Faces later.</div>
+          <div style={{ color: W.soft, fontSize: 13.5, lineHeight: 1.55, marginTop: 12 }}>
+            We pair you with a mystery member of the opposite gender for a <b>24-hour anonymous chat</b> — no names, no photos, just conversation.<br /><br />
+            At any point, tap 💚 if you're vibing. <b>Profiles reveal only if you BOTH tap 💚.</b> If not, the mystery stays a mystery — no awkwardness, ever. 🌙
+          </div>
+          <button onClick={join} disabled={busy} style={{ ...btn("#6D28D9", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginTop: 20 }}>{busy ? "…" : "🎭 Find my mystery match"}</button>
+          <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, fontWeight: 700, marginTop: 9 }}>Girls play free 💃 · Guys need 💎 Premium (any paid room)</div>
+        </div>
+      </>}
+      {st.state === "queued" && <>
+        <Head title="🎭 Blind Banter" sub="searching…" />
+        <div style={{ padding: "40px 24px", textAlign: "center" }}>
+          <div style={{ fontSize: 46, animation: "gwpulse 1.4s infinite", display: "inline-block" }}>🔮</div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, marginTop: 12 }}>Looking for your mystery match…</div>
+          <div style={{ color: W.soft, fontSize: 13, marginTop: 8 }}>The moment someone arrives, your 24 hours begin. We'll ping you in chat — you can close this and carry on.</div>
+          <button onClick={leave} style={{ ...btn("#fff", "#B3433B"), border: "1px solid #E5B5B2", marginTop: 22, padding: "10px 20px" }}>Leave the queue</button>
+          <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }`}</style>
+        </div>
+      </>}
+      {st.state === "chat" && <>
+        <Head title={st.match.revealed ? `💘 ${st.match.peer?.full_name || "Revealed!"}` : peerAlias} sub={remain() === "expired" ? "time's up 🌙" : `⏳ ${remain()}`} />
+        {st.match.revealed && (
+          <div style={{ background: "linear-gradient(95deg,#EC4899,#8B5CF6)", color: "#fff", padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+            {st.match.peer?.avatar_url ? <img src={st.match.peer.avatar_url} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", border: "2.5px solid #fff" }} /> : <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#fff", color: "#EC4899", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 }}>{(st.match.peer?.full_name || "?").charAt(0)}</div>}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>You both vibed! 💚</div>
+              <div style={{ fontSize: 12, opacity: .92 }}>This is {st.match.peer?.full_name} — we've opened a real chat for you two in Chats.</div>
+            </div>
+          </div>
+        )}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+          {!msgs.length && <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "14px 8px" }}>Break the ice — try one of these 👇</div>}
+          {msgs.map(m => {
+            const mine = m.sender === meId;
+            return (
+              <div key={m.id} style={{ display: "flex", gap: 8, marginBottom: 9, flexDirection: mine ? "row-reverse" : "row" }}>
+                {!mine && <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#6D28D9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>{st.match.i_am === "boy" ? "🦋" : "🎭"}</div>}
+                <div style={{ background: mine ? "#DCF8EF" : "#fff", border: `1px solid ${mine ? "#BBEBD9" : W.line}`, borderRadius: 12, padding: "8px 12px", maxWidth: "75%", fontSize: 14, color: W.ink, whiteSpace: "pre-wrap" }}>{m.body}</div>
+              </div>
+            );
+          })}
+          <div ref={endRef} />
+        </div>
+        {!st.match.closed && remain() !== "expired" && <>
+          {!st.match.revealed && (
+            <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 12px", background: "#fff", borderTop: `1px solid ${W.line}` }}>
+              {BANTER_PROMPTS.slice(0, 4).map((pr, k) => <span key={k} onClick={() => setText(pr)} style={{ flexShrink: 0, background: "#F3EEFB", color: "#6D28D9", fontSize: 11.5, fontWeight: 700, padding: "6px 11px", borderRadius: 13, cursor: "pointer" }}>{pr}</span>)}
+            </div>
+          )}
+          <div style={{ background: "#fff", padding: "8px 12px calc(10px + env(safe-area-inset-bottom))" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") send(); }} placeholder="Say something intriguing…" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 20, padding: "10px 14px", fontSize: 14, outline: "none" }} />
+              <button onClick={send} style={{ ...btn(W.teal, "#fff"), padding: "10px 16px", borderRadius: 20 }}>➤</button>
+            </div>
+            {!st.match.revealed && (
+              <div style={{ display: "flex", gap: 8 }}>
+                {st.match.my_vote === "yes"
+                  ? <div style={{ flex: 1, textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "#0d8a5f", background: "#E6F7F0", borderRadius: 10, padding: "9px" }}>💚 You vibed — waiting for them…</div>
+                  : <button onClick={() => vote(true)} style={{ ...btn("#0d8a5f", "#fff"), flex: 1, justifyContent: "center", padding: "10px" }}>💚 I'm vibing — reveal?</button>}
+                <button onClick={() => vote(false)} style={{ ...btn("#fff", "#B3433B"), border: "1px solid #E5B5B2", padding: "10px 14px" }}>✖️</button>
+              </div>
+            )}
+          </div>
+        </>}
+        {(st.match.closed || remain() === "expired") && !st.match.revealed && (
+          <div style={{ background: "#fff", borderTop: `1px solid ${W.line}`, padding: "16px", textAlign: "center" }}>
+            <div style={{ fontSize: 26 }}>🌙</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>This banter has ended</div>
+            <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>The mystery stays a mystery. Ready for the next one?</div>
+            <button onClick={async () => { await supabase.rpc("banter_clear").then(() => { }); loadStatus(); }} style={{ ...btn("#6D28D9", "#fff"), marginTop: 12, padding: "10px 18px" }}>🎭 Find a new match</button>
+          </div>
+        )}
+      </>}
+    </div>
+  );
+}
 function vibeLabel(pct) {
   if (pct >= 90) return "Written in the stars ✨";
   if (pct >= 70) return "Sparks flying 🔥";
@@ -3428,11 +3574,13 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
   const [playAnt, setPlayAnt] = useState(false);
   const [playLudo, setPlayLudo] = useState(false);
   const [playVibe, setPlayVibe] = useState(false);
+  const [playBanter, setPlayBanter] = useState(false);
   useEffect(() => {
     if (initialGame === "antakshari") setPlayAnt(true);
     else if (initialGame === "trivia") setPlayTrivia(true);
     else if (initialGame === "ludo") setPlayLudo(true);
     else if (initialGame === "vibe") setPlayVibe(true);
+    else if (initialGame === "banter") setPlayBanter(true);
     if (initialGame && onConsumedInitial) onConsumedInitial();
   }, []);
   const loadAwards = () => supabase.from("game_awards").select("id, prize, created_at, profiles:user_id(full_name, avatar_url)").order("created_at", { ascending: false }).limit(12)
@@ -3465,6 +3613,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
         <Card emoji="🎵" title="Antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
         <Card emoji="🎲" title="Ludo" sub="2–4 players · invite friends with a code" cta="Play" onClick={() => setPlayLudo(true)} />
         <Card emoji="💘" title="Vibe Check" sub="How compatible are you two? 10 questions" cta="Play" onClick={() => setPlayVibe(true)} />
+        <Card emoji="🎭" title="Blind Banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys 💎" cta="Play" onClick={() => setPlayBanter(true)} />
         <Card emoji="🎯" title="Bollywood Riddles" sub="Guess the film from emojis — coming soon" cta="Soon" />
         <Card emoji="🎲" title="Tambola / Housie" sub="Played live at our events 🎉" />
 
@@ -3504,6 +3653,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
       {playAnt && <AntakshariRoom meId={meId} onClose={() => setPlayAnt(false)} />}
       {playLudo && <LudoHub meId={meId} onClose={() => setPlayLudo(false)} />}
       {playVibe && <VibeCheck meId={meId} isStaff={isStaff} onClose={() => setPlayVibe(false)} />}
+      {playBanter && <BlindBanter meId={meId} onClose={() => setPlayBanter(false)} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -7193,7 +7343,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoend ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • banter ✅</div>
       </div>
     </div>
   );
