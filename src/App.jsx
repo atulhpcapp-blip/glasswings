@@ -2902,6 +2902,13 @@ function LudoGame({ gameId, meId, onClose }) {
           <div style={{ fontWeight: 800, fontSize: 16 }}>🎲 Ludo · {g.code}</div>
           <div style={{ fontSize: 11, opacity: .9 }}>{g.status === "lobby" ? `${players.length}/4 players — waiting` : g.status === "done" ? "Game over" : "In progress"}</div>
         </div>
+        {players[0]?.uid === meId && g.status !== "done" && (
+          <button onClick={async () => {
+            if (!window.confirm(g.status === "lobby" ? "Cancel this game?" : "End this game for everyone?")) return;
+            const { error } = await supabase.rpc("ludo_end", { p_game: g.id });
+            if (error) alert(error.message); else load();
+          }} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>🛑 End</button>
+        )}
       </div>
       <div style={{ display: "flex", gap: 6, padding: "10px 12px", flexWrap: "wrap" }}>
         {players.map((pl, i) => (
@@ -3025,6 +3032,13 @@ function LudoGame({ gameId, meId, onClose }) {
           ) : <div style={{ fontWeight: 700, color: W.soft, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>{g.dice != null && <DiceFace n={g.dice} size={34} />} Waiting for {(players[g.turn]?.name || "player").split(" ")[0]}'s move…</div>}
         </div>
       )}
+      {g.status === "done" && g.winner == null && (
+        <div style={{ padding: "14px 16px calc(24px + env(safe-area-inset-bottom))", textAlign: "center" }}>
+          <div style={{ fontSize: 34 }}>🛑</div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>Game ended by the host</div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No winner this time — rematch? 🎲</div>
+        </div>
+      )}
       {g.status === "done" && g.winner != null && (
         <div style={{ padding: "14px 16px calc(24px + env(safe-area-inset-bottom))", textAlign: "center" }}>
           <div style={{ fontSize: 38 }}>🏆</div>
@@ -3142,7 +3156,7 @@ function vibeLabel(pct) {
   if (pct >= 50) return "Slow burn 😏";
   return "Opposites attract? 😅";
 }
-function VibeCheck({ meId, onClose }) {
+function VibeCheck({ meId, isStaff, onClose }) {
   const [view, setView] = useState("home"); // home | pick | quiz | sent | result
   const [qs, setQs] = useState(null);
   const [mine, setMine] = useState(null);
@@ -3155,14 +3169,25 @@ function VibeCheck({ meId, onClose }) {
   const [ans, setAns] = useState([]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+  const [premium, setPremium] = useState(false);
   const load = async () => {
-    const [{ data: q }, { data: m }, { data: me }] = await Promise.all([
+    const [{ data: q }, { data: m }, { data: me }, { data: subs }] = await Promise.all([
       supabase.from("vibe_questions").select("id, q, opts").eq("active", true).order("id").limit(10),
       supabase.rpc("vibe_my"),
       supabase.from("profiles").select("gender").eq("id", meId).maybeSingle(),
+      supabase.from("room_subscriptions").select("room_id").eq("user_id", meId),
     ]);
     setQs(q || []); setMine(m || []); setMyGender(me?.gender || null);
+    const rids = (subs || []).map(x => x.room_id);
+    if (rids.length) {
+      const { data: rms } = await supabase.from("rooms").select("id, price").in("id", rids);
+      setPremium((rms || []).some(r => Number(r.price) > 0));
+    } else setPremium(false);
   };
+  const weekStart = () => { const d = new Date(); const day = (d.getDay() + 6) % 7; d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - day); return d.getTime(); };
+  const usedThisWeek = (mine || []).filter(m => m.role === "a" && new Date(m.created_at).getTime() >= weekStart()).length;
+  const unlimited = isStaff || premium;
+  const quotaLeft = unlimited ? 99 : Math.max(0, 1 - usedThisWeek);
   useEffect(() => { load(); }, []);
   useEffect(() => {
     if (view !== "pick" || !search.trim()) { setFound([]); return; }
@@ -3174,6 +3199,7 @@ function VibeCheck({ meId, onClose }) {
     return () => clearTimeout(t);
   }, [search, view, myGender]);
   const surprise = async () => {
+    if (!unlimited) { alert("🎲 Random match is a 💎 Premium perk!\n\nSubscribe to any premium room (Explore tab) to unlock it — plus unlimited Vibe Checks."); return; }
     const opp = myGender === "male" ? "female" : "male";
     const { data } = await supabase.from("profiles").select("id, full_name, avatar_url").eq("gender", opp).neq("id", meId).not("avatar_url", "is", null).limit(60);
     const pool = data || [];
@@ -3187,16 +3213,25 @@ function VibeCheck({ meId, onClose }) {
     const next = [...ans, oi];
     if (next.length < qs.length) { setAns(next); setQi(qi + 1); return; }
     setBusy(true);
+    const vibeMail = async (matchId) => {
+      try {
+        const { data: ses } = await supabase.auth.getSession();
+        const tok = ses?.session?.access_token;
+        if (tok && matchId) fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "vibe_email", access_token: tok, match_id: matchId }) }).then(() => { }).catch(() => { });
+      } catch { }
+    };
     if (answerFor) {
       const { data, error } = await supabase.rpc("vibe_answer", { p_match: answerFor.id, p_answers: next });
       setBusy(false);
       if (error) return alert(error.message);
+      vibeMail(answerFor.id);
       await load();
       showResult({ ...answerFor, b_answers: next });
     } else {
-      const { error } = await supabase.rpc("vibe_start", { p_partner: partner.id, p_answers: next });
+      const { data, error } = await supabase.rpc("vibe_start", { p_partner: partner.id, p_answers: next });
       setBusy(false);
       if (error) return alert(error.message);
+      vibeMail(data?.id);
       await load();
       setView("sent");
     }
@@ -3241,7 +3276,13 @@ function VibeCheck({ meId, onClose }) {
       {view === "home" && <>
         <Header title="10 questions · find your match %" />
         <div style={{ padding: 16 }}>
-          <button onClick={() => { setSearch(""); setView("pick"); }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 10, background: "linear-gradient(95deg,#EC4899,#8B5CF6)" }}>💘 New Vibe Check</button>
+          <button onClick={() => {
+            if (quotaLeft <= 0) { alert("💎 Free members get 1 Vibe Check a week — you've used yours!\n\nSubscribe to any premium room (Explore tab) for unlimited Vibe Checks + random matches."); return; }
+            setSearch(""); setView("pick");
+          }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 6, background: "linear-gradient(95deg,#EC4899,#8B5CF6)", opacity: quotaLeft <= 0 ? .6 : 1 }}>💘 New Vibe Check</button>
+          <div style={{ textAlign: "center", fontSize: 11.5, fontWeight: 700, color: unlimited ? "#8B5CF6" : W.soft, marginBottom: 10 }}>
+            {isStaff ? "👑 Staff — unlimited" : premium ? "💎 Premium — unlimited checks + random match" : `Free plan: ${quotaLeft} of 1 left this week · 💎 Premium = unlimited`}
+          </div>
           {invites.length > 0 && <>
             <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "14px 0 6px" }}>💌 Waiting for your answers</div>
             {invites.map(m => (
@@ -3281,7 +3322,7 @@ function VibeCheck({ meId, onClose }) {
       {view === "pick" && <>
         <Header title="Who's it going to be? 😏" />
         <div style={{ padding: 16 }}>
-          <button onClick={surprise} style={{ ...btn("#8B5CF6", "#fff"), width: "100%", justifyContent: "center", padding: "13px", marginBottom: 12 }}>🎲 Surprise me — random match</button>
+          <button onClick={surprise} style={{ ...btn("#8B5CF6", "#fff"), width: "100%", justifyContent: "center", padding: "13px", marginBottom: 12, opacity: unlimited ? 1 : .65 }}>🎲 Surprise me — random match {unlimited ? "" : "🔒💎"}</button>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${myGender === "male" ? "girls" : "guys"} by name…`} autoFocus style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 11, padding: "12px 14px", fontSize: 14.5, outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
           {found.map(r => (
             <div key={r.id} onClick={() => startQuiz(r)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 4px", borderBottom: `1px solid ${W.line}`, cursor: "pointer" }}>
@@ -3462,7 +3503,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
       {playTrivia && <TriviaSheet meId={meId} alreadyScore={triviaDone} onClose={() => setPlayTrivia(false)} />}
       {playAnt && <AntakshariRoom meId={meId} onClose={() => setPlayAnt(false)} />}
       {playLudo && <LudoHub meId={meId} onClose={() => setPlayLudo(false)} />}
-      {playVibe && <VibeCheck meId={meId} onClose={() => setPlayVibe(false)} />}
+      {playVibe && <VibeCheck meId={meId} isStaff={isStaff} onClose={() => setPlayVibe(false)} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -7152,7 +7193,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • vibe ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoend ✅</div>
       </div>
     </div>
   );
