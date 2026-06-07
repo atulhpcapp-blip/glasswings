@@ -5041,7 +5041,8 @@ function MembersOverview({ isSuper }) {
     ["inactive", "😴 Inactive 30d+", r => !r.last_seen || (now - new Date(r.last_seen).getTime() > d30)],
     ["subs", "💎 Room subscribers", r => (r.rooms || []).length > 0],
     ["buyers", "🎟️ Ticket buyers", r => (r.tickets || 0) > 0],
-    ["spenders", "💰 Paid customers", r => (r.spend || 0) > 0],
+    ["paysubs", "💳 Paying room subscribers", r => (Array.isArray(r.rooms_detail) && r.rooms_detail.some(d => d.paying)) || (r.spend_rooms || 0) > 0],
+    ["paytix", "💸 Paid ticket buyers", r => (r.spend_tickets || 0) > 0],
     ["women", "♀ Women", r => r.gender === "female"],
     ["men", "♂ Men", r => r.gender === "male"],
     ["noroom", "🚪 No room yet", r => !(r.rooms || []).length],
@@ -5093,9 +5094,10 @@ function MembersOverview({ isSuper }) {
     <div style={{ marginBottom: 18 }}>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 12 }}>
         {stat("Total members", rows.length)}
-        {stat("New (30 days)", rows.filter(segs[1][2]).length)}
-        {stat("Active (7 days)", rows.filter(segs[2][2]).length)}
-        {stat("Paid customers", rows.filter(segs[6][2]).length)}
+        {stat("New (30 days)", rows.filter((segs.find(x => x[0] === "new"))[2]).length)}
+        {stat("Active (7 days)", rows.filter((segs.find(x => x[0] === "active"))[2]).length)}
+        {stat("💳 Paying subscribers", rows.filter((segs.find(x => x[0] === "paysubs"))[2]).length)}
+        {stat("💸 Paid ticket buyers", rows.filter((segs.find(x => x[0] === "paytix"))[2]).length)}
       </div>
       <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 6, marginBottom: 8 }}>
         {segs.map(([k, label, fn]) => (
@@ -5539,7 +5541,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • roomfilter ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • paidsplit ✅</div>
       </div>
     </div>
   );
