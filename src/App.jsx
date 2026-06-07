@@ -1639,6 +1639,12 @@ function Main({ user }) {
     setPlanRoomIds(liveIds.length ? [...new Set((prsAll || []).filter(x => liveIds.includes(x.plan_id)).map(x => x.room_id))] : []);
   };
   useEffect(() => { loadPlans(); }, [user?.id, tab]);
+  useEffect(() => {
+    if (!subPage) return;
+    loadRazorpay();
+    fetch("/api/razorpay/order", { method: "GET" }).catch(() => { });
+    fetch("/api/razorpay/verify", { method: "GET" }).catch(() => { });
+  }, [subPage]);
   const coveringPlanId = (roomId) => (allPlanRooms.find(x => x.room_id === roomId) || {}).plan_id || null;
   const buyPlan = async (plan, months) => {
     setPayBusy(true);
@@ -2167,7 +2173,7 @@ function Main({ user }) {
         }} wide={wide} sidebar={convoLeft} />;
     } else if (open.type === "room-locked") {
       const r = rooms.find(x => x.id === open.id);
-      chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} onJoin={() => { const cp = coveringPlanId(r.id); if (cp && !freeForUser(r)) { setOpen(null); setSubPage({ highlight: cp }); } else joinRoom(r); }} onPlan={(mo) => buyRoomPlan(r, mo)} onBack={() => setOpen(null)} /> : null;
+      chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} planLabel={(() => { const cp = coveringPlanId(r.id); const pl = cp ? allPlans.find(p => p.id === cp) : null; return pl ? `${pl.emoji || "💎"} ${pl.name}` : null; })()} onJoin={() => { const cp = coveringPlanId(r.id); if (cp && !freeForUser(r)) { setOpen(null); setSubPage({ highlight: cp }); } else joinRoom(r); }} onPlan={(mo) => buyRoomPlan(r, mo)} onBack={() => setOpen(null)} /> : null;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
       if (r) chatEl = <RoomChat allRooms={rooms} room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
@@ -2181,7 +2187,8 @@ function Main({ user }) {
   const myChats = [
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
     ...rooms.filter(r => !canAccess(r) && (r.price_monthly || 0) > 0 && !(["male", "female"].includes(r.gender_restrict) && r.gender_restrict !== profile?.gender))
-      .map(r => ({ id: r.id, type: "room-locked", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: `🔒 ${(counts[r.id] || 0)} members · ${freeForUser(r) ? "free for you" : "₹" + r.price_monthly + "/mo"}` })),
+      .map(r => { const cp = coveringPlanId(r.id); const pl = cp ? allPlans.find(p => p.id === cp) : null;
+        return { id: r.id, type: "room-locked", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: `🔒 ${(counts[r.id] || 0)} members · ${freeForUser(r) ? "free for you" : pl ? `${pl.emoji || "💎"} ${pl.name}` : "₹" + r.price_monthly + "/mo"}` }; }),
     [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Message the Glasswings team 💚" }][0],
     ...p2pThreads.map(t => ({ id: t.id, other: t.other, type: "p2p", name: t.name, emoji: "👤", logo_url: t.avatar, sub: lastSeenStr(t.seen) || "Direct chat" })),
     ...events.filter(e => {
@@ -2912,7 +2919,7 @@ function CoupleInfoSheet({ room, userId, onClose, onDone }) {
     </div>
   );
 }
-function LockedRoomPreview({ room, count, free, onJoin, onPlan, onBack }) {
+function LockedRoomPreview({ room, count, free, planLabel, onJoin, onPlan, onBack }) {
   const [members, setMembers] = useState(null);
   useEffect(() => { fetch("/api/razorpay/subscribe", { method: "GET" }).catch(() => { }); }, []);
   useEffect(() => {
@@ -2947,7 +2954,7 @@ function LockedRoomPreview({ room, count, free, onJoin, onPlan, onBack }) {
       </div>
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, padding: "16px 18px calc(18px + env(safe-area-inset-bottom))", textAlign: "center" }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: W.ink }}>🔒 Conversations are members-only</div>
-        <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{free ? "This room is free for you — join and start chatting." : `₹${room.price_monthly}/month · cancel anytime · free for women`}</div>
+        <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{free ? "This room is free for you — join and start chatting." : planLabel ? `Included in ${planLabel} membership` : `₹${room.price_monthly}/month · cancel anytime · free for women`}</div>
         {!free && (() => {
           const plans = [[3, room.price_3m], [6, room.price_6m], [12, room.price_12m]].filter(([, p]) => Number(p) > 0);
           return plans.length ? (
@@ -2962,7 +2969,7 @@ function LockedRoomPreview({ room, count, free, onJoin, onPlan, onBack }) {
             </div>
           ) : null;
         })()}
-        <button onClick={onJoin} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", fontSize: 15.5, padding: "13px" }}>{free ? "Join free" : `Subscribe · ₹${room.price_monthly}/mo`}</button>
+        <button onClick={onJoin} style={{ ...btn(planLabel && !free ? "#6D28D9" : W.teal, "#fff"), width: "100%", justifyContent: "center", fontSize: 15.5, padding: "13px" }}>{free ? "Join free" : planLabel ? `${planLabel} — view plans` : `Subscribe · ₹${room.price_monthly}/mo`}</button>
       </div>
     </div>
   );
