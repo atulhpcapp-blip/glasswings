@@ -719,6 +719,12 @@ function RideButtons({ e, compact }) {
     </div>
   );
 }
+function gwEventLive(e) {
+  if (!e) return false;
+  if (e.end_at) return Date.now() <= new Date(e.end_at).getTime();
+  if (e.event_at) return Date.now() <= new Date(e.event_at).getTime() + 6 * 3600000;
+  return true; // date-TBD events stay listed until dated
+}
 function PosterCard({ e, price, popular, going, onOpen, date, unpublished }) {
   return (
     <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
@@ -1218,13 +1224,13 @@ function PublicLanding() {
   const popSet = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
   const evSlide = ({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
   const promoSlides = events
-    .filter(e => Number(e.promo_pct) > 0 && e.approved !== false)
+    .filter(e => Number(e.promo_pct) > 0 && e.approved !== false && gwEventLive(e))
     .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
     .filter(x => x.img)
     .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
     .map(evSlide);
-  const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }));
-  const fallbackSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(evSlide);
+  const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
+  const fallbackSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false && gwEventLive(x.e)).slice(0, 6).map(evSlide);
   const featured = [...promoSlides, ...customSlides.filter(c => !promoSlides.some(ps => ps.id && ps.id === c.id))].slice(0, 6);
   const heroSlides = featured.length ? featured : fallbackSlides;
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
@@ -1498,11 +1504,7 @@ function Main({ user }) {
   const [p2pThreads, setP2pThreads] = useState([]);
   const [stories, setStories] = useState([]);
   const [coupleFor, setCoupleFor] = useState(null);
-  const eventLive = (e) => {
-    if (e.end_at) return Date.now() <= new Date(e.end_at).getTime();
-    if (e.event_at) return Date.now() <= new Date(e.event_at).getTime() + 6 * 3600000;
-    return true; // date TBD events stay listed until dated
-  };
+  const eventLive = gwEventLive;
   const [installEvt, setInstallEvt] = useState(null);
   const [installHide, setInstallHide] = useState(() => { try { return localStorage.getItem("gw_inst_hide") === "1"; } catch { return false; } });
   const isStandalone = typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone);
@@ -2157,13 +2159,13 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   };
   const evSlide = ({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
   const promoSlides = events
-    .filter(e => Number(e.promo_pct) > 0 && e.approved !== false)
+    .filter(e => Number(e.promo_pct) > 0 && e.approved !== false && gwEventLive(e))
     .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
     .filter(x => x.img)
     .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
     .map(evSlide);
-  const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined }));
-  const fallbackSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false).slice(0, 6).map(evSlide);
+  const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
+  const fallbackSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false && gwEventLive(x.e)).slice(0, 6).map(evSlide);
   const featured = [...promoSlides, ...customSlides.filter(c => !promoSlides.some(ps => ps.id && ps.id === c.id))].slice(0, 6);
   const heroSlides = featured.length ? featured : fallbackSlides;
   return (
@@ -6928,7 +6930,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • eventend ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • sliderend ✅</div>
       </div>
     </div>
   );
