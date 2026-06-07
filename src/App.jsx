@@ -1620,6 +1620,17 @@ function Main({ user }) {
   const [coupleFor, setCoupleFor] = useState(null);
   const eventLive = gwEventLive;
   const [dmStreaks, setDmStreaks] = useState({});
+  const [planRoomIds, setPlanRoomIds] = useState([]);
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const { data: mps } = await supabase.from("member_plans").select("plan_id, expires_at").eq("user_id", user.id);
+      const live = (mps || []).filter(m => !m.expires_at || new Date(m.expires_at).getTime() > Date.now()).map(m => m.plan_id);
+      if (!live.length) { setPlanRoomIds([]); return; }
+      const { data: prs } = await supabase.from("plan_rooms").select("room_id").in("plan_id", live);
+      setPlanRoomIds([...new Set((prs || []).map(x => x.room_id))]);
+    })();
+  }, [user?.id, tab]);
   const [previews, setPreviews] = useState({});
   useEffect(() => {
     if (!user?.id || tab !== "chats") return;
@@ -1772,7 +1783,7 @@ function Main({ user }) {
   const isAdmin = isSuper || myRoles.includes("admin");
   const isStaff = isSuper || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
   const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics"), editMembers: capOf("can_edit_members"), stamps: capOf("can_stamps") };
-  const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id);
+  const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id) || planRoomIds.includes(r.id);
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
   const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
 
@@ -5327,7 +5338,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <><PendingSignups isSuper={isSuper} /><MembersOverview isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>}
+                : <>{isSuper && <PlansAdmin rooms={rooms} />}<PendingSignups isSuper={isSuper} /><MembersOverview isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>}
     </div>
   );
 }
@@ -7050,6 +7061,151 @@ function MemberRolesSheet({ member: m, cities, onSetRoles, onClose, onSaved }) {
         <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "Save"}</button>
       </div>
     </Sheet>
+  );
+}
+function PlansAdmin({ rooms }) {
+  const [plans, setPlans] = useState(null);
+  const [planRooms, setPlanRooms] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [exp, setExp] = useState(null); // expanded plan id
+  const [newName, setNewName] = useState("");
+  const [edit, setEdit] = useState({});
+  const [members, setMembers] = useState({});
+  const [q, setQ] = useState(""); const [found, setFound] = useState([]); const [enrollMo, setEnrollMo] = useState("1");
+  const load = async () => {
+    const [{ data: pl }, { data: pr }] = await Promise.all([
+      supabase.from("plans").select("*").order("position").order("created_at"),
+      supabase.from("plan_rooms").select("plan_id, room_id"),
+    ]);
+    setPlans(pl || []); setPlanRooms(pr || []);
+  };
+  useEffect(() => { load(); }, []);
+  const loadMembers = (pid) => supabase.rpc("plan_members", { p_plan: pid }).then(({ data }) => setMembers(m => ({ ...m, [pid]: data || [] })));
+  useEffect(() => { if (exp) { loadMembers(exp); setQ(""); setFound([]); } }, [exp]);
+  useEffect(() => {
+    if (!q.trim() || !exp) { setFound([]); return; }
+    const t = setTimeout(() => supabase.from("profiles").select("id, full_name").ilike("full_name", `%${q.trim()}%`).limit(6).then(({ data }) => setFound(data || [])), 250);
+    return () => clearTimeout(t);
+  }, [q, exp]);
+  const createPlan = async () => {
+    if (!newName.trim()) return;
+    const { error } = await supabase.from("plans").insert({ name: newName.trim(), emoji: "💎", active: true });
+    if (error) return alert(error.message);
+    setNewName(""); load();
+  };
+  const savePlan = async (pl) => {
+    const e = edit[pl.id] || {};
+    const patch = {
+      price_1m: e.p1 !== undefined ? (e.p1 ? Number(e.p1) : null) : pl.price_1m,
+      price_3m: e.p3 !== undefined ? (e.p3 ? Number(e.p3) : null) : pl.price_3m,
+      price_6m: e.p6 !== undefined ? (e.p6 ? Number(e.p6) : null) : pl.price_6m,
+      price_12m: e.p12 !== undefined ? (e.p12 ? Number(e.p12) : null) : pl.price_12m,
+      women_free: e.wf !== undefined ? e.wf : pl.women_free,
+      auto_renew: e.ar !== undefined ? e.ar : pl.auto_renew,
+      active: e.act !== undefined ? e.act : pl.active,
+      tagline: e.tag !== undefined ? e.tag : pl.tagline,
+    };
+    const { error } = await supabase.from("plans").update(patch).eq("id", pl.id);
+    if (error) return alert(error.message);
+    setEdit(ed => ({ ...ed, [pl.id]: {} })); load();
+  };
+  const toggleRoom = async (pid, rid, has) => {
+    if (has) await supabase.from("plan_rooms").delete().eq("plan_id", pid).eq("room_id", rid);
+    else await supabase.from("plan_rooms").insert({ plan_id: pid, room_id: rid });
+    load();
+  };
+  const enroll = async (pid, uid, name) => {
+    const { error } = await supabase.rpc("admin_enroll_plan", { p_user: uid, p_plan: pid, p_months: Number(enrollMo) });
+    if (error) return alert(error.message);
+    alert(`✅ ${name} enrolled for ${enrollMo} month${enrollMo > "1" ? "s" : ""}`);
+    setQ(""); setFound([]); loadMembers(pid);
+  };
+  const unenroll = async (pid, rowId, name) => {
+    window.gwConfirm(`Remove ${name}'s plan?`, async () => {
+      await supabase.from("member_plans").delete().eq("id", rowId);
+      loadMembers(pid);
+    });
+  };
+  const E = (pid) => edit[pid] || {};
+  const setE = (pid, k, v) => setEdit(ed => ({ ...ed, [pid]: { ...(ed[pid] || {}), [k]: v } }));
+  const mini = { width: 76, border: `1px solid ${W.line}`, borderRadius: 8, padding: "8px 9px", fontSize: 13, outline: "none", fontWeight: 800 };
+  const daysLeft = (ts) => ts ? Math.max(0, Math.ceil((new Date(ts).getTime() - Date.now()) / 86400000)) : null;
+  return (
+    <div style={{ background: "#F3F0FB", border: "1px solid #DCD2F0", borderRadius: 14, padding: "13px 15px", marginBottom: 14 }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+        <span style={{ fontSize: 19 }}>💎</span>
+        <div style={{ flex: 1, fontWeight: 800, color: "#4C3585", fontSize: 14.5 }}>Subscriptions {plans ? `(${plans.length} plan${plans.length === 1 ? "" : "s"})` : ""}</div>
+        <span style={{ color: "#4C3585", fontWeight: 800 }}>{open ? "▲" : "▼"}</span>
+      </div>
+      {open && <div style={{ marginTop: 11 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="New plan name (e.g. Diamond)" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none" }} />
+          <button onClick={createPlan} style={{ ...btn("#6D28D9", "#fff"), padding: "10px 14px", fontSize: 12.5 }}>+ Create</button>
+        </div>
+        {(plans || []).map(pl => {
+          const e = E(pl.id);
+          const myRooms = planRooms.filter(x => x.plan_id === pl.id).map(x => x.room_id);
+          const isExp = exp === pl.id;
+          return (
+            <div key={pl.id} style={{ background: "#fff", border: "1px solid #E5DDF5", borderRadius: 12, padding: "11px 13px", marginBottom: 9 }}>
+              <div onClick={() => setExp(isExp ? null : pl.id)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <span style={{ fontSize: 17 }}>{pl.emoji || "💎"}</span>
+                <div style={{ flex: 1, fontWeight: 800, color: W.ink, fontSize: 14 }}>{pl.name}{!pl.active && <span style={{ color: "#B3433B", fontSize: 11, marginLeft: 7 }}>(inactive)</span>}</div>
+                <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{myRooms.length} rooms · {(members[pl.id] || []).length || "…"} members</div>
+              </div>
+              {isExp && <div style={{ marginTop: 11 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#4C3585", marginBottom: 5 }}>Prices (₹) — blank = not offered</div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  {[["p1", "1 mo", pl.price_1m], ["p3", "3 mo", pl.price_3m], ["p6", "6 mo", pl.price_6m], ["p12", "1 year", pl.price_12m]].map(([k, lb, cur]) => (
+                    <div key={k}><div style={{ fontSize: 10, color: W.soft, fontWeight: 700 }}>{lb}</div>
+                      <input value={e[k] !== undefined ? e[k] : (cur ?? "")} onChange={ev => setE(pl.id, k, ev.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="—" style={mini} /></div>
+                  ))}
+                </div>
+                <input value={e.tag !== undefined ? e.tag : (pl.tagline || "")} onChange={ev => setE(pl.id, "tag", ev.target.value)} placeholder="Tagline (shown on the plan card)" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 12.5, outline: "none", margin: "9px 0 6px" }} />
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", margin: "4px 0 9px" }}>
+                  <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={e.wf !== undefined ? e.wf : !!pl.women_free} onChange={ev => setE(pl.id, "wf", ev.target.checked)} />Women free</label>
+                  <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={e.ar !== undefined ? e.ar : !!pl.auto_renew} onChange={ev => setE(pl.id, "ar", ev.target.checked)} />Auto-renew billing</label>
+                  <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={e.act !== undefined ? e.act : !!pl.active} onChange={ev => setE(pl.id, "act", ev.target.checked)} />Active</label>
+                </div>
+                <button onClick={() => savePlan(pl)} style={{ ...btn("#6D28D9", "#fff"), padding: "9px 16px", fontSize: 12.5, marginBottom: 11 }}>Save plan</button>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#4C3585", marginBottom: 5 }}>Rooms this plan unlocks</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 11 }}>
+                  {rooms.map(r => (
+                    <label key={r.id} style={{ fontSize: 13, fontWeight: 600, color: W.ink, display: "flex", gap: 7, alignItems: "center" }}>
+                      <input type="checkbox" checked={myRooms.includes(r.id)} onChange={() => toggleRoom(pl.id, r.id, myRooms.includes(r.id))} />{r.emoji} {r.name}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#4C3585", marginBottom: 5 }}>Enroll a member (pre-app payers welcome)</div>
+                <div style={{ display: "flex", gap: 7, marginBottom: 6 }}>
+                  <input value={q} onChange={ev => setQ(ev.target.value)} placeholder="Search member…" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13, outline: "none" }} />
+                  <select value={enrollMo} onChange={ev => setEnrollMo(ev.target.value)} style={{ border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px", fontSize: 12.5, fontWeight: 700 }}>
+                    <option value="1">1 mo</option><option value="3">3 mo</option><option value="6">6 mo</option><option value="12">1 yr</option>
+                  </select>
+                </div>
+                {found.map(f => <div key={f.id} onClick={() => enroll(pl.id, f.id, f.full_name)} style={{ padding: "8px 4px", borderBottom: `1px solid ${W.line}`, fontWeight: 700, color: W.ink, fontSize: 13.5, cursor: "pointer" }}>{f.full_name} <span style={{ color: "#6D28D9", fontSize: 12 }}>· enroll →</span></div>)}
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#4C3585", margin: "11px 0 5px" }}>Subscribers</div>
+                {!(members[pl.id] || []).length ? <div style={{ fontSize: 12.5, color: W.soft }}>No members yet.</div>
+                  : members[pl.id].map(m => {
+                    const dl = daysLeft(m.expires_at);
+                    return (
+                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px solid ${W.line}` }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, color: W.ink, fontSize: 13 }}>{m.full_name}</div>
+                          <div style={{ fontSize: 11, color: dl !== null && dl <= 7 ? "#B3433B" : W.soft, fontWeight: 700 }}>
+                            {m.expires_at ? `⌛ ${dl} days left · till ${new Date(m.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : "∞ no expiry"} · {m.source}
+                          </div>
+                        </div>
+                        <span onClick={() => unenroll(pl.id, m.id, m.full_name)} style={{ color: "#B3433B", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Remove</span>
+                      </div>
+                    );
+                  })}
+              </div>}
+            </div>
+          );
+        })}
+      </div>}
+    </div>
   );
 }
 function PendingSignups({ isSuper }) {
