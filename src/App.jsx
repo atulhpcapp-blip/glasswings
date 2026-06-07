@@ -1849,6 +1849,37 @@ function Main({ user }) {
     rzp.open();
   };
 
+  const buyRoomPlan = async (room, months) => {
+    setPayBusy(true);
+    const ready = await loadRazorpay();
+    if (!ready) { setPayBusy(false); return setNotice("Couldn't open the payment window. Check your connection and try again."); }
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    let od;
+    try {
+      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose: "room", room_id: room.id, plan_months: months }) });
+      od = await r.json();
+      if (!r.ok) { setPayBusy(false); return setNotice(od.error || "Could not start the payment."); }
+    } catch { setPayBusy(false); return setNotice("Could not start the payment. Please try again."); }
+    const rzp = new window.Razorpay({
+      key: od.key_id, order_id: od.order_id, amount: od.amount, currency: "INR",
+      name: "Glasswings Events", description: `${room.name} — ${months} month${months > 1 ? "s" : ""} membership`,
+      image: "/icon-192.png", theme: { color: "#0E8C7F" },
+      prefill: { name: profile?.full_name || "", email: user.email || "" },
+      handler: async (resp) => {
+        try {
+          const v = await fetch("/api/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
+          const vd = await v.json();
+          if (!v.ok || !vd.ok) return setNotice(vd.error || "We couldn't confirm the payment. If money was deducted, contact us and we'll sort it.");
+          await load();
+          setOpen({ id: room.id, type: "room" });
+        } catch { setNotice("Payment confirmation failed. If money was deducted, contact us and we'll sort it."); }
+      },
+    });
+    rzp.on("payment.failed", () => setNotice("Payment failed or was cancelled — nothing was charged."));
+    setPayBusy(false);
+    rzp.open();
+  };
   const finishJoin = async (r) => {
     if (!freeForUser(r)) return startSubscription(r);
     const { error } = await supabase.from("room_subscriptions").insert({ room_id: r.id, user_id: user.id });
@@ -2082,7 +2113,7 @@ function Main({ user }) {
         }} wide={wide} sidebar={convoLeft} />;
     } else if (open.type === "room-locked") {
       const r = rooms.find(x => x.id === open.id);
-      chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} onJoin={() => joinRoom(r)} onBack={() => setOpen(null)} /> : null;
+      chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} onJoin={() => joinRoom(r)} onPlan={(mo) => buyRoomPlan(r, mo)} onBack={() => setOpen(null)} /> : null;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
       if (r) chatEl = <RoomChat allRooms={rooms} room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
@@ -2825,7 +2856,7 @@ function CoupleInfoSheet({ room, userId, onClose, onDone }) {
     </div>
   );
 }
-function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
+function LockedRoomPreview({ room, count, free, onJoin, onPlan, onBack }) {
   const [members, setMembers] = useState(null);
   useEffect(() => { fetch("/api/razorpay/subscribe", { method: "GET" }).catch(() => { }); }, []);
   useEffect(() => {
@@ -2861,6 +2892,20 @@ function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
       <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, padding: "16px 18px calc(18px + env(safe-area-inset-bottom))", textAlign: "center" }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: W.ink }}>🔒 Conversations are members-only</div>
         <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{free ? "This room is free for you — join and start chatting." : `₹${room.price_monthly}/month · cancel anytime · free for women`}</div>
+        {!free && (() => {
+          const plans = [[3, room.price_3m], [6, room.price_6m], [12, room.price_12m]].filter(([, p]) => Number(p) > 0);
+          return plans.length ? (
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${plans.length}, 1fr)`, gap: 8, marginBottom: 10 }}>
+              {plans.map(([mo, pr]) => (
+                <div key={mo} onClick={() => onPlan && onPlan(mo)} style={{ border: `1.5px solid ${W.line}`, borderRadius: 12, padding: "10px 6px", textAlign: "center", cursor: "pointer", background: "#fff" }}>
+                  <div style={{ fontWeight: 800, color: W.ink, fontSize: 13 }}>{mo === 12 ? "1 year" : mo + " months"}</div>
+                  <div style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>₹{pr}</div>
+                  <div style={{ fontSize: 10, color: W.soft }}>one-time</div>
+                </div>
+              ))}
+            </div>
+          ) : null;
+        })()}
         <button onClick={onJoin} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", fontSize: 15.5, padding: "13px" }}>{free ? "Join free" : `Subscribe · ₹${room.price_monthly}/mo`}</button>
       </div>
     </div>
@@ -5493,13 +5538,23 @@ function AdminBroadcast({ events, onBroadcast, onBroadcastEvent, onSendDM, onSen
 }
 function RoomPriceEditor({ room, onUpdate }) {
   const [v, setV] = useState(String(room.price_monthly ?? 0));
+  const [v3, setV3] = useState(String(room.price_3m ?? ""));
+  const [v6, setV6] = useState(String(room.price_6m ?? ""));
+  const [v12, setV12] = useState(String(room.price_12m ?? ""));
   const [saving, setSaving] = useState(false);
-  const dirty = String(room.price_monthly ?? 0) !== v;
+  const dirty = String(room.price_monthly ?? 0) !== v
+    || String(room.price_3m ?? "") !== v3 || String(room.price_6m ?? "") !== v6 || String(room.price_12m ?? "") !== v12;
   const save = async () => {
     setSaving(true);
-    await onUpdate(room.id, { price_monthly: Math.max(0, Number(v) || 0) });
+    await onUpdate(room.id, {
+      price_monthly: Math.max(0, Number(v) || 0),
+      price_3m: v3 ? Math.max(0, Number(v3) || 0) : null,
+      price_6m: v6 ? Math.max(0, Number(v6) || 0) : null,
+      price_12m: v12 ? Math.max(0, Number(v12) || 0) : null,
+    });
     setSaving(false);
   };
+  const mini = { width: 86, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 10px", fontSize: 13.5, outline: "none", fontWeight: 800 };
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Monthly subscription (₹) — superadmin</label>
@@ -5508,6 +5563,16 @@ function RoomPriceEditor({ room, onUpdate }) {
           style={{ width: 110, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", fontWeight: 800 }} />
         <button onClick={save} disabled={!dirty || saving} style={{ ...btn(dirty ? W.teal : "#ccd9d5", "#fff"), padding: "9px 16px", opacity: saving ? .6 : 1 }}>{saving ? "…" : "Save"}</button>
       </div>
+      {Number(v) > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Longer plans (₹, one-time) — you set every price; blank = not offered</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+            <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>3 months</div><input value={v3} onChange={e => setV3(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="—" style={mini} /></div>
+            <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>6 months</div><input value={v6} onChange={e => setV6(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="—" style={mini} /></div>
+            <div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>1 year</div><input value={v12} onChange={e => setV12(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="—" style={mini} /></div>
+          </div>
+        </div>
+      )}
       <div style={{ fontSize: 11.5, color: W.soft, marginTop: 5 }}>
         {Number(v) === 0 ? "₹0 makes the room free to join for everyone." : "Applies to NEW subscribers (a fresh Razorpay plan is created automatically). Existing members keep billing at the price they signed up with until they cancel."}
       </div>
