@@ -20,6 +20,10 @@ const GAMES = {
     title: "🎲 Ludo — GLASSWINGS",
     descr: "Classic Ludo with friends! Create a game, share the code, play 2-4 players. Free on Glasswings — join the fun 🎉",
   },
+  vibe: {
+    title: "💘 Vibe Check — GLASSWINGS",
+    descr: "How compatible are you two? Answer 10 questions, get your match % and see where you click. Free on Glasswings 😏",
+  },
 };
 
 export default async function handler(req, res) {
