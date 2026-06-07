@@ -7,7 +7,40 @@ import { createClient } from "@supabase/supabase-js";
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+const GAMES = {
+  antakshari: {
+    title: "🎵 Antakshari — GLASSWINGS",
+    descr: "The community song chain is LIVE! Sing a song, pass the letter, climb the leaderboard. Free to play — join Glasswings and keep the chain alive 🎤",
+  },
+  trivia: {
+    title: "🎮 Daily Trivia — GLASSWINGS",
+    descr: "5 fresh questions every day. Beat the community, build your streak 🔥 Free to play — join Glasswings and take today's quiz!",
+  },
+};
+
 export default async function handler(req, res) {
+  const gameKey = (req.query.game || "").toString().toLowerCase();
+  if (GAMES[gameKey]) {
+    const g = GAMES[gameKey];
+    const origin = "https://glass-wings.com";
+    const url = `${origin}/?game=${gameKey}`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, s-maxage=600, stale-while-revalidate=1200");
+    return res.status(200).send(`<!doctype html><html><head><meta charset="utf-8">
+<title>${esc(g.title)}</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GLASSWINGS">
+<meta property="og:title" content="${esc(g.title)}">
+<meta property="og:description" content="${esc(g.descr)}">
+<meta property="og:image" content="${origin}/icon-512.png">
+<meta property="og:url" content="${esc(url)}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="${esc(g.title)}">
+<meta name="twitter:description" content="${esc(g.descr)}">
+<meta http-equiv="refresh" content="0;url=${esc(url)}">
+</head><body><script>location.replace(${JSON.stringify(url)})</script>
+<a href="${esc(url)}">Open Glasswings</a></body></html>`);
+  }
   const id = (req.query.event || "").toString();
   let ev = null;
   if (id) {
