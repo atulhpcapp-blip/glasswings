@@ -875,6 +875,7 @@ function CategoryTiles({ cats, val, set }) {
   );
 }
 function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart }) {
+  useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
   const link = `${window.location.origin}/e/${e.id}`;
@@ -2414,6 +2415,7 @@ function StoryViewer({ list, event, owner, meId, isStaff, onClose, onDeleted }) 
   );
 }
 function CoupleInfoSheet({ room, userId, onClose, onDone }) {
+  useEffect(() => { fetch("/api/razorpay/subscribe", { method: "GET" }).catch(() => { }); }, []);
   const [pName, setPName] = useState("");
   const [pAge, setPAge] = useState("");
   const [myAge, setMyAge] = useState("");
@@ -2447,6 +2449,7 @@ function CoupleInfoSheet({ room, userId, onClose, onDone }) {
 }
 function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
   const [members, setMembers] = useState(null);
+  useEffect(() => { fetch("/api/razorpay/subscribe", { method: "GET" }).catch(() => { }); }, []);
   useEffect(() => {
     supabase.rpc("room_members_public", { p_room: room.id })
       .then(({ data, error }) => setMembers(error ? [] : (data || [])));
@@ -5877,7 +5880,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • couples ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • fastpay ✅</div>
       </div>
     </div>
   );
