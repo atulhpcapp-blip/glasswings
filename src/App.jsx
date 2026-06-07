@@ -1642,6 +1642,7 @@ function Main({ user }) {
   const [allPlanRooms, setAllPlanRooms] = useState([]);
   const [myPlans, setMyPlans] = useState([]);
   const [subPage, setSubPage] = useState(null);
+  const [navCam, setNavCam] = useState(false);
   const loadPlans = async () => {
     if (!user?.id) return;
     const [{ data: pls }, { data: prsAll }, { data: mps }] = await Promise.all([
@@ -2407,7 +2408,8 @@ function Main({ user }) {
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {screen}
       </div>
-      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} />
+      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} onCamera={() => setNavCam(true)} />
+      {navCam && <GWCamera meId={user.id} events={events} onClose={() => { setNavCam(false); loadStories(); }} />}
       <GwDialogHost />
       {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
@@ -4403,17 +4405,48 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
   );
 }
 const GW_FILTERS = [
-  ["Original", "none", null],
-  ["Vivid", "saturate(1.5) contrast(1.12)", null],
-  ["Warm", "sepia(.28) saturate(1.35) brightness(1.06)", null],
-  ["Cool", "saturate(1.12) hue-rotate(14deg) brightness(1.04)", null],
-  ["B&W", "grayscale(1) contrast(1.18)", null],
-  ["Vintage", "sepia(.5) contrast(.95) brightness(1.06) saturate(.85)", null],
-  ["Glow", "brightness(1.13) contrast(.9) saturate(1.2)", null],
-  ["Night", "brightness(.9) contrast(1.2) saturate(1.3) hue-rotate(-8deg)", null],
-  ["Teal Dream", "saturate(1.2) brightness(1.04)", ["#04B08F", "#7C3AED", .20]],
-  ["Pink Party", "saturate(1.25) brightness(1.05)", ["#EC4899", "#7C3AED", .22]],
-  ["Disco", "saturate(1.3) contrast(1.08)", ["#2563EB", "#EC4899", .22]],
+  // [name, cssFilter, fx[]] — fx ops: ["grad",c1,c2,alpha,blend] ["wash",color,alpha,blend] ["vig",alpha] ["grain",alpha]
+  ["Original", "none", []],
+  ["Vivid", "saturate(1.5) contrast(1.12)", []],
+  ["Glow", "brightness(1.13) contrast(.9) saturate(1.2)", []],
+  // — Glasswings signatures —
+  ["Teal Dream", "saturate(1.2) brightness(1.04)", [["grad", "#04B08F", "#7C3AED", .20, "source-over"]]],
+  ["Pink Party", "saturate(1.25) brightness(1.05)", [["grad", "#EC4899", "#7C3AED", .22, "source-over"]]],
+  ["Disco", "saturate(1.3) contrast(1.08)", [["grad", "#2563EB", "#EC4899", .22, "source-over"], ["vig", .25]]],
+  // — Asia —
+  ["Tokyo Neon", "saturate(1.55) contrast(1.18) brightness(1.02)", [["grad", "#FF00E5", "#00E5FF", .28, "screen"], ["vig", .3]]],
+  ["Seoul Soft", "brightness(1.12) contrast(.88) saturate(1.08)", [["wash", "#FFD9E8", .16, "source-over"]]],
+  ["Mumbai Masala", "saturate(1.45) contrast(1.1) brightness(1.05)", [["grad", "#FF9500", "#FF2D78", .2, "overlay"]]],
+  ["Kyoto Zen", "contrast(.85) brightness(1.1) saturate(.8)", [["wash", "#E8E4D8", .12, "source-over"]]],
+  ["Bali Bloom", "saturate(1.35) brightness(1.06) hue-rotate(8deg)", [["grad", "#10B981", "#FDE68A", .15, "overlay"]]],
+  ["Goa Sunset", "saturate(1.3) brightness(1.04) sepia(.15)", [["grad", "#FF6B35", "#C44BC7", .26, "overlay"], ["vig", .2]]],
+  // — Europe —
+  ["Paris Noir", "grayscale(1) contrast(1.35) brightness(.96)", [["vig", .42]]],
+  ["London Fog", "saturate(.6) contrast(.92) brightness(1.04)", [["wash", "#8FA3B0", .18, "source-over"]]],
+  ["Santorini", "saturate(1.15) brightness(1.1) contrast(1.05) hue-rotate(-6deg)", [["wash", "#7DD3FC", .1, "overlay"]]],
+  ["Berlin Club", "contrast(1.25) saturate(1.1) brightness(.92)", [["grad", "#7C3AED", "#0F172A", .3, "overlay"], ["vig", .4], ["grain", .5]]],
+  ["Amalfi", "saturate(1.3) brightness(1.08) sepia(.1)", [["grad", "#FDE047", "#38BDF8", .14, "overlay"]]],
+  // — Americas —
+  ["NYC Grit", "grayscale(.35) contrast(1.25) brightness(.98)", [["grain", .55], ["vig", .28]]],
+  ["Rio Carnival", "saturate(1.75) contrast(1.12)", [["grad", "#FACC15", "#EC4899", .2, "overlay"]]],
+  ["Havana", "sepia(.55) saturate(1.25) contrast(1.02) brightness(1.04)", [["grad", "#F59E0B", "#92400E", .18, "overlay"], ["vig", .3]]],
+  ["Hollywood", "contrast(1.15) saturate(1.18) brightness(1.03)", [["grad", "#0EA5E9", "#F97316", .15, "overlay"], ["vig", .22]]],
+  // — Africa & Middle East —
+  ["Sahara Gold", "sepia(.3) saturate(1.35) brightness(1.07) contrast(1.05)", [["grad", "#FBBF24", "#B45309", .22, "overlay"]]],
+  ["Marrakesh", "saturate(1.25) contrast(1.08) sepia(.2)", [["grad", "#DC2626", "#D97706", .17, "overlay"], ["vig", .25]]],
+  ["Lagos Pop", "saturate(1.6) contrast(1.15) brightness(1.04)", [["wash", "#FDE047", .1, "overlay"]]],
+  ["Dubai Lux", "saturate(1.2) contrast(1.1) brightness(1.06)", [["grad", "#D4AF37", "#1E293B", .18, "overlay"], ["vig", .2]]],
+  // — Poles & film —
+  ["Arctic Ice", "saturate(.85) brightness(1.12) contrast(1.06) hue-rotate(18deg)", [["wash", "#BFDBFE", .2, "source-over"]]],
+  ["Velvet Duo", "grayscale(1) contrast(1.1)", [["grad", "#7C3AED", "#EC4899", .55, "color"]]],
+  ["Ocean Ink", "grayscale(1) contrast(1.15)", [["grad", "#0C4A6E", "#22D3EE", .55, "color"]]],
+  ["Film \'90", "sepia(.22) contrast(.94) brightness(1.05) saturate(.9)", [["grain", .65], ["vig", .25]]],
+  ["Lomo", "saturate(1.45) contrast(1.2)", [["vig", .55], ["grain", .35]]],
+  ["B&W", "grayscale(1) contrast(1.18)", []],
+  ["Vintage", "sepia(.5) contrast(.95) brightness(1.06) saturate(.85)", []],
+  ["Warm", "sepia(.28) saturate(1.35) brightness(1.06)", []],
+  ["Cool", "saturate(1.12) hue-rotate(14deg) brightness(1.04)", []],
+  ["Night", "brightness(.9) contrast(1.2) saturate(1.3) hue-rotate(-8deg)", []],
 ];
 const GW_FRAMES = ["None", "Glasswings", "Party", "Polaroid", "Retro"];
 const GW_STICKERS = ["🦋", "❤️", "🔥", "✨", "🪩", "🥂", "💃", "😎", "🎉", "💘", "🌙", "👑"];
@@ -4463,8 +4496,30 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     const W0 = raw.width, H0 = raw.height; c.width = W0; c.height = H0;
     const x = c.getContext("2d");
     x.filter = GW_FILTERS[fi][1]; x.drawImage(raw, 0, 0); x.filter = "none";
-    const ov = GW_FILTERS[fi][2];
-    if (ov) { const g = x.createLinearGradient(0, 0, W0, H0); g.addColorStop(0, ov[0]); g.addColorStop(1, ov[1]); x.globalAlpha = ov[2]; x.fillStyle = g; x.fillRect(0, 0, W0, H0); x.globalAlpha = 1; }
+    (GW_FILTERS[fi][2] || []).forEach(fx2 => {
+      x.save();
+      if (fx2[0] === "grad") {
+        const g = x.createLinearGradient(0, 0, W0, H0); g.addColorStop(0, fx2[1]); g.addColorStop(1, fx2[2]);
+        x.globalAlpha = fx2[3]; x.globalCompositeOperation = fx2[4] || "source-over";
+        x.fillStyle = g; x.fillRect(0, 0, W0, H0);
+      } else if (fx2[0] === "wash") {
+        x.globalAlpha = fx2[2]; x.globalCompositeOperation = fx2[3] || "source-over";
+        x.fillStyle = fx2[1]; x.fillRect(0, 0, W0, H0);
+      } else if (fx2[0] === "vig") {
+        const rg = x.createRadialGradient(W0 / 2, H0 / 2, Math.min(W0, H0) * .38, W0 / 2, H0 / 2, Math.max(W0, H0) * .72);
+        rg.addColorStop(0, "rgba(0,0,0,0)"); rg.addColorStop(1, `rgba(0,0,0,${fx2[1]})`);
+        x.fillStyle = rg; x.fillRect(0, 0, W0, H0);
+      } else if (fx2[0] === "grain") {
+        x.globalAlpha = .06 * fx2[1] * 10;
+        const n = Math.round((W0 * H0) / 520);
+        for (let i = 0; i < n; i++) {
+          x.fillStyle = Math.random() > .5 ? "#fff" : "#000";
+          x.globalAlpha = Math.random() * .12 * fx2[1] * 2;
+          x.fillRect(Math.random() * W0, Math.random() * H0, 1.4 * (W0 / 1000), 1.4 * (W0 / 1000));
+        }
+      }
+      x.restore();
+    });
     const u = W0 / 1000;
     if (frame === "Glasswings") {
       x.fillStyle = "rgba(0,0,0,.42)"; const bw = 320 * u, bh = 64 * u, bx = W0 - bw - 26 * u, by = H0 - bh - 26 * u;
@@ -4572,7 +4627,12 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
                 <div style={{ fontSize: 12.5, opacity: .8 }}>Allow camera permission, or pick a photo from your gallery below — all filters & frames still work!</div>
               </div>
             )}
-            {GW_FILTERS[fi][2] && !camErr && <div style={{ position: "absolute", inset: 0, background: `linear-gradient(135deg, ${GW_FILTERS[fi][2][0]}, ${GW_FILTERS[fi][2][1]})`, opacity: GW_FILTERS[fi][2][2], pointerEvents: "none" }} />}
+            {!camErr && (GW_FILTERS[fi][2] || []).map((fx2, k) => {
+              if (fx2[0] === "grad") return <div key={k} style={{ position: "absolute", inset: 0, background: `linear-gradient(135deg, ${fx2[1]}, ${fx2[2]})`, opacity: fx2[3], mixBlendMode: fx2[4] && fx2[4] !== "source-over" ? fx2[4] : "normal", pointerEvents: "none" }} />;
+              if (fx2[0] === "wash") return <div key={k} style={{ position: "absolute", inset: 0, background: fx2[1], opacity: fx2[2], mixBlendMode: fx2[3] && fx2[3] !== "source-over" ? fx2[3] : "normal", pointerEvents: "none" }} />;
+              if (fx2[0] === "vig") return <div key={k} style={{ position: "absolute", inset: 0, background: `radial-gradient(circle, rgba(0,0,0,0) 45%, rgba(0,0,0,${fx2[1]}) 100%)`, pointerEvents: "none" }} />;
+              return null;
+            })}
           </div>
           <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "12px 12px 4px" }}>
             {GW_FILTERS.map((f, i) => chip(f[0], fi === i, () => setFi(i)))}
@@ -8427,11 +8487,21 @@ function lastSeenStr(ts) {
   if (days < 7) return `last seen ${days}d ago`;
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
-function Nav({ tab, setTab, isAdmin }) {
+function Nav({ tab, setTab, isAdmin, onCamera }) {
   const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", padding: "8px 0 11px" }}>
-      {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft }}><I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span></button>; })}
+      {items.map((it, idx) => { const on = tab === it.id; const I = it.icon; return (
+        <React.Fragment key={it.id}>
+          {idx === 2 && (
+            <button onClick={onCamera} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg,#7C3AED,#EC4899)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -14, boxShadow: "0 4px 12px rgba(124,58,237,.45)", border: "3px solid #fff" }}><Camera size={20} color="#fff" /></div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", marginTop: -2 }}>Camera</span>
+            </button>
+          )}
+          <button onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft }}><I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span></button>
+        </React.Fragment>
+      ); })}
     </div>
   );
 }
