@@ -1595,6 +1595,14 @@ function Main({ user }) {
   const [stories, setStories] = useState([]);
   const [coupleFor, setCoupleFor] = useState(null);
   const eventLive = gwEventLive;
+  const [dmStreaks, setDmStreaks] = useState({});
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.rpc("dm_streaks").then(({ data }) => {
+      const m = {}; (data || []).forEach(r => { m[r.peer_id] = { streak: Number(r.streak), today: r.today_mutual }; });
+      setDmStreaks(m);
+    });
+  }, [user?.id, tab]);
   const [installEvt, setInstallEvt] = useState(null);
   const [installHide, setInstallHide] = useState(() => { try { return localStorage.getItem("gw_inst_hide") === "1"; } catch { return false; } });
   const isStandalone = typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone);
@@ -2080,7 +2088,7 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
-      {tab === "chats" && <><TriviaPill meId={user.id} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
+      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
@@ -2200,7 +2208,7 @@ function Notice({ text, onClose }) {
 }
 
 /* ---------------- chats ---------------- */
-function Chats({ chats, onOpen, onExplore }) {
+function Chats({ chats, onOpen, onExplore, streaks = {} }) {
   return (
     <div>
       <TopBar title="Glasswings" />
@@ -2215,7 +2223,9 @@ function Chats({ chats, onOpen, onExplore }) {
         <div key={c.type + c.id} onClick={() => onOpen({ id: c.id, type: c.type })} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
           <Avatar room={{ emoji: c.emoji, logo_url: c.logo_url }} size={52} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}</div>
+            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}{c.type === "dm" && streaks[c.id] && streaks[c.id].streak > 0 && (
+              <span style={{ marginLeft: 7, fontSize: 13, fontWeight: 800, color: "#E8590C", verticalAlign: "middle" }}>🔥{streaks[c.id].streak}{streaks[c.id].streak >= 30 ? "💍" : streaks[c.id].streak >= 7 ? "⭐" : ""}{!streaks[c.id].today && <span title="Message today to keep the streak!" style={{ marginLeft: 3 }}>⌛</span>}</span>
+            )}</div>
             <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.sub} · tap to open</div>
           </div>
         </div>
@@ -3702,6 +3712,30 @@ function BattleBanner() {
     </div>
   );
 }
+function StreakBoardCard() {
+  const [rows, setRows] = useState(null);
+  useEffect(() => { supabase.rpc("streak_board").then(({ data, error }) => setRows(error ? [] : (data || []))); }, []);
+  if (rows === null || !rows.length) return null;
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "20px 0 8px" }}>
+        <span style={{ fontSize: 17 }}>🔥</span>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, flex: 1 }}>Hottest streaks</div>
+      </div>
+      {rows.slice(0, 8).map((r, k) => (
+        <div key={k} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
+          <div style={{ width: 20, textAlign: "center", fontWeight: 800, color: k < 3 ? "#E8590C" : W.soft, fontSize: 13 }}>{k + 1}</div>
+          <div style={{ display: "flex" }}>
+            {r.a_avatar ? <img src={r.a_avatar} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: "2px solid #fff" }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#E8590C", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, border: "2px solid #fff" }}>{(r.a_name || "?").charAt(0)}</div>}
+            {r.b_avatar ? <img src={r.b_avatar} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: "2px solid #fff", marginLeft: -10 }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#7C3AED", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, border: "2px solid #fff", marginLeft: -10 }}>{(r.b_name || "?").charAt(0)}</div>}
+          </div>
+          <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 13 }}>{(r.a_name || "?").split(" ")[0]} & {(r.b_name || "?").split(" ")[0]}</div>
+          <div style={{ fontWeight: 800, color: "#E8590C", fontSize: 14 }}>🔥{r.streak}{Number(r.streak) >= 30 ? "💍" : Number(r.streak) >= 7 ? "⭐" : ""}</div>
+        </div>
+      ))}
+    </>
+  );
+}
 function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial }) {
   const [playTrivia, setPlayTrivia] = useState(false);
   const [triviaDone, setTriviaDone] = useState(null);
@@ -3770,6 +3804,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
             </div>
           ))}
 
+        <StreakBoardCard />
         <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "20px 0 8px" }}>
           <Gift size={18} color="#B0529C" />
           <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, flex: 1 }}>🏆 Winners' wall</div>
@@ -7533,7 +7568,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • emojiclose ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • streaks ✅</div>
       </div>
     </div>
   );
