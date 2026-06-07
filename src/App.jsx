@@ -2893,6 +2893,14 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
     }
   };
   const [replyTo, setReplyTo] = useState(null);
+  const canMod = isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r));
+  const deleteMsg = async (mid) => {
+    setTray(null);
+    if (!window.confirm("Delete this message for everyone? This can't be undone.")) return;
+    const { error } = await supabase.from("messages").delete().eq("id", mid);
+    if (error) return alert(error.message);
+    setMsgs(prev => prev.filter(x => x.id !== mid));
+  };
   const [plusOpen, setPlusOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [roomPick, setRoomPick] = useState(false);
@@ -2953,6 +2961,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             </div>
             <div onClick={() => { const mm = (msgs || []).find(x => x.id === tray); if (mm) setReplyTo(mm); setTray(null); }}
               style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "4px 14px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>↩️ Reply</div>
+            {canMod && <div onClick={() => deleteMsg(tray)} style={{ fontSize: 13.5, fontWeight: 800, color: "#C0392B", cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>🗑️ Delete (staff)</div>}
           </div>
         </div>
       )}
@@ -3385,51 +3394,106 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
   const exportPdf = () => {
     if (!a || !ev) return;
     const esc2 = t => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    const money2 = v => "₹" + Number(v || 0).toLocaleString("en-IN");
-    const typeRows = (a.types || []).map(t => `<tr><td>${esc2(t.name)}</td><td>${t.sold || 0}${t.capacity != null ? " / " + t.capacity : ""}</td><td>${money2(t.revenue)}</td></tr>`).join("");
-    const ageRows = Object.entries(a.age_groups || {}).map(([g, n]) => `<tr><td>${esc2(g)}</td><td>${n}</td></tr>`).join("");
-    const areaRows = (a.areas || []).slice(0, 10).map(x => `<tr><td>${esc2(x.area)}</td><td>${x.count}</td></tr>`).join("");
-    const dayRows = (a.sales_by_day || []).map(x => `<tr><td>${esc2(x.day)}</td><td>${x.tickets}</td></tr>`).join("");
+    const money2 = v => "\u20B9" + Number(v || 0).toLocaleString("en-IN");
+    const online = Number(a.paid_gross || 0);
+    const door = Number(a.door_cash || 0) + Number(a.door_upi || 0);
+    const total = online + door;
+    const ci = a.tickets ? Math.round((a.checked_in / a.tickets) * 100) : 0;
+    const bar = (label, val, max, color) => {
+      const pct = max ? Math.max(3, Math.round((val / max) * 100)) : 3;
+      return `<div class="brow"><div class="blab">${esc2(label)}</div><div class="btrack"><div class="bfill" style="width:${pct}%;background:${color}"></div></div><div class="bval">${val}</div></div>`;
+    };
+    const types = a.types || [];
+    const typeMaxRev = Math.max(1, ...types.map(t => Number((t.revenue ?? t.sold * t.price) || 0)));
+    const typeRows = types.map(t => {
+      const rev = Number((t.revenue ?? t.sold * t.price) || 0);
+      const cap = (t.capacity != null && t.capacity !== "") ? Number(t.capacity) : null;
+      const fillPct = cap ? Math.min(100, Math.round((t.sold / cap) * 100)) : null;
+      return `<div class="trow">
+        <div class="tname">${esc2(t.name)}</div>
+        <div class="tcap">${t.sold || 0}${cap != null ? ` / ${cap}` : ""} sold${fillPct != null ? ` \u00B7 ${fillPct}% full` : ""}</div>
+        <div class="btrack"><div class="bfill" style="width:${Math.max(3, Math.round((rev / typeMaxRev) * 100))}%;background:linear-gradient(90deg,#008069,#04B08F)"></div></div>
+        <div class="trev">${money2(rev)}</div>
+      </div>`;
+    }).join("");
+    const ages = a.age_groups || [];
+    const ageMax = Math.max(1, ...ages.map(g => g.c || 0));
+    const ageBars = ages.map(g => bar(g.g || "—", g.c || 0, ageMax, "linear-gradient(90deg,#7C3AED,#EC4899)")).join("");
+    const areas = (a.areas || []).slice(0, 10);
+    const areaMax = Math.max(1, ...areas.map(x => x.c || 0));
+    const areaBars = areas.map(x => bar(x.name || "—", x.c || 0, areaMax, "linear-gradient(90deg,#0EA5E9,#06B6D4)")).join("");
+    const days = a.sales_by_day || [];
+    const dayMax = Math.max(1, ...days.map(x => x.q || 0));
+    const dayBars = days.map((x, k) => `<div class="dcol"><div class="dval">${x.q || 0}</div><div class="dbar" style="height:${Math.max(6, Math.round((x.q || 0) / dayMax * 90))}px"></div><div class="dlab">${esc2(x.d || x.day || x.label || ("Day " + (k + 1)))}</div></div>`).join("");
+    const maxMoney = Math.max(1, online, door);
     const w2 = window.open("", "_blank");
     if (!w2) return alert("Allow pop-ups to export the PDF.");
-    w2.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc2(ev.title)} — Analytics</title>
+    w2.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc2(ev.title)} \u2014 Analytics</title>
 <style>
-  body{font-family:Segoe UI,system-ui,Arial,sans-serif;color:#0b1f1c;margin:34px}
-  .br{letter-spacing:3px;font-size:11px;font-weight:800;color:#008069}
-  h1{font-size:21px;margin:6px 0 2px} .sub{color:#5a6b67;font-size:12.5px;margin-bottom:18px}
-  .hero{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px}
-  .card{border:1px solid #dfe7e4;border-radius:10px;padding:11px 15px;min-width:130px}
-  .card .v{font-size:19px;font-weight:800} .card .l{font-size:11px;color:#5a6b67;font-weight:700}
-  h2{font-size:14px;margin:20px 0 7px;color:#008069}
-  table{border-collapse:collapse;width:100%;font-size:12.5px}
-  td,th{border:1px solid #e3eae7;padding:6px 9px;text-align:left}
-  th{background:#f1f6f4;font-size:11px;color:#5a6b67}
-  .foot{margin-top:26px;color:#9aa7a3;font-size:10.5px;text-align:center}
-  @media print{ body{margin:14px} }
-</style></head><body>
-<div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
-<h1>${esc2((ev.emoji || "🎟️") + " " + ev.title)}</h1>
-<div class="sub">${esc2([ev.event_date, ev.venue, ev.city].filter(Boolean).join(" · "))} — Analytics report, generated ${new Date().toLocaleString("en-IN")}</div>
-<div class="hero">
-  <div class="card"><div class="v">${money2(total)}</div><div class="l">TOTAL COLLECTED</div></div>
-  <div class="card"><div class="v">${money2(a.paid_gross)}</div><div class="l">ONLINE (RAZORPAY)</div></div>
-  <div class="card"><div class="v">${money2(Number(a.door_cash || 0) + Number(a.door_upi || 0))}</div><div class="l">DOOR (CASH + UPI)</div></div>
-  <div class="card"><div class="v">${a.tickets || 0}</div><div class="l">TICKETS SOLD</div></div>
-  <div class="card"><div class="v">${a.checked_in || 0}</div><div class="l">CHECKED IN</div></div>
-  <div class="card"><div class="v">${a.members || 0} + ${a.guests || 0}</div><div class="l">MEMBERS + GUESTS</div></div>
-  <div class="card"><div class="v">♂ ${a.male || 0} · ♀ ${a.female || 0}</div><div class="l">GENDER SPLIT</div></div>
-</div>
-${typeRows ? `<h2>By ticket type</h2><table><tr><th>Type</th><th>Sold / cap</th><th>Revenue</th></tr>${typeRows}</table>` : ""}
-<h2>Audience</h2>
-<table>
-  <tr><th>New members at this event</th><td>${(a.members || 0) - (a.returning || 0)}</td><th>Returning attendees</th><td>${a.returning || 0}</td></tr>
-  <tr><th>Paid orders</th><td>${a.paid_orders || 0}</td><th>Avg order value</th><td>${a.paid_orders > 0 ? money2(Math.round(Number(a.paid_gross || 0) / a.paid_orders)) : "—"}</td></tr>
-</table>
-${ageRows ? `<h2>Age groups</h2><table><tr><th>Group</th><th>Attendees</th></tr>${ageRows}</table>` : ""}
-${areaRows ? `<h2>Top areas</h2><table><tr><th>Area</th><th>Attendees</th></tr>${areaRows}</table>` : ""}
-${dayRows ? `<h2>Sales by day</h2><table><tr><th>Day</th><th>Tickets</th></tr>${dayRows}</table>` : ""}
-<div class="foot">Glasswings Events · glass-wings.com — confidential organiser report</div>
-<script>setTimeout(() => window.print(), 350)</scr` + `ipt></body></html>`);
+  *{box-sizing:border-box} body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#0b1f1c;margin:0;background:#f4f7f6}
+  .wrap{max-width:820px;margin:0 auto;padding:0 0 40px}
+  .hero{background:linear-gradient(135deg,#008069,#04B08F 60%,#2FD4A8);color:#fff;padding:30px 34px 36px;border-radius:0 0 26px 26px}
+  .br{letter-spacing:4px;font-size:11px;font-weight:800;opacity:.9}
+  .hero h1{font-size:25px;margin:8px 0 4px;font-weight:800}
+  .hero .sub{font-size:13px;opacity:.9}
+  .kpis{display:flex;flex-wrap:wrap;gap:12px;margin:-26px 24px 0;position:relative}
+  .kpi{flex:1 1 130px;background:#fff;border-radius:16px;padding:15px 17px;box-shadow:0 6px 20px rgba(0,40,32,.10)}
+  .kpi .v{font-size:23px;font-weight:800;color:#0b1f1c}
+  .kpi .l{font-size:10.5px;color:#5a6b67;font-weight:800;letter-spacing:.5px;margin-top:3px;text-transform:uppercase}
+  .kpi.accent .v{color:#008069}
+  section{margin:26px 24px 0;background:#fff;border-radius:18px;padding:20px 22px;box-shadow:0 3px 14px rgba(0,40,32,.06)}
+  h2{font-size:15px;margin:0 0 16px;color:#0b1f1c;display:flex;align-items:center;gap:8px}
+  h2 .pill{font-size:10px;background:#E7F6EF;color:#008069;font-weight:800;padding:3px 9px;border-radius:20px}
+  .brow{display:flex;align-items:center;gap:12px;margin-bottom:11px}
+  .blab{width:120px;font-size:12.5px;font-weight:700;color:#0b1f1c;flex-shrink:0}
+  .btrack{flex:1;height:14px;background:#eef3f1;border-radius:8px;overflow:hidden}
+  .bfill{height:100%;border-radius:8px}
+  .bval{width:40px;text-align:right;font-size:12.5px;font-weight:800;color:#0b1f1c}
+  .trow{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #eef3f1}
+  .tname{font-weight:800;font-size:14px}.tcap{font-size:11.5px;color:#5a6b67;grid-row:2}
+  .trev{font-weight:800;color:#008069;font-size:15px;grid-column:2;grid-row:1}
+  .trow .btrack{grid-column:1 / -1;grid-row:3;margin-top:5px}
+  .split{display:flex;gap:14px;flex-wrap:wrap}.split>div{flex:1 1 200px}
+  .donut{display:flex;gap:18px;align-items:center}
+  .gbar{display:flex;height:22px;border-radius:11px;overflow:hidden;flex:1;background:#eef3f1}
+  .days{display:flex;gap:8px;align-items:flex-end;justify-content:space-around;padding-top:6px;min-height:120px}
+  .dcol{display:flex;flex-direction:column;align-items:center;gap:5px;flex:1}
+  .dbar{width:60%;max-width:34px;background:linear-gradient(180deg,#04B08F,#008069);border-radius:5px}
+  .dval{font-size:11px;font-weight:800;color:#0b1f1c}.dlab{font-size:9.5px;color:#5a6b67;font-weight:700;text-align:center}
+  .foot{text-align:center;color:#9aa7a3;font-size:10.5px;margin:26px 24px 0}
+  @media print{body{background:#fff}section,.kpi{box-shadow:none;border:1px solid #e3eae7}.hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body><div class="wrap">
+  <div class="hero">
+    <div class="br">GLASSWINGS EVENTS</div>
+    <h1>${esc2((ev.emoji || "\uD83C\uDF9F\uFE0F") + " " + ev.title)}</h1>
+    <div class="sub">${esc2([ev.event_date, ev.venue, ev.city].filter(Boolean).join(" \u00B7 "))}</div>
+    <div class="sub" style="margin-top:3px;opacity:.75">Report generated ${new Date().toLocaleString("en-IN")}</div>
+  </div>
+  <div class="kpis">
+    <div class="kpi accent"><div class="v">${money2(total)}</div><div class="l">Total collected</div></div>
+    <div class="kpi"><div class="v">${a.tickets || 0}</div><div class="l">Tickets sold</div></div>
+    <div class="kpi"><div class="v">${a.checked_in || 0} \u00B7 ${ci}%</div><div class="l">Checked in</div></div>
+    <div class="kpi"><div class="v">${a.members || 0}+${a.guests || 0}</div><div class="l">Members + guests</div></div>
+    <div class="kpi"><div class="v">\u2642 ${a.male || 0} \u00B7 \u2640 ${a.female || 0}</div><div class="l">Gender split</div></div>
+  </div>
+  <section>
+    <h2>\uD83D\uDCB0 Revenue breakdown</h2>
+    ${bar("Online (Razorpay)", online, maxMoney, "linear-gradient(90deg,#008069,#04B08F)")}
+    ${bar("Door (cash + UPI)", door, maxMoney, "linear-gradient(90deg,#E67E22,#F39C12)")}
+    <div style="margin-top:10px;font-size:12.5px;color:#5a6b67">Paid orders: <b style="color:#0b1f1c">${a.paid_orders || 0}</b> \u00B7 Avg order value: <b style="color:#0b1f1c">${a.paid_orders ? money2(Math.round(online / a.paid_orders)) : "\u2014"}</b></div>
+  </section>
+  ${typeRows ? `<section><h2>\uD83C\uDF9F\uFE0F Ticket types <span class="pill">${types.length}</span></h2>${typeRows}</section>` : ""}
+  <section>
+    <h2>\uD83D\uDC65 Audience</h2>
+    <div class="split">
+      <div>${bar("New members", (a.members || 0) - (a.returning || 0), Math.max(1, a.members || 1), "linear-gradient(90deg,#2FD4A8,#04B08F)")}${bar("Returning", a.returning || 0, Math.max(1, a.members || 1), "linear-gradient(90deg,#7C3AED,#A855F7)")}</div>
+    </div>
+  </section>
+  ${ageBars ? `<section><h2>\uD83C\uDF82 Age groups</h2>${ageBars}</section>` : ""}
+  ${areaBars ? `<section><h2>\uD83D\uDCCD Top areas</h2>${areaBars}</section>` : ""}
+  ${dayBars ? `<section><h2>\uD83D\uDCC8 Sales by day</h2><div class="days">${dayBars}</div></section>` : ""}
+  <div class="foot">Glasswings Events \u00B7 glass-wings.com \u2014 confidential organiser report</div>
+</div><script>setTimeout(function(){window.print()},400)</scr`+`ipt></body></html>`);
     w2.document.close();
   };
   const ciRate = a && a.tickets ? Math.round((a.checked_in / a.tickets) * 100) : 0;
@@ -6097,7 +6161,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • roomsfirst ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pdfmod ✅</div>
       </div>
     </div>
   );
