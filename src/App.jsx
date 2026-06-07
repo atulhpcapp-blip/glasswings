@@ -804,6 +804,7 @@ function gwNameColor(id) {
   for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
   return GW_NAME_COLORS[h % GW_NAME_COLORS.length];
 }
+function gwRoomPlan(roomId) { try { return (window.__gwRoomPlans || {})[roomId] || null; } catch { return null; } }
 function rzpDesc(str) { return String(str || "").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim() || "Glasswings"; }
 function gwTimeAgo(ts) {
   if (!ts) return "";
@@ -1649,6 +1650,15 @@ function Main({ user }) {
       supabase.from("member_plans").select("id, plan_id, started_at, expires_at, months, source, razorpay_subscription_id").eq("user_id", user.id),
     ]);
     setAllPlans(pls || []); setAllPlanRooms(prsAll || []);
+    try {
+      const m = {};
+      (prsAll || []).forEach(x => {
+        if (m[x.room_id]) return;
+        const pl = (pls || []).find(p => p.id === x.plan_id);
+        if (pl) m[x.room_id] = { label: `${pl.emoji || "💎"} ${pl.name}`, women_free: !!pl.women_free, plan_id: pl.id };
+      });
+      window.__gwRoomPlans = m;
+    } catch { }
     const live = (mps || []).filter(m => !m.expires_at || new Date(m.expires_at).getTime() > Date.now());
     setMyPlans(live);
     try { window.__gwMyPlanIds = live.map(m => m.plan_id); } catch { }
@@ -1879,7 +1889,14 @@ function Main({ user }) {
   const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics"), editMembers: capOf("can_edit_members"), stamps: capOf("can_stamps") };
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id) || planRoomIds.includes(r.id);
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
-  const freeForUser = (r) => r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
+  const freeForUser = (r) => {
+    const cp = coveringPlanId(r.id);
+    if (cp) {
+      const pl = allPlans.find(p => p.id === cp);
+      return (!!pl?.women_free && profile?.gender !== "male") || !!profile?.founding_member;
+    }
+    return r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
+  };
 
   const emailTicket = async (eventId) => {
     try {
@@ -2241,7 +2258,7 @@ function Main({ user }) {
 
   const myChats = [
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
-    ...rooms.filter(r => !canAccess(r) && (r.price_monthly || 0) > 0 && !(["male", "female"].includes(r.gender_restrict) && r.gender_restrict !== profile?.gender))
+    ...rooms.filter(r => !canAccess(r) && (coveringPlanId(r.id) || (r.price_monthly || 0) > 0) && !(["male", "female"].includes(r.gender_restrict) && r.gender_restrict !== profile?.gender))
       .map(r => { const cp = coveringPlanId(r.id); const pl = cp ? allPlans.find(p => p.id === cp) : null;
         return { id: r.id, type: "room-locked", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: `🔒 ${(counts[r.id] || 0)} members · ${freeForUser(r) ? "free for you" : pl ? `${pl.emoji || "💎"} ${pl.name}` : "₹" + r.price_monthly + "/mo"}` }; }),
     [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Message the Glasswings team 💚" }][0],
@@ -2601,7 +2618,7 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
     <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
       <div>
         <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>Join {r.name}</div>
-        <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2 }}>{r.price_monthly === 0 ? "Free to join" : womenFree ? "Free for women" : `₹${r.price_monthly}/month`}</div>
+        <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2 }}>{(() => { const gp = gwRoomPlan(r.id); if (gp) return (gp.women_free && profile?.gender !== "male") ? "Free for women" : `Included in ${gp.label} membership`; return r.price_monthly === 0 ? "Free to join" : womenFree ? "Free for women" : `₹${r.price_monthly}/month`; })()}</div>
       </div>
       <button onClick={() => onJoin(r)} style={{ ...btn(W.teal, "#fff"), padding: "10px 18px" }}>{freeForUser(r) ? "Join free" : "Subscribe"}</button>
     </div>
@@ -2858,9 +2875,13 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
                 </div>
                 {r.description && <div style={{ color: W.soft, fontSize: 13, marginTop: 7, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.description}</div>}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 12, gap: 8 }}>
-                  {r.price_monthly === 0 ? <span style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>Free</span>
-                    : womenFree ? <span style={{ background: "#FCE7F1", color: W.pink, fontWeight: 700, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>Free for women</span>
-                      : <span style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, display: "flex", alignItems: "center" }}><IndianRupee size={13} />{r.price_monthly}<span style={{ color: W.soft, fontWeight: 500, fontSize: 12.5 }}>/mo</span></span>}
+                  {(() => { const gp = gwRoomPlan(r.id);
+                    if (gp) return (gp.women_free && profile?.gender !== "male")
+                      ? <span style={{ background: "#FCE7F1", color: W.pink, fontWeight: 700, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>Free for women</span>
+                      : <span style={{ background: "#F3E8FF", color: "#6D28D9", fontWeight: 800, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>{gp.label}</span>;
+                    return r.price_monthly === 0 ? <span style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>Free</span>
+                      : womenFree ? <span style={{ background: "#FCE7F1", color: W.pink, fontWeight: 700, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>Free for women</span>
+                        : <span style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, display: "flex", alignItems: "center" }}><IndianRupee size={13} />{r.price_monthly}<span style={{ color: W.soft, fontWeight: 500, fontSize: 12.5 }}>/mo</span></span>; })()}
                   {has ? <button onClick={(ev) => { ev.stopPropagation(); onOpenRoom ? onOpenRoom(r.id) : onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}><MessageCircle size={14} />Open</button>
                     : freeForUser(r) ? <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>Join free</button>
                       : <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.ink, "#fff"), padding: "8px 16px" }}><Lock size={13} />Subscribe</button>}
@@ -5771,7 +5792,12 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
             {manage === r.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
                 <RoomName room={r} onUpdate={onUpdate} />
-                {isSuper && <RoomPriceEditor room={r} onUpdate={onUpdate} />}
+                {isSuper && (() => { const gp = gwRoomPlan(r.id); return (
+                  <div style={{ background: "#F8F5FF", border: "1px solid #E9D5FF", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: "#6D28D9" }}>💎 Access via membership plans</div>
+                    <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>{gp ? `This room is included in ${gp.label}. Manage pricing & coverage in the Admin → 💎 Subs tab.` : "Not in any plan yet — free for everyone. To make it premium, tick this room inside a plan in Admin → 💎 Subs."}</div>
+                  </div>
+                ); })()}
                 <RoomPhoto room={r} onUpdate={onUpdate} />
                 <PinEditor room={r} onUpdate={onUpdate} />
                 <div>
