@@ -76,6 +76,13 @@ export default async function handler(req, res) {
       for (const m of (dead || [])) { await sb.from("member_plans").delete().eq("id", m.id); result.plans_expired = (result.plans_expired || 0) + 1; }
     } catch (e) { result.plan_reminder_error = String(e && e.message || e); }
 
+    // ---- 1.7) Snaps vanish after 24h (Snapchat-style) -------------------
+    try {
+      const { data: deadSnaps } = await sb.from("messages").select("id")
+        .eq("media_type", "snap").lt("created_at", new Date(Date.now() - 24 * 3600000).toISOString()).limit(500);
+      for (const m of (deadSnaps || [])) { await sb.from("messages").delete().eq("id", m.id); result.snaps_vanished = (result.snaps_vanished || 0) + 1; }
+    } catch (e) { result.snap_error = String(e && e.message || e); }
+
     // ---- 2) Clear chats of events finished 3+ days ago -----------------
     const { data: old } = await sb.from("events")
       .select("id").not("event_at", "is", null).lt("event_at", cutoff).eq("chat_cleared", false).limit(200);
