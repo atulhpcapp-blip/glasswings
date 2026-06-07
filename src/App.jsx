@@ -2431,7 +2431,7 @@ function GifPicker({ onPick, onClose }) {
     try {
       const r = await fetch("/api/gif?q=" + encodeURIComponent(term || "trending"));
       const data = await r.json();
-      if (!r.ok) { setErr(data.error === "setup" ? "GIF search isn't set up yet — admin needs to add the Tenor key." : (data.error || "Search failed")); setGifs([]); return; }
+      if (!r.ok) { setErr(data.error === "setup" ? "GIF search isn't set up yet — add the GIPHY key in Vercel, then redeploy." : (data.error || "Search failed")); setGifs([]); return; }
       setGifs(data.gifs || []);
     } catch { setErr("Search failed — check connection."); setGifs([]); }
   };
@@ -2986,6 +2986,21 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             const mine = m.sender_id === user.id;
             const first = (i === 0 || msgs[i - 1].sender_id !== m.sender_id);
             const s = senders[m.sender_id] || {};
+            if (m.media_type === "welcome") {
+              return (
+                <div key={m.id} style={{ display: "flex", justifyContent: "center", margin: "14px 0" }}>
+                  <div style={{ background: "linear-gradient(135deg,#FFF7FB,#F0FBF6)", border: "1.5px solid #F3D9EC", borderRadius: 18, padding: "16px 20px", textAlign: "center", maxWidth: "85%", boxShadow: "0 2px 10px rgba(0,0,0,.06)" }}>
+                    <div style={{ fontSize: 17, letterSpacing: 2 }}>🌸 🌺 🌸</div>
+                    <div style={{ display: "flex", justifyContent: "center", margin: "8px 0 6px" }}>
+                      {s.avatar ? <img src={s.avatar} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", border: "3px solid #F3D9EC" }} />
+                        : <div style={{ width: 64, height: 64, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 26, border: "3px solid #F3D9EC" }}>{(s.name || "?").charAt(0)}</div>}
+                    </div>
+                    <div style={{ fontSize: 14, color: W.ink, lineHeight: 1.55, whiteSpace: "pre-wrap", fontWeight: 600 }}>{m.body}</div>
+                    <div style={{ fontSize: 10.5, color: W.soft, marginTop: 6 }}>{fmtTime(m.created_at)}</div>
+                  </div>
+                </div>
+              );
+            }
             if (m.media_type === "event" || m.media_type === "broadcast") {
               const isEvent = m.media_type === "event";
               return (
@@ -6082,7 +6097,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • giphy ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • welcome ✅</div>
       </div>
     </div>
   );
