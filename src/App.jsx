@@ -2062,7 +2062,7 @@ function Main({ user }) {
     ...rooms.filter(r => !canAccess(r) && (r.price_monthly || 0) > 0 && !(["male", "female"].includes(r.gender_restrict) && r.gender_restrict !== profile?.gender))
       .map(r => ({ id: r.id, type: "room-locked", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: `🔒 ${(counts[r.id] || 0)} members · ${freeForUser(r) ? "free for you" : "₹" + r.price_monthly + "/mo"}` })),
     [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Message the Glasswings team 💚" }][0],
-    ...p2pThreads.map(t => ({ id: t.id, type: "p2p", name: t.name, emoji: "👤", logo_url: t.avatar, sub: lastSeenStr(t.seen) || "Direct chat" })),
+    ...p2pThreads.map(t => ({ id: t.id, other: t.other, type: "p2p", name: t.name, emoji: "👤", logo_url: t.avatar, sub: lastSeenStr(t.seen) || "Direct chat" })),
     ...events.filter(e => {
       if (!canAccessEvent(e)) return false;
       if (e.chat_cleared) return false;
@@ -2223,9 +2223,9 @@ function Chats({ chats, onOpen, onExplore, streaks = {} }) {
         <div key={c.type + c.id} onClick={() => onOpen({ id: c.id, type: c.type })} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
           <Avatar room={{ emoji: c.emoji, logo_url: c.logo_url }} size={52} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}{(c.type === "p2p" || c.type === "dm") && streaks[c.id] && streaks[c.id].streak > 0 && (
-              <span style={{ marginLeft: 7, fontSize: 13, fontWeight: 800, color: "#E8590C", verticalAlign: "middle" }}>🔥{streaks[c.id].streak}{streaks[c.id].streak >= 30 ? "💍" : streaks[c.id].streak >= 7 ? "⭐" : ""}{!streaks[c.id].today && <span title="Message today to keep the streak!" style={{ marginLeft: 3 }}>⌛</span>}</span>
-            )}</div>
+            <div style={{ fontWeight: 600, fontSize: 16, color: W.ink }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}{(() => { const sk = c.type === "p2p" ? streaks[c.other] : (c.type === "dm" ? streaks[c.id] : null); return sk && sk.streak > 0 && (
+              <span style={{ marginLeft: 7, fontSize: 13, fontWeight: 800, color: "#E8590C", verticalAlign: "middle" }}>🔥{sk.streak}{sk.streak >= 30 ? "💍" : sk.streak >= 7 ? "⭐" : ""}{!sk.today && <span title="Message today to keep the streak!" style={{ marginLeft: 3 }}>⌛</span>}</span>
+            ); })()}</div>
             <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.sub} · tap to open</div>
           </div>
         </div>
@@ -7568,7 +7568,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • streaks2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • streaks3 ✅</div>
       </div>
     </div>
   );
