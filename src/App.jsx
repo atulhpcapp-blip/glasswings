@@ -352,7 +352,7 @@ function Auth({ initialMode = "login", onClose }) {
   const buying = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   const [name, setName] = useState(""), [email, setEmail] = useState(""), [pass, setPass] = useState(""), [gender, setGender] = useState("male");
   const [err, setErr] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
-  const VIBES = ["HOUSE PARTIES 🪩", "BLIND DATES 💘", "SINGLES MEETUPS 🥂", "GAME NIGHTS 🎲", "LIVE EVENTS 🎤"];
+  const VIBES = ["HOUSE PARTIES 🪩", "BLIND DATE EVENTS 💘", "SINGLES MEETUPS 🥂", "GAME NIGHTS 🎲", "LIVE EVENTS 🎤", "SATURDAY NIGHT PARTIES 🌃", "PUB PARTIES 🍻", "POOL PARTIES 🏖️", "THEME PARTIES 🎭", "ROOFTOP PARTIES 🌆", "WEEKEND GETAWAYS 🏕️", "TRIPS WITH FRIENDS 🚐", "WORKSHOPS 🎨", "SPORTS MEETUPS ⚽"];
   const [wi, setWi] = useState(0);
   useEffect(() => { const iv = setInterval(() => setWi(w => (w + 1) % VIBES.length), 2200); return () => clearInterval(iv); }, []);
   const go = async () => {
@@ -419,8 +419,8 @@ function Auth({ initialMode = "login", onClose }) {
         <div style={{ fontSize: 25, fontWeight: 800, color: "#fff", marginTop: 14, lineHeight: 1.2, textShadow: "0 2px 12px rgba(0,0,0,.3)" }}>One community for</div>
         <div key={wi} style={{ fontSize: 27, fontWeight: 900, marginTop: 4, letterSpacing: .5, color: "#FDE047", textShadow: "0 3px 14px rgba(0,0,0,.35)", animation: "gwwordin .45s ease" }}>{VIBES[wi]}</div>
         <div style={{ marginTop: 14, width: "100vw", overflow: "hidden", maskImage: "linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)" }}>
-          <div style={{ display: "flex", gap: 9, width: "max-content", animation: "gwmarq 19s linear infinite" }}>
-            {[...Array(2)].map((_, dup) => ["🪩 House parties", "💘 Blind Banter", "🥂 Singles meetups", "🎲 Ludo nights", "🎵 Antakshari", "🎤 Live events", "💃 Boys vs Girls", "🧠 Daily trivia"].map((c, k) => (
+          <div style={{ display: "flex", gap: 9, width: "max-content", animation: "gwmarq 34s linear infinite" }}>
+            {[...Array(2)].map((_, dup) => ["🪩 House parties", "💘 Blind date events", "🥂 Singles meetups", "🎲 Game nights", "🎤 Live events", "🌃 Saturday night parties", "🍻 Pub parties", "🏖️ Pool parties", "🎭 Theme parties", "🌆 Rooftop parties", "🏕️ Weekend getaways", "🚐 Trips with friends", "🎨 Workshops", "⚽ Sports meetups", "🎵 Antakshari", "💃 Boys vs Girls", "🧠 Daily trivia"].map((c, k) => (
               <span key={dup + "_" + k} style={{ flexShrink: 0, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "#fff", fontSize: 12.5, fontWeight: 800, padding: "7px 14px", borderRadius: 16, backdropFilter: "blur(6px)" }}>{c}</span>
             )))}
           </div>
@@ -7470,7 +7470,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • authshow ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • allvibes ✅</div>
       </div>
     </div>
   );
