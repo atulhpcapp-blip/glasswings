@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   if (!KEY || !SECRET) return res.status(500).json({ error: "Payments are not configured yet." });
 
   const body = (typeof req.body === "object" && req.body) ? req.body : await readBody(req);
-  const { access_token, purpose = "ticket", event_id, ticket_type_id, room_id } = body;
+  const { access_token, purpose = "ticket", event_id, ticket_type_id, room_id, plan_months } = body;
   const qty = Math.max(1, parseInt(body.quantity) || 1);
   // cart: [{ticket_type_id, quantity}] — falls back to the legacy single-type fields
   let items = Array.isArray(body.items) && body.items.length
@@ -122,12 +122,13 @@ export default async function handler(req, res) {
       items = lineItems;
       Object.assign(notes, { event_id, qty: totalQty, lines: lineItems.length, addons: addonRows.length });
     } else if (purpose === "room") {
-      const { data: r } = await sb.from("rooms").select("*").eq("id", room_id).single();
+      const { data: r } = await sb.from("rooms").select("id, price_monthly, price_3m, price_6m, price_12m").eq("id", room_id).single();
       if (!r) return res.status(400).json({ error: "Room not found." });
-      if (r.gender_restrict === "female" && me?.gender !== "female") return res.status(403).json({ error: "This room is for women only." });
-      if ((r.price_monthly || 0) === 0 || me?.gender !== "male" || me?.founding_member) return res.status(400).json({ error: "This room is free for you — just tap Join." });
-      amount = (r.price_monthly || 0) * 100;
-      Object.assign(notes, { room_id });
+      const pm = Number(plan_months) || 1;
+      const planPrice = pm === 3 ? r.price_3m : pm === 6 ? r.price_6m : pm === 12 ? r.price_12m : r.price_monthly;
+      if (!planPrice || planPrice <= 0) return res.status(400).json({ error: "That plan is not available for this room." });
+      amount = planPrice * 100;
+      Object.assign(notes, { room_id, plan_months: pm });
     } else {
       return res.status(400).json({ error: "Unknown purpose." });
     }
@@ -155,7 +156,7 @@ export default async function handler(req, res) {
     await sb.from("payments").insert({
       user_id: uid, purpose, event_id: event_id || null,
       ticket_type_id: (purpose === "ticket" ? (items[0]?.ticket_type_id || null) : null),
-      room_id: room_id || null, quantity: (purpose === "ticket" ? totalQty : qty), amount, status: "created", razorpay_order_id: order.id,
+      room_id: room_id || null, plan_months: (purpose === "room" ? (Number(plan_months) || 1) : null), quantity: (purpose === "ticket" ? totalQty : qty), amount, status: "created", razorpay_order_id: order.id,
       addons: addonRows, referrer_id, commission_amount,
       items: (purpose === "ticket" ? items : null),
     });
