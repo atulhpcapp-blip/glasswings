@@ -1946,7 +1946,7 @@ function Main({ user }) {
   const screen = (
     <>
       {tab === "chats" && <><TriviaPill meId={user.id} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
-      {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} />}
+      {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "events" && <Events events={events} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
@@ -2316,7 +2316,116 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
     </div>
   );
 }
-function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom }) {
+function AlbumsStrip({ isStaff, meId }) {
+  const [albums, setAlbums] = useState(null);
+  const [openA, setOpenA] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState("");
+  const load = () => supabase.from("albums").select("id, title, cover_url, created_at, album_photos(count)").order("created_at", { ascending: false })
+    .then(({ data, error }) => setAlbums(error ? [] : (data || [])));
+  useEffect(() => { load(); }, []);
+  const createAlbum = async () => {
+    if (!title.trim()) return;
+    const { error } = await supabase.from("albums").insert({ title: title.trim(), created_by: meId });
+    if (error) return alert(error.message);
+    setTitle(""); setCreating(false); load();
+  };
+  if (albums === null) return null;
+  if (!albums.length && !isStaff) return null;
+  return (
+    <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "12px 14px 10px" }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 9 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, flex: 1 }}>📸 Albums</div>
+        {isStaff && <button onClick={() => setCreating(v => !v)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "6px 11px", fontSize: 12 }}>+ New album</button>}
+      </div>
+      {creating && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Album title (e.g. Sherni Live — June)" autoFocus style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 12px", fontSize: 13.5, outline: "none" }} />
+          <button onClick={createAlbum} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px", fontSize: 12.5 }}>Create</button>
+        </div>
+      )}
+      {albums.length > 0 ? (
+        <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+          {albums.map(al => (
+            <div key={al.id} onClick={() => setOpenA(al)} style={{ width: 130, flexShrink: 0, cursor: "pointer" }}>
+              <div style={{ width: 130, height: 90, borderRadius: 12, overflow: "hidden", background: "linear-gradient(135deg,#E7F6EF,#D2F4E8)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {al.cover_url ? <img src={al.cover_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 30 }}>📸</span>}
+              </div>
+              <div style={{ fontWeight: 700, color: W.ink, fontSize: 12, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{al.title}</div>
+              <div style={{ fontSize: 10.5, color: W.soft }}>{al.album_photos?.[0]?.count ?? 0} photos</div>
+            </div>
+          ))}
+        </div>
+      ) : <div style={{ fontSize: 12.5, color: W.soft }}>Create the first album from a past event 🎉</div>}
+      {openA && <AlbumView album={openA} isStaff={isStaff} meId={meId} onClose={() => { setOpenA(null); load(); }} />}
+    </div>
+  );
+}
+function AlbumView({ album, isStaff, meId, onClose }) {
+  const [photos, setPhotos] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [full, setFull] = useState(null);
+  const load = () => supabase.from("album_photos").select("id, url, created_at").eq("album_id", album.id).order("created_at", { ascending: false })
+    .then(({ data, error }) => setPhotos(error ? [] : (data || [])));
+  useEffect(() => { load(); }, [album.id]);
+  const addPhotos = async (files) => {
+    if (!files.length) return;
+    setBusy(true);
+    try {
+      for (const f of files) {
+        const url = await uploadPhoto("albums", f);
+        await supabase.from("album_photos").insert({ album_id: album.id, url, created_by: meId });
+        if (!album.cover_url) { await supabase.from("albums").update({ cover_url: url }).eq("id", album.id).is("cover_url", null); album.cover_url = url; }
+      }
+      load();
+    } catch (e2) { alert(e2.message || "Upload failed"); }
+    setBusy(false);
+  };
+  const delPhoto = async (pid) => {
+    if (!window.confirm("Remove this photo?")) return;
+    await supabase.from("album_photos").delete().eq("id", pid);
+    setFull(null); load();
+  };
+  const delAlbum = async () => {
+    if (!window.confirm(`Delete the whole album "${album.title}"?`)) return;
+    await supabase.from("albums").delete().eq("id", album.id);
+    onClose();
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", flexDirection: "column" }}>
+      <div style={{ background: W.teal, color: "#fff", padding: "14px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+        <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer" }} />
+        <div style={{ flex: 1, fontWeight: 800, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📸 {album.title}</div>
+        {isStaff && <Trash2 size={19} onClick={delAlbum} style={{ cursor: "pointer", opacity: .9 }} />}
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
+        {isStaff && (
+          <label style={{ ...btn(W.teal, "#fff"), justifyContent: "center", width: "100%", marginBottom: 10, cursor: "pointer", boxSizing: "border-box" }}>
+            {busy ? "Uploading…" : "🖼️ Add photos"}
+            <input type="file" accept="image/*" multiple style={{ display: "none" }} disabled={busy} onChange={e => { addPhotos(Array.from(e.target.files || [])); e.target.value = ""; }} />
+          </label>
+        )}
+        {photos === null ? <div style={{ color: W.soft, textAlign: "center", padding: 28 }}>Loading…</div>
+          : !photos.length ? <div style={{ color: W.soft, textAlign: "center", padding: 28 }}>No photos yet.</div>
+          : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
+              {photos.map(ph => <img key={ph.id} src={ph.url} alt="" onClick={() => setFull(ph)} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 7, cursor: "pointer", background: "#eee" }} />)}
+            </div>
+          )}
+      </div>
+      {full && (
+        <div onClick={() => setFull(null)} style={{ position: "fixed", inset: 0, zIndex: 195, background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <img src={full.url} alt="" style={{ maxWidth: "100%", maxHeight: "88%", objectFit: "contain" }} />
+          <div style={{ position: "absolute", top: 14, right: 16, display: "flex", gap: 18 }}>
+            {isStaff && <Trash2 size={22} color="#fff" onClick={ev => { ev.stopPropagation(); delPhoto(full.id); }} style={{ cursor: "pointer" }} />}
+            <X size={24} color="#fff" style={{ cursor: "pointer" }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom, isStaffUser = false, meId }) {
   const admin = ["admin", "superadmin"].includes(profile?.role);
   const [city, setCity] = useState("all");
   const cityList = Array.from(new Set(rooms.map(r => r.city).filter(Boolean))).sort();
@@ -2327,6 +2436,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
   return (
     <div>
       <TopBar title="Rooms" />
+      <AlbumsStrip isStaff={isStaffUser} meId={meId} />
       {cityList.length > 0 && <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>{chip("all", "All cities")}{cityList.map(c => chip(c, c))}</div>}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
         {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No rooms here yet.</Center></div>}
@@ -6161,7 +6271,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pdfmod ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • albums ✅</div>
       </div>
     </div>
   );
