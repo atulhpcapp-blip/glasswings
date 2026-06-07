@@ -14,5 +14,18 @@
       "source": "/g/:id",
       "destination": "/api/share?game=:id"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "(.*)\\.vercel\\.app"
+        }
+      ],
+      "destination": "https://glass-wings.com/:path*",
+      "permanent": true
+    }
   ]
 }
