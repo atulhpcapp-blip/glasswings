@@ -1643,7 +1643,7 @@ function Main({ user }) {
     const [{ data: pls }, { data: prsAll }, { data: mps }] = await Promise.all([
       supabase.from("plans").select("*").eq("active", true).order("position").order("created_at"),
       supabase.from("plan_rooms").select("plan_id, room_id"),
-      supabase.from("member_plans").select("id, plan_id, started_at, expires_at, months, source").eq("user_id", user.id),
+      supabase.from("member_plans").select("id, plan_id, started_at, expires_at, months, source, razorpay_subscription_id").eq("user_id", user.id),
     ]);
     setAllPlans(pls || []); setAllPlanRooms(prsAll || []);
     const live = (mps || []).filter(m => !m.expires_at || new Date(m.expires_at).getTime() > Date.now());
@@ -1658,6 +1658,8 @@ function Main({ user }) {
     loadRazorpay();
     fetch("/api/razorpay/order", { method: "GET" }).catch(() => { });
     fetch("/api/razorpay/verify", { method: "GET" }).catch(() => { });
+    fetch("/api/razorpay/subscribe", { method: "GET" }).catch(() => { });
+    fetch("/api/razorpay/verify-sub", { method: "GET" }).catch(() => { });
   }, [subPage]);
   const coveringPlanId = (roomId) => (allPlanRooms.find(x => x.room_id === roomId) || {}).plan_id || null;
   const buyPlan = async (plan, months) => {
@@ -1666,6 +1668,34 @@ function Main({ user }) {
     if (!ready) { setPayBusy(false); return setNotice("Couldn't open the payment window. Check your connection and try again."); }
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
+    if (plan.auto_renew) {
+      let sd;
+      try {
+        const r = await fetch("/api/razorpay/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, plan_id: plan.id, plan_months: months }) });
+        sd = await r.json();
+        if (!r.ok) { setPayBusy(false); return setNotice(sd.error || "Could not start the subscription."); }
+      } catch { setPayBusy(false); return setNotice("Could not start the subscription. Please try again."); }
+      const rzp2 = new window.Razorpay({
+        key: sd.key_id, subscription_id: sd.subscription_id,
+        name: "Glasswings Events", description: `${plan.emoji || "💎"} ${plan.name} — renews every ${months} month${months > 1 ? "s" : ""}`,
+        image: "/icon-192.png", theme: { color: "#0E8C7F" },
+        prefill: { name: profile?.full_name || "", email: user.email || "" },
+        handler: async (resp) => {
+          try {
+            const v = await fetch("/api/razorpay/verify-sub", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
+            const vd = await v.json();
+            if (!v.ok || !vd.ok) return setNotice(vd.error || "We couldn't confirm the subscription. If money was deducted, contact us and we'll sort it.");
+            await loadPlans(); await load();
+            setSubPage(null);
+            setNotice(`🎉 Welcome to ${plan.name}! Auto-renews every ${months} month${months > 1 ? "s" : ""} — cancel anytime from Profile.`);
+          } catch { setNotice("Subscription confirmation failed. If money was deducted, contact us and we'll sort it."); }
+        },
+      });
+      rzp2.on("payment.failed", () => setNotice("Payment failed or was cancelled — nothing was charged."));
+      setPayBusy(false);
+      rzp2.open();
+      return;
+    }
     let od;
     try {
       const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose: "plan", plan_id: plan.id, plan_months: months }) });
@@ -2251,7 +2281,15 @@ function Main({ user }) {
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
-      {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} />}
+      {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
+        window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          const r = await fetch("/api/razorpay/cancel-sub", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, member_plan_id: mp.id }) });
+          const d = await r.json();
+          setNotice(r.ok ? "Auto-renew stopped — you keep access till your expiry date. ✅" : (d.error || "Could not stop auto-renew."));
+          loadPlans();
+        });
+      }} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} streak={streakInfo} events={events} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
   );
@@ -5386,6 +5424,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.host ? [["events", "Events"]] : []),
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"]] : []),
+    ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["door", "Door"]] : []),
     ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
@@ -5404,7 +5443,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
+      {seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
+        : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
@@ -5415,7 +5455,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <>{isSuper && <PlansAdmin rooms={rooms} />}<PendingSignups isSuper={isSuper} /><MembersOverview isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>}
+                : <><PendingSignups isSuper={isSuper} /><MembersOverview isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>}
     </div>
   );
 }
@@ -7160,7 +7200,7 @@ function MemberRolesSheet({ member: m, cities, onSetRoles, onClose, onSaved }) {
     </Sheet>
   );
 }
-function PlanStatusCard({ myPlans, plans, onOpen }) {
+function PlanStatusCard({ myPlans, plans, onOpen, onStopRenew }) {
   if (!myPlans.length) return (
     <div onClick={onOpen} style={{ margin: "12px 14px 0", background: "linear-gradient(95deg,#6D28D9,#EC4899)", borderRadius: 14, padding: "13px 15px", color: "#fff", display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
       <span style={{ fontSize: 22 }}>💎</span>
@@ -7184,7 +7224,9 @@ function PlanStatusCard({ myPlans, plans, onOpen }) {
               <div style={{ fontSize: 11.5, opacity: .92 }}>
                 since {new Date(mp.started_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                 {mp.expires_at ? ` · ⌛ expiring in ${dl} day${dl === 1 ? "" : "s"}` : " · ∞"}
+                {mp.razorpay_subscription_id ? " · 🔁 auto-renews" : ""}
               </div>
+              {mp.razorpay_subscription_id && <div onClick={() => onStopRenew && onStopRenew(mp)} style={{ fontSize: 10.5, opacity: .8, textDecoration: "underline", cursor: "pointer", marginTop: 2 }}>Stop auto-renew</div>}
             </div>
             <button onClick={onOpen} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "7px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Renew</button>
           </div>
@@ -7242,6 +7284,9 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
                   ))}
                   {!prices.length && <div style={{ gridColumn: "1 / -1", fontSize: 12.5, color: W.soft, textAlign: "center" }}>Pricing coming soon.</div>}
                 </div>
+              )}
+              {!(isWoman && pl.women_free) && pl.auto_renew && prices.length > 0 && (
+                <div style={{ fontSize: 10.5, color: W.soft, textAlign: "center", marginTop: 7 }}>🔁 Renews automatically at the same price · cancel anytime from your Profile</div>
               )}
             </div>
           );
