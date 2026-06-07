@@ -1726,7 +1726,7 @@ function Main({ user }) {
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
-      supabase.from("room_subscriptions").select("room_id, status, razorpay_subscription_id").eq("user_id", user.id),
+      supabase.from("room_subscriptions").select("room_id, status, razorpay_subscription_id, expires_at").eq("user_id", user.id),
       supabase.from("event_tickets").select("id, event_id, quantity, ticket_type_id, purchased_at").eq("user_id", user.id),
       supabase.from("room_moderators").select("room_id").eq("user_id", user.id),
       supabase.from("event_moderators").select("event_id").eq("user_id", user.id),
@@ -1743,7 +1743,8 @@ function Main({ user }) {
       supabase.from("event_addons").select("*"),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
-    setSubs((sb || []).map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
+    const sbLive = (sb || []).filter(x => !x.expires_at || new Date(x.expires_at).getTime() > Date.now());
+    setSubs(sbLive.map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
     const mt = {}; (tk || []).forEach(r => { if (!mt[r.event_id]) mt[r.event_id] = []; mt[r.event_id].push(r); }); setMyTickets(mt);
     setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
@@ -1893,12 +1894,12 @@ function Main({ user }) {
       setTab("events"); setEventPage(e.id);
     }
   }, [events]);
-  const grantRoom = async (userId, roomId) => {
+  const grantRoom = async (userId, roomId, months = null) => {
     const { data: ex } = await supabase.from("room_subscriptions").select("id").eq("room_id", roomId).eq("user_id", userId).maybeSingle();
-    if (ex) return setNotice("⚠️ Member is already in this room.");
-    const { error } = await supabase.rpc("admin_grant_room", { p_user: userId, p_room: roomId });
+    if (ex && !months) return setNotice("⚠️ Member is already in this room.");
+    const { error } = await supabase.rpc("admin_grant_room_v2", { p_user: userId, p_room: roomId, p_months: months });
     if (error) return setNotice(/duplicate|unique/i.test(error.message) ? "⚠️ Member is already in this room." : error.message);
-    setNotice("Member added to the room ✅");
+    setNotice(months ? `Member enrolled — valid for ${months} month${months > 1 ? "s" : ""} ✅` : "Member added to the room ✅");
     await load();
   };
   const savePerm = async (roleName, patch) => {
@@ -7199,6 +7200,7 @@ function MembersOverview({ isSuper }) {
 function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities, onSetRoles }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
+  const [dur, setDur] = useState({});
   const [editing, setEditing] = useState(null);
   const [rolesFor, setRolesFor] = useState(null);
   const [blockedMap, setBlockedMap] = useState({});
@@ -7350,7 +7352,16 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
                   <option value="">Pick a room…</option>
                   {rooms.map(r => <option key={r.id} value={r.id}>{r.name}{r.price_monthly ? ` · ₹${r.price_monthly}/mo` : ""}</option>)}
                 </select>
-                {canAdd && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onGrantRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn(W.ink, "#fff"), opacity: pick[m.id] ? 1 : .5 }}><Plus size={14} />Add</button>}
+                {(() => { const rm = rooms.find(r => r.id === pick[m.id]); return rm && (rm.price_monthly || 0) > 0 ? (
+                  <select value={dur[m.id] || ""} onChange={e => setDur(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, width: 92, flexShrink: 0 }}>
+                    <option value="">∞ Free</option>
+                    <option value="1">1 mo</option>
+                    <option value="3">3 mo</option>
+                    <option value="6">6 mo</option>
+                    <option value="12">1 year</option>
+                  </select>
+                ) : null; })()}
+                {canAdd && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onGrantRoom(m.id, rid, dur[m.id] ? Number(dur[m.id]) : null); setPick(p => ({ ...p, [m.id]: "" })); setDur(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn(W.ink, "#fff"), opacity: pick[m.id] ? 1 : .5 }}><Plus size={14} />Add</button>}
                 {canRemove && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onRemoveRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", opacity: pick[m.id] ? 1 : .5 }}>Remove</button>}
               </div>
             )}
