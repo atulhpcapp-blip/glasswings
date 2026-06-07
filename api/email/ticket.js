@@ -133,16 +133,20 @@ export default async function handler(req, res) {
         ${upcomingHtml(x.ups, null)}`;
       const html = wrap(inner);
 
-      // collect every member email
-      const emails = [];
-      let page = 1;
-      while (page < 40) {
-        const { data: pageData, error: le } = await sb.auth.admin.listUsers({ page, perPage: 200 });
-        if (le) break;
-        const users = pageData?.users || [];
-        users.forEach(u => { if (u.email) emails.push(u.email); });
-        if (users.length < 200) break;
-        page++;
+      // recipient list: explicit segment emails, or every member
+      let emails = [];
+      if (Array.isArray(body.emails) && body.emails.length) {
+        emails = body.emails.filter(e2 => typeof e2 === "string" && e2.includes("@")).slice(0, 5000);
+      } else {
+        let page = 1;
+        while (page < 40) {
+          const { data: pageData, error: le } = await sb.auth.admin.listUsers({ page, perPage: 200 });
+          if (le) break;
+          const users = pageData?.users || [];
+          users.forEach(u => { if (u.email) emails.push(u.email); });
+          if (users.length < 200) break;
+          page++;
+        }
       }
       const uniq = [...new Set(emails)];
 
@@ -158,6 +162,41 @@ export default async function handler(req, res) {
         if (r.ok) sent += chunk.length; else failed += chunk.length;
       }
       return res.status(200).json({ ok: true, recipients: uniq.length, sent, failed });
+    }
+
+    // ================= SIGNUP NOTIFY (new member -> staff email) =================
+    if (mode === "signup_notify") {
+      const [{ data: me2 }, { data: cnt }] = await Promise.all([
+        sb.from("profiles").select("full_name, gender, created_at").eq("id", callerId).single(),
+        sb.from("profiles").select("id", { count: "exact", head: true }),
+      ]);
+      // only notify for genuinely fresh profiles (avoid re-fires)
+      if (me2?.created_at && Date.now() - new Date(me2.created_at).getTime() > 48 * 3600000)
+        return res.status(200).json({ skipped: "not a new profile" });
+      const { data: staff } = await sb.from("profiles").select("id")
+        .or("role.in.(superadmin,admin),roles.ov.{superadmin,admin}");
+      const tos = [];
+      for (const st of (staff || [])) {
+        const { data: u2 } = await sb.auth.admin.getUserById(st.id);
+        if (u2?.user?.email) tos.push(u2.user.email);
+      }
+      if (!tos.length) return res.status(200).json({ skipped: "no staff emails" });
+      const html = wrap(`
+        <tr><td style="background:linear-gradient(135deg,#008069,#04B08F);padding:20px 24px;color:#fff">
+          <div style="font-size:11px;letter-spacing:3px;font-weight:800;opacity:.9">G L A S S W I N G S</div>
+          <div style="font-size:20px;font-weight:800;margin-top:8px">🎉 New member joined</div>
+        </td></tr>
+        <tr><td style="padding:20px 24px">
+          <div style="font-size:18px;font-weight:800;color:#0b1f1c">${esc(me2?.full_name || "New member")} ${me2?.gender === "female" ? "♀" : me2?.gender === "male" ? "♂" : ""}</div>
+          <div style="font-size:13px;color:#5a6b67;margin-top:6px">Joined just now · community is now <b>${(typeof cnt === "number" ? cnt : "")}</b> members strong.</div>
+          <a href="https://glass-wings.com" style="display:inline-block;margin-top:14px;background:#008069;color:#fff;font-weight:800;font-size:13px;text-decoration:none;padding:10px 18px;border-radius:10px">Open Admin → Members</a>
+        </td></tr>`);
+      let sent2 = 0;
+      for (const to2 of [...new Set(tos)]) {
+        const { ok } = await sendResend(API, FROM, to2, `🎉 New Glasswings member: ${me2?.full_name || "someone"}`, html);
+        if (ok) sent2++;
+      }
+      return res.status(200).json({ ok: true, notified: sent2 });
     }
 
     // ================= GUEST MODE (manual guest-list ticket) =================
