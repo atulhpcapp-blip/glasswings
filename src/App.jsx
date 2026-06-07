@@ -1858,6 +1858,9 @@ function Main({ user }) {
           if (error) return alert(error.message);
           setOpen(null);
         }} wide={wide} sidebar={convoLeft} />;
+    } else if (open.type === "room-locked") {
+      const r = rooms.find(x => x.id === open.id);
+      chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} onJoin={() => joinRoom(r)} onBack={() => setOpen(null)} /> : null;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
       if (r) chatEl = <RoomChat room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
@@ -1872,6 +1875,8 @@ function Main({ user }) {
     [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Message the Glasswings team 💚" }][0],
     ...p2pThreads.map(t => ({ id: t.id, type: "p2p", name: t.name, emoji: "👤", logo_url: t.avatar, sub: lastSeenStr(t.seen) || "Direct chat" })),
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
+    ...rooms.filter(r => !canAccess(r) && (r.price_monthly || 0) > 0 && !(r.gender_restrict && r.gender_restrict !== profile?.gender))
+      .map(r => ({ id: r.id, type: "room-locked", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: `🔒 ${(counts[r.id] || 0)} members · ${freeForUser(r) ? "free for you" : "₹" + r.price_monthly + "/mo"}` })),
     ...events.filter(e => {
       if (!canAccessEvent(e)) return false;
       if (e.chat_cleared) return false;
@@ -2354,6 +2359,46 @@ function StoryViewer({ list, event, owner, meId, isStaff, onClose, onDeleted }) 
         <img src={cur.media_url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
         <div onClick={() => (i > 0 ? setI(i - 1) : onClose())} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "35%" }} />
         <div onClick={() => (i < list.length - 1 ? setI(i + 1) : onClose())} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "65%" }} />
+      </div>
+    </div>
+  );
+}
+function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
+  const [members, setMembers] = useState(null);
+  useEffect(() => {
+    supabase.rpc("room_members_public", { p_room: room.id })
+      .then(({ data, error }) => setMembers(error ? [] : (data || [])));
+  }, [room.id]);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh", background: W.bg }}>
+      <div style={{ background: W.teal, color: "#fff", padding: "14px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+        <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
+        {room.logo_url ? <img src={room.logo_url} alt="" style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover" }} />
+          : <span style={{ fontSize: 26 }}>{room.emoji || "💬"}</span>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 17, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
+          <div style={{ fontSize: 12, opacity: .85 }}>🔒 Premium room · {count} members</div>
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 130px" }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginBottom: 10 }}>Who's inside</div>
+        {members === null ? <div style={{ color: W.soft, fontSize: 13.5 }}>Loading members…</div> : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+            {members.map(m => (
+              <div key={m.user_id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                {m.avatar_url ? <img src={m.avatar_url} alt="" style={{ width: 58, height: 58, borderRadius: "50%", objectFit: "cover" }} />
+                  : <div style={{ width: 58, height: 58, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 21 }}>{(m.full_name || "?").charAt(0)}</div>}
+                <div style={{ fontSize: 11, fontWeight: 600, color: W.ink, maxWidth: 70, whiteSpace: "nowrap", overflow: "hidden", textOverflowName: "ellipsis", textOverflow: "ellipsis" }}>{(m.full_name || "Member").split(" ")[0]}</div>
+              </div>
+            ))}
+            {!members.length && <div style={{ gridColumn: "1 / -1", color: W.soft, fontSize: 13.5 }}>Be the first to join this room.</div>}
+          </div>
+        )}
+      </div>
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, padding: "16px 18px calc(18px + env(safe-area-inset-bottom))", textAlign: "center" }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: W.ink }}>🔒 Conversations are members-only</div>
+        <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{free ? "This room is free for you — join and start chatting." : `₹${room.price_monthly}/month · cancel anytime · free for women`}</div>
+        <button onClick={onJoin} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", fontSize: 15.5, padding: "13px" }}>{free ? "Join free" : `Subscribe · ₹${room.price_monthly}/mo`}</button>
       </div>
     </div>
   );
@@ -5328,7 +5373,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • noselect ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lockedroom ✅</div>
       </div>
     </div>
   );
