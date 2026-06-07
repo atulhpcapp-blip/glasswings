@@ -6788,9 +6788,9 @@ function PendingSignups({ isSuper }) {
   const [rows, setRows] = useState(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null);
-  const load = () => supabase.rpc("admin_pending_users").then(({ data, error }) => setRows(error ? [] : (data || [])));
+  const [err, setErr] = useState(null);
+  const load = () => supabase.rpc("admin_pending_users").then(({ data, error }) => { setErr(error ? (error.message || "failed") : null); setRows(error ? [] : (data || [])); });
   useEffect(() => { load(); }, []);
-  if (rows === null || !rows.length) return null;
   const approve = async (u) => {
     setBusy(u.id);
     const { error } = await supabase.rpc("admin_confirm_user", { p_user: u.id });
@@ -6813,10 +6813,13 @@ function PendingSignups({ isSuper }) {
     <div style={{ background: "#FFF8EC", border: "1px solid #F2DDB0", borderRadius: 14, padding: "13px 15px", marginBottom: 14 }}>
       <div onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
         <span style={{ fontSize: 19 }}>⏳</span>
-        <div style={{ flex: 1, fontWeight: 800, color: "#7a5a14", fontSize: 14.5 }}>Pending signups ({rows.length})</div>
+        <div style={{ flex: 1, fontWeight: 800, color: "#7a5a14", fontSize: 14.5 }}>Pending signups ({rows === null ? "…" : rows.length})</div>
+        <span onClick={e => { e.stopPropagation(); load(); }} style={{ color: "#7a5a14", fontWeight: 800, fontSize: 12, marginRight: 8, cursor: "pointer" }}>↻</span>
         <span style={{ color: "#7a5a14", fontWeight: 800 }}>{open ? "▲" : "▼"}</span>
       </div>
-      {open && <div style={{ marginTop: 10 }}>
+      {open && err && <div style={{ marginTop: 10, fontSize: 12, color: "#A33", fontWeight: 700 }}>⚠️ {err} — if this mentions "schema cache" or "could not find function", run the pending-signups SQL in Supabase.</div>}
+      {open && !err && rows !== null && !rows.length && <div style={{ marginTop: 10, fontSize: 12.5, color: "#8a6d1d", fontWeight: 600 }}>No stuck signups right now 🎉 Anyone who registers but never confirms their email will appear here automatically.</div>}
+      {open && rows !== null && rows.length > 0 && <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: 11.5, color: "#8a6d1d", marginBottom: 9 }}>These members signed up but never confirmed their email (usually because the email didn't arrive). Approve them, or set a temporary password and send it to them directly.</div>
         {rows.map(u => (
           <div key={u.id} style={{ background: "#fff", border: "1px solid #F0E2C0", borderRadius: 11, padding: "10px 12px", marginBottom: 8 }}>
@@ -7419,7 +7422,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pending ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pending2 ✅</div>
       </div>
     </div>
   );
