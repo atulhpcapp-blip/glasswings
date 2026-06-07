@@ -243,7 +243,62 @@ export default async function handler(req, res) {
         const { ok } = await sendResend(API, FROM, to2, `🎉 New Glasswings member: ${me2?.full_name || "someone"}`, html);
         if (ok) sent2++;
       }
-      return res.status(200).json({ ok: true, notified: sent2 });
+
+      // ---- 🦋 warm welcome email to the new member ----
+      let welcomed = false;
+      try {
+        const { data: u3 } = await sb.auth.admin.getUserById(callerId);
+        const myEmail = u3?.user?.email;
+        if (myEmail) {
+          const first = esc((me2?.full_name || "friend").split(" ")[0]);
+          const feat = (emoji, title, desc) => `
+            <tr><td style="padding:0 24px">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f6faf9;border:1px solid #e3efec;border-radius:12px;margin-bottom:10px"><tr>
+                <td style="width:46px;font-size:24px;text-align:center;padding:13px 0 13px 14px;vertical-align:top">${emoji}</td>
+                <td style="padding:13px 14px 13px 10px">
+                  <div style="font-size:14px;font-weight:800;color:#0b1f1c">${title}</div>
+                  <div style="font-size:12.5px;color:#5a6b67;margin-top:3px;line-height:1.5">${desc}</div>
+                </td>
+              </tr></table>
+            </td></tr>`;
+          const whtml = wrap(`
+            <tr><td style="background:linear-gradient(135deg,#008069,#7C3AED,#EC4899);padding:30px 24px;color:#fff;text-align:center">
+              <div style="font-size:12px;letter-spacing:4px;font-weight:800;opacity:.92">G L A S S W I N G S</div>
+              <div style="font-size:30px;margin-top:10px">🦋</div>
+              <div style="font-size:24px;font-weight:800;margin-top:8px">Welcome, ${first}!</div>
+              <div style="font-size:13.5px;opacity:.94;margin-top:8px;line-height:1.55">Your city. Your people. Parties, games, chats & maybe a little romance — it all lives here. Here's everything waiting for you 👇</div>
+            </td></tr>
+            <tr><td style="padding:20px 24px 8px"><div style="font-size:12px;letter-spacing:2px;font-weight:800;color:#008069">CONNECT</div></td></tr>
+            ${feat("💬", "Rooms & live chat", "Jump into Glasswings Home and start talking. React with ❤️, reply to messages, share photos, documents, your location — even share a room with a friend.")}
+            ${feat("🔥", "Chat streaks", "Message a friend every day and a streak flame grows next to their chat — ⌛ warns you before it dies. Longest streaks make the leaderboard!")}
+            ${feat("📸", "Stories & Gallery", "Post daily-life stories, watch event stories, and share your event photos to community albums.")}
+            <tr><td style="padding:12px 24px 8px"><div style="font-size:12px;letter-spacing:2px;font-weight:800;color:#008069">PLAY</div></td></tr>
+            ${feat("🧠", "Daily Trivia", "A fresh quiz every day — build streaks and climb the community leaderboard.")}
+            ${feat("🎤", "Antakshari", "The classic song game, community-style: continue the chain from the last letter!")}
+            ${feat("🎲", "Ludo", "Real Ludo with friends — invite, roll, capture, and win bragging rights.")}
+            ${feat("⚔️", "Boys vs Girls Battle", "Every week, every game you play scores points for your team. Tug the rope your way!")}
+            <tr><td style="padding:12px 24px 8px"><div style="font-size:12px;letter-spacing:2px;font-weight:800;color:#EC4899">SPARK ✨</div></td></tr>
+            ${feat("💘", "Vibe Check", "Answer 10 flirty questions with someone and get your compatibility score. Who's your best match?")}
+            ${feat("🎭", "Blind Banter", "24 hours of anonymous chat with a mystery member. Both vote 💚 and identities are revealed…")}
+            <tr><td style="padding:12px 24px 8px"><div style="font-size:12px;letter-spacing:2px;font-weight:800;color:#008069">EXPERIENCE</div></td></tr>
+            ${feat("🎟️", "Events & tickets", "House parties, pool parties, game nights, getaways — book your spot in two taps, with event group chats to plan the fun.")}
+            ${feat("🎁", "Prizes & awards", "Win games, top leaderboards, and the team sends real prizes your way.")}
+            <tr><td style="padding:8px 24px 0">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(95deg,#6D28D9,#EC4899);border-radius:14px"><tr><td style="padding:18px 18px;color:#fff">
+                <div style="font-size:16px;font-weight:800">💎 Glasswings Premium</div>
+                <div style="font-size:12.5px;opacity:.95;margin-top:6px;line-height:1.55">Unlock every exclusive room · all games, unlimited · and up to <b>100% OFF on event tickets</b>. Find it under your Profile.</div>
+              </td></tr></table>
+            </td></tr>
+            <tr><td style="padding:22px 24px;text-align:center">
+              <a href="https://glass-wings.com" style="display:inline-block;background:#008069;color:#fff;font-weight:800;font-size:15px;text-decoration:none;padding:14px 36px;border-radius:26px">Open Glasswings 🦋</a>
+              <div style="font-size:11.5px;color:#8aa19b;margin-top:14px;line-height:1.6">Tip: tap <b>Install</b> in the app banner to add Glasswings to your home screen and turn on notifications so you never miss a party. 📲</div>
+            </td></tr>`);
+          const { ok: wok } = await sendResend(API, FROM, myEmail, `🦋 Welcome to Glasswings, ${(me2?.full_name || "friend").split(" ")[0]} — here's everything you can do!`, whtml);
+          welcomed = !!wok;
+        }
+      } catch { }
+
+      return res.status(200).json({ ok: true, notified: sent2, welcomed });
     }
 
     // ================= GUEST MODE (manual guest-list ticket) =================
