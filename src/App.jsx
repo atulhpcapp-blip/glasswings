@@ -5043,6 +5043,7 @@ function MembersOverview({ isSuper }) {
     ["buyers", "🎟️ Ticket buyers", r => (r.tickets || 0) > 0],
     ["paysubs", "💳 Paying room subscribers", r => (Array.isArray(r.rooms_detail) && r.rooms_detail.some(d => d.paying)) || (r.spend_rooms || 0) > 0],
     ["paytix", "💸 Paid ticket buyers", r => (r.spend_tickets || 0) > 0],
+    ["churned", "⌛ Subscription expired", r => (r.spend_rooms || 0) > 0 && !(Array.isArray(r.rooms_detail) && r.rooms_detail.some(d => d.paying))],
     ["women", "♀ Women", r => r.gender === "female"],
     ["men", "♂ Men", r => r.gender === "male"],
     ["noroom", "🚪 No room yet", r => !(r.rooms || []).length],
@@ -5055,7 +5056,7 @@ function MembersOverview({ isSuper }) {
   const roomsLine = r => {
     const det = Array.isArray(r.rooms_detail) ? r.rooms_detail : [];
     if (!det.length) return (r.rooms || []).join(", ");
-    return det.map(d => d.name + ((d.price || 0) > 0 && r.gender !== "female" ? (d.paying ? " 💳" : " 👑") : "")).join(", ");
+    return det.map(d => d.name + ((d.price || 0) > 0 && r.gender !== "female" ? (d.paying ? " (💳 paying)" : " (👑 added by admin)") : "")).join(", ");
   };
   const fmtD = ts => ts ? new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "—";
   const stat = (label, val) => (
@@ -5106,7 +5107,7 @@ function MembersOverview({ isSuper }) {
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: W.soft, marginBottom: 7 }}>In paid rooms (men): 💳 paying subscriber · 👑 added by admin</div>
+      <div style={{ fontSize: 11, color: W.soft, marginBottom: 7 }}>In paid rooms, men are labelled: (💳 paying) or (👑 added by admin). ⌛ Subscription expired = paid for a room before, not paying now.</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name…" style={{ flex: "1 1 160px", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 12px", fontSize: 13.5, outline: "none" }} />
         <select value={roomF} onChange={e => setRoomF(e.target.value)} style={{ flex: "0 1 170px", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 10px", fontSize: 13, outline: "none", background: "#fff", color: W.ink }}>
@@ -5541,7 +5542,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • paidsplit ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • churn ✅</div>
       </div>
     </div>
   );
