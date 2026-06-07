@@ -1496,6 +1496,7 @@ function Main({ user }) {
   const [open, setOpen] = useState(null); // { id, type }
   const [p2pThreads, setP2pThreads] = useState([]);
   const [stories, setStories] = useState([]);
+  const [coupleFor, setCoupleFor] = useState(null);
   const roomParamDone = useRef(false);
   useEffect(() => {
     if (roomParamDone.current || !rooms.length) return;
@@ -1675,14 +1676,18 @@ function Main({ user }) {
     rzp.open();
   };
 
-  const joinRoom = async (r) => {
-    if (canAccess(r)) return setOpen({ id: r.id, type: "room" });
-    if (r.gender_restrict === "male" && profile?.gender !== "male") return setNotice("This room is for men only.");
-    if (r.gender_restrict === "female" && profile?.gender !== "female") return setNotice("This room is for women only.");
+  const finishJoin = async (r) => {
     if (!freeForUser(r)) return startSubscription(r);
     const { error } = await supabase.from("room_subscriptions").insert({ room_id: r.id, user_id: user.id });
     if (error) return setNotice(error.message);
     setSubs(p => [...p, r.id]); setCounts(c => ({ ...c, [r.id]: (c[r.id] || 0) + 1 })); setOpen({ id: r.id, type: "room" });
+  };
+  const joinRoom = async (r) => {
+    if (canAccess(r)) return setOpen({ id: r.id, type: "room" });
+    if (r.gender_restrict === "male" && profile?.gender !== "male") return setNotice("This room is for men only.");
+    if (r.gender_restrict === "female" && profile?.gender !== "female") return setNotice("This room is for women only.");
+    if (r.gender_restrict === "couple") return setCoupleFor(r);
+    return finishJoin(r);
   };
   const buyTicket = (e, cartOrType = null, qty = 1) => {
     let cart = Array.isArray(cartOrType) ? cartOrType.filter(c => c && c.qty > 0)
@@ -1934,6 +1939,7 @@ function Main({ user }) {
       {tab === "chats" && <><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} />}
       {tab === "events" && <Events events={events} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
@@ -2407,6 +2413,38 @@ function StoryViewer({ list, event, owner, meId, isStaff, onClose, onDeleted }) 
     </div>
   );
 }
+function CoupleInfoSheet({ room, userId, onClose, onDone }) {
+  const [pName, setPName] = useState("");
+  const [pAge, setPAge] = useState("");
+  const [myAge, setMyAge] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ip5 = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, outline: "none", boxSizing: "border-box", marginBottom: 10 };
+  const submit = async () => {
+    if (!pName.trim() || !pAge.trim() || !myAge.trim()) return alert("Please fill all three fields.");
+    setBusy(true);
+    const { error } = await supabase.from("room_join_info").upsert({
+      room_id: room.id, user_id: userId,
+      info: { partner_name: pName.trim(), partner_age: Number(pAge) || null, your_age: Number(myAge) || null }
+    });
+    setBusy(false);
+    if (error) return alert(error.message);
+    onDone(room);
+  };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 170, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "16px 16px 0 0", padding: "20px 18px calc(24px + env(safe-area-inset-bottom))" }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 17 }}>💑 {room.name}</div>
+        <div style={{ fontSize: 13, color: W.soft, margin: "5px 0 14px" }}>This is a couples room — tell us about you two before joining.</div>
+        <input value={pName} onChange={e => setPName(e.target.value)} placeholder="Partner's full name" style={ip5} />
+        <div style={{ display: "flex", gap: 9 }}>
+          <input value={pAge} onChange={e => setPAge(e.target.value.replace(/\D/g, ""))} placeholder="Partner's age" inputMode="numeric" style={{ ...ip5, flex: 1 }} />
+          <input value={myAge} onChange={e => setMyAge(e.target.value.replace(/\D/g, ""))} placeholder="Your age" inputMode="numeric" style={{ ...ip5, flex: 1 }} />
+        </div>
+        <button onClick={submit} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "Continue"}</button>
+      </div>
+    </div>
+  );
+}
 function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
   const [members, setMembers] = useState(null);
   useEffect(() => {
@@ -2526,6 +2564,12 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
 function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, viewerId }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
+  const [coupleInfo, setCoupleInfo] = useState({});
+  useEffect(() => {
+    if (groupType !== "room") return;
+    supabase.from("room_join_info").select("user_id, info").eq("room_id", room.id)
+      .then(({ data }) => { const m = {}; (data || []).forEach(r2 => { m[r2.user_id] = r2.info || {}; }); setCoupleInfo(m); });
+  }, [room.id, groupType]);
   const [online, setOnline] = useState(() => new Set());
   useEffect(() => {
     const call = groupType === "event" ? supabase.rpc("event_members", { p_event: room.id }) : supabase.rpc("room_members_admin", { p_room: room.id });
@@ -2572,6 +2616,9 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, color: W.ink, fontSize: 15 }}>{m.full_name || "Member"} {staffSet.has(m.user_id) && <span style={{ fontSize: 10.5, background: "#E7F6EF", color: W.teal, fontWeight: 800, padding: "2px 7px", borderRadius: 7, verticalAlign: "middle" }}>👑 TEAM</span>}</div>
+                {coupleInfo[m.user_id]?.partner_name && (
+                  <div style={{ fontSize: 11.5, color: "#B0529C", fontWeight: 700 }}>👫 With {coupleInfo[m.user_id].partner_name}{coupleInfo[m.user_id].partner_age ? `, ${coupleInfo[m.user_id].partner_age}` : ""}{coupleInfo[m.user_id].your_age ? ` · self ${coupleInfo[m.user_id].your_age}` : ""}</div>
+                )}
         <div style={{ fontSize: 11.5, color: online.has(m.user_id) ? "#16A34A" : W.soft, fontWeight: online.has(m.user_id) ? 800 : 500 }}>
           {online.has(m.user_id) ? "online" : (lastSeenStr(seenMap[m.user_id]) || " ")}{tappable && !canDM && !staffSet.has(m.user_id) && isConn ? " · ⭐ crossed paths" : ""}
         </div>
@@ -2930,7 +2977,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         </div>
         <button onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: W.teal, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Send size={20} /></button>
         <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={e => { sendFile(e.target.files?.[0], "image"); e.target.value = ""; }} style={{ display: "none" }} />
-        <input ref={fileRef} type="file" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
+        <input ref={fileRef} type="file" accept="*/*" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
       </div>
       </>
       )}
@@ -5830,7 +5877,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • composer ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • couples ✅</div>
       </div>
     </div>
   );
