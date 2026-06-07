@@ -6013,12 +6013,11 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
       </div>
       <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
-        <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Discount for members (optional) — 💎 plans or rooms</div>
+        <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>💎 Discount for plan members (optional)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <select value={dRoom} onChange={e => setDRoom(e.target.value)} style={{ ...ip, flex: "1 1 120px", minWidth: 0 }}>
             <option value="">No discount</option>
-            {plansList.map(pl => <option key={"plan:" + pl.id} value={"plan:" + pl.id}>{(pl.emoji || "💎") + " " + pl.name + " (plan)"}</option>)}
-            {(rooms || []).map(r => <option key={r.id} value={r.id}>{r.name} (room)</option>)}
+            {plansList.map(pl => <option key={"plan:" + pl.id} value={"plan:" + pl.id}>{(pl.emoji || "💎") + " " + pl.name}</option>)}
           </select>
           <select value={dKind} onChange={e => setDKind(e.target.value)} style={ip}>
             <option value="percent">% off</option>
@@ -6668,7 +6667,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const [membersFor, setMembersFor] = useState(null);
   const todayISO = new Date().toISOString().slice(0, 10);
   const visEvents = events.filter(e => view === "past" ? (e.event_at && e.event_at < todayISO) : (!e.event_at || e.event_at >= todayISO));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [] };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
@@ -6709,7 +6708,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
+    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -6843,6 +6842,14 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
             <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
             <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
             <span style={{ color: W.soft, fontSize: 14 }}>per ticket</span>
+          </div>
+          <div style={{ background: "#F8F5FF", border: "1px solid #E9D5FF", borderRadius: 10, padding: "9px 11px", marginBottom: 10 }}>
+            <label style={{ fontSize: 12.5, fontWeight: 800, color: "#6D28D9" }}>💎 Member discount % (plan holders)</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <input value={f.memberDisc} onChange={e => setF({ ...f, memberDisc: e.target.value.replace(/\D/g, "").slice(0, 3) })} inputMode="numeric" placeholder="0"
+                style={{ width: 80, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14, fontWeight: 800, outline: "none" }} />
+              <span style={{ fontSize: 11.5, color: W.soft }}>0 = none · 100 = free tickets for plan members.</span>
+            </div>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
