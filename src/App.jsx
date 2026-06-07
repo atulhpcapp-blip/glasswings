@@ -1498,6 +1498,24 @@ function Main({ user }) {
   const [p2pThreads, setP2pThreads] = useState([]);
   const [stories, setStories] = useState([]);
   const [coupleFor, setCoupleFor] = useState(null);
+  const [installEvt, setInstallEvt] = useState(null);
+  const [installHide, setInstallHide] = useState(() => { try { return localStorage.getItem("gw_inst_hide") === "1"; } catch { return false; } });
+  const isStandalone = typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone);
+  const isIOS = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  useEffect(() => {
+    const h = (e) => { e.preventDefault(); setInstallEvt(e); };
+    const done = () => { setInstallEvt(null); };
+    window.addEventListener("beforeinstallprompt", h);
+    window.addEventListener("appinstalled", done);
+    return () => { window.removeEventListener("beforeinstallprompt", h); window.removeEventListener("appinstalled", done); };
+  }, []);
+  const doInstall = async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    try { await installEvt.userChoice; } catch { }
+    setInstallEvt(null);
+  };
+  const hideInstall = () => { setInstallHide(true); try { localStorage.setItem("gw_inst_hide", "1"); } catch { } };
   const streakInfo = useMemo(() => {
     const past = (events || []).filter(e => e.event_at && new Date(e.event_at).getTime() < Date.now())
       .sort((a, b) => new Date(b.event_at) - new Date(a.event_at));
@@ -1950,6 +1968,21 @@ function Main({ user }) {
 
   const screen = (
     <>
+      {!isStandalone && !installHide && installEvt && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", padding: "10px 14px" }}>
+          <span style={{ fontSize: 20 }}>📲</span>
+          <div style={{ flex: 1, fontSize: 12.5, fontWeight: 700, lineHeight: 1.3 }}>Install the Glasswings app — faster, full-screen, with notifications</div>
+          <button onClick={doInstall} style={{ ...btn("#fff", W.teal), padding: "7px 14px", fontSize: 12.5, flexShrink: 0 }}>Install</button>
+          <X size={17} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .9 }} />
+        </div>
+      )}
+      {!isStandalone && !installHide && !installEvt && isIOS && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#0b1f1c", color: "#fff", padding: "9px 14px" }}>
+          <span style={{ fontSize: 18 }}>📲</span>
+          <div style={{ flex: 1, fontSize: 12, fontWeight: 600, lineHeight: 1.35 }}>Install Glasswings: tap <b>Share</b> (□↑) → <b>Add to Home Screen</b></div>
+          <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
+        </div>
+      )}
       {tab === "chats" && <><TriviaPill meId={user.id} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
@@ -6863,7 +6896,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • battle ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • installbar ✅</div>
       </div>
     </div>
   );
