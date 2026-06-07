@@ -987,7 +987,7 @@ function CategoryTiles({ cats, val, set }) {
     </div>
   );
 }
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart }) {
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart, isPlanMember, onViewPlans }) {
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1232,6 +1232,17 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         {wide && (
           <div style={{ width: 330, flexShrink: 0, position: "sticky", top: 76 }}>
             <div style={{ border: `1px solid ${W.line}`, borderRadius: 16, padding: "8px 18px 16px", boxShadow: "0 8px 28px rgba(0,0,0,.07)" }}>
+              {(Number(e.member_discount_pct) || 0) > 0 && (
+                isPlanMember ? (
+                  <div style={{ background: "linear-gradient(95deg,#F3E8FF,#FCE7F3)", border: "1px solid #E9D5FF", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#6D28D9" }}>
+                    💎 Member perk active: {e.member_discount_pct}% OFF applies to your tickets at checkout{Number(e.member_discount_pct) >= 100 ? " — FREE for you!" : ""}
+                  </div>
+                ) : (
+                  <div onClick={onViewPlans} style={{ background: "linear-gradient(95deg,#6D28D9,#EC4899)", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#fff", cursor: "pointer" }}>
+                    💎 Premium members get {e.member_discount_pct}% OFF this event — view plans →
+                  </div>
+                )
+              )}
               <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>Tickets</div>
               {ticketList}
               {selQty > 0 && <button onClick={() => onBuy(e, cart)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 12, fontSize: 15 }}>{selTotal === 0 ? `Get ${selQty} ticket${selQty > 1 ? "s" : ""}` : `Proceed · ₹${selTotal}`}</button>}
@@ -1853,6 +1864,14 @@ function Main({ user }) {
       const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose, ref, ...payload }) });
       order = await r.json();
       if (!r.ok) { setPayBusy(false); return setNotice(order.error || "Could not start the payment."); }
+      if (order.free) {
+        setPayBusy(false);
+        await load();
+        if (purpose === "ticket" && payload?.event_id) emailTicket(payload.event_id);
+        onPaid && onPaid();
+        setNotice("🎉 100% member discount applied — your ticket is booked, no payment needed!");
+        return;
+      }
     } catch { setPayBusy(false); return setNotice("Could not start the payment. Please try again."); }
     const rzp = new window.Razorpay({
       key: order.key_id, amount: order.amount, currency: order.currency, order_id: order.order_id,
@@ -2247,7 +2266,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
@@ -2300,7 +2319,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
@@ -6508,6 +6527,7 @@ function EventDetailsEditor({ event, onUpdate }) {
       date_mode: event.date_mode || "single",
       location_type: event.location_type || "physical",
       online_url: event.online_url || "",
+      member_discount_pct: event.member_discount_pct ? String(event.member_discount_pct) : "",
       about_media: Array.isArray(event.about_media) ? event.about_media : []
     });
     setOpen(true);
@@ -6520,6 +6540,7 @@ function EventDetailsEditor({ event, onUpdate }) {
       venue: d.location_type === "physical" ? d.venue : "", venue_lat: d.location_type === "physical" ? d.venue_lat : null, venue_lng: d.location_type === "physical" ? d.venue_lng : null,
       date_mode: d.date_mode, location_type: d.location_type,
       online_url: d.location_type === "online" ? d.online_url.trim() : "",
+      member_discount_pct: d.member_discount_pct ? Math.min(100, Math.max(0, Number(d.member_discount_pct) || 0)) : 0,
       about_media: d.about_media
     };
     if (d.date_mode !== "tbd" && !d.end_time && !d.end_date && !event.end_at) {
@@ -6554,6 +6575,14 @@ function EventDetailsEditor({ event, onUpdate }) {
   return (
     <div style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 13 }}>
       <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>✏️ Edit event details</div>
+      <div style={{ background: "#F8F5FF", border: "1px solid #E9D5FF", borderRadius: 10, padding: "9px 11px", marginBottom: 10 }}>
+        <label style={{ fontSize: 12.5, fontWeight: 800, color: "#6D28D9" }}>💎 Member discount % (plan holders)</label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+          <input value={d.member_discount_pct} onChange={ev => setD(x => ({ ...x, member_discount_pct: ev.target.value.replace(/\D/g, "").slice(0, 3) }))} inputMode="numeric" placeholder="0"
+            style={{ width: 80, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14, fontWeight: 800, outline: "none" }} />
+          <span style={{ fontSize: 11.5, color: W.soft }}>0 = none · 100 = free tickets for members. Applies to ticket prices at checkout (not add-ons).</span>
+        </div>
+      </div>
       <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
         <input value={d.emoji} onChange={e => setD({ ...d, emoji: e.target.value })} maxLength={2} style={{ width: 50, textAlign: "center", fontSize: 20, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
         <input value={d.title} onChange={e => setD({ ...d, title: e.target.value })} placeholder="Event title" style={{ ...ip, marginBottom: 0, flex: 1 }} />
