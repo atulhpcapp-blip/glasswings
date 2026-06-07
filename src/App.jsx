@@ -3136,6 +3136,210 @@ function AntakshariRoom({ meId, onClose }) {
     </div>
   );
 }
+function vibeLabel(pct) {
+  if (pct >= 90) return "Written in the stars ✨";
+  if (pct >= 70) return "Sparks flying 🔥";
+  if (pct >= 50) return "Slow burn 😏";
+  return "Opposites attract? 😅";
+}
+function VibeCheck({ meId, onClose }) {
+  const [view, setView] = useState("home"); // home | pick | quiz | sent | result
+  const [qs, setQs] = useState(null);
+  const [mine, setMine] = useState(null);
+  const [myGender, setMyGender] = useState(null);
+  const [partner, setPartner] = useState(null);
+  const [answerFor, setAnswerFor] = useState(null); // match being answered (as invitee)
+  const [search, setSearch] = useState("");
+  const [found, setFound] = useState([]);
+  const [qi, setQi] = useState(0);
+  const [ans, setAns] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const load = async () => {
+    const [{ data: q }, { data: m }, { data: me }] = await Promise.all([
+      supabase.from("vibe_questions").select("id, q, opts").eq("active", true).order("id").limit(10),
+      supabase.rpc("vibe_my"),
+      supabase.from("profiles").select("gender").eq("id", meId).maybeSingle(),
+    ]);
+    setQs(q || []); setMine(m || []); setMyGender(me?.gender || null);
+  };
+  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (view !== "pick" || !search.trim()) { setFound([]); return; }
+    const opp = myGender === "male" ? "female" : "male";
+    const t = setTimeout(() => {
+      supabase.from("profiles").select("id, full_name, avatar_url, gender").eq("gender", opp).neq("id", meId).ilike("full_name", `%${search.trim()}%`).limit(8)
+        .then(({ data }) => setFound(data || []));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [search, view, myGender]);
+  const surprise = async () => {
+    const opp = myGender === "male" ? "female" : "male";
+    const { data } = await supabase.from("profiles").select("id, full_name, avatar_url").eq("gender", opp).neq("id", meId).not("avatar_url", "is", null).limit(60);
+    const pool = data || [];
+    if (!pool.length) return alert("No members to match right now!");
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    setPartner(pick); setQi(0); setAns([]); setView("quiz");
+  };
+  const startQuiz = (pl) => { setPartner(pl); setAnswerFor(null); setQi(0); setAns([]); setView("quiz"); };
+  const answerInvite = (m) => { setAnswerFor(m); setPartner({ id: m.partner_id, full_name: m.partner_name, avatar_url: m.partner_avatar }); setQi(0); setAns([]); setView("quiz"); };
+  const pickOpt = async (oi) => {
+    const next = [...ans, oi];
+    if (next.length < qs.length) { setAns(next); setQi(qi + 1); return; }
+    setBusy(true);
+    if (answerFor) {
+      const { data, error } = await supabase.rpc("vibe_answer", { p_match: answerFor.id, p_answers: next });
+      setBusy(false);
+      if (error) return alert(error.message);
+      await load();
+      showResult({ ...answerFor, b_answers: next });
+    } else {
+      const { error } = await supabase.rpc("vibe_start", { p_partner: partner.id, p_answers: next });
+      setBusy(false);
+      if (error) return alert(error.message);
+      await load();
+      setView("sent");
+    }
+  };
+  const showResult = (m) => {
+    const A = m.a_answers || [], B = m.b_answers || [];
+    const n = Math.min(A.length, B.length, (qs || []).length);
+    let same = 0; const hits = [], misses = [];
+    for (let i = 0; i < n; i++) {
+      if (A[i] === B[i]) { same++; hits.push({ q: qs[i], oi: A[i] }); }
+      else misses.push({ q: qs[i] });
+    }
+    const pct = n ? Math.round((same / n) * 100) : 0;
+    setResult({ m, pct, hits: hits.slice(0, 3), miss: misses[0] || null });
+    setView("result");
+  };
+  const Header = ({ title }) => (
+    <div style={{ background: "linear-gradient(135deg,#EC4899,#8B5CF6)", color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+      <ArrowLeft size={22} onClick={() => view === "home" ? onClose() : setView("home")} style={{ cursor: "pointer", flexShrink: 0 }} />
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 800, fontSize: 17 }}>💘 Vibe Check</div>
+        <div style={{ fontSize: 11.5, opacity: .9 }}>{title}</div>
+      </div>
+    </div>
+  );
+  const Ava = ({ p, size = 44 }) => p?.avatar_url
+    ? <img src={p.avatar_url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border: "2.5px solid #fff", boxShadow: "0 2px 8px rgba(0,0,0,.25)" }} />
+    : <div style={{ width: size, height: size, borderRadius: "50%", background: "#EC4899", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: size * .4, border: "2.5px solid #fff" }}>{(p?.full_name || "?").charAt(0)}</div>;
+  const invites = (mine || []).filter(m => m.role === "b" && !m.b_done);
+  const waiting = (mine || []).filter(m => m.role === "a" && !m.b_done);
+  const done = (mine || []).filter(m => m.a_done && m.b_done);
+  if (!myGender && qs !== null) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, maxWidth: 430, margin: "0 auto" }}>
+        <Header title="One thing first" />
+        <div style={{ padding: 26, textAlign: "center", color: W.soft, fontSize: 14 }}>Set your gender in your Profile first — Vibe Check pairs guys and girls. 💘</div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto", overflowY: "auto" }}>
+      {view === "home" && <>
+        <Header title="10 questions · find your match %" />
+        <div style={{ padding: 16 }}>
+          <button onClick={() => { setSearch(""); setView("pick"); }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 10, background: "linear-gradient(95deg,#EC4899,#8B5CF6)" }}>💘 New Vibe Check</button>
+          {invites.length > 0 && <>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "14px 0 6px" }}>💌 Waiting for your answers</div>
+            {invites.map(m => (
+              <div key={m.id} onClick={() => answerInvite(m)} style={{ display: "flex", alignItems: "center", gap: 11, background: "#FFF0F7", border: "1px solid #F8C8E0", borderRadius: 13, padding: "11px 13px", marginBottom: 8, cursor: "pointer" }}>
+                <Ava p={{ full_name: m.partner_name, avatar_url: m.partner_avatar }} size={40} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{m.partner_name}</div>
+                  <div style={{ fontSize: 11.5, color: "#D6336C", fontWeight: 700 }}>sent you a Vibe Check 💘</div>
+                </div>
+                <span style={{ ...btn("#EC4899", "#fff"), padding: "7px 13px", fontSize: 12 }}>Answer</span>
+              </div>
+            ))}
+          </>}
+          {done.length > 0 && <>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "14px 0 6px" }}>✨ Your results</div>
+            {done.map(m => (
+              <div key={m.id} onClick={() => showResult(m)} style={{ display: "flex", alignItems: "center", gap: 11, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "11px 13px", marginBottom: 8, cursor: "pointer" }}>
+                <Ava p={{ full_name: m.partner_name, avatar_url: m.partner_avatar }} size={40} />
+                <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 14 }}>{m.partner_name}</div>
+                <span style={{ color: "#EC4899", fontWeight: 800, fontSize: 13 }}>See match % →</span>
+              </div>
+            ))}
+          </>}
+          {waiting.length > 0 && <>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "14px 0 6px" }}>⏳ Waiting on them</div>
+            {waiting.map(m => (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 11, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "11px 13px", marginBottom: 8, opacity: .8 }}>
+                <Ava p={{ full_name: m.partner_name, avatar_url: m.partner_avatar }} size={40} />
+                <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 14 }}>{m.partner_name}</div>
+                <span style={{ color: W.soft, fontSize: 12 }}>hasn't answered yet</span>
+              </div>
+            ))}
+          </>}
+          {!invites.length && !done.length && !waiting.length && <div style={{ color: W.soft, fontSize: 13, textAlign: "center", padding: "18px 10px" }}>Pick someone interesting and find out your vibe % 😏</div>}
+        </div>
+      </>}
+      {view === "pick" && <>
+        <Header title="Who's it going to be? 😏" />
+        <div style={{ padding: 16 }}>
+          <button onClick={surprise} style={{ ...btn("#8B5CF6", "#fff"), width: "100%", justifyContent: "center", padding: "13px", marginBottom: 12 }}>🎲 Surprise me — random match</button>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${myGender === "male" ? "girls" : "guys"} by name…`} autoFocus style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 11, padding: "12px 14px", fontSize: 14.5, outline: "none", boxSizing: "border-box", marginBottom: 8 }} />
+          {found.map(r => (
+            <div key={r.id} onClick={() => startQuiz(r)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 4px", borderBottom: `1px solid ${W.line}`, cursor: "pointer" }}>
+              <Ava p={r} size={40} />
+              <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 14.5 }}>{r.full_name}</div>
+              <span style={{ color: "#EC4899", fontWeight: 800, fontSize: 13 }}>Pick 💘</span>
+            </div>
+          ))}
+        </div>
+      </>}
+      {view === "quiz" && qs && <>
+        <Header title={`With ${partner?.full_name?.split(" ")[0]} · ${qi + 1}/${qs.length}`} />
+        <div style={{ height: 5, background: "#F3E2EE" }}><div style={{ height: 5, width: `${((qi) / qs.length) * 100}%`, background: "linear-gradient(90deg,#EC4899,#8B5CF6)", transition: "width .3s" }} /></div>
+        <div style={{ padding: "22px 18px" }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 18, marginBottom: 18, lineHeight: 1.35 }}>{qs[qi].q}</div>
+          {(qs[qi].opts || []).map((o, oi) => (
+            <button key={oi} disabled={busy} onClick={() => pickOpt(oi)} style={{ display: "block", width: "100%", textAlign: "left", background: "#fff", border: `1.5px solid ${W.line}`, borderRadius: 13, padding: "14px 15px", fontSize: 14.5, fontWeight: 600, color: W.ink, marginBottom: 9, cursor: "pointer" }}>{o}</button>
+          ))}
+        </div>
+      </>}
+      {view === "sent" && <>
+        <Header title="Sent!" />
+        <div style={{ padding: "40px 24px", textAlign: "center" }}>
+          <div style={{ fontSize: 48 }}>💌</div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 18, marginTop: 10 }}>Vibe Check sent to {partner?.full_name?.split(" ")[0]}!</div>
+          <div style={{ color: W.soft, fontSize: 13.5, marginTop: 8 }}>They just got a ping. The moment they answer, your match % unlocks here. 😏</div>
+          <button onClick={() => setView("home")} style={{ ...btn(W.teal, "#fff"), marginTop: 20, padding: "11px 22px" }}>Done</button>
+        </div>
+      </>}
+      {view === "result" && result && <>
+        <Header title="The verdict ✨" />
+        <div style={{ padding: 16 }}>
+          <div style={{ background: "linear-gradient(150deg,#EC4899,#8B5CF6)", borderRadius: 20, padding: "26px 18px", textAlign: "center", color: "#fff", boxShadow: "0 8px 24px rgba(236,72,153,.35)" }}>
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 0 }}>
+              <div style={{ marginRight: -10, zIndex: 2 }}><Ava p={{ full_name: "You" }} size={56} /></div>
+              <div style={{ fontSize: 26, zIndex: 3, filter: "drop-shadow(0 1px 3px rgba(0,0,0,.3))" }}>💘</div>
+              <div style={{ marginLeft: -10 }}><Ava p={{ full_name: result.m.partner_name, avatar_url: result.m.partner_avatar }} size={56} /></div>
+            </div>
+            <div style={{ fontSize: 46, fontWeight: 800, marginTop: 10, textShadow: "0 2px 8px rgba(0,0,0,.25)" }}>{result.pct}%</div>
+            <div style={{ fontSize: 15, fontWeight: 800, opacity: .95 }}>{vibeLabel(result.pct)}</div>
+            <div style={{ fontSize: 12, opacity: .85, marginTop: 4 }}>You & {result.m.partner_name?.split(" ")[0]}</div>
+          </div>
+          {result.hits.length > 0 && <>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "16px 0 7px" }}>You both said 💕</div>
+            {result.hits.map((h, k) => (
+              <div key={k} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 13px", marginBottom: 7 }}>
+                <div style={{ fontSize: 12, color: W.soft }}>{h.q.q}</div>
+                <div style={{ fontWeight: 800, color: "#D6336C", fontSize: 13.5, marginTop: 2 }}>{(h.q.opts || [])[h.oi]}</div>
+              </div>
+            ))}
+          </>}
+          {result.miss && <div style={{ background: "#FFF8E8", border: "1px solid #F5E2B0", borderRadius: 12, padding: "10px 13px", marginTop: 4, fontSize: 12.5, color: "#8a6d1d", fontWeight: 600 }}>You'd clash on: {result.miss.q.q} 😂</div>}
+          <a href={`https://wa.me/?text=${encodeURIComponent(`💘 We scored ${result.pct}% on the Glasswings Vibe Check — ${vibeLabel(result.pct)}! Try yours: https://glass-wings.com/g/vibe`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", display: "flex", justifyContent: "center", marginTop: 14, padding: "13px" }}>Share on WhatsApp</a>
+        </div>
+      </>}
+    </div>
+  );
+}
 function BattleBanner() {
   const [b, setB] = useState(null);
   useEffect(() => {
@@ -3182,10 +3386,12 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
   const [awardOpen, setAwardOpen] = useState(false);
   const [playAnt, setPlayAnt] = useState(false);
   const [playLudo, setPlayLudo] = useState(false);
+  const [playVibe, setPlayVibe] = useState(false);
   useEffect(() => {
     if (initialGame === "antakshari") setPlayAnt(true);
     else if (initialGame === "trivia") setPlayTrivia(true);
     else if (initialGame === "ludo") setPlayLudo(true);
+    else if (initialGame === "vibe") setPlayVibe(true);
     if (initialGame && onConsumedInitial) onConsumedInitial();
   }, []);
   const loadAwards = () => supabase.from("game_awards").select("id, prize, created_at, profiles:user_id(full_name, avatar_url)").order("created_at", { ascending: false }).limit(12)
@@ -3217,6 +3423,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
         <Card emoji="🧠" title="Daily Trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
         <Card emoji="🎵" title="Antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
         <Card emoji="🎲" title="Ludo" sub="2–4 players · invite friends with a code" cta="Play" onClick={() => setPlayLudo(true)} />
+        <Card emoji="💘" title="Vibe Check" sub="How compatible are you two? 10 questions" cta="Play" onClick={() => setPlayVibe(true)} />
         <Card emoji="🎯" title="Bollywood Riddles" sub="Guess the film from emojis — coming soon" cta="Soon" />
         <Card emoji="🎲" title="Tambola / Housie" sub="Played live at our events 🎉" />
 
@@ -3255,6 +3462,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
       {playTrivia && <TriviaSheet meId={meId} alreadyScore={triviaDone} onClose={() => setPlayTrivia(false)} />}
       {playAnt && <AntakshariRoom meId={meId} onClose={() => setPlayAnt(false)} />}
       {playLudo && <LudoHub meId={meId} onClose={() => setPlayLudo(false)} />}
+      {playVibe && <VibeCheck meId={meId} onClose={() => setPlayVibe(false)} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -6944,7 +7152,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoalign ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • vibe ✅</div>
       </div>
     </div>
   );
