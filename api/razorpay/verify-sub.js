@@ -1,5 +1,6 @@
-// Glasswings — Razorpay: verify a subscription mandate and grant room access.
-// Subscription signature = HMAC_SHA256(payment_id + "|" + subscription_id, secret).
+// Glasswings — Razorpay: verify a payment and grant the ticket / room access.
+// The grant happens here (service role) ONLY after the signature checks out,
+// so it can't be faked from the browser.
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RAZORPAY_KEY_SECRET
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
@@ -22,31 +23,49 @@ export default async function handler(req, res) {
   if (!SECRET) return res.status(500).json({ error: "Payments are not configured yet." });
 
   const body = (typeof req.body === "object" && req.body) ? req.body : await readBody(req);
-  const { razorpay_payment_id, razorpay_subscription_id, razorpay_signature, access_token } = body;
-  if (!razorpay_payment_id || !razorpay_subscription_id || !razorpay_signature) return res.status(400).json({ error: "Missing payment details." });
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, access_token } = body;
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) return res.status(400).json({ error: "Missing payment details." });
 
   try {
-    const expected = crypto.createHmac("sha256", SECRET).update(`${razorpay_payment_id}|${razorpay_subscription_id}`).digest("hex");
+    const expected = crypto.createHmac("sha256", SECRET).update(`${razorpay_order_id}|${razorpay_payment_id}`).digest("hex");
     if (expected !== razorpay_signature) {
-      await sb.from("payments").update({ status: "failed" }).eq("razorpay_subscription_id", razorpay_subscription_id);
-      return res.status(400).json({ error: "Subscription could not be verified." });
+      await sb.from("payments").update({ status: "failed" }).eq("razorpay_order_id", razorpay_order_id);
+      return res.status(400).json({ error: "Payment could not be verified." });
     }
 
-    const { data: ures } = await sb.auth.getUser(access_token);
+    const [{ data: ures }, { data: pay }] = await Promise.all([
+      sb.auth.getUser(access_token),
+      sb.from("payments").select("*").eq("razorpay_order_id", razorpay_order_id).single(),
+    ]);
     const uid = ures?.user?.id;
     if (!uid) return res.status(401).json({ error: "Please log in again." });
-
-    const { data: pay } = await sb.from("payments").select("*").eq("razorpay_subscription_id", razorpay_subscription_id).single();
-    if (!pay || pay.user_id !== uid) return res.status(400).json({ error: "Subscription not found." });
+    if (!pay || pay.user_id !== uid) return res.status(400).json({ error: "Order not found." });
     if (pay.status === "paid") return res.status(200).json({ ok: true });   // idempotent
 
-    const { data: existing } = await sb.from("room_subscriptions").select("id").eq("room_id", pay.room_id).eq("user_id", uid).maybeSingle();
-    if (existing) await sb.from("room_subscriptions").update({ status: "active", razorpay_subscription_id }).eq("id", existing.id);
-    else await sb.from("room_subscriptions").insert({ room_id: pay.room_id, user_id: uid, status: "active", razorpay_subscription_id });
+    if (pay.purpose === "ticket") {
+      const lines = (Array.isArray(pay.items) && pay.items.length)
+        ? pay.items
+        : [{ ticket_type_id: pay.ticket_type_id, quantity: pay.quantity }];
+      for (let li = 0; li < lines.length; li++) {
+        const { error: insErr } = await sb.from("event_tickets").insert({
+          event_id: pay.event_id, user_id: uid, ticket_type_id: lines[li].ticket_type_id || null,
+          quantity: lines[li].quantity || 1, addons: li === 0 ? (pay.addons || []) : [],
+          referrer_id: pay.referrer_id || null, razorpay_order_id,
+        });
+        if (insErr && insErr.code !== "23505") throw insErr;   // 23505 = already granted
+      }
+    } else if (pay.purpose === "room") {
+      const pm = Number(pay.plan_months) || 1;
+      const expiresAt = new Date(Date.now() + pm * 30 * 86400000).toISOString();
+      await sb.from("room_subscriptions").upsert(
+        { room_id: pay.room_id, user_id: uid, status: "active", expires_at: expiresAt, plan: pm + "m" },
+        { onConflict: "room_id,user_id" }
+      );
+    }
 
-    await sb.from("payments").update({ status: "paid", razorpay_payment_id }).eq("razorpay_subscription_id", razorpay_subscription_id);
+    await sb.from("payments").update({ status: "paid", razorpay_payment_id }).eq("razorpay_order_id", razorpay_order_id);
     return res.status(200).json({ ok: true });
   } catch (e) {
-    return res.status(500).json({ error: e.message || "Something went wrong confirming the subscription." });
+    return res.status(500).json({ error: e.message || "Something went wrong confirming the payment." });
   }
 }
