@@ -80,6 +80,13 @@ export default async function handler(req, res) {
         const { data: srows } = await sb.from("room_subscriptions").select("room_id").eq("user_id", uid).eq("status", "active").in("room_id", discRooms);
         mySubs = new Set((srows || []).map(r => r.room_id));
       }
+      // 💎 plan-discount memberships
+      const discPlans = [...new Set((typeRows || []).filter(t => t.discount_plan_id && t.discount_value).map(t => t.discount_plan_id))];
+      let myPlanSet = new Set();
+      if (discPlans.length) {
+        const { data: prows } = await sb.from("member_plans").select("plan_id, expires_at").eq("user_id", uid).in("plan_id", discPlans);
+        (prows || []).forEach(m => { if (!m.expires_at || new Date(m.expires_at).getTime() > Date.now()) myPlanSet.add(m.plan_id); });
+      }
 
       const soldBy = {}; let maleSold = 0, femaleSold = 0;
       const buyerIds = [...new Set((tk || []).map(r => r.user_id))];
@@ -98,7 +105,8 @@ export default async function handler(req, res) {
           const t = typeMap[it.ticket_type_id];
           if (!t || t.event_id !== event_id) return res.status(400).json({ error: "Ticket not found." });
           let net = t.price || 0;
-          if (t.discount_room_id && t.discount_value && mySubs.has(t.discount_room_id)) {
+          if ((t.discount_room_id && t.discount_value && mySubs.has(t.discount_room_id)) ||
+              (t.discount_plan_id && t.discount_value && myPlanSet.has(t.discount_plan_id))) {
             const d = t.discount_kind === "flat" ? t.discount_value : Math.round(net * t.discount_value / 100);
             net = Math.max(0, net - d);
           }
