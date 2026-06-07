@@ -1,8 +1,18 @@
 {
   "crons": [
-    { "path": "/api/cron/daily", "schedule": "30 3 * * *" }
+    {
+      "path": "/api/cron/daily",
+      "schedule": "30 3 * * *"
+    }
   ],
   "rewrites": [
-    { "source": "/e/:id", "destination": "/api/share?event=:id" }
+    {
+      "source": "/e/:id",
+      "destination": "/api/share?event=:id"
+    },
+    {
+      "source": "/g/:id",
+      "destination": "/api/share?game=:id"
+    }
   ]
 }
