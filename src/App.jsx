@@ -400,6 +400,7 @@ function Auth({ initialMode = "login", onClose }) {
         @keyframes gwwordin { 0% { transform: translateY(14px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
         @keyframes gwbeat { 0%,100% { transform: scale(1); } 25% { transform: scale(1.25); } 40% { transform: scale(1); } 55% { transform: scale(1.18); } }
       `}</style>
+      <GwDialogHost />
       {CONF.map((c, k) => (
         <div key={"cf" + k} style={{ position: "absolute", left: `${(k * 8.3 + 3) % 100}%`, top: 0, width: k % 3 === 0 ? 9 : 7, height: k % 2 === 0 ? 13 : 9, background: c, borderRadius: 2, opacity: .85, animation: `gwfall ${6 + (k % 5)}s linear infinite`, animationDelay: `${k * 0.7}s`, pointerEvents: "none", zIndex: 0 }} />
       ))}
@@ -764,6 +765,34 @@ function RideButtons({ e, compact }) {
       {a(uber, "#000", "#fff", "Uber", "🚕")}
       {a(ola, "#C6D62E", "#1b1b1b", "Ola", "🚖")}
       {hasGeo ? a(`https://www.google.com/maps/dir/?api=1&destination=${e.venue_lat},${e.venue_lng}`, "#fff", W.ink, "Directions", "🗺️") : null}
+    </div>
+  );
+}
+let _gwDialogSet = null;
+function GwDialogHost() {
+  const [d, setD] = useState(null); // {msg, onOk?}
+  useEffect(() => {
+    _gwDialogSet = setD;
+    const native = window.alert;
+    window.alert = (msg) => { try { setD({ msg: String(msg) }); } catch { native(msg); } };
+    window.gwConfirm = (msg, onOk) => setD({ msg: String(msg), onOk });
+    return () => { window.alert = native; _gwDialogSet = null; };
+  }, []);
+  if (!d) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(8,20,18,.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 26 }}>
+      <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 330, overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,.4)", animation: "gwdlg .22s ease" }}>
+        <style>{`@keyframes gwdlg { 0% { transform: scale(.93); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }`}</style>
+        <div style={{ background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", padding: "13px 16px", textAlign: "center" }}>
+          <div style={{ fontSize: 21 }}>🦋</div>
+          <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: 2.5 }}>GLASSWINGS</div>
+        </div>
+        <div style={{ padding: "18px 18px 6px", fontSize: 14, color: "#111B21", lineHeight: 1.5, textAlign: "center", fontWeight: 600, whiteSpace: "pre-wrap" }}>{d.msg}</div>
+        <div style={{ display: "flex", gap: 9, padding: "14px 16px 16px" }}>
+          {d.onOk && <button onClick={() => setD(null)} style={{ flex: 1, padding: "11px", borderRadius: 11, border: "1px solid #E9EDEF", background: "#fff", color: "#667781", fontWeight: 800, cursor: "pointer" }}>Cancel</button>}
+          <button onClick={() => { const f = d.onOk; setD(null); if (f) f(); }} style={{ flex: 1, padding: "11px", borderRadius: 11, border: "none", background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 12px rgba(0,128,105,.3)" }}>{d.onOk ? "Yes" : "OK"}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2156,6 +2185,7 @@ function Main({ user }) {
         {screen}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isStaff} />
+      <GwDialogHost />
     </>
   );
 }
@@ -2502,15 +2532,17 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     await supabase.from("album_photos").update({ approved: true }).eq("id", pid).then(() => { });
     load();
   };
-  const delPhoto = async (pid) => {
-    if (!window.confirm("Remove this photo?")) return;
-    await supabase.from("album_photos").delete().eq("id", pid);
-    setFull(null); load();
+  const delPhoto = (pid) => {
+    window.gwConfirm("Remove this photo?", async () => {
+      await supabase.from("album_photos").delete().eq("id", pid);
+      setFull(null); load();
+    });
   };
-  const delAlbum = async () => {
-    if (!window.confirm(`Delete the whole album "${album.title}"?`)) return;
-    await supabase.from("albums").delete().eq("id", album.id);
-    onClose();
+  const delAlbum = () => {
+    window.gwConfirm(`Delete the whole album "${album.title}"?`, async () => {
+      await supabase.from("albums").delete().eq("id", album.id);
+      onClose();
+    });
   };
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", flexDirection: "column" }}>
@@ -7500,7 +7532,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • chatnames ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gwdialog ✅</div>
       </div>
     </div>
   );
