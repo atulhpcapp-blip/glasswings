@@ -6025,7 +6025,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
           </select>
           <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
         </div>
-        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Members of that room get this off. 100% (or ₹ ≥ price) makes it free for them.</div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Plan members get this off. 100% (or ₹ ≥ price) makes the ticket free for them.</div>
       </div>
       <button onClick={add} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}><Plus size={15} />Add ticket type</button>
     </div>
