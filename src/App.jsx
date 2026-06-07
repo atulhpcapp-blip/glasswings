@@ -1230,9 +1230,16 @@ function PublicLanding() {
     .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
     .map(evSlide);
   const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
-  const fallbackSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false && gwEventLive(x.e)).slice(0, 6).map(evSlide);
-  const featured = [...promoSlides, ...customSlides.filter(c => !promoSlides.some(ps => ps.id && ps.id === c.id))].slice(0, 6);
-  const heroSlides = featured.length ? featured : fallbackSlides;
+  const autoSlides = events
+    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
+    .filter(x => x.img && x.e.approved !== false && gwEventLive(x.e))
+    .sort((a, b) => (a.e.event_at ? new Date(a.e.event_at).getTime() : 9e15) - (b.e.event_at ? new Date(b.e.event_at).getTime() : 9e15))
+    .map(evSlide);
+  const seen = new Set(promoSlides.map(ps => ps.id).filter(Boolean));
+  const cust2 = customSlides.filter(c => !c.id || !seen.has(c.id));
+  cust2.forEach(c => { if (c.id) seen.add(c.id); });
+  const auto2 = autoSlides.filter(a2 => !seen.has(a2.id));
+  const heroSlides = [...promoSlides, ...cust2, ...auto2].slice(0, 8);
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
   if (detailEvent) {
@@ -2165,9 +2172,16 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
     .map(evSlide);
   const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
-  const fallbackSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false && gwEventLive(x.e)).slice(0, 6).map(evSlide);
-  const featured = [...promoSlides, ...customSlides.filter(c => !promoSlides.some(ps => ps.id && ps.id === c.id))].slice(0, 6);
-  const heroSlides = featured.length ? featured : fallbackSlides;
+  const autoSlides = events
+    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
+    .filter(x => x.img && x.e.approved !== false && gwEventLive(x.e))
+    .sort((a, b) => (a.e.event_at ? new Date(a.e.event_at).getTime() : 9e15) - (b.e.event_at ? new Date(b.e.event_at).getTime() : 9e15))
+    .map(evSlide);
+  const seen = new Set(promoSlides.map(ps => ps.id).filter(Boolean));
+  const cust2 = customSlides.filter(c => !c.id || !seen.has(c.id));
+  cust2.forEach(c => { if (c.id) seen.add(c.id); });
+  const auto2 = autoSlides.filter(a2 => !seen.has(a2.id));
+  const heroSlides = [...promoSlides, ...cust2, ...auto2].slice(0, 8);
   return (
     <div>
       <TopBar title="Events" />
@@ -6930,7 +6944,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • sliderend ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • autoslider ✅</div>
       </div>
     </div>
   );
