@@ -2473,21 +2473,28 @@ function AlbumView({ album, isStaff, meId, onClose }) {
   const [photos, setPhotos] = useState(null);
   const [busy, setBusy] = useState(false);
   const [full, setFull] = useState(null);
-  const load = () => supabase.from("album_photos").select("id, url, created_at").eq("album_id", album.id).order("created_at", { ascending: false })
+  const load = () => supabase.from("album_photos").select("id, url, created_at, approved, created_by").eq("album_id", album.id).order("created_at", { ascending: false })
     .then(({ data, error }) => setPhotos(error ? [] : (data || [])));
   useEffect(() => { load(); }, [album.id]);
   const addPhotos = async (files) => {
     if (!files.length) return;
     setBusy(true);
+    let sent = 0;
     try {
       for (const f of files) {
         const url = await uploadPhoto("albums", f);
-        await supabase.from("album_photos").insert({ album_id: album.id, url, created_by: meId });
-        if (!album.cover_url) { await supabase.from("albums").update({ cover_url: url }).eq("id", album.id).is("cover_url", null); album.cover_url = url; }
+        await supabase.from("album_photos").insert({ album_id: album.id, url, created_by: meId, approved: !!isStaff });
+        sent++;
+        if (isStaff && !album.cover_url) { await supabase.from("albums").update({ cover_url: url }).eq("id", album.id).is("cover_url", null); album.cover_url = url; }
       }
       load();
+      if (!isStaff && sent) alert(`📸 ${sent} photo${sent > 1 ? "s" : ""} sent for approval — they'll appear once an admin gives the ✅`);
     } catch (e2) { alert(e2.message || "Upload failed"); }
     setBusy(false);
+  };
+  const approvePhoto = async (pid) => {
+    await supabase.from("album_photos").update({ approved: true }).eq("id", pid).then(() => { });
+    load();
   };
   const delPhoto = async (pid) => {
     if (!window.confirm("Remove this photo?")) return;
@@ -2507,17 +2514,33 @@ function AlbumView({ album, isStaff, meId, onClose }) {
         {isStaff && <Trash2 size={19} onClick={delAlbum} style={{ cursor: "pointer", opacity: .9 }} />}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
-        {isStaff && (
+        {(
           <label style={{ ...btn(W.teal, "#fff"), justifyContent: "center", width: "100%", marginBottom: 10, cursor: "pointer", boxSizing: "border-box" }}>
-            {busy ? "Uploading…" : "🖼️ Add photos"}
+            {busy ? "Uploading…" : isStaff ? "🖼️ Add photos" : "📷 Share your photos (admin approval)"}
             <input type="file" accept="image/*" multiple style={{ display: "none" }} disabled={busy} onChange={e => { addPhotos(Array.from(e.target.files || [])); e.target.value = ""; }} />
           </label>
         )}
+        {isStaff && (photos || []).some(ph => !ph.approved) && (
+          <div style={{ background: "#FFF8EC", border: "1px solid #F2DDB0", borderRadius: 12, padding: "10px 12px", marginBottom: 10 }}>
+            <div style={{ fontWeight: 800, color: "#7a5a14", fontSize: 13, marginBottom: 8 }}>⏳ Awaiting approval ({(photos || []).filter(ph => !ph.approved).length})</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              {(photos || []).filter(ph => !ph.approved).map(ph => (
+                <div key={ph.id} style={{ position: "relative" }}>
+                  <img src={ph.url} alt="" onClick={() => setFull(ph)} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, opacity: .9 }} />
+                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                    <button onClick={() => approvePhoto(ph.id)} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "5px", fontSize: 11 }}>✅</button>
+                    <button onClick={() => delPhoto(ph.id)} style={{ ...btn("#fff", "#B3433B"), border: "1px solid #E5B5B2", flex: 1, justifyContent: "center", padding: "5px", fontSize: 11 }}>🗑️</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {photos === null ? <div style={{ color: W.soft, textAlign: "center", padding: 28 }}>Loading…</div>
-          : !photos.length ? <div style={{ color: W.soft, textAlign: "center", padding: 28 }}>No photos yet.</div>
+          : !photos.filter(ph => ph.approved || ph.created_by === meId).length ? <div style={{ color: W.soft, textAlign: "center", padding: 28 }}>No photos yet — be the first to share! 📷</div>
           : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
-              {photos.map(ph => <img key={ph.id} src={ph.url} alt="" onClick={() => setFull(ph)} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 7, cursor: "pointer", background: "#eee" }} />)}
+              {photos.filter(ph => (ph.approved && !isStaff) || (isStaff && ph.approved) || (!ph.approved && ph.created_by === meId && !isStaff)).map(ph => <img key={ph.id} src={ph.url} alt="" onClick={() => setFull(ph)} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 7, cursor: "pointer", background: "#eee" }} />)}
             </div>
           )}
       </div>
@@ -4202,7 +4225,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   }, [groupType, room.id]);
 
   return (
-    <div style={{ minHeight: "100dvh", background: W.wall, backgroundImage: `url("${WALL}")`, paddingBottom: 72 }}>
+    <div style={{ minHeight: "100dvh", background: "linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)", backgroundImage: `url("${WALL}"), linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)`, paddingBottom: 72 }}>
       {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
       {tray && (
         <div onClick={() => setTray(null)} style={{ position: "fixed", inset: 0, zIndex: 95 }}>
@@ -4278,7 +4301,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             return (
               <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
-                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ maxWidth: "78%", background: mine ? W.sent : W.recv, padding: "6px 9px 5px", borderRadius: 8, borderTopRightRadius: mine ? 2 : 8, borderTopLeftRadius: mine ? 8 : 2, boxShadow: "0 1px 1px rgba(0,0,0,.12)", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
+                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ maxWidth: "78%", background: mine ? "linear-gradient(135deg,#D9FDD3,#C2F2E4)" : W.recv, padding: "7px 10px 6px", borderRadius: 14, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4, boxShadow: mine ? "0 2px 6px rgba(0,128,105,.16)" : "0 2px 6px rgba(17,27,33,.08)", border: mine ? "1px solid #BBEBD9" : `1px solid ${W.line}`, userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
                   {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 700, color: W.teal, marginBottom: 1 }}>{s.name || "Member"}</div>}
                   {m.reply_to && (() => { const rm = (msgs || []).find(x => x.id === m.reply_to); return (
                     <div style={{ background: "rgba(0,128,105,.07)", borderLeft: `3px solid ${W.teal}`, borderRadius: 7, padding: "4px 8px", marginBottom: 4 }}>
@@ -7470,7 +7493,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • allvibes ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • richchat ✅</div>
       </div>
     </div>
   );
