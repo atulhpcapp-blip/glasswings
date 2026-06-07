@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient.js";
 import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Check, Pencil, Image as ImageIcon
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Check, Pencil, Image as ImageIcon, Gamepad2, Trophy, Gift
 } from "lucide-react";
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
@@ -307,7 +307,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width }) {
-  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -1947,6 +1947,7 @@ function Main({ user }) {
     <>
       {tab === "chats" && <><TriviaPill meId={user.id} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
+      {tab === "games" && <GameZone meId={user.id} events={events} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
@@ -2638,6 +2639,128 @@ function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
         <div style={{ fontSize: 14, fontWeight: 800, color: W.ink }}>🔒 Conversations are members-only</div>
         <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{free ? "This room is free for you — join and start chatting." : `₹${room.price_monthly}/month · cancel anytime · free for women`}</div>
         <button onClick={onJoin} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", fontSize: 15.5, padding: "13px" }}>{free ? "Join free" : `Subscribe · ₹${room.price_monthly}/mo`}</button>
+      </div>
+    </div>
+  );
+}
+function GameZone({ meId, events, isStaff }) {
+  const [playTrivia, setPlayTrivia] = useState(false);
+  const [triviaDone, setTriviaDone] = useState(null);
+  const [board, setBoard] = useState(null);
+  const [awards, setAwards] = useState([]);
+  const [awardOpen, setAwardOpen] = useState(false);
+  const loadAwards = () => supabase.from("game_awards").select("id, prize, created_at, profiles:user_id(full_name, avatar_url)").order("created_at", { ascending: false }).limit(12)
+    .then(({ data }) => setAwards(data || []));
+  useEffect(() => {
+    supabase.from("trivia_scores").select("score").eq("user_id", meId).eq("day", new Date().toISOString().slice(0, 10)).maybeSingle().then(({ data }) => setTriviaDone(data ? data.score : null));
+    supabase.rpc("trivia_board").then(({ data }) => setBoard(data || []));
+    loadAwards();
+  }, [meId, playTrivia]);
+  const Card = ({ emoji, title, sub, cta, onClick, soft }) => (
+    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "14px 15px", display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
+      <div style={{ width: 46, height: 46, borderRadius: 12, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>{emoji}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{title}</div>
+        <div style={{ fontSize: 12, color: W.soft }}>{sub}</div>
+      </div>
+      {cta && <button onClick={onClick} disabled={!onClick} style={{ ...btn(onClick ? W.teal : "#EBEEF0", onClick ? "#fff" : W.soft), padding: "8px 14px", fontSize: 12.5, flexShrink: 0 }}>{cta}</button>}
+    </div>
+  );
+  return (
+    <div style={{ paddingBottom: 90 }}>
+      <div style={{ background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", padding: "22px 18px 24px" }}>
+        <div style={{ fontSize: 11, letterSpacing: 3, fontWeight: 800, opacity: .9 }}>GLASSWINGS</div>
+        <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6 }}>🎮 Game Zone</div>
+        <div style={{ fontSize: 12.5, opacity: .9, marginTop: 3 }}>Free to play · climb the leaderboard · win real perks 🎁</div>
+      </div>
+      <div style={{ padding: 14 }}>
+        <Card emoji="🧠" title="Daily Trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
+        <Card emoji="🎵" title="Antakshari" sub="Song-chain showdown — coming soon" cta="Soon" />
+        <Card emoji="🎯" title="Bollywood Riddles" sub="Guess the film from emojis — coming soon" cta="Soon" />
+        <Card emoji="🎲" title="Tambola / Housie" sub="Played live at our events 🎉" />
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px" }}>
+          <Trophy size={18} color="#E67E22" />
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, flex: 1 }}>Today's trivia leaders</div>
+        </div>
+        {board === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div>
+          : !board.length ? <div style={{ color: W.soft, fontSize: 13 }}>No players yet today — be the first!</div>
+          : board.slice(0, 10).map((r, k) => (
+            <div key={r.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${W.line}` }}>
+              <div style={{ width: 20, textAlign: "center", fontWeight: 800, color: k < 3 ? "#E67E22" : W.soft, fontSize: 13 }}>{k + 1}</div>
+              {r.avatar_url ? <img src={r.avatar_url} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>{(r.full_name || "?").charAt(0)}</div>}
+              <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{r.full_name || "Member"}</div>
+              <div style={{ fontWeight: 800, color: W.teal, fontSize: 13 }}>{r.score}/5</div>
+              <div style={{ fontWeight: 700, color: "#E67E22", fontSize: 12 }}>🔥{r.streak}</div>
+            </div>
+          ))}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "20px 0 8px" }}>
+          <Gift size={18} color="#B0529C" />
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, flex: 1 }}>🏆 Winners' wall</div>
+          {isStaff && <button onClick={() => setAwardOpen(true)} style={{ ...btn(W.teal, "#fff"), padding: "7px 12px", fontSize: 12 }}>🎁 Give a gift</button>}
+        </div>
+        {!awards.length ? <div style={{ color: W.soft, fontSize: 13 }}>No prizes handed out yet.</div>
+          : awards.map(a => (
+            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
+              {a.profiles?.avatar_url ? <img src={a.profiles.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#B0529C", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{(a.profiles?.full_name || "?").charAt(0)}</div>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{a.profiles?.full_name || "Member"}</div>
+                <div style={{ fontSize: 12, color: "#B0529C", fontWeight: 700 }}>🎁 {a.prize}</div>
+              </div>
+            </div>
+          ))}
+      </div>
+      {playTrivia && <TriviaSheet meId={meId} alreadyScore={triviaDone} onClose={() => setPlayTrivia(false)} />}
+      {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
+    </div>
+  );
+}
+function AwardSheet({ meId, onClose, onDone }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const [chosen, setChosen] = useState(null);
+  const [prize, setPrize] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!q.trim() || chosen) { setResults([]); return; }
+    const t = setTimeout(() => {
+      supabase.from("profiles").select("id, full_name, avatar_url").ilike("full_name", `%${q.trim()}%`).limit(8)
+        .then(({ data }) => setResults(data || []));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, chosen]);
+  const give = async () => {
+    if (!chosen || !prize.trim()) return alert("Pick a member and enter the prize.");
+    setBusy(true);
+    try {
+      await supabase.from("game_awards").insert({ user_id: chosen.id, prize: prize.trim(), awarded_by: meId });
+      await supabase.from("messages").insert({ group_type: "dm", group_id: chosen.id, sender_id: meId, media_type: "broadcast", body: `🎁🎉 Congratulations! You've won: ${prize.trim()}\nThank you for being a Glasswings star — see you at the next one! 💚` });
+      onDone();
+    } catch (e) { alert(e.message || "Failed"); }
+    setBusy(false);
+  };
+  const ip6 = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, outline: "none", boxSizing: "border-box" };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 170, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "16px 16px 0 0", padding: "18px 16px calc(22px + env(safe-area-inset-bottom))" }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, marginBottom: 12 }}>🎁 Give a gift / free pass</div>
+        {chosen ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, background: W.bg, borderRadius: 10, padding: "9px 12px" }}>
+            <div style={{ flex: 1, fontWeight: 700, color: W.ink }}>{chosen.full_name}</div>
+            <span onClick={() => { setChosen(null); setQ(""); }} style={{ color: W.teal, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Change</span>
+          </div>
+        ) : (
+          <>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member by name…" autoFocus style={{ ...ip6, marginBottom: 8 }} />
+            {results.map(r => (
+              <div key={r.id} onClick={() => { setChosen(r); setResults([]); }} style={{ padding: "10px 4px", borderBottom: `1px solid ${W.line}`, fontWeight: 600, color: W.ink, cursor: "pointer" }}>{r.full_name}</div>
+            ))}
+          </>
+        )}
+        <input value={prize} onChange={e => setPrize(e.target.value)} placeholder="Prize (e.g. Free pass to Sherni Live)" style={{ ...ip6, margin: "10px 0" }} />
+        <button onClick={give} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", opacity: busy ? .6 : 1 }}>{busy ? "Sending…" : "Send gift 🎉"}</button>
+        <div style={{ fontSize: 11, color: W.soft, textAlign: "center", marginTop: 8 }}>They get a celebration message in their Glasswings chat, and join the Winners' wall.</div>
       </div>
     </div>
   );
@@ -6271,7 +6394,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • albums ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gamezone ✅</div>
       </div>
     </div>
   );
@@ -6304,7 +6427,7 @@ function lastSeenStr(ts) {
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 function Nav({ tab, setTab, isAdmin }) {
-  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", padding: "8px 0 11px" }}>
       {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft }}><I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span></button>; })}
