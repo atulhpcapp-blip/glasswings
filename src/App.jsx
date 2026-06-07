@@ -4462,6 +4462,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
   const send = async () => {
     const body = (textRef.current?.value || "").trim(); if (!body) return; setComposer("");
+    requestAnimationFrame(() => { try { textRef.current?.focus(); } catch { } });
     const rt = replyTo?.id || null; setReplyTo(null);
     const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, body, reply_to: rt }).select("id, body, media_url, media_type, file_name, reply_to, sender_id, created_at").single();
     if (error) { setComposer(body); return; }
@@ -4760,7 +4761,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           <Paperclip size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => fileRef.current?.click()} />
           <Camera size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => camRef.current?.click()} />
         </div>
-        <button onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: "linear-gradient(135deg,#04B08F,#008069)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation", boxShadow: "0 3px 10px rgba(0,128,105,.35)" }}><Send size={20} /></button>
+        <button onMouseDown={e => e.preventDefault()} onTouchStart={e => { e.preventDefault(); send(); }} onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: "linear-gradient(135deg,#04B08F,#008069)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation", boxShadow: "0 3px 10px rgba(0,128,105,.35)" }}><Send size={20} /></button>
         <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={e => { sendFile(e.target.files?.[0], "image"); e.target.value = ""; }} style={{ display: "none" }} />
         <input ref={fileRef} type="file" accept="*/*" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
       </div>
@@ -7439,7 +7440,14 @@ function PlansAdmin({ rooms }) {
                   <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={e.ar !== undefined ? e.ar : !!pl.auto_renew} onChange={ev => setE(pl.id, "ar", ev.target.checked)} />Auto-renew billing</label>
                   <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={e.act !== undefined ? e.act : !!pl.active} onChange={ev => setE(pl.id, "act", ev.target.checked)} />Active</label>
                 </div>
-                <button onClick={() => savePlan(pl)} style={{ ...btn("#6D28D9", "#fff"), padding: "9px 16px", fontSize: 12.5, marginBottom: 11 }}>Save plan</button>
+                <div style={{ display: "flex", gap: 8, marginBottom: 11 }}>
+                  <button onClick={() => savePlan(pl)} style={{ ...btn("#6D28D9", "#fff"), padding: "9px 16px", fontSize: 12.5 }}>Save plan</button>
+                  <button onClick={() => window.gwConfirm(`Delete "${pl.name}" permanently? All its subscribers lose access immediately and its room locks are removed. This cannot be undone.`, async () => {
+                    const { error } = await supabase.from("plans").delete().eq("id", pl.id);
+                    if (error) return alert(error.message);
+                    setExp(null); load();
+                  })} style={{ ...btn("#fff", "#B3433B"), border: "1px solid #E5B5B2", padding: "9px 14px", fontSize: 12.5 }}>🗑️ Delete plan</button>
+                </div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#4C3585", marginBottom: 5 }}>Rooms this plan unlocks</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 11 }}>
                   {rooms.map(r => (
