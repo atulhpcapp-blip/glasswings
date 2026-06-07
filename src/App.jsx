@@ -1498,6 +1498,11 @@ function Main({ user }) {
   const [p2pThreads, setP2pThreads] = useState([]);
   const [stories, setStories] = useState([]);
   const [coupleFor, setCoupleFor] = useState(null);
+  const eventLive = (e) => {
+    if (e.end_at) return Date.now() <= new Date(e.end_at).getTime();
+    if (e.event_at) return Date.now() <= new Date(e.event_at).getTime() + 6 * 3600000;
+    return true; // date TBD events stay listed until dated
+  };
   const [installEvt, setInstallEvt] = useState(null);
   const [installHide, setInstallHide] = useState(() => { try { return localStorage.getItem("gw_inst_hide") === "1"; } catch { return false; } });
   const isStandalone = typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone);
@@ -1986,7 +1991,7 @@ function Main({ user }) {
       {tab === "chats" && <><TriviaPill meId={user.id} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
-      {tab === "events" && <Events events={events} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
@@ -5740,6 +5745,9 @@ function EventDetailsEditor({ event, onUpdate }) {
       online_url: d.location_type === "online" ? d.online_url.trim() : "",
       about_media: d.about_media
     };
+    if (d.date_mode !== "tbd" && !d.end_time && !d.end_date && !event.end_at) {
+      alert("Please set the END date & time — events auto-close once they end."); setSaving(false); return;
+    }
     if (d.date_mode === "tbd") {
       patch.event_date = "📅 To be decided";
     } else if (d.date) {
@@ -5756,6 +5764,9 @@ function EventDetailsEditor({ event, onUpdate }) {
       }
       if (d.date_mode === "recurring") label += " · 🔁 recurring";
       patch.event_date = label;
+    } else if ((d.end_time || d.end_date) && event.event_at) {
+      const sd = new Date(event.event_at).toISOString().slice(0, 10);
+      patch.end_at = new Date((d.end_date || sd) + "T" + parseTimeStr(d.end_time || "11PM") + ":00").toISOString();
     }
     await onUpdate(event.id, patch);
     setSaving(false); setOpen(false);
@@ -5875,6 +5886,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
+    if (!f.dateTbd && !(f.endTime || "").trim()) { alert("Please set the event END time (end date optional — same day assumed). This is required so the event auto-closes after it finishes."); return; }
     let label0 = f.dateTbd ? "📅 To be decided" : (dates[0]?.label || "");
     let endAt = null;
     if (!f.dateTbd && dates[0]?.iso && (f.endTime || f.finishDate)) {
@@ -6916,7 +6928,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludodp ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • eventend ✅</div>
       </div>
     </div>
   );
