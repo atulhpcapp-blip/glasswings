@@ -4117,7 +4117,8 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
   const [senders, setSenders] = useState({});
-  const [text, setText] = useState("");
+  const textRef = useRef(null);
+  const setComposer = (v) => { const el = textRef.current; if (!el) return; el.value = v; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 110) + "px"; };
   const [editPin, setEditPin] = useState(false);
   const [pinText, setPinText] = useState(room.pinned || "");
   const endRef = useRef(null);
@@ -4163,10 +4164,10 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   useEffect(() => { supabase.from("quick_replies").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).then(({ data }) => setQrs(data || [])); }, [user.id]);
 
   const send = async () => {
-    const body = text.trim(); if (!body) return; setText("");
+    const body = (textRef.current?.value || "").trim(); if (!body) return; setComposer("");
     const rt = replyTo?.id || null; setReplyTo(null);
     const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, body, reply_to: rt }).select("id, body, media_url, media_type, file_name, reply_to, sender_id, created_at").single();
-    if (error) { setText(body); return; }
+    if (error) { setComposer(body); return; }
     setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
   };
   const sendFile = async (file, kind) => {
@@ -4397,7 +4398,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           {qrs.length === 0 ? <div style={{ color: W.soft, fontSize: 13, padding: "6px 0" }}>No saved replies yet. Type one above and Save.</div> :
             qrs.map(q => (
               <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
-                <div onClick={() => { setText(q.text); setShowQR(false); }} style={{ flex: 1, minWidth: 0, fontSize: 14, color: W.ink, cursor: "pointer" }}>{q.text}</div>
+                <div onClick={() => { setComposer(q.text); setShowQR(false); textRef.current?.focus(); }} style={{ flex: 1, minWidth: 0, fontSize: 14, color: W.ink, cursor: "pointer" }}>{q.text}</div>
                 <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => delQR(q.id)} />
               </div>
             ))}
@@ -4410,7 +4411,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
       {emojiOpen && (
         <div style={{ position: "fixed", bottom: 64, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 22, padding: "0 10px" }}>
           <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 -3px 16px rgba(0,0,0,.12)", padding: 10, display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 4, maxHeight: 180, overflowY: "auto" }}>
-            {EMOJIS.map(em => <span key={em} onClick={() => setText(t => t + em)} style={{ fontSize: 22, textAlign: "center", cursor: "pointer", userSelect: "none", padding: 2 }}>{em}</span>)}
+            {EMOJIS.map(em => <span key={em} onClick={() => { const el = textRef.current; if (el) { el.value = el.value + em; } }} style={{ fontSize: 22, textAlign: "center", cursor: "pointer", userSelect: "none", padding: 2 }}>{em}</span>)}
           </div>
         </div>
       )}
@@ -4453,8 +4454,8 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
         <div style={{ flex: 1, minWidth: 0, background: "#fff", borderRadius: 24, display: "flex", alignItems: "center", gap: 8, padding: "9px 12px" }}>
           <Zap size={21} color={showQR ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => setShowQR(v => !v)} />
           <Smile size={21} color={emojiOpen ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => { setEmojiOpen(v => !v); setPlusOpen(false); }} />
-          <textarea value={text} rows={1}
-            onChange={e => { setText(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 110) + "px"; }}
+          <textarea ref={textRef} defaultValue="" rows={1}
+            onInput={e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 110) + "px"; }}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); e.target.style.height = "auto"; } }}
             placeholder="Message"
             style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink, resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 110, overflowY: "auto", background: "transparent", padding: 0 }} />
@@ -4462,7 +4463,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           <Paperclip size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => fileRef.current?.click()} />
           <Camera size={20} color={W.soft} style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => camRef.current?.click()} />
         </div>
-        <button onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: W.teal, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Send size={20} /></button>
+        <button onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: "linear-gradient(135deg,#04B08F,#008069)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation", boxShadow: "0 3px 10px rgba(0,128,105,.35)" }}><Send size={20} /></button>
         <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={e => { sendFile(e.target.files?.[0], "image"); e.target.value = ""; }} style={{ display: "none" }} />
         <input ref={fileRef} type="file" accept="*/*" onChange={e => { const f = e.target.files?.[0]; sendFile(f, f && f.type.startsWith("image/") ? "image" : "file"); e.target.value = ""; }} style={{ display: "none" }} />
       </div>
@@ -7532,7 +7533,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gwdialog ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • smoothtype ✅</div>
       </div>
     </div>
   );
