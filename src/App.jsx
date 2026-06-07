@@ -4731,7 +4731,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const [membersFor, setMembersFor] = useState(null);
   const todayISO = new Date().toISOString().slice(0, 10);
   const visEvents = events.filter(e => view === "past" ? (e.event_at && e.event_at < todayISO) : (!e.event_at || e.event_at >= todayISO));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", repeat: "none", startDate: "", endDate: "", time: "", customDates: [], addons: [], exclusions: [] };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [] };
+  const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
@@ -4760,7 +4761,17 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: dates[0]?.label || "", event_at: dates[0]?.iso || null, venue: f.venue, venue_lat: f.venueLat, venue_lng: f.venueLng, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
+    let label0 = f.dateTbd ? "📅 To be decided" : (dates[0]?.label || "");
+    let endAt = null;
+    if (!f.dateTbd && dates[0]?.iso && (f.endTime || f.finishDate)) {
+      const sd = f.startDate || new Date(dates[0].iso).toISOString().slice(0, 10);
+      endAt = new Date((f.finishDate || sd) + "T" + parseTimeStr(f.endTime || f.time) + ":00").toISOString();
+      label0 += " – " + (f.finishDate && f.finishDate !== sd
+        ? new Date(endAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + (f.endTime ? " " + f.endTime.trim() : "")
+        : (f.endTime || "").trim());
+    }
+    if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
+    await onCreate({ title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -4816,12 +4827,19 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
               <button key={v} onClick={() => setF({ ...f, repeat: v })} style={{ padding: "7px 13px", borderRadius: 16, border: `1px solid ${f.repeat === v ? W.teal : W.line}`, background: f.repeat === v ? W.teal : "#fff", color: f.repeat === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
             ))}
           </div>
-          {f.repeat === "none" ? (
+          {f.repeat === "none" ? (<>
             <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
               <label style={{ flex: "1 1 150px", fontSize: 12, color: W.soft }}>Date<input type="date" value={f.startDate} onChange={e => setF({ ...f, startDate: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink }} /></label>
-              <label style={{ flex: "1 1 110px", fontSize: 12, color: W.soft }}>Time<input value={f.time} onChange={e => setF({ ...f, time: e.target.value })} placeholder="8PM" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none" }} /></label>
+              <label style={{ flex: "1 1 110px", fontSize: 12, color: W.soft }}>Start time<input value={f.time} onChange={e => setF({ ...f, time: e.target.value })} placeholder="8PM" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none" }} /></label>
             </div>
-          ) : f.repeat === "custom" ? (
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <label style={{ flex: "1 1 150px", fontSize: 12, color: W.soft }}>End date (optional)<input type="date" value={f.finishDate} onChange={e => setF({ ...f, finishDate: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink }} /></label>
+              <label style={{ flex: "1 1 110px", fontSize: 12, color: W.soft }}>End time<input value={f.endTime} onChange={e => setF({ ...f, endTime: e.target.value })} placeholder="1AM" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none" }} /></label>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: W.ink, fontWeight: 600, marginBottom: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={f.dateTbd} onChange={e => setF({ ...f, dateTbd: e.target.checked })} /> 📅 Date to be decided (announce later)
+            </label>
+          </>) : f.repeat === "custom" ? (
             <div style={{ marginBottom: 10 }}>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <input type="date" onChange={e => { const v = e.target.value; if (v && !f.customDates.includes(v)) setF({ ...f, customDates: [...f.customDates, v].sort() }); }} style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", color: W.ink }} />
@@ -4841,7 +4859,45 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
               <div style={{ fontSize: 12.5, color: W.soft }}>{buildDates().length ? `Creates ${buildDates().length} ${f.repeat} event${buildDates().length === 1 ? "" : "s"}.` : "Pick a start and end date."}</div>
             </div>
           )}
-          <VenueAutocomplete value={f.venue} onChange={({ venue, lat, lng }) => setF({ ...f, venue, venueLat: lat, venueLng: lng })} />
+          <div style={{ display: "flex", gap: 7, marginBottom: 9, flexWrap: "wrap" }}>
+            {[["physical", "📍 Physical"], ["online", "🖥️ Online"], ["tbd", "❓ Venue TBD"]].map(([k, l]) => (
+              <div key={k} onClick={() => setF({ ...f, locType: k })} style={{ padding: "7px 13px", borderRadius: 16, fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: f.locType === k ? W.teal : "#fff", color: f.locType === k ? "#fff" : W.ink, border: `1px solid ${f.locType === k ? W.teal : W.line}` }}>{l}</div>
+            ))}
+          </div>
+          {f.locType === "physical" && <VenueAutocomplete value={f.venue} onChange={({ venue, lat, lng }) => setF({ ...f, venue, venueLat: lat, venueLng: lng })} />}
+          {f.locType === "online" && <input value={f.onlineUrl} onChange={e => setF({ ...f, onlineUrl: e.target.value })} placeholder="Meeting / stream link (https://…)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, boxSizing: "border-box" }} />}
+          <div style={{ margin: "4px 0 12px" }}>
+            <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>🖼️ About-section media (optional)</div>
+            {(f.aboutMedia || []).map((m, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0", borderBottom: `1px solid ${W.line}` }}>
+                {m.kind === "image" ? <img src={m.url} alt="" style={{ width: 42, height: 30, objectFit: "cover", borderRadius: 6 }} /> : <span style={{ fontSize: 18 }}>{m.kind === "video" ? "🎬" : "📎"}</span>}
+                <div style={{ flex: 1, fontSize: 12, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name || m.kind}</div>
+                <X size={14} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => setF({ ...f, aboutMedia: f.aboutMedia.filter((_, k) => k !== i) })} />
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 8, marginTop: 7, flexWrap: "wrap" }}>
+              {[["image", "🖼️ Images", "image/*", true], ["video", "🎬 Video", "video/*", false], ["file", "📎 File", "*/*", false]].map(([kind, label, accept, multi]) => (
+                <label key={kind} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "7px 11px", fontSize: 12, cursor: "pointer" }}>
+                  {amBusy === kind ? "Uploading…" : label}
+                  <input type="file" accept={accept} multiple={!!multi} style={{ display: "none" }} disabled={!!amBusy}
+                    onChange={async e => {
+                      const files = Array.from(e.target.files || []); e.target.value = "";
+                      if (!files.length) return;
+                      setAmBusy(kind);
+                      try {
+                        const added = [];
+                        for (const fl of files) {
+                          const url = kind === "image" ? await uploadPhoto("eventmedia", fl) : await uploadChatFile("eventmedia", fl);
+                          added.push({ kind, url, name: fl.name });
+                        }
+                        setF(prev => ({ ...prev, aboutMedia: [...(prev.aboutMedia || []), ...added] }));
+                      } catch (e2) { alert(e2.message || "Upload failed"); }
+                      setAmBusy(null);
+                    }} />
+                </label>
+              ))}
+            </div>
+          </div>
           <textarea value={f.terms} onChange={e => setF({ ...f, terms: e.target.value })} rows={2} placeholder="Terms & conditions (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
           <PerkPicker kind="exclusion" label="Not included" color="#C0392B" value={f.exclusions} onChange={v => setF({ ...f, exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
           <AddonDraft value={f.addons} onChange={v => setF({ ...f, addons: v })} />
@@ -5691,7 +5747,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • phaseb ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • createfull ✅</div>
       </div>
     </div>
   );
