@@ -992,7 +992,18 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           <h1 style={{ fontSize: wide ? 34 : 24, fontWeight: 800, color: W.ink, margin: 0, lineHeight: 1.18 }}>{e.emoji} {e.title}</h1>
           <div style={{ background: W.bg, borderRadius: 14, padding: "14px 16px", marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
             {e.event_date && <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14.5, color: W.ink, fontWeight: 600 }}><Calendar size={17} color={W.teal} />{e.event_date}</div>}
-            {(e.venue || e.city) && (
+            {e.location_type === "online" && (
+              <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14.5, color: W.ink, fontWeight: 600 }}>
+                <span style={{ fontSize: 17 }}>🖥️</span>
+                <span>Online event{e.online_url && <> · <a href={e.online_url} target="_blank" rel="noreferrer" style={{ color: W.teal, fontWeight: 800 }}>Join link →</a></>}</span>
+              </div>
+            )}
+            {e.location_type === "tbd" && (
+              <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14.5, color: W.soft, fontWeight: 600 }}>
+                <MapPin size={17} color={W.soft} /> <span>Venue to be announced</span>
+              </div>
+            )}
+            {e.location_type !== "online" && e.location_type !== "tbd" && (e.venue || e.city) && (
               <div style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14.5, color: W.ink, fontWeight: 600 }}>
                 <MapPin size={17} color={W.teal} style={{ flexShrink: 0, marginTop: 2 }} />
                 <span>{[e.venue, e.city].filter(Boolean).join(", ")}{e.venue_lat && <a href={`https://www.google.com/maps/search/?api=1&query=${e.venue_lat},${e.venue_lng}`} target="_blank" rel="noreferrer" style={{ color: W.teal, fontWeight: 700, marginLeft: 8, textDecoration: "none" }}>Directions →</a>}</span>
@@ -1001,6 +1012,23 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           </div>
           {!wide && <Sec title="Tickets"><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
+          {Array.isArray(e.about_media) && e.about_media.length > 0 && (
+            <Sec title="Gallery & media">
+              {e.about_media.filter(m => m.kind === "image").length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 7, marginBottom: 10 }}>
+                  {e.about_media.filter(m => m.kind === "image").map((m, i) => (
+                    <a key={i} href={m.url} target="_blank" rel="noreferrer"><img src={m.url} alt="" style={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 10, display: "block" }} /></a>
+                  ))}
+                </div>
+              )}
+              {e.about_media.filter(m => m.kind === "video").map((m, i) => (
+                <video key={i} src={m.url} controls playsInline style={{ width: "100%", borderRadius: 12, marginBottom: 10, background: "#000" }} />
+              ))}
+              {e.about_media.filter(m => m.kind === "file").map((m, i) => (
+                <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", border: `1px solid ${W.line}`, borderRadius: 10, marginBottom: 7, textDecoration: "none", color: W.ink, fontWeight: 700, fontSize: 13.5 }}>📎 {m.name || "Download file"}</a>
+              ))}
+            </Sec>
+          )}
           {sched.length > 0 && (
             <Sec title="Schedule">
               <div>
@@ -3059,6 +3087,56 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
   const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   const Tile = ({ label, val, color }) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", flex: "1 1 90px", minWidth: 90 }}><div style={{ fontSize: 10, color: W.soft, fontWeight: 800, letterSpacing: .3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 800, color: color || W.ink, marginTop: 3 }}>{val}</div></div>;
   const total = a ? Number(a.paid_gross || 0) + Number(a.door_cash || 0) + Number(a.door_upi || 0) : 0;
+  const exportPdf = () => {
+    if (!a || !ev) return;
+    const esc2 = t => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const money2 = v => "₹" + Number(v || 0).toLocaleString("en-IN");
+    const typeRows = (a.types || []).map(t => `<tr><td>${esc2(t.name)}</td><td>${t.sold || 0}${t.capacity != null ? " / " + t.capacity : ""}</td><td>${money2(t.revenue)}</td></tr>`).join("");
+    const ageRows = Object.entries(a.age_groups || {}).map(([g, n]) => `<tr><td>${esc2(g)}</td><td>${n}</td></tr>`).join("");
+    const areaRows = (a.areas || []).slice(0, 10).map(x => `<tr><td>${esc2(x.area)}</td><td>${x.count}</td></tr>`).join("");
+    const dayRows = (a.sales_by_day || []).map(x => `<tr><td>${esc2(x.day)}</td><td>${x.tickets}</td></tr>`).join("");
+    const w2 = window.open("", "_blank");
+    if (!w2) return alert("Allow pop-ups to export the PDF.");
+    w2.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc2(ev.title)} — Analytics</title>
+<style>
+  body{font-family:Segoe UI,system-ui,Arial,sans-serif;color:#0b1f1c;margin:34px}
+  .br{letter-spacing:3px;font-size:11px;font-weight:800;color:#008069}
+  h1{font-size:21px;margin:6px 0 2px} .sub{color:#5a6b67;font-size:12.5px;margin-bottom:18px}
+  .hero{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .card{border:1px solid #dfe7e4;border-radius:10px;padding:11px 15px;min-width:130px}
+  .card .v{font-size:19px;font-weight:800} .card .l{font-size:11px;color:#5a6b67;font-weight:700}
+  h2{font-size:14px;margin:20px 0 7px;color:#008069}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  td,th{border:1px solid #e3eae7;padding:6px 9px;text-align:left}
+  th{background:#f1f6f4;font-size:11px;color:#5a6b67}
+  .foot{margin-top:26px;color:#9aa7a3;font-size:10.5px;text-align:center}
+  @media print{ body{margin:14px} }
+</style></head><body>
+<div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
+<h1>${esc2((ev.emoji || "🎟️") + " " + ev.title)}</h1>
+<div class="sub">${esc2([ev.event_date, ev.venue, ev.city].filter(Boolean).join(" · "))} — Analytics report, generated ${new Date().toLocaleString("en-IN")}</div>
+<div class="hero">
+  <div class="card"><div class="v">${money2(total)}</div><div class="l">TOTAL COLLECTED</div></div>
+  <div class="card"><div class="v">${money2(a.paid_gross)}</div><div class="l">ONLINE (RAZORPAY)</div></div>
+  <div class="card"><div class="v">${money2(Number(a.door_cash || 0) + Number(a.door_upi || 0))}</div><div class="l">DOOR (CASH + UPI)</div></div>
+  <div class="card"><div class="v">${a.tickets || 0}</div><div class="l">TICKETS SOLD</div></div>
+  <div class="card"><div class="v">${a.checked_in || 0}</div><div class="l">CHECKED IN</div></div>
+  <div class="card"><div class="v">${a.members || 0} + ${a.guests || 0}</div><div class="l">MEMBERS + GUESTS</div></div>
+  <div class="card"><div class="v">♂ ${a.male || 0} · ♀ ${a.female || 0}</div><div class="l">GENDER SPLIT</div></div>
+</div>
+${typeRows ? `<h2>By ticket type</h2><table><tr><th>Type</th><th>Sold / cap</th><th>Revenue</th></tr>${typeRows}</table>` : ""}
+<h2>Audience</h2>
+<table>
+  <tr><th>New members at this event</th><td>${(a.members || 0) - (a.returning || 0)}</td><th>Returning attendees</th><td>${a.returning || 0}</td></tr>
+  <tr><th>Paid orders</th><td>${a.paid_orders || 0}</td><th>Avg order value</th><td>${a.paid_orders > 0 ? money2(Math.round(Number(a.paid_gross || 0) / a.paid_orders)) : "—"}</td></tr>
+</table>
+${ageRows ? `<h2>Age groups</h2><table><tr><th>Group</th><th>Attendees</th></tr>${ageRows}</table>` : ""}
+${areaRows ? `<h2>Top areas</h2><table><tr><th>Area</th><th>Attendees</th></tr>${areaRows}</table>` : ""}
+${dayRows ? `<h2>Sales by day</h2><table><tr><th>Day</th><th>Tickets</th></tr>${dayRows}</table>` : ""}
+<div class="foot">Glasswings Events · glass-wings.com — confidential organiser report</div>
+<script>setTimeout(() => window.print(), 350)</scr` + `ipt></body></html>`);
+    w2.document.close();
+  };
   const ciRate = a && a.tickets ? Math.round((a.checked_in / a.tickets) * 100) : 0;
   const fill = a && a.total_capacity ? Math.round((a.tickets / a.total_capacity) * 100) : null;
   const maxDay = a && (a.sales_by_day || []).length ? Math.max(...a.sales_by_day.map(d => d.q)) : 0;
@@ -3086,7 +3164,7 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
             <div style={{ fontSize: 11, letterSpacing: 1, color: "#2FD4A8", fontWeight: 800 }}>TOTAL COLLECTED</div>
             <div style={{ fontSize: 28, fontWeight: 900, margin: "2px 0 10px" }}>{money(total)}</div>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5 }}>
-              <span>🟢 Online (Razorpay): <b>{money(a.paid_gross)}</b></span>
+              <span>🟢 Online (Razorpay): <b>{money(a.paid_gross)}</b></span>{"  "}<span onClick={exportPdf} style={{ marginLeft: "auto", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "rgba(255,255,255,.18)", padding: "5px 11px", borderRadius: 9 }}>🖨️ Export PDF</span>
               <span>💵 Door cash: <b>{money(a.door_cash)}</b></span>
               <span>📱 Door UPI: <b>{money(a.door_upi)}</b></span>
             </div>
@@ -4521,6 +4599,7 @@ function EventDetailsEditor({ event, onUpdate }) {
   const [open, setOpen] = useState(false);
   const [d, setD] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState(null);
   const ta = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", marginBottom: 9, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" };
   const ip = { ...ta, resize: "none" };
   const start = () => {
@@ -4528,7 +4607,12 @@ function EventDetailsEditor({ event, onUpdate }) {
       emoji: event.emoji || "", title: event.title || "", description: event.description || "",
       schedule: event.schedule || "", food_dining: event.food_dining || "", facilities: event.facilities || "",
       dress_code: event.dress_code || "", venue: event.venue || "", venue_lat: event.venue_lat || null, venue_lng: event.venue_lng || null,
-      date: event.event_at ? new Date(event.event_at).toISOString().slice(0, 10) : "", time: ""
+      date: event.event_at ? new Date(event.event_at).toISOString().slice(0, 10) : "", time: "",
+      end_date: event.end_at ? new Date(event.end_at).toISOString().slice(0, 10) : "", end_time: "",
+      date_mode: event.date_mode || "single",
+      location_type: event.location_type || "physical",
+      online_url: event.online_url || "",
+      about_media: Array.isArray(event.about_media) ? event.about_media : []
     });
     setOpen(true);
   };
@@ -4537,13 +4621,27 @@ function EventDetailsEditor({ event, onUpdate }) {
     const patch = {
       emoji: d.emoji || "🎟️", title: d.title, description: d.description, schedule: d.schedule,
       food_dining: d.food_dining, facilities: d.facilities, dress_code: d.dress_code,
-      venue: d.venue, venue_lat: d.venue_lat, venue_lng: d.venue_lng
+      venue: d.location_type === "physical" ? d.venue : "", venue_lat: d.location_type === "physical" ? d.venue_lat : null, venue_lng: d.location_type === "physical" ? d.venue_lng : null,
+      date_mode: d.date_mode, location_type: d.location_type,
+      online_url: d.location_type === "online" ? d.online_url.trim() : "",
+      about_media: d.about_media
     };
-    if (d.date) {
+    if (d.date_mode === "tbd") {
+      patch.event_date = "📅 To be decided";
+    } else if (d.date) {
       const iso = new Date(d.date + "T" + parseTimeStr(d.time) + ":00").toISOString();
       patch.event_at = iso;
       const dt = new Date(iso);
-      patch.event_date = dt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) + (d.time ? " · " + d.time.trim() : "");
+      let label = dt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) + (d.time ? " · " + d.time.trim() : "");
+      if (d.end_time || d.end_date) {
+        const endIso = new Date((d.end_date || d.date) + "T" + parseTimeStr(d.end_time || d.time) + ":00").toISOString();
+        patch.end_at = endIso;
+        label += " – " + (d.end_date && d.end_date !== d.date
+          ? new Date(endIso).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + (d.end_time ? " " + d.end_time.trim() : "")
+          : (d.end_time || "").trim());
+      }
+      if (d.date_mode === "recurring") label += " · 🔁 recurring";
+      patch.event_date = label;
     }
     await onUpdate(event.id, patch);
     setSaving(false); setOpen(false);
@@ -4563,12 +4661,63 @@ function EventDetailsEditor({ event, onUpdate }) {
       <textarea value={d.food_dining} onChange={e => setD({ ...d, food_dining: e.target.value })} rows={2} placeholder={"Food & dining — one item per line"} style={ta} />
       <textarea value={d.facilities} onChange={e => setD({ ...d, facilities: e.target.value })} rows={2} placeholder="Facilities — comma separated" style={ta} />
       <input value={d.dress_code} onChange={e => setD({ ...d, dress_code: e.target.value })} placeholder="Dress code" style={ip} />
-      <div style={{ display: "flex", gap: 8, marginBottom: 9, flexWrap: "wrap" }}>
-        <label style={{ flex: "1 1 150px", fontSize: 12, color: W.soft }}>Date<input type="date" value={d.date} onChange={e => setD({ ...d, date: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink }} /></label>
-        <label style={{ flex: "1 1 110px", fontSize: 12, color: W.soft }}>Time<input value={d.time} onChange={e => setD({ ...d, time: e.target.value })} placeholder={event.event_date || "8PM"} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none" }} /></label>
+      <div style={{ display: "flex", gap: 7, marginBottom: 9, flexWrap: "wrap" }}>
+        {[["single", "One-time"], ["recurring", "🔁 Recurring"], ["tbd", "📅 Date TBD"]].map(([k, l]) => (
+          <div key={k} onClick={() => setD({ ...d, date_mode: k })} style={{ padding: "7px 13px", borderRadius: 16, fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: d.date_mode === k ? W.teal : "#fff", color: d.date_mode === k ? "#fff" : W.ink, border: `1px solid ${d.date_mode === k ? W.teal : W.line}` }}>{l}</div>
+        ))}
       </div>
-      <div style={{ fontSize: 11, color: W.soft, marginBottom: 9 }}>Leave date blank to keep the current date{event.event_date ? ` (${event.event_date})` : ""}. Set both date and time to change it.</div>
-      <VenueAutocomplete value={d.venue} onChange={({ venue, lat, lng }) => setD({ ...d, venue, venue_lat: lat, venue_lng: lng })} />
+      {d.date_mode !== "tbd" && (
+        <>
+          <div style={{ display: "flex", gap: 8, marginBottom: 9, flexWrap: "wrap" }}>
+            <label style={{ flex: "1 1 150px", fontSize: 12, color: W.soft }}>Start date<input type="date" value={d.date} onChange={e => setD({ ...d, date: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink }} /></label>
+            <label style={{ flex: "1 1 110px", fontSize: 12, color: W.soft }}>Start time<input value={d.time} onChange={e => setD({ ...d, time: e.target.value })} placeholder="9PM" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none" }} /></label>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 9, flexWrap: "wrap" }}>
+            <label style={{ flex: "1 1 150px", fontSize: 12, color: W.soft }}>End date (optional)<input type="date" value={d.end_date} onChange={e => setD({ ...d, end_date: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink }} /></label>
+            <label style={{ flex: "1 1 110px", fontSize: 12, color: W.soft }}>End time<input value={d.end_time} onChange={e => setD({ ...d, end_time: e.target.value })} placeholder="1AM" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 14, outline: "none" }} /></label>
+          </div>
+          <div style={{ fontSize: 11, color: W.soft, marginBottom: 9 }}>Leave start date blank to keep the current date{event.event_date ? ` (${event.event_date})` : ""}. End is optional — same date assumed if only end time given.</div>
+        </>
+      )}
+      <div style={{ display: "flex", gap: 7, marginBottom: 9, flexWrap: "wrap" }}>
+        {[["physical", "📍 Physical"], ["online", "🖥️ Online"], ["tbd", "❓ Venue TBD"]].map(([k, l]) => (
+          <div key={k} onClick={() => setD({ ...d, location_type: k })} style={{ padding: "7px 13px", borderRadius: 16, fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: d.location_type === k ? W.teal : "#fff", color: d.location_type === k ? "#fff" : W.ink, border: `1px solid ${d.location_type === k ? W.teal : W.line}` }}>{l}</div>
+        ))}
+      </div>
+      {d.location_type === "physical" && <VenueAutocomplete value={d.venue} onChange={({ venue, lat, lng }) => setD({ ...d, venue, venue_lat: lat, venue_lng: lng })} />}
+      {d.location_type === "online" && <input value={d.online_url} onChange={e => setD({ ...d, online_url: e.target.value })} placeholder="Meeting / stream link (https://…)" style={ip} />}
+      <div style={{ marginTop: 10, marginBottom: 4 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, marginBottom: 6 }}>🖼️ About-section media</div>
+        {(d.about_media || []).map((m, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0", borderBottom: `1px solid ${W.line}` }}>
+            {m.kind === "image" ? <img src={m.url} alt="" style={{ width: 44, height: 32, objectFit: "cover", borderRadius: 6 }} /> : <span style={{ fontSize: 19 }}>{m.kind === "video" ? "🎬" : "📎"}</span>}
+            <div style={{ flex: 1, fontSize: 12.5, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name || m.kind}</div>
+            <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => setD({ ...d, about_media: d.about_media.filter((_, k) => k !== i) })} />
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          {[["image", "🖼️ Add images", "image/*", true], ["video", "🎬 Add video", "video/*", false], ["file", "📎 Add file", "*/*", false]].map(([kind, label, accept, multi]) => (
+            <label key={kind} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "8px 12px", fontSize: 12, cursor: "pointer" }}>
+              {mediaBusy === kind ? "Uploading…" : label}
+              <input type="file" accept={accept} multiple={!!multi} style={{ display: "none" }} disabled={!!mediaBusy}
+                onChange={async e => {
+                  const files = Array.from(e.target.files || []); e.target.value = "";
+                  if (!files.length) return;
+                  setMediaBusy(kind);
+                  try {
+                    const added = [];
+                    for (const f of files) {
+                      const url = kind === "image" ? await uploadPhoto(event.id, f) : await uploadChatFile(event.id, f);
+                      added.push({ kind, url, name: f.name });
+                    }
+                    setD(prev => ({ ...prev, about_media: [...(prev.about_media || []), ...added] }));
+                  } catch (e2) { alert(e2.message || "Upload failed"); }
+                  setMediaBusy(null);
+                }} />
+            </label>
+          ))}
+        </div>
+      </div>
       <div style={{ display: "flex", gap: 9, marginTop: 10 }}>
         <button onClick={() => setOpen(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
         <button onClick={save} disabled={saving || !d.title} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: (saving || !d.title) ? .6 : 1 }}>{saving ? "Saving…" : "Save details"}</button>
@@ -5542,7 +5691,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • churn ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • phaseb ✅</div>
       </div>
     </div>
   );
