@@ -83,6 +83,25 @@ export default async function handler(req, res) {
   try {
     const findRow = async () => (await sb.from("room_subscriptions").select("id, room_id, user_id").eq("razorpay_subscription_id", subId).maybeSingle()).data;
 
+    // 💎 plan subscriptions live in member_plans
+    const { data: planRow } = await sb.from("member_plans").select("id, user_id, plan_id, months, expires_at").eq("razorpay_subscription_id", subId).maybeSingle();
+    if (planRow) {
+      if (event === "subscription.charged") {
+        const pm = Number(subEnt?.notes?.plan_months) || Number(planRow.months) || 1;
+        const base = planRow.expires_at ? Math.max(new Date(planRow.expires_at).getTime(), Date.now()) : Date.now();
+        await sb.from("member_plans").update({ expires_at: new Date(base + pm * 30 * 86400000).toISOString() }).eq("id", planRow.id);
+        const pe = body.payload?.payment?.entity;
+        if (pe?.id) {
+          const { data: dup } = await sb.from("payments").select("id").eq("razorpay_payment_id", pe.id).maybeSingle();
+          if (!dup) await sb.from("payments").insert({ user_id: planRow.user_id, purpose: "plan", plan_id: planRow.plan_id, plan_months: pm, amount: pe.amount, status: "paid", razorpay_subscription_id: subId, razorpay_payment_id: pe.id });
+        }
+      } else if (event === "subscription.cancelled" || event === "subscription.completed" || event === "subscription.halted") {
+        // stop future renewals; the member keeps access until expires_at, then the daily sweep removes it
+        await sb.from("member_plans").update({ razorpay_subscription_id: null }).eq("id", planRow.id);
+      }
+      return res.status(200).json({ ok: true, plan: true });
+    }
+
     if (event === "subscription.charged" || event === "subscription.activated" || event === "subscription.resumed") {
       const row = await findRow();
       if (row) {
