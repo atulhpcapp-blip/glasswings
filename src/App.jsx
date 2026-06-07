@@ -4411,7 +4411,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
       {emojiOpen && (
         <div style={{ position: "fixed", bottom: 64, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 22, padding: "0 10px" }}>
           <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 -3px 16px rgba(0,0,0,.12)", padding: 10, display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 4, maxHeight: 180, overflowY: "auto" }}>
-            {EMOJIS.map(em => <span key={em} onClick={() => { const el = textRef.current; if (el) { el.value = el.value + em; } }} style={{ fontSize: 22, textAlign: "center", cursor: "pointer", userSelect: "none", padding: 2 }}>{em}</span>)}
+            {EMOJIS.map(em => <span key={em} onClick={() => { const el = textRef.current; if (el) { el.value = el.value + em; } setEmojiOpen(false); textRef.current?.focus(); }} style={{ fontSize: 22, textAlign: "center", cursor: "pointer", userSelect: "none", padding: 2 }}>{em}</span>)}
           </div>
         </div>
       )}
@@ -7533,7 +7533,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • smoothtype ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • emojiclose ✅</div>
       </div>
     </div>
   );
