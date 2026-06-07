@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { supabase } from "./supabaseClient.js";
 import * as appCfg from "./config.js";
 import {
@@ -1498,6 +1498,14 @@ function Main({ user }) {
   const [p2pThreads, setP2pThreads] = useState([]);
   const [stories, setStories] = useState([]);
   const [coupleFor, setCoupleFor] = useState(null);
+  const streakInfo = useMemo(() => {
+    const past = (events || []).filter(e => e.event_at && new Date(e.event_at).getTime() < Date.now())
+      .sort((a, b) => new Date(b.event_at) - new Date(a.event_at));
+    const att = past.map(e => tickets.includes(e.id));
+    let current = 0; for (const a of att) { if (a) current++; else break; }
+    let best = 0, run = 0; for (const a of att) { run = a ? run + 1 : 0; if (run > best) best = run; }
+    return { current, best, attended: att.filter(Boolean).length, totalPast: past.length };
+  }, [events, tickets]);
   const roomParamDone = useRef(false);
   useEffect(() => {
     if (roomParamDone.current || !rooms.length) return;
@@ -1937,13 +1945,13 @@ function Main({ user }) {
 
   const screen = (
     <>
-      {tab === "chats" && <><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
+      {tab === "chats" && <><TriviaPill meId={user.id} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} />}
       {tab === "events" && <Events events={events} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
-      {tab === "profile" && <Profile user={user} profile={profile} reload={load} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
+      {tab === "profile" && <Profile user={user} profile={profile} reload={load} streak={streakInfo} events={events} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
   );
 
@@ -2414,6 +2422,42 @@ function StoryViewer({ list, event, owner, meId, isStaff, onClose, onDeleted }) 
     </div>
   );
 }
+function GifPicker({ onPick, onClose }) {
+  const [q, setQ] = useState("");
+  const [gifs, setGifs] = useState(null);
+  const [err, setErr] = useState("");
+  const search = async (term) => {
+    setGifs(undefined); setErr("");
+    try {
+      const r = await fetch("/api/gif?q=" + encodeURIComponent(term || "trending"));
+      const data = await r.json();
+      if (!r.ok) { setErr(data.error === "setup" ? "GIF search isn't set up yet — admin needs to add the Tenor key." : (data.error || "Search failed")); setGifs([]); return; }
+      setGifs(data.gifs || []);
+    } catch { setErr("Search failed — check connection."); setGifs([]); }
+  };
+  useEffect(() => { search(""); }, []);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "16px 16px 0 0", padding: "14px 12px calc(16px + env(safe-area-inset-bottom))", height: "62vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && search(q)} placeholder="Search GIFs… (dance, party, happy)" autoFocus
+            style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 13px", fontSize: 14, outline: "none" }} />
+          <button onClick={() => search(q)} style={{ ...btn(W.teal, "#fff"), padding: "10px 14px" }}>Go</button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {gifs === undefined && <div style={{ color: W.soft, textAlign: "center", padding: 24, fontSize: 13.5 }}>Searching…</div>}
+          {err && <div style={{ color: "#C0392B", textAlign: "center", padding: 20, fontSize: 13 }}>{err}</div>}
+          {Array.isArray(gifs) && gifs.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+              {gifs.map(g => <img key={g.id} src={g.tiny} alt="" onClick={() => onPick(g.full)} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 8, cursor: "pointer", background: "#F0F2F5" }} />)}
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 10, color: W.soft, textAlign: "center", marginTop: 6 }}>Powered by Tenor</div>
+      </div>
+    </div>
+  );
+}
 function CoupleInfoSheet({ room, userId, onClose, onDone }) {
   useEffect(() => { fetch("/api/razorpay/subscribe", { method: "GET" }).catch(() => { }); }, []);
   const [pName, setPName] = useState("");
@@ -2484,6 +2528,106 @@ function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
         <div style={{ fontSize: 14, fontWeight: 800, color: W.ink }}>🔒 Conversations are members-only</div>
         <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{free ? "This room is free for you — join and start chatting." : `₹${room.price_monthly}/month · cancel anytime · free for women`}</div>
         <button onClick={onJoin} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", fontSize: 15.5, padding: "13px" }}>{free ? "Join free" : `Subscribe · ₹${room.price_monthly}/mo`}</button>
+      </div>
+    </div>
+  );
+}
+function TriviaPill({ meId }) {
+  const [openQ, setOpenQ] = useState(false);
+  const [done, setDone] = useState(null);
+  useEffect(() => {
+    supabase.from("trivia_scores").select("score").eq("user_id", meId).eq("day", new Date().toISOString().slice(0, 10)).maybeSingle()
+      .then(({ data }) => setDone(data ? data.score : null));
+  }, [meId, openQ]);
+  return (
+    <>
+      <div onClick={() => setOpenQ(true)} style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", padding: "10px 14px", cursor: "pointer" }}>
+        <span style={{ fontSize: 20 }}>🎮</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800, fontSize: 13.5 }}>Daily Trivia</div>
+          <div style={{ fontSize: 11, opacity: .85 }}>{done !== null ? `Played today — you scored ${done}/5 · see the leaderboard` : "5 questions · new every day · beat the community"}</div>
+        </div>
+        <span style={{ fontWeight: 800, fontSize: 12, background: "rgba(255,255,255,.2)", padding: "5px 11px", borderRadius: 12 }}>{done !== null ? "🏆 Board" : "▶ Play"}</span>
+      </div>
+      {openQ && <TriviaSheet meId={meId} alreadyScore={done} onClose={() => setOpenQ(false)} />}
+    </>
+  );
+}
+function TriviaSheet({ meId, alreadyScore, onClose }) {
+  const [qs, setQs] = useState(null);
+  const [i, setI] = useState(0);
+  const [picked, setPicked] = useState(null);
+  const [answers, setAnswers] = useState([]);
+  const [result, setResult] = useState(null);
+  const [board, setBoard] = useState(null);
+  const [view, setView] = useState(alreadyScore !== null ? "board" : "quiz");
+  useEffect(() => {
+    if (view === "quiz") supabase.rpc("trivia_today").then(({ data, error }) => setQs(error ? [] : (data || [])));
+  }, [view]);
+  useEffect(() => {
+    if (view !== "board") return;
+    supabase.rpc("trivia_board").then(({ data }) => setBoard(data || []));
+  }, [view, result]);
+  const pick = (idx) => {
+    if (picked !== null) return;
+    setPicked(idx);
+    setTimeout(() => {
+      const next = [...answers, idx];
+      setAnswers(next); setPicked(null);
+      if (i + 1 < qs.length) setI(i + 1);
+      else {
+        supabase.rpc("trivia_submit", { p_answers: next }).then(({ data, error }) => {
+          if (error) { alert(error.message); onClose(); return; }
+          setResult(data); setView("board");
+        });
+      }
+    }, 350);
+  };
+  const q = qs && qs[i];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 180, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "18px 18px 0 0", padding: "18px 16px calc(24px + env(safe-area-inset-bottom))", minHeight: 380, maxHeight: "85vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, flex: 1 }}>🎮 Daily Trivia</div>
+          <X size={21} color={W.soft} onClick={onClose} style={{ cursor: "pointer" }} />
+        </div>
+        {view === "quiz" && (qs === null ? <div style={{ color: W.soft, padding: 20, textAlign: "center" }}>Loading today's questions…</div>
+          : !qs.length ? <div style={{ color: W.soft, padding: 20, textAlign: "center" }}>Today's quiz isn't ready — try again in a minute.</div>
+          : (
+            <>
+              <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+                {qs.map((_, k) => <div key={k} style={{ flex: 1, height: 4, borderRadius: 2, background: k <= i ? W.teal : W.line }} />)}
+              </div>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 16.5, marginBottom: 16, lineHeight: 1.4 }}>{i + 1}. {q.q}</div>
+              {(q.options || []).map((opt, idx) => (
+                <div key={idx} onClick={() => pick(idx)} style={{ padding: "13px 15px", borderRadius: 12, border: `1.5px solid ${picked === idx ? W.teal : W.line}`, background: picked === idx ? "#E7F6EF" : "#fff", fontWeight: 700, color: W.ink, fontSize: 14.5, marginBottom: 9, cursor: "pointer" }}>{opt}</div>
+              ))}
+              <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center" }}>Answers are checked at the end — no pressure 😉</div>
+            </>
+          ))}
+        {view === "board" && (
+          <>
+            {result && (
+              <div style={{ background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", borderRadius: 14, padding: "16px 18px", textAlign: "center", marginBottom: 14 }}>
+                <div style={{ fontSize: 26, fontWeight: 800 }}>{result.score}/5</div>
+                <div style={{ fontSize: 12.5, opacity: .9 }}>{result.score === 5 ? "Perfect! 🏆" : result.score >= 3 ? "Solid! 💪" : "Tomorrow's a new day 😄"} · day streak: 🔥 {result.streak}</div>
+              </div>
+            )}
+            {alreadyScore !== null && !result && <div style={{ fontSize: 13, color: W.soft, marginBottom: 10 }}>You scored <b style={{ color: W.ink }}>{alreadyScore}/5</b> today. New quiz at midnight!</div>}
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 6 }}>Today's leaderboard</div>
+            {board === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div>
+              : !board.length ? <div style={{ color: W.soft, fontSize: 13 }}>No players yet — you could be first!</div>
+              : board.map((r, k) => (
+                <div key={r.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${W.line}` }}>
+                  <div style={{ width: 20, textAlign: "center", fontWeight: 800, color: k < 3 ? "#E67E22" : W.soft, fontSize: 13 }}>{k + 1}</div>
+                  {r.avatar_url ? <img src={r.avatar_url} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>{(r.full_name || "?").charAt(0)}</div>}
+                  <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{r.full_name || "Member"}</div>
+                  <div style={{ fontWeight: 800, color: W.teal, fontSize: 13 }}>{r.score}/5</div>
+                  <div style={{ fontWeight: 700, color: "#E67E22", fontSize: 12 }}>🔥{r.streak}</div>
+                </div>
+              ))}
+          </>
+        )}
       </div>
     </div>
   );
@@ -2752,6 +2896,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
   const [plusOpen, setPlusOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [roomPick, setRoomPick] = useState(false);
+  const [gifOpen, setGifOpen] = useState(false);
   const EMOJIS = ["😀","😂","🤣","😊","😍","😘","🥰","😎","🤩","🥳","😉","😜","🤗","🤔","😴","🙄","😮","🥺","😭","😡","👍","👎","👏","🙏","💪","🤝","👋","🤙","✌️","🤞","❤️","💚","💛","🔥","✨","🎉","🎊","🍻","🥂","☕","🍕","🎶","💃","🕺","🦋","🌹","🧿","🌙","⭐","💯"];
   const sendSpecial = async (extra) => {
     const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, ...extra }).select("id, body, media_url, media_type, file_name, reply_to, sender_id, created_at").single();
@@ -2937,10 +3082,12 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
           <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 -3px 16px rgba(0,0,0,.12)", padding: "6px 0" }}>
             <div onClick={shareLocation} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14 }}><MapPin size={19} color={W.teal} /> Share my location</div>
             <div onClick={() => { setRoomPick(true); setPlusOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14, borderTop: `1px solid ${W.line}` }}>💬 Share a room</div>
+            <div onClick={() => { setGifOpen(true); setPlusOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14, borderTop: `1px solid ${W.line}` }}>🎞️ GIF search</div>
             <div onClick={() => { setPlusOpen(false); fileRef.current?.click(); }} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 16px", cursor: "pointer", fontWeight: 700, color: W.ink, fontSize: 14, borderTop: `1px solid ${W.line}` }}><Paperclip size={18} color={W.teal} /> Document / GIF / any file</div>
           </div>
         </div>
       )}
+      {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
         <div onClick={() => setRoomPick(false)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
           <div onClick={ev => ev.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "16px 16px 0 0", padding: "16px 16px calc(20px + env(safe-area-inset-bottom))", maxHeight: "60vh", overflowY: "auto" }}>
@@ -5802,7 +5949,41 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
     </Sheet>
   );
 }
-function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
+function StreakBoard({ events }) {
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    supabase.rpc("attendance_map").then(async ({ data, error }) => {
+      if (error || !data) { setRows([]); return; }
+      const past = (events || []).filter(e => e.event_at && new Date(e.event_at).getTime() < Date.now())
+        .sort((a, b) => new Date(b.event_at) - new Date(a.event_at)).map(e => e.id);
+      const scored = data.map(r => {
+        const setIds = new Set(r.event_ids || []);
+        let cur = 0; for (const id of past) { if (setIds.has(id)) cur++; else break; }
+        return { user_id: r.user_id, cur, total: (r.event_ids || []).length };
+      }).filter(x => x.cur > 0).sort((a, b) => b.cur - a.cur || b.total - a.total).slice(0, 10);
+      if (!scored.length) { setRows([]); return; }
+      const { data: ps } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", scored.map(x => x.user_id));
+      const pm = {}; (ps || []).forEach(x => { pm[x.id] = x; });
+      setRows(scored.map(x => ({ ...x, name: pm[x.user_id]?.full_name || "Member", avatar: pm[x.user_id]?.avatar_url })));
+    });
+  }, [events]);
+  if (rows === null) return <div style={{ fontSize: 12.5, color: W.soft, padding: "6px 0" }}>Loading leaderboard…</div>;
+  if (!rows.length) return <div style={{ fontSize: 12.5, color: W.soft, padding: "6px 0" }}>No streaks yet — attend events back-to-back to start one! 🔥</div>;
+  return (
+    <div>
+      {rows.map((r, i) => (
+        <div key={r.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${W.line}` }}>
+          <div style={{ width: 20, textAlign: "center", fontWeight: 800, color: i < 3 ? "#E67E22" : W.soft, fontSize: 13 }}>{i + 1}</div>
+          {r.avatar ? <img src={r.avatar} alt="" style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
+            : <div style={{ width: 32, height: 32, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{r.name.charAt(0)}</div>}
+          <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{r.name}</div>
+          <div style={{ fontWeight: 800, color: "#E67E22", fontSize: 13.5 }}>🔥 {r.cur}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, events }) {
   const roleLabel = { admin: "Admin (Owner)", subadmin: "Sub-admin", member: "Member" }[profile?.role] || "Member";
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -5880,7 +6061,28 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub }) {
         <PushToggle user={user} />
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • fastpay ✅</div>
+        {streak && (
+          <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 14 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, marginBottom: 8 }}>🔥 Attendance streak</div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1, background: "#FFF4E8", borderRadius: 12, padding: "10px 12px", textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#E67E22" }}>🔥 {streak.current}</div>
+                <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>CURRENT STREAK</div>
+              </div>
+              <div style={{ flex: 1, background: W.bg, borderRadius: 12, padding: "10px 12px", textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: W.ink }}>{streak.best}</div>
+                <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>BEST STREAK</div>
+              </div>
+              <div style={{ flex: 1, background: W.bg, borderRadius: 12, padding: "10px 12px", textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: W.ink }}>{streak.attended}</div>
+                <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700 }}>EVENTS ATTENDED</div>
+              </div>
+            </div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, marginBottom: 4 }}>Streak leaderboard</div>
+            <StreakBoard events={events} />
+          </div>
+        )}
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • funday ✅</div>
       </div>
     </div>
   );
