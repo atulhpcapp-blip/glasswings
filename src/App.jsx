@@ -767,6 +767,12 @@ function RideButtons({ e, compact }) {
     </div>
   );
 }
+const GW_NAME_COLORS = ["#E0529C", "#7C3AED", "#0E7490", "#D97706", "#DC2626", "#059669", "#2563EB", "#C026D3", "#EA580C", "#0D9488", "#9333EA", "#B91C1C"];
+function gwNameColor(id) {
+  let h = 0; const t = String(id || "");
+  for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+  return GW_NAME_COLORS[h % GW_NAME_COLORS.length];
+}
 function gwEventLive(e) {
   if (!e) return false;
   if (e.end_at) return Date.now() <= new Date(e.end_at).getTime();
@@ -4226,6 +4232,7 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
 
   return (
     <div style={{ minHeight: "100dvh", background: "linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)", backgroundImage: `url("${WALL}"), linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)`, paddingBottom: 72 }}>
+      <style>{`@keyframes gwmsgin { 0% { transform: translateY(10px) scale(.96); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }`}</style>
       {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
       {tray && (
         <div onClick={() => setTray(null)} style={{ position: "fixed", inset: 0, zIndex: 95 }}>
@@ -4301,11 +4308,11 @@ function RoomChat({ room, groupType = "room", user, profile, isAdmin, memberCoun
             return (
               <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
-                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ maxWidth: "78%", background: mine ? "linear-gradient(135deg,#D9FDD3,#C2F2E4)" : W.recv, padding: "7px 10px 6px", borderRadius: 14, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4, boxShadow: mine ? "0 2px 6px rgba(0,128,105,.16)" : "0 2px 6px rgba(17,27,33,.08)", border: mine ? "1px solid #BBEBD9" : `1px solid ${W.line}`, userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
-                  {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 700, color: W.teal, marginBottom: 1 }}>{s.name || "Member"}</div>}
+                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ animation: `gwmsgin .28s ease`, transformOrigin: mine ? "bottom right" : "bottom left", maxWidth: "78%", background: mine ? "linear-gradient(135deg,#D9FDD3,#C2F2E4)" : W.recv, padding: "7px 10px 6px", borderRadius: 14, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4, boxShadow: mine ? "0 2px 6px rgba(0,128,105,.16)" : "0 2px 6px rgba(17,27,33,.08)", border: mine ? "1px solid #BBEBD9" : `1px solid ${W.line}`, userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
+                  {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 800, color: gwNameColor(m.sender_id), marginBottom: 1 }}>{s.name || "Member"}</div>}
                   {m.reply_to && (() => { const rm = (msgs || []).find(x => x.id === m.reply_to); return (
                     <div style={{ background: "rgba(0,128,105,.07)", borderLeft: `3px solid ${W.teal}`, borderRadius: 7, padding: "4px 8px", marginBottom: 4 }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 800, color: W.teal }}>{rm ? (senders[rm.sender_id]?.name || "Member") : "Message"}</div>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: rm ? gwNameColor(rm.sender_id) : W.teal }}>{rm ? (senders[rm.sender_id]?.name || "Member") : "Message"}</div>
                       <div style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{rm ? (rm.body || (rm.media_type === "image" ? "📷 Photo" : "📎 Attachment")) : "Original message unavailable"}</div>
                     </div>
                   ); })()}
@@ -7493,7 +7500,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • richchat ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • chatnames ✅</div>
       </div>
     </div>
   );
