@@ -278,7 +278,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [recovery, setRecovery] = useState(false);
   useEffect(() => {
-    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); } catch {}
+    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const gm = sp.get("game"); if (gm) localStorage.setItem("gw_open_game", gm.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); } catch {}
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -1506,6 +1506,11 @@ function Main({ user }) {
     let best = 0, run = 0; for (const a of att) { run = a ? run + 1 : 0; if (run > best) best = run; }
     return { current, best, attended: att.filter(Boolean).length, totalPast: past.length };
   }, [events, tickets]);
+  const [autoGame, setAutoGame] = useState(() => {
+    try { const g = localStorage.getItem("gw_open_game"); if (g) { localStorage.removeItem("gw_open_game"); return g; } } catch { }
+    return null;
+  });
+  useEffect(() => { if (autoGame) setTab("games"); }, []);
   const roomParamDone = useRef(false);
   useEffect(() => {
     if (roomParamDone.current || !rooms.length) return;
@@ -1947,7 +1952,7 @@ function Main({ user }) {
     <>
       {tab === "chats" && <><TriviaPill meId={user.id} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={myChats} onOpen={setOpen} onExplore={() => setTab("explore")} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
-      {tab === "games" && <GameZone meId={user.id} events={events} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
+      {tab === "games" && <GameZone meId={user.id} events={events} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
@@ -2744,13 +2749,18 @@ function AntakshariRoom({ meId, onClose }) {
     </div>
   );
 }
-function GameZone({ meId, events, isStaff }) {
+function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial }) {
   const [playTrivia, setPlayTrivia] = useState(false);
   const [triviaDone, setTriviaDone] = useState(null);
   const [board, setBoard] = useState(null);
   const [awards, setAwards] = useState([]);
   const [awardOpen, setAwardOpen] = useState(false);
   const [playAnt, setPlayAnt] = useState(false);
+  useEffect(() => {
+    if (initialGame === "antakshari") setPlayAnt(true);
+    else if (initialGame === "trivia") setPlayTrivia(true);
+    if (initialGame && onConsumedInitial) onConsumedInitial();
+  }, []);
   const loadAwards = () => supabase.from("game_awards").select("id, prize, created_at, profiles:user_id(full_name, avatar_url)").order("created_at", { ascending: false }).limit(12)
     .then(({ data }) => setAwards(data || []));
   useEffect(() => {
@@ -6497,7 +6507,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • antakshari ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gamelink ✅</div>
       </div>
     </div>
   );
