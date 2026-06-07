@@ -2649,6 +2649,16 @@ function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
   );
 }
 const LUDO_COLORS = ["#E53935", "#43A047", "#FDD835", "#1E88E5"];
+const LUDO_DARK = ["#9E1B1B", "#1F5E26", "#C99B07", "#0D47A1"];
+function DiceFace({ n, size = 46 }) {
+  const pip = (x, y) => <div key={x + "_" + y} style={{ position: "absolute", left: `${x}%`, top: `${y}%`, width: size * .16, height: size * .16, borderRadius: "50%", background: "#1d2a27", transform: "translate(-50%,-50%)" }} />;
+  const P = { 1: [[50, 50]], 2: [[28, 28], [72, 72]], 3: [[26, 26], [50, 50], [74, 74]], 4: [[28, 28], [72, 28], [28, 72], [72, 72]], 5: [[27, 27], [73, 27], [50, 50], [27, 73], [73, 73]], 6: [[30, 24], [70, 24], [30, 50], [70, 50], [30, 76], [70, 76]] };
+  return (
+    <div style={{ position: "relative", width: size, height: size, background: "linear-gradient(145deg,#ffffff,#e9efec)", borderRadius: size * .22, boxShadow: "0 3px 8px rgba(0,0,0,.3), inset 0 -2px 4px rgba(0,0,0,.08)", display: "inline-block", verticalAlign: "middle" }}>
+      {(P[n] || []).map(([x, y]) => pip(x, y))}
+    </div>
+  );
+}
 const LUDO_PATH = (() => {
   const seq = [];
   for (let c = 1; c <= 5; c++) seq.push([6, c]);
@@ -2829,25 +2839,84 @@ function LudoGame({ gameId, meId, onClose }) {
           {players[0]?.uid === meId && <button onClick={start} disabled={busy || players.length < 2} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", opacity: players.length < 2 ? .55 : 1 }}>{players.length < 2 ? "Need at least 2 players…" : "▶ Start game"}</button>}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 4px" }}>
-        <div style={{ position: "relative", width: B, height: B, background: "#fff", borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,.1)" }}>
-          {Array.from({ length: 15 }).map((_, r) => Array.from({ length: 15 }).map((_, c) => (
-            <div key={r + "_" + c} style={{ position: "absolute", left: c * cell, top: r * cell, width: cell, height: cell, background: cellBg(r, c), border: "0.5px solid #E8ECEA", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#B8A24A" }}>{isStar(r, c) ? "★" : (r === 7 && c === 7 ? "🏆" : "")}</div>
-          )))}
+      <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 6px" }}>
+        <div style={{ background: "linear-gradient(145deg,#14323C,#0E2228)", padding: 9, borderRadius: 18, boxShadow: "0 8px 26px rgba(0,0,0,.35)" }}>
+        <div style={{ position: "relative", width: B, height: B, background: "#fff", borderRadius: 8, overflow: "hidden" }}>
+          {Array.from({ length: 15 }).map((_, r) => Array.from({ length: 15 }).map((_, c) => {
+            const inBase = (r < 6 && c < 6) || (r < 6 && c > 8) || (r > 8 && c > 8) || (r > 8 && c < 6);
+            const baseIdx = r < 6 && c < 6 ? 0 : r < 6 && c > 8 ? 1 : r > 8 && c > 8 ? 2 : r > 8 && c < 6 ? 3 : -1;
+            let bg = "transparent", border = "none", inner = null;
+            if (inBase) { bg = LUDO_COLORS[baseIdx]; }
+            else {
+              let homeIdx = -1;
+              for (let pp = 0; pp < 4; pp++) if (LUDO_HOME[pp].some(([hr, hc]) => hr === r && hc === c)) homeIdx = pp;
+              const ti = LUDO_PATH.findIndex(([tr, tc]) => tr === r && tc === c);
+              if (homeIdx >= 0) { bg = LUDO_COLORS[homeIdx]; border = `1px solid ${LUDO_DARK[homeIdx]}55`; }
+              else if (ti >= 0) {
+                const sIdx = LUDO_START.indexOf(ti);
+                if (sIdx >= 0) {
+                  bg = LUDO_COLORS[sIdx]; border = `1px solid ${LUDO_DARK[sIdx]}66`;
+                  inner = <span style={{ color: "#ffffffcc", fontSize: 12, fontWeight: 800, transform: `rotate(${[0, 90, 180, 270][sIdx]}deg)` }}>➤</span>;
+                } else {
+                  bg = "#FDFEFE"; border = "1px solid #D8E0DC";
+                  if (LUDO_SAFE.has(ti)) inner = <span style={{ color: "#9AA7A3", fontSize: 13 }}>✦</span>;
+                }
+              } else if (r >= 6 && r <= 8 && c >= 6 && c <= 8) { bg = "#fff"; }
+            }
+            return <div key={r + "_" + c} style={{ position: "absolute", left: c * cell, top: r * cell, width: cell, height: cell, background: bg, border, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>{inner}</div>;
+          }))}
           {[0, 1, 2, 3].map(pidx => {
             const [qr, qc] = [[0, 0], [0, 9], [9, 9], [9, 0]][pidx];
-            return <div key={pidx} style={{ position: "absolute", left: qc * cell + cell * .75, top: qr * cell + cell * .75, width: cell * 4.5, height: cell * 4.5, background: "#fff", border: `2.5px solid ${LUDO_COLORS[pidx]}`, borderRadius: 12 }} />;
+            return (
+              <div key={"court" + pidx}>
+                <div style={{ position: "absolute", left: qc * cell + cell * .9, top: qr * cell + cell * .9, width: cell * 4.2, height: cell * 4.2, background: "#fff", borderRadius: 14, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
+                {LUDO_BASE[pidx].map(([br, bc], k) => (
+                  <div key={k} style={{ position: "absolute", left: bc * cell - cell * .62, top: br * cell - cell * .62, width: cell * 1.24, height: cell * 1.24, borderRadius: "50%", background: "#F2F6F4", boxShadow: `inset 0 0 0 3px ${LUDO_COLORS[pidx]}55, inset 0 2px 4px rgba(0,0,0,.12)` }} />
+                ))}
+              </div>
+            );
           })}
+          {(() => {
+            const cx = 6 * cell, sz = 3 * cell;
+            const tri = (deg, color) => {
+              const half = sz / 2;
+              const styles = {
+                0: { borderLeft: `${half}px solid ${color}`, borderTop: `${half}px solid transparent`, borderBottom: `${half}px solid transparent`, left: cx, top: cx + 0 },
+                1: { borderTop: `${half}px solid ${color}`, borderLeft: `${half}px solid transparent`, borderRight: `${half}px solid transparent`, left: cx, top: cx },
+                2: { borderRight: `${half}px solid ${color}`, borderTop: `${half}px solid transparent`, borderBottom: `${half}px solid transparent`, left: cx + half, top: cx },
+                3: { borderBottom: `${half}px solid ${color}`, borderLeft: `${half}px solid transparent`, borderRight: `${half}px solid transparent`, left: cx, top: cx + half },
+              }[deg];
+              return styles;
+            };
+            return (
+              <div style={{ position: "absolute", left: cx, top: cx, width: sz, height: sz }}>
+                <div style={{ position: "absolute", width: 0, height: 0, left: 0, top: sz / 4 * 0, borderTop: `${sz / 2}px solid transparent`, borderBottom: `${sz / 2}px solid transparent`, borderLeft: `${sz / 2}px solid ${LUDO_COLORS[0]}` }} />
+                <div style={{ position: "absolute", width: 0, height: 0, left: 0, top: 0, borderLeft: `${sz / 2}px solid transparent`, borderRight: `${sz / 2}px solid transparent`, borderTop: `${sz / 2}px solid ${LUDO_COLORS[1]}` }} />
+                <div style={{ position: "absolute", width: 0, height: 0, right: 0, top: 0, borderTop: `${sz / 2}px solid transparent`, borderBottom: `${sz / 2}px solid transparent`, borderRight: `${sz / 2}px solid ${LUDO_COLORS[2]}` }} />
+                <div style={{ position: "absolute", width: 0, height: 0, left: 0, bottom: 0, borderLeft: `${sz / 2}px solid transparent`, borderRight: `${sz / 2}px solid transparent`, borderBottom: `${sz / 2}px solid ${LUDO_COLORS[3]}` }} />
+                <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", fontSize: 15, textShadow: "0 1px 2px rgba(0,0,0,.4)" }}>🏆</div>
+              </div>
+            );
+          })()}
           {tokenList.map(t => {
-            const sz = cell * 0.82;
+            const sz = cell * 0.86;
             const offs = t.stackIdx * 4 - (stacks[t.rc[0] + "_" + t.rc[1]] - 1) * 2;
             const clickable = myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
+            const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx];
             return (
               <div key={t.pidx + "_" + t.j} onClick={() => move(t.j)}
-                style={{ position: "absolute", left: t.rc[1] * cell + (cell - sz) / 2 + offs, top: t.rc[0] * cell + (cell - sz) / 2 - offs, width: sz, height: sz, borderRadius: "50%", background: LUDO_COLORS[t.pidx], border: "2px solid #fff", boxShadow: clickable ? `0 0 0 3px ${LUDO_COLORS[t.pidx]}88, 0 2px 5px rgba(0,0,0,.35)` : "0 2px 5px rgba(0,0,0,.35)", cursor: clickable ? "pointer" : "default", transition: "left .25s, top .25s", zIndex: 5 + t.stackIdx, animation: clickable ? "gwpulse 1s infinite" : "none" }} />
+                style={{ position: "absolute", left: t.rc[1] * cell + (cell - sz) / 2 + offs, top: t.rc[0] * cell + (cell - sz) / 2 - offs, width: sz, height: sz, borderRadius: "50%",
+                  background: `radial-gradient(circle at 32% 26%, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 22%, transparent 40%), radial-gradient(circle at 50% 55%, ${col} 40%, ${dk} 100%)`,
+                  border: `1.5px solid ${dk}`,
+                  boxShadow: clickable ? `0 0 0 3px ${col}88, 0 3px 6px rgba(0,0,0,.4)` : "0 3px 6px rgba(0,0,0,.4)",
+                  cursor: clickable ? "pointer" : "default", transition: "left .25s, top .25s", zIndex: 5 + t.stackIdx,
+                  animation: clickable ? "gwpulse 1s infinite" : "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: sz * .26, height: sz * .26, borderRadius: "50%", background: "#fff", boxShadow: `inset 0 1px 2px ${dk}88` }} />
+              </div>
             );
           })}
           <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }`}</style>
+        </div>
         </div>
       </div>
       {g.status === "playing" && (
@@ -2856,7 +2925,7 @@ function LudoGame({ gameId, meId, onClose }) {
           {myTurn ? (
             g.dice == null
               ? <button onClick={roll} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 16 }}>{busy ? "Rolling…" : "🎲 Roll the dice"}</button>
-              : <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>You rolled <span style={{ fontSize: 22 }}>🎲 {g.dice}</span> — tap a glowing token to move</div>
+              : <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}><DiceFace n={g.dice} /> Tap a glowing token to move</div>
           ) : <div style={{ fontWeight: 700, color: W.soft, fontSize: 14 }}>Waiting for {(players[g.turn]?.name || "player").split(" ")[0]}'s move…</div>}
         </div>
       )}
@@ -6733,7 +6802,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludo ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludo2 ✅</div>
       </div>
     </div>
   );
