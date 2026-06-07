@@ -1621,16 +1621,57 @@ function Main({ user }) {
   const eventLive = gwEventLive;
   const [dmStreaks, setDmStreaks] = useState({});
   const [planRoomIds, setPlanRoomIds] = useState([]);
-  useEffect(() => {
+  const [allPlans, setAllPlans] = useState([]);
+  const [allPlanRooms, setAllPlanRooms] = useState([]);
+  const [myPlans, setMyPlans] = useState([]);
+  const [subPage, setSubPage] = useState(null);
+  const loadPlans = async () => {
     if (!user?.id) return;
-    (async () => {
-      const { data: mps } = await supabase.from("member_plans").select("plan_id, expires_at").eq("user_id", user.id);
-      const live = (mps || []).filter(m => !m.expires_at || new Date(m.expires_at).getTime() > Date.now()).map(m => m.plan_id);
-      if (!live.length) { setPlanRoomIds([]); return; }
-      const { data: prs } = await supabase.from("plan_rooms").select("room_id").in("plan_id", live);
-      setPlanRoomIds([...new Set((prs || []).map(x => x.room_id))]);
-    })();
-  }, [user?.id, tab]);
+    const [{ data: pls }, { data: prsAll }, { data: mps }] = await Promise.all([
+      supabase.from("plans").select("*").eq("active", true).order("position").order("created_at"),
+      supabase.from("plan_rooms").select("plan_id, room_id"),
+      supabase.from("member_plans").select("id, plan_id, started_at, expires_at, months, source").eq("user_id", user.id),
+    ]);
+    setAllPlans(pls || []); setAllPlanRooms(prsAll || []);
+    const live = (mps || []).filter(m => !m.expires_at || new Date(m.expires_at).getTime() > Date.now());
+    setMyPlans(live);
+    const liveIds = live.map(m => m.plan_id);
+    setPlanRoomIds(liveIds.length ? [...new Set((prsAll || []).filter(x => liveIds.includes(x.plan_id)).map(x => x.room_id))] : []);
+  };
+  useEffect(() => { loadPlans(); }, [user?.id, tab]);
+  const coveringPlanId = (roomId) => (allPlanRooms.find(x => x.room_id === roomId) || {}).plan_id || null;
+  const buyPlan = async (plan, months) => {
+    setPayBusy(true);
+    const ready = await loadRazorpay();
+    if (!ready) { setPayBusy(false); return setNotice("Couldn't open the payment window. Check your connection and try again."); }
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    let od;
+    try {
+      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose: "plan", plan_id: plan.id, plan_months: months }) });
+      od = await r.json();
+      if (!r.ok) { setPayBusy(false); return setNotice(od.error || "Could not start the payment."); }
+    } catch { setPayBusy(false); return setNotice("Could not start the payment. Please try again."); }
+    const rzp = new window.Razorpay({
+      key: od.key_id, order_id: od.order_id, amount: od.amount, currency: "INR",
+      name: "Glasswings Events", description: `${plan.emoji || "💎"} ${plan.name} — ${months} month${months > 1 ? "s" : ""}`,
+      image: "/icon-192.png", theme: { color: "#0E8C7F" },
+      prefill: { name: profile?.full_name || "", email: user.email || "" },
+      handler: async (resp) => {
+        try {
+          const v = await fetch("/api/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
+          const vd = await v.json();
+          if (!v.ok || !vd.ok) return setNotice(vd.error || "We couldn't confirm the payment. If money was deducted, contact us and we'll sort it.");
+          await loadPlans(); await load();
+          setSubPage(null);
+          setNotice(`🎉 Welcome to ${plan.name}! All your rooms are open.`);
+        } catch { setNotice("Payment confirmation failed. If money was deducted, contact us and we'll sort it."); }
+      },
+    });
+    rzp.on("payment.failed", () => setNotice("Payment failed or was cancelled — nothing was charged."));
+    setPayBusy(false);
+    rzp.open();
+  };
   const [previews, setPreviews] = useState({});
   useEffect(() => {
     if (!user?.id || tab !== "chats") return;
@@ -2124,7 +2165,7 @@ function Main({ user }) {
         }} wide={wide} sidebar={convoLeft} />;
     } else if (open.type === "room-locked") {
       const r = rooms.find(x => x.id === open.id);
-      chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} onJoin={() => joinRoom(r)} onPlan={(mo) => buyRoomPlan(r, mo)} onBack={() => setOpen(null)} /> : null;
+      chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} onJoin={() => { const cp = coveringPlanId(r.id); if (cp && !freeForUser(r)) { setOpen(null); setSubPage({ highlight: cp }); } else joinRoom(r); }} onPlan={(mo) => buyRoomPlan(r, mo)} onBack={() => setOpen(null)} /> : null;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
       if (r) chatEl = <RoomChat allRooms={rooms} room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
@@ -2174,11 +2215,12 @@ function Main({ user }) {
       )}
       {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
-      {tab === "games" && <GameZone meId={user.id} events={events} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
+      {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <Gallery isAdmin={isAdmin} />}
+      {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} />}
       {tab === "profile" && <Profile user={user} profile={profile} reload={load} streak={streakInfo} events={events} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
   );
@@ -2278,6 +2320,7 @@ function Main({ user }) {
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isStaff} />
       <GwDialogHost />
+      {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
   );
 }
@@ -3371,7 +3414,7 @@ function AntakshariRoom({ meId, onClose }) {
   );
 }
 const BANTER_PROMPTS = ["Describe your perfect Sunday in 5 words 😏", "Beach trip or mountain trip?", "What song is stuck in your head?", "Biggest ick on a first date? 😂", "Chai date or coffee date?", "Most spontaneous thing you've done?"];
-function BlindBanter({ meId, onClose }) {
+function BlindBanter({ meId, onUpgrade, onClose }) {
   const [st, setSt] = useState(null); // status payload
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState("");
@@ -3404,7 +3447,10 @@ function BlindBanter({ meId, onClose }) {
     setBusy(true);
     const { error } = await supabase.rpc("banter_join");
     setBusy(false);
-    if (error) return cupidAlert(error.message);
+    if (error) {
+      if (/premium/i.test(error.message || "")) return cupidConfirm(error.message + "\n\nView membership plans?", () => { onClose(); onUpgrade && onUpgrade(); });
+      return cupidAlert(error.message);
+    }
     loadStatus();
   };
   const leave = async () => { await supabase.rpc("banter_leave").then(() => { }); loadStatus(); };
@@ -3550,7 +3596,7 @@ function vibeLabel(pct) {
   if (pct >= 50) return "Slow burn 😏";
   return "Opposites attract? 😅";
 }
-function VibeCheck({ meId, isStaff, onClose }) {
+function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
   const [view, setView] = useState("home"); // home | pick | quiz | sent | result
   const [qs, setQs] = useState(null);
   const [mine, setMine] = useState(null);
@@ -3593,7 +3639,7 @@ function VibeCheck({ meId, isStaff, onClose }) {
     return () => clearTimeout(t);
   }, [search, view, myGender]);
   const surprise = async () => {
-    if (!unlimited) { alert("🎲 Random match is a 💎 Premium perk!\n\nSubscribe to any premium room (Explore tab) to unlock it — plus unlimited Vibe Checks."); return; }
+    if (!unlimited) { window.gwConfirm("🎲 Random match is a 💎 Premium perk!\n\nGo Premium to unlock it — plus unlimited Vibe Checks?", () => { onClose(); onUpgrade && onUpgrade(); }); return; }
     const opp = myGender === "male" ? "female" : "male";
     const { data } = await supabase.from("profiles").select("id, full_name, avatar_url").eq("gender", opp).neq("id", meId).not("avatar_url", "is", null).limit(60);
     const pool = data || [];
@@ -3671,7 +3717,7 @@ function VibeCheck({ meId, isStaff, onClose }) {
         <Header title="10 questions · find your match %" />
         <div style={{ padding: 16 }}>
           <button onClick={() => {
-            if (quotaLeft <= 0) { alert("💎 Free members get 1 Vibe Check a week — you've used yours!\n\nSubscribe to any premium room (Explore tab) for unlimited Vibe Checks + random matches."); return; }
+            if (quotaLeft <= 0) { window.gwConfirm("💎 Free members get 1 Vibe Check a week — you've used yours!\n\nGo Premium for unlimited Vibe Checks + random matches?", () => { onClose(); onUpgrade && onUpgrade(); }); return; }
             setSearch(""); setView("pick");
           }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 6, background: "linear-gradient(95deg,#EC4899,#8B5CF6)", opacity: quotaLeft <= 0 ? .6 : 1 }}>💘 New Vibe Check</button>
           <div style={{ textAlign: "center", fontSize: 11.5, fontWeight: 700, color: unlimited ? "#8B5CF6" : W.soft, marginBottom: 10 }}>
@@ -3837,7 +3883,7 @@ function StreakBoardCard() {
     </>
   );
 }
-function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial }) {
+function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onConsumedInitial }) {
   const [playTrivia, setPlayTrivia] = useState(false);
   const [triviaDone, setTriviaDone] = useState(null);
   const [board, setBoard] = useState(null);
@@ -3925,8 +3971,8 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
       {playTrivia && <TriviaSheet meId={meId} alreadyScore={triviaDone} onClose={() => setPlayTrivia(false)} />}
       {playAnt && <AntakshariRoom meId={meId} onClose={() => setPlayAnt(false)} />}
       {playLudo && <LudoHub meId={meId} onClose={() => setPlayLudo(false)} />}
-      {playVibe && <VibeCheck meId={meId} isStaff={isStaff} onClose={() => setPlayVibe(false)} />}
-      {playBanter && <BlindBanter meId={meId} onClose={() => setPlayBanter(false)} />}
+      {playVibe && <VibeCheck meId={meId} isStaff={isStaff} onUpgrade={onUpgrade} onClose={() => setPlayVibe(false)} />}
+      {playBanter && <BlindBanter meId={meId} onUpgrade={onUpgrade} onClose={() => setPlayBanter(false)} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -7061,6 +7107,97 @@ function MemberRolesSheet({ member: m, cities, onSetRoles, onClose, onSaved }) {
         <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "Save"}</button>
       </div>
     </Sheet>
+  );
+}
+function PlanStatusCard({ myPlans, plans, onOpen }) {
+  if (!myPlans.length) return (
+    <div onClick={onOpen} style={{ margin: "12px 14px 0", background: "linear-gradient(95deg,#6D28D9,#EC4899)", borderRadius: 14, padding: "13px 15px", color: "#fff", display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
+      <span style={{ fontSize: 22 }}>💎</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>Become a Premium member</div>
+        <div style={{ fontSize: 11.5, opacity: .92 }}>All rooms · ticket discounts · all games</div>
+      </div>
+      <span style={{ fontWeight: 800, fontSize: 13 }}>View →</span>
+    </div>
+  );
+  return (
+    <div style={{ margin: "12px 14px 0" }}>
+      {myPlans.map(mp => {
+        const pl = plans.find(x => x.id === mp.plan_id) || {};
+        const dl = mp.expires_at ? Math.max(0, Math.ceil((new Date(mp.expires_at).getTime() - Date.now()) / 86400000)) : null;
+        return (
+          <div key={mp.id} style={{ background: "linear-gradient(95deg,#0B3B33,#155E52)", borderRadius: 14, padding: "13px 15px", color: "#fff", display: "flex", alignItems: "center", gap: 11, marginBottom: 8 }}>
+            <span style={{ fontSize: 22 }}>{pl.emoji || "💎"}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>{pl.name || "Membership"}</div>
+              <div style={{ fontSize: 11.5, opacity: .92 }}>
+                since {new Date(mp.started_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                {mp.expires_at ? ` · ⌛ expiring in ${dl} day${dl === 1 ? "" : "s"}` : " · ∞"}
+              </div>
+            </div>
+            <button onClick={onOpen} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "7px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Renew</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight, onBuy, onClose }) {
+  const isWoman = profile?.gender === "female";
+  const active = plans.filter(p => p.active);
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 220, background: "#0d1f2a", overflowY: "auto", maxWidth: 430, margin: "0 auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#6D28D9,#EC4899)", color: "#fff", padding: "16px 16px 24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer" }} />
+          <div style={{ fontWeight: 800, fontSize: 18 }}>💎 Glasswings Membership</div>
+        </div>
+        <div style={{ fontSize: 13, opacity: .92, marginTop: 8, lineHeight: 1.45 }}>One membership. Every room, every game, and serious ticket discounts. 🎉</div>
+      </div>
+      <div style={{ padding: 14 }}>
+        {active.map(pl => {
+          const myRoomIds = planRooms.filter(x => x.plan_id === pl.id).map(x => x.room_id);
+          const roomNames = rooms.filter(r => myRoomIds.includes(r.id));
+          const mine = myPlans.find(m => m.plan_id === pl.id);
+          const dl = mine?.expires_at ? Math.max(0, Math.ceil((new Date(mine.expires_at).getTime() - Date.now()) / 86400000)) : null;
+          const prices = [[1, pl.price_1m], [3, pl.price_3m], [6, pl.price_6m], [12, pl.price_12m]].filter(([, p]) => Number(p) > 0);
+          const hot = highlight === pl.id;
+          return (
+            <div key={pl.id} style={{ background: "#fff", borderRadius: 18, padding: "17px 16px", marginBottom: 14, boxShadow: hot ? "0 0 0 3px #EC4899, 0 10px 30px rgba(0,0,0,.4)" : "0 6px 20px rgba(0,0,0,.3)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <span style={{ fontSize: 26 }}>{pl.emoji || "💎"}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, color: W.ink, fontSize: 17 }}>{pl.name}</div>
+                  {pl.tagline && <div style={{ fontSize: 12, color: W.soft }}>{pl.tagline}</div>}
+                </div>
+                {hot && <span style={{ background: "#FCE7F3", color: "#BE185D", fontSize: 10.5, fontWeight: 800, padding: "4px 9px", borderRadius: 9 }}>UNLOCKS THIS ROOM</span>}
+              </div>
+              {mine && <div style={{ background: "#E7F6EF", color: "#0d6e58", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, margin: "10px 0 2px" }}>✅ You're a member{mine.expires_at ? ` — ⌛ ${dl} days left (till ${new Date(mine.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})` : ""}. Buying again extends your validity.</div>}
+              <div style={{ margin: "12px 0 4px" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>🎟️</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>Up to 100% OFF on event tickets<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Member pricing on parties, meetups & getaways</div></div></div>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>🔓</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>{roomNames.length} exclusive room{roomNames.length === 1 ? "" : "s"}<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>{roomNames.map(r => `${r.emoji} ${r.name}`).join(" · ") || "Rooms being added"}</div></div></div>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>💘</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>All games, fully unlocked<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Unlimited Vibe Checks · 🎲 random match · 🎭 Blind Banter</div></div></div>
+              </div>
+              {isWoman && pl.women_free ? (
+                <div style={{ background: "linear-gradient(95deg,#FCE7F3,#F3E8FF)", borderRadius: 12, padding: "12px 14px", fontSize: 13.5, fontWeight: 800, color: "#BE185D", textAlign: "center" }}>💃 Free for women — you already have it all. Enjoy!</div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(prices.length, 4) || 1}, 1fr)`, gap: 8, marginTop: 6 }}>
+                  {prices.map(([mo, pr]) => (
+                    <div key={mo} onClick={() => onBuy(pl, mo)} style={{ border: mo === 12 ? "2px solid #6D28D9" : `1.5px solid ${W.line}`, borderRadius: 13, padding: "11px 4px", textAlign: "center", cursor: "pointer", position: "relative", background: mo === 12 ? "#F8F5FF" : "#fff" }}>
+                      {mo === 12 && <div style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", background: "#6D28D9", color: "#fff", fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 8, whiteSpace: "nowrap" }}>BEST VALUE</div>}
+                      <div style={{ fontWeight: 800, color: W.ink, fontSize: 12.5 }}>{mo === 12 ? "1 year" : mo + " mo"}</div>
+                      <div style={{ fontWeight: 800, color: "#6D28D9", fontSize: 15 }}>₹{pr}</div>
+                    </div>
+                  ))}
+                  {!prices.length && <div style={{ gridColumn: "1 / -1", fontSize: 12.5, color: W.soft, textAlign: "center" }}>Pricing coming soon.</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,.55)", fontSize: 11, padding: "4px 0 24px" }}>Secure payments by Razorpay · prices set by Glasswings</div>
+      </div>
+    </div>
   );
 }
 function PlansAdmin({ rooms }) {
