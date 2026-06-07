@@ -2648,6 +2648,228 @@ function LockedRoomPreview({ room, count, free, onJoin, onBack }) {
     </div>
   );
 }
+const LUDO_COLORS = ["#E53935", "#43A047", "#FDD835", "#1E88E5"];
+const LUDO_PATH = (() => {
+  const seq = [];
+  for (let c = 1; c <= 5; c++) seq.push([6, c]);
+  for (let r = 5; r >= 0; r--) seq.push([r, 6]);
+  seq.push([0, 7]);
+  for (let r = 0; r <= 5; r++) seq.push([r, 8]);
+  for (let c = 9; c <= 14; c++) seq.push([6, c]);
+  seq.push([7, 14]);
+  for (let c = 14; c >= 9; c--) seq.push([8, c]);
+  for (let r = 9; r <= 14; r++) seq.push([r, 8]);
+  seq.push([14, 7]);
+  for (let r = 14; r >= 9; r--) seq.push([r, 6]);
+  for (let c = 5; c >= 0; c--) seq.push([8, c]);
+  seq.push([7, 0]); seq.push([6, 0]);
+  return seq;
+})();
+const LUDO_HOME = [
+  [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5]],
+  [[1, 7], [2, 7], [3, 7], [4, 7], [5, 7]],
+  [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9]],
+  [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7]],
+];
+const LUDO_BASE = [
+  [[1.5, 1.5], [1.5, 3.5], [3.5, 1.5], [3.5, 3.5]],
+  [[1.5, 10.5], [1.5, 12.5], [3.5, 10.5], [3.5, 12.5]],
+  [[10.5, 10.5], [10.5, 12.5], [12.5, 10.5], [12.5, 12.5]],
+  [[10.5, 1.5], [10.5, 3.5], [12.5, 1.5], [12.5, 3.5]],
+];
+const LUDO_START = [0, 13, 26, 39];
+const LUDO_SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]);
+function ludoCoord(pidx, steps) {
+  if (steps >= 51 && steps <= 55) return LUDO_HOME[pidx][steps - 51];
+  if (steps === 56) return [7 + [-0.0, -0.55, 0.0, 0.55][pidx] * 0, 7]; // center
+  const abs = (LUDO_START[pidx] + steps) % 52;
+  return LUDO_PATH[abs];
+}
+function LudoHub({ meId, onClose }) {
+  const [games, setGames] = useState(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [openGame, setOpenGame] = useState(null);
+  const load = () => supabase.rpc("ludo_my_games").then(({ data }) => setGames(data || []));
+  useEffect(() => { load(); }, [openGame]);
+  const create = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("ludo_create");
+    setBusy(false);
+    if (error) return alert(error.message);
+    setOpenGame(data.id);
+  };
+  const join = async () => {
+    if (!code.trim()) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc("ludo_join", { p_code: code.trim().toUpperCase() });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setOpenGame(data.id);
+  };
+  if (openGame) return <LudoGame gameId={openGame} meId={meId} onClose={() => setOpenGame(null)} />;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 185, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "16px 16px 0 0", padding: "18px 16px calc(24px + env(safe-area-inset-bottom))", maxHeight: "80vh", overflowY: "auto" }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, marginBottom: 12 }}>🎲 Ludo</div>
+        <button onClick={create} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", marginBottom: 10 }}>{busy ? "…" : "🎮 Create a new game"}</button>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="Join with code (e.g. K4PZ2M)" maxLength={6} style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", letterSpacing: 2, fontWeight: 700 }} />
+          <button onClick={join} disabled={busy} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "11px 16px" }}>Join</button>
+        </div>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 6 }}>My games</div>
+        {games === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div>
+          : !games.length ? <div style={{ color: W.soft, fontSize: 13 }}>No active games — create one and share the code! 🎲</div>
+          : games.map(g => (
+            <div key={g.id} onClick={() => setOpenGame(g.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 4px", borderBottom: `1px solid ${W.line}`, cursor: "pointer" }}>
+              <span style={{ fontSize: 22 }}>🎲</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, letterSpacing: 1.5 }}>{g.code}</div>
+                <div style={{ fontSize: 11.5, color: W.soft }}>{(g.players || []).map(pl => pl.name?.split(" ")[0]).join(", ")} · {g.status === "lobby" ? "waiting to start" : g.status === "playing" ? "in progress" : "finished"}</div>
+              </div>
+              <span style={{ color: W.teal, fontWeight: 800, fontSize: 12.5 }}>Open →</span>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+function LudoGame({ gameId, meId, onClose }) {
+  const [g, setG] = useState(null);
+  const [legal, setLegal] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    const { data } = await supabase.from("ludo_games").select("*").eq("id", gameId).maybeSingle();
+    if (data) setG(data);
+  };
+  useEffect(() => { load(); const iv = setInterval(load, 2500); return () => clearInterval(iv); }, [gameId]);
+  if (!g) return <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}>Loading game…</div>;
+  const players = g.players || [];
+  const myIdx = players.findIndex(pl => pl.uid === meId);
+  const myTurn = g.status === "playing" && g.turn === myIdx;
+  const cell = 23, B = cell * 15;
+  const start = async () => {
+    setBusy(true);
+    const { error } = await supabase.rpc("ludo_start", { p_game: g.id });
+    setBusy(false);
+    if (error) alert(error.message); else load();
+  };
+  const roll = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("ludo_roll", { p_game: g.id });
+    setBusy(false);
+    if (error) return alert(error.message);
+    if (data?.game) setG(data.game);
+    setLegal(data?.legal || []);
+  };
+  const move = async (tok) => {
+    if (!myTurn || g.dice == null || !legal.includes(tok)) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc("ludo_move", { p_game: g.id, p_token: tok });
+    setBusy(false);
+    if (error) return alert(error.message);
+    if (data?.game) setG(data.game);
+    setLegal([]);
+  };
+  const cellBg = (r, c) => {
+    if (r < 6 && c < 6) return LUDO_COLORS[0] + "33";
+    if (r < 6 && c > 8) return LUDO_COLORS[1] + "33";
+    if (r > 8 && c > 8) return LUDO_COLORS[2] + "33";
+    if (r > 8 && c < 6) return LUDO_COLORS[3] + "33";
+    for (let pidx = 0; pidx < 4; pidx++) {
+      if (LUDO_HOME[pidx].some(([hr, hc]) => hr === r && hc === c)) return LUDO_COLORS[pidx] + "66";
+    }
+    const trackIdx = LUDO_PATH.findIndex(([tr, tc]) => tr === r && tc === c);
+    if (trackIdx >= 0) {
+      const sIdx = LUDO_START.indexOf(trackIdx);
+      if (sIdx >= 0) return LUDO_COLORS[sIdx] + "AA";
+      return "#fff";
+    }
+    if (r >= 6 && r <= 8 && c >= 6 && c <= 8) return "#FFF3D6";
+    return "transparent";
+  };
+  const isStar = (r, c) => { const i = LUDO_PATH.findIndex(([tr, tc]) => tr === r && tc === c); return i >= 0 && LUDO_SAFE.has(i) && !LUDO_START.includes(i); };
+  const tokens = g.tokens || [];
+  const tokenList = [];
+  players.forEach((pl, pidx) => {
+    for (let j = 0; j < 4; j++) {
+      const sVal = tokens[pidx * 4 + j];
+      let rc;
+      if (sVal === -1 || sVal == null) rc = LUDO_BASE[pidx][j];
+      else if (sVal === 56) rc = [7 + (pidx === 1 ? -0.7 : pidx === 3 ? 0.7 : 0), 7 + (pidx === 0 ? -0.7 : pidx === 2 ? 0.7 : 0)];
+      else rc = ludoCoord(pidx, sVal);
+      tokenList.push({ pidx, j, sVal, rc });
+    }
+  });
+  const stacks = {};
+  tokenList.forEach(t => { const k = t.rc[0] + "_" + t.rc[1]; stacks[k] = (stacks[k] || 0); t.stackIdx = stacks[k]; stacks[k]++; });
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto", overflowY: "auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#1E88E5,#43A047)", color: "#fff", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+        <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer", flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>🎲 Ludo · {g.code}</div>
+          <div style={{ fontSize: 11, opacity: .9 }}>{g.status === "lobby" ? `${players.length}/4 players — waiting` : g.status === "done" ? "Game over" : "In progress"}</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6, padding: "10px 12px", flexWrap: "wrap" }}>
+        {players.map((pl, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: g.status === "playing" && g.turn === i ? "#fff" : "transparent", border: `1.5px solid ${g.status === "playing" && g.turn === i ? LUDO_COLORS[i] : W.line}`, borderRadius: 16, padding: "4px 10px" }}>
+            <div style={{ width: 11, height: 11, borderRadius: "50%", background: LUDO_COLORS[i] }} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: W.ink }}>{(pl.name || "P" + (i + 1)).split(" ")[0]}{pl.uid === meId ? " (you)" : ""}</span>
+            {g.status === "playing" && g.turn === i && <span style={{ fontSize: 10.5, fontWeight: 800, color: LUDO_COLORS[i] }}>● turn</span>}
+          </div>
+        ))}
+      </div>
+      {g.status === "lobby" && (
+        <div style={{ padding: "8px 16px", textAlign: "center" }}>
+          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6 }}>Share this code with friends:</div>
+          <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: 6, color: W.ink, marginBottom: 10 }}>{g.code}</div>
+          <a href={`https://wa.me/?text=${encodeURIComponent(`🎲 Ludo time on Glasswings! Join my game with code ${g.code} → https://glass-wings.com/g/ludo`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", display: "inline-flex", marginBottom: 10 }}>Share on WhatsApp</a>
+          {players[0]?.uid === meId && <button onClick={start} disabled={busy || players.length < 2} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", opacity: players.length < 2 ? .55 : 1 }}>{players.length < 2 ? "Need at least 2 players…" : "▶ Start game"}</button>}
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 4px" }}>
+        <div style={{ position: "relative", width: B, height: B, background: "#fff", borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,.1)" }}>
+          {Array.from({ length: 15 }).map((_, r) => Array.from({ length: 15 }).map((_, c) => (
+            <div key={r + "_" + c} style={{ position: "absolute", left: c * cell, top: r * cell, width: cell, height: cell, background: cellBg(r, c), border: "0.5px solid #E8ECEA", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: "#B8A24A" }}>{isStar(r, c) ? "★" : (r === 7 && c === 7 ? "🏆" : "")}</div>
+          )))}
+          {[0, 1, 2, 3].map(pidx => {
+            const [qr, qc] = [[0, 0], [0, 9], [9, 9], [9, 0]][pidx];
+            return <div key={pidx} style={{ position: "absolute", left: qc * cell + cell * .75, top: qr * cell + cell * .75, width: cell * 4.5, height: cell * 4.5, background: "#fff", border: `2.5px solid ${LUDO_COLORS[pidx]}`, borderRadius: 12 }} />;
+          })}
+          {tokenList.map(t => {
+            const sz = cell * 0.82;
+            const offs = t.stackIdx * 4 - (stacks[t.rc[0] + "_" + t.rc[1]] - 1) * 2;
+            const clickable = myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
+            return (
+              <div key={t.pidx + "_" + t.j} onClick={() => move(t.j)}
+                style={{ position: "absolute", left: t.rc[1] * cell + (cell - sz) / 2 + offs, top: t.rc[0] * cell + (cell - sz) / 2 - offs, width: sz, height: sz, borderRadius: "50%", background: LUDO_COLORS[t.pidx], border: "2px solid #fff", boxShadow: clickable ? `0 0 0 3px ${LUDO_COLORS[t.pidx]}88, 0 2px 5px rgba(0,0,0,.35)` : "0 2px 5px rgba(0,0,0,.35)", cursor: clickable ? "pointer" : "default", transition: "left .25s, top .25s", zIndex: 5 + t.stackIdx, animation: clickable ? "gwpulse 1s infinite" : "none" }} />
+            );
+          })}
+          <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }`}</style>
+        </div>
+      </div>
+      {g.status === "playing" && (
+        <div style={{ padding: "8px 16px calc(20px + env(safe-area-inset-bottom))", textAlign: "center" }}>
+          {g.last && <div style={{ fontSize: 12, color: W.soft, marginBottom: 7 }}>{(players[g.last.by]?.name || "Player").split(" ")[0]} rolled 🎲 {g.last.dice}{g.last.captured ? " — and captured! 💥" : ""}{g.last.passed ? " — no moves, turn passed" : ""}</div>}
+          {myTurn ? (
+            g.dice == null
+              ? <button onClick={roll} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 16 }}>{busy ? "Rolling…" : "🎲 Roll the dice"}</button>
+              : <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>You rolled <span style={{ fontSize: 22 }}>🎲 {g.dice}</span> — tap a glowing token to move</div>
+          ) : <div style={{ fontWeight: 700, color: W.soft, fontSize: 14 }}>Waiting for {(players[g.turn]?.name || "player").split(" ")[0]}'s move…</div>}
+        </div>
+      )}
+      {g.status === "done" && g.winner != null && (
+        <div style={{ padding: "14px 16px calc(24px + env(safe-area-inset-bottom))", textAlign: "center" }}>
+          <div style={{ fontSize: 38 }}>🏆</div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 18 }}>{(players[g.winner]?.name || "Player").split(" ")[0]} wins!</div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>What a game 🎉</div>
+        </div>
+      )}
+    </div>
+  );
+}
 function AntakshariRoom({ meId, onClose }) {
   const [entries, setEntries] = useState(null);
   const [names, setNames] = useState({});
@@ -2756,9 +2978,11 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
   const [awards, setAwards] = useState([]);
   const [awardOpen, setAwardOpen] = useState(false);
   const [playAnt, setPlayAnt] = useState(false);
+  const [playLudo, setPlayLudo] = useState(false);
   useEffect(() => {
     if (initialGame === "antakshari") setPlayAnt(true);
     else if (initialGame === "trivia") setPlayTrivia(true);
+    else if (initialGame === "ludo") setPlayLudo(true);
     if (initialGame && onConsumedInitial) onConsumedInitial();
   }, []);
   const loadAwards = () => supabase.from("game_awards").select("id, prize, created_at, profiles:user_id(full_name, avatar_url)").order("created_at", { ascending: false }).limit(12)
@@ -2788,6 +3012,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
       <div style={{ padding: 14 }}>
         <Card emoji="🧠" title="Daily Trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
         <Card emoji="🎵" title="Antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
+        <Card emoji="🎲" title="Ludo" sub="2–4 players · invite friends with a code" cta="Play" onClick={() => setPlayLudo(true)} />
         <Card emoji="🎯" title="Bollywood Riddles" sub="Guess the film from emojis — coming soon" cta="Soon" />
         <Card emoji="🎲" title="Tambola / Housie" sub="Played live at our events 🎉" />
 
@@ -2825,6 +3050,7 @@ function GameZone({ meId, events, isStaff, initialGame = null, onConsumedInitial
       </div>
       {playTrivia && <TriviaSheet meId={meId} alreadyScore={triviaDone} onClose={() => setPlayTrivia(false)} />}
       {playAnt && <AntakshariRoom meId={meId} onClose={() => setPlayAnt(false)} />}
+      {playLudo && <LudoHub meId={meId} onClose={() => setPlayLudo(false)} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -6507,7 +6733,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gamelink ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludo ✅</div>
       </div>
     </div>
   );
