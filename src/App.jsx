@@ -4448,6 +4448,15 @@ const GW_FILTERS = [
   ["Cool", "saturate(1.12) hue-rotate(14deg) brightness(1.04)", []],
   ["Night", "brightness(.9) contrast(1.2) saturate(1.3) hue-rotate(-8deg)", []],
 ];
+// beauty lenses: b=blur strength, a=layer alpha, blend, extra css on layer, wash [color,alpha], vig
+const GW_LENSES = [
+  ["No lens", null],
+  ["✨ Smooth", { b: 5.5, a: .5, blend: "source-over" }],
+  ["🌟 Glow", { b: 8, a: .45, blend: "lighten", css: "brightness(1.07)" }],
+  ["🍑 Peach", { b: 5.5, a: .45, blend: "source-over", wash: ["#FFB29E", .11] }],
+  ["💎 Glam", { b: 7, a: .55, blend: "source-over", css: "contrast(1.06) saturate(1.08)", vig: .25 }],
+  ["🌸 Porcelain", { b: 6.5, a: .6, blend: "lighten", css: "brightness(1.1) saturate(.92)", wash: ["#FFE9F0", .08] }],
+];
 const GW_FRAMES = ["None", "Glasswings", "Party", "Polaroid", "Retro"];
 const GW_STICKERS = ["🦋", "❤️", "🔥", "✨", "🪩", "🥂", "💃", "😎", "🎉", "💘", "🌙", "👑"];
 function GWCamera({ meId, onSend, onClose, events = [] }) {
@@ -4458,6 +4467,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
   const [fi, setFi] = useState(0);
   const [frame, setFrame] = useState("None");
   const [wm, setWm] = useState(true);
+  const [li, setLi] = useState(0);
   const [stickers, setStickers] = useState([]);
   const [selIdx, setSelIdx] = useState(-1);
   const [capText, setCapText] = useState("");
@@ -4496,6 +4506,21 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     const W0 = raw.width, H0 = raw.height; c.width = W0; c.height = H0;
     const x = c.getContext("2d");
     x.filter = GW_FILTERS[fi][1]; x.drawImage(raw, 0, 0); x.filter = "none";
+    const lz = GW_LENSES[li][1];
+    if (lz) {
+      x.save();
+      const baseF = GW_FILTERS[fi][1] === "none" ? "" : GW_FILTERS[fi][1] + " ";
+      x.filter = `${baseF}${lz.css ? lz.css + " " : ""}blur(${lz.b * (W0 / 1000) * 1.7}px)`;
+      x.globalAlpha = lz.a; x.globalCompositeOperation = lz.blend || "source-over";
+      x.drawImage(raw, 0, 0);
+      x.restore();
+      if (lz.wash) { x.save(); x.globalAlpha = lz.wash[1]; x.fillStyle = lz.wash[0]; x.fillRect(0, 0, W0, H0); x.restore(); }
+      if (lz.vig) {
+        const rg2 = x.createRadialGradient(W0 / 2, H0 / 2, Math.min(W0, H0) * .4, W0 / 2, H0 / 2, Math.max(W0, H0) * .72);
+        rg2.addColorStop(0, "rgba(0,0,0,0)"); rg2.addColorStop(1, `rgba(0,0,0,${lz.vig})`);
+        x.fillStyle = rg2; x.fillRect(0, 0, W0, H0);
+      }
+    }
     (GW_FILTERS[fi][2] || []).forEach(fx2 => {
       x.save();
       if (fx2[0] === "grad") {
@@ -4578,7 +4603,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     });
     setPreview(c.toDataURL("image/jpeg", .92));
   };
-  useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers, wm]);
+  useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers, wm, li]);
   const relPt = (e) => { const r = boxRef.current.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
   const onDown = (e) => {
     const pt = relPt(e); let best = -1, bd = 0.12;
@@ -4627,6 +4652,14 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
                 <div style={{ fontSize: 12.5, opacity: .8 }}>Allow camera permission, or pick a photo from your gallery below — all filters & frames still work!</div>
               </div>
             )}
+            {!camErr && GW_LENSES[li][1] && (
+              <video ref={el => { if (el && streamRef.current && el.srcObject !== streamRef.current) { el.srcObject = streamRef.current; el.play().catch(() => { }); } }}
+                autoPlay playsInline muted
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
+                  filter: `${GW_FILTERS[fi][1] === "none" ? "" : GW_FILTERS[fi][1] + " "}${GW_LENSES[li][1].css ? GW_LENSES[li][1].css + " " : ""}blur(6px)`,
+                  opacity: GW_LENSES[li][1].a, mixBlendMode: GW_LENSES[li][1].blend === "lighten" ? "lighten" : "normal",
+                  transform: facing === "user" ? "scaleX(-1)" : "none", pointerEvents: "none" }} />
+            )}
             {!camErr && (GW_FILTERS[fi][2] || []).map((fx2, k) => {
               if (fx2[0] === "grad") return <div key={k} style={{ position: "absolute", inset: 0, background: `linear-gradient(135deg, ${fx2[1]}, ${fx2[2]})`, opacity: fx2[3], mixBlendMode: fx2[4] && fx2[4] !== "source-over" ? fx2[4] : "normal", pointerEvents: "none" }} />;
               if (fx2[0] === "wash") return <div key={k} style={{ position: "absolute", inset: 0, background: fx2[1], opacity: fx2[2], mixBlendMode: fx2[3] && fx2[3] !== "source-over" ? fx2[3] : "normal", pointerEvents: "none" }} />;
@@ -4634,7 +4667,10 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
               return null;
             })}
           </div>
-          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "12px 12px 4px" }}>
+          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 12px 0" }}>
+            {GW_LENSES.map((l2, i) => chip(l2[0], li === i, () => setLi(i)))}
+          </div>
+          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 4px" }}>
             {GW_FILTERS.map((f, i) => chip(f[0], fi === i, () => setFi(i)))}
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 38px 26px" }}>
@@ -4657,6 +4693,9 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
               <span onClick={() => { setStickers(p => p.filter((_, i) => i !== selIdx)); setSelIdx(-1); }} style={{ color: "#FF6B6B", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>🗑️ Remove</span>
             </div>
           )}
+          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 2px" }}>
+            {GW_LENSES.map((l2, i) => chip(l2[0], li === i, () => setLi(i)))}
+          </div>
           <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 2px" }}>
             {GW_FILTERS.map((f, i) => chip(f[0], fi === i, () => setFi(i)))}
           </div>
