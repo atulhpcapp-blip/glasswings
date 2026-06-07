@@ -5786,7 +5786,7 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
           <div key={r.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={r} size={44} />
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 7 }}>{r.name}{r.auto_join && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>FREE ROOM</span>}</div><div style={{ fontSize: 13, color: W.soft }}>{r.price_monthly === 0 ? "Free" : `₹${r.price_monthly}/mo`}{r.city ? ` · ${r.city}` : ""}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 7 }}>{r.name}{r.auto_join && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>FREE ROOM</span>}</div><div style={{ fontSize: 13, color: W.soft }}>{gwRoomPlan(r.id) ? gwRoomPlan(r.id).label : "Free"}{r.city ? ` · ${r.city}` : ""}</div></div>
               <Settings size={19} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setManage(manage === r.id ? null : r.id)} />
             </div>
             {manage === r.id && (
@@ -7636,7 +7636,7 @@ function MembersOverview({ isSuper }) {
         {stat("Total members", rows.length)}
         {stat("New (30 days)", rows.filter((segs.find(x => x[0] === "new"))[2]).length)}
         {stat("Active (7 days)", rows.filter((segs.find(x => x[0] === "active"))[2]).length)}
-        {stat("💳 Paying subscribers", rows.filter((segs.find(x => x[0] === "paysubs"))[2]).length)}
+        {stat("💎 Plan subscribers", Object.keys(planBadge).length)}
         {stat("💸 Paid ticket buyers", rows.filter((segs.find(x => x[0] === "paytix"))[2]).length)}
       </div>
       <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 6, marginBottom: 8 }}>
@@ -7861,7 +7861,7 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
               <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                 <select value={pick[m.id] || ""} onChange={e => setPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: 1, minWidth: 0 }}>
                   <option value="">Pick a room…</option>
-                  {rooms.map(r => <option key={r.id} value={r.id}>{r.name}{r.price_monthly ? ` · ₹${r.price_monthly}/mo` : ""}</option>)}
+                  {rooms.map(r => <option key={r.id} value={r.id}>{r.name}{gwRoomPlan(r.id) ? " · 💎 " + (gwRoomPlan(r.id).label || "").replace(/^💎\s*/, "") : ""}</option>)}
                 </select>
                 {(() => { const rm = rooms.find(r => r.id === pick[m.id]); return rm && (rm.price_monthly || 0) > 0 ? (
                   <select value={dur[m.id] || ""} onChange={e => setDur(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, width: 92, flexShrink: 0 }}>
