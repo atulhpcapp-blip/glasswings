@@ -67,7 +67,7 @@ export default async function handler(req, res) {
       // fetch everything needed in parallel
       const [{ data: typeRows }, { data: ev }, { data: tk }, addonSum] = await Promise.all([
         typedIds.length ? sb.from("event_ticket_types").select("*").in("id", typedIds) : Promise.resolve({ data: [] }),
-        sb.from("events").select("ticket_price, balance_on, men_per_woman, men_open_start").eq("id", event_id).single(),
+        sb.from("events").select("ticket_price, balance_on, men_per_woman, men_open_start, member_discount_pct").eq("id", event_id).single(),
         sb.from("event_tickets").select("user_id, ticket_type_id, quantity").eq("event_id", event_id),
         resolveAddons(),
       ]);
@@ -115,8 +115,36 @@ export default async function handler(req, res) {
         }
       }
 
+      // 💎 plan-member discount on ticket lines (after all other discounts)
+      const mdp = Math.min(100, Math.max(0, Number(ev?.member_discount_pct) || 0));
+      if (mdp > 0) {
+        const { data: myPlanRows } = await sb.from("member_plans").select("id, expires_at").eq("user_id", uid);
+        const isPlanMember = (myPlanRows || []).some(m => !m.expires_at || new Date(m.expires_at).getTime() > Date.now());
+        if (isPlanMember) {
+          subtotal = 0;
+          for (const li of lineItems) { li.net = Math.round((li.net || 0) * (100 - mdp) / 100); subtotal += li.net * li.quantity; }
+        }
+      }
+
       const grand = subtotal + addonSum;
-      if (grand <= 0) return res.status(400).json({ error: "These tickets are free for you — just tap Get." });
+      if (grand <= 0) {
+        // 💎 100% member discount (or fully free cart): issue tickets directly, no Razorpay
+        const freeOrderId = "free_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+        for (let li = 0; li < lineItems.length; li++) {
+          const { error: insErr } = await sb.from("event_tickets").insert({
+            event_id, user_id: uid, ticket_type_id: lineItems[li].ticket_type_id || null,
+            quantity: lineItems[li].quantity || 1, addons: li === 0 ? (addonRows || []) : [],
+            razorpay_order_id: freeOrderId,
+          });
+          if (insErr && insErr.code !== "23505") throw insErr;
+        }
+        await sb.from("payments").insert({
+          user_id: uid, purpose: "ticket", event_id, ticket_type_id: lineItems[0]?.ticket_type_id || null,
+          quantity: totalQty, amount: 0, status: "paid", razorpay_order_id: freeOrderId,
+          addons: addonRows, items: lineItems,
+        });
+        return res.status(200).json({ free: true });
+      }
       ticketRev = subtotal;
       amount = grand * 100;
       items = lineItems;
