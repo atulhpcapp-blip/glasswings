@@ -5068,6 +5068,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   const [gwCamOpen, setGwCamOpen] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
   const [pollVotes, setPollVotes] = useState({});
+  const [bigPhoto, setBigPhoto] = useState(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [roomPick, setRoomPick] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
@@ -5137,11 +5138,18 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
           </div>
         </div>
       )}
+      {bigPhoto && (
+        <div onClick={() => setBigPhoto(null)} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.93)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <img src={bigPhoto} alt="" style={{ maxWidth: "100%", maxHeight: "78%", borderRadius: 16, objectFit: "contain" }} />
+          <div style={{ color: "#fff", fontWeight: 700, fontSize: 18, marginTop: 18 }}>{room.name}</div>
+          <div style={{ color: "rgba(255,255,255,.6)", fontSize: 12.5, marginTop: 6 }}>tap anywhere to close</div>
+        </div>
+      )}
       <div ref={headRef} style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 30, ...bar }}>
         <div style={{ background: W.teal, color: "#fff", display: "flex", alignItems: "center", gap: 10, padding: "12px" }}>
           <ArrowLeft size={22} onClick={onBack} style={{ cursor: "pointer", flexShrink: 0 }} />
-          <Avatar room={room} size={38} />
-          <div onClick={() => { if (groupType !== "dm" && groupType !== "p2p") setShowMembers(true); }} style={{ flex: 1, minWidth: 0, cursor: (groupType !== "dm" && groupType !== "p2p") ? "pointer" : "default" }}>
+          <div onClick={() => { if (room.logo_url) setBigPhoto(room.logo_url); }} style={{ flexShrink: 0, cursor: room.logo_url ? "pointer" : "default" }}><Avatar room={room} size={38} /></div>
+          <div onClick={() => { if (groupType !== "dm" && groupType !== "p2p") setShowMembers(true); else if (room.logo_url) setBigPhoto(room.logo_url); }} style={{ flex: 1, minWidth: 0, cursor: ((groupType !== "dm" && groupType !== "p2p") || room.logo_url) ? "pointer" : "default" }}>
             <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
             <div style={{ fontSize: 12, opacity: .85, fontWeight: (groupType === "p2p" && lastSeenStr(otherSeen) === "online") ? 700 : 400 }}>{groupType === "dm" ? "Glasswings team · we reply here" : groupType === "p2p" ? (lastSeenStr(otherSeen) || "Direct chat") : `${memberCount} members · tap for list`}</div>
           </div>
