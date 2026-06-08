@@ -5407,13 +5407,28 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
   const [a, setA] = useState(null);
   const [aErr, setAErr] = useState("");
   const [roster, setRoster] = useState(null);
+  const [checkLog, setCheckLog] = useState(null);
   const ev = manageable.find(e => e.id === evId);
   const loadAll = (eid) => {
     supabase.rpc("event_ticket_analysis", { p_event: eid }).then(({ data, error }) => { setA(error ? null : data); setAErr(error ? (error.message || "Could not load analytics.") : ""); });
     supabase.rpc("event_member_list", { p_event: eid }).then(({ data, error }) => { if (!error) setRoster(data || []); });
+    supabase.rpc("event_checkin_log", { p_event: eid }).then(({ data, error }) => setCheckLog(error ? [] : (data || [])));
   };
-  useEffect(() => { if (!evId) { setA(null); setAErr(""); setRoster(null); return; } setA(undefined); setAErr(""); setRoster(null); loadAll(evId); }, [evId]);
+  useEffect(() => { if (!evId) { setA(null); setAErr(""); setRoster(null); setCheckLog(null); return; } setA(undefined); setAErr(""); setRoster(null); setCheckLog(null); loadAll(evId); }, [evId]);
   const waLink2 = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
+  const fmtClock = (t) => new Date(t).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+  const buildBuckets = (log) => {
+    if (!log || !log.length) return [];
+    const m = {};
+    log.forEach(c => {
+      if (!c.checked_in_at) return;
+      const d = new Date(c.checked_in_at);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`;
+      const h = d.getHours(), ap = h < 12 ? "AM" : "PM", h12 = ((h + 11) % 12) + 1;
+      (m[key] = m[key] || { lbl: `${h12} ${ap}`, n: 0, t: d.getTime() }).n++;
+    });
+    return Object.values(m).sort((x, y) => x.t - y.t);
+  };
   const withdraw2 = (m) => {
     if (!window.confirm(`Withdraw ${m.full_name || "this member"}'s ticket${m.qty > 1 ? "s" : ""}?`)) return;
     supabase.rpc("withdraw_ticket", { p_event: evId, p_user: m.user_id }).then(({ error }) => error ? alert(error.message) : loadAll(evId));
@@ -5457,6 +5472,11 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
     const dayMax = Math.max(1, ...days.map(x => x.q || 0));
     const dayBars = days.map((x, k) => `<div class="dcol"><div class="dval">${x.q || 0}</div><div class="dbar" style="height:${Math.max(6, Math.round((x.q || 0) / dayMax * 90))}px"></div><div class="dlab">${esc2(x.d || x.day || x.label || ("Day " + (k + 1)))}</div></div>`).join("");
     const maxMoney = Math.max(1, online, door);
+    const _buckets = buildBuckets(checkLog);
+    const _bmax = Math.max(1, ..._buckets.map(b => b.n));
+    const checkinBars = _buckets.length ? _buckets.map(b => bar(b.lbl, b.n, _bmax, "linear-gradient(90deg,#008069,#2FD4A8)")).join("") : "";
+    const _recent = [...(checkLog || [])].filter(c => c.checked_in_at).sort((x, y) => new Date(y.checked_in_at) - new Date(x.checked_in_at)).slice(0, 12);
+    const recentRows = _recent.length ? `<div style="margin-top:12px"><div style="font-size:11px;font-weight:800;color:#5a6b67;letter-spacing:.4px;margin-bottom:6px">JUST ARRIVED</div>${_recent.map(c => `<div style="display:flex;gap:8px;font-size:13px;padding:3px 0"><span style="color:#008069;font-weight:800">\u2713</span><span style="flex:1">${esc2(c.full_name || "Guest")}</span><span style="color:#5a6b67">${esc2(new Date(c.checked_in_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }))}</span></div>`).join("")}</div>` : "";
     const w2 = window.open("", "_blank");
     if (!w2) return alert("Allow pop-ups to export the PDF.");
     w2.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc2(ev.title)} \u2014 Analytics</title>
@@ -5523,6 +5543,7 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
   ${ageBars ? `<section><h2>\uD83C\uDF82 Age groups</h2>${ageBars}</section>` : ""}
   ${areaBars ? `<section><h2>\uD83D\uDCCD Top areas</h2>${areaBars}</section>` : ""}
   ${dayBars ? `<section><h2>\uD83D\uDCC8 Sales by day</h2><div class="days">${dayBars}</div></section>` : ""}
+  ${checkinBars ? `<section><h2>\uD83C\uDF9F\uFE0F Check-ins over time <span class="pill">${(checkLog || []).length} arrived</span></h2>${checkinBars}${recentRows}</section>` : ""}
   <div class="foot">Glasswings Events \u00B7 glass-wings.com \u2014 confidential organiser report</div>
 </div><script>setTimeout(function(){window.print()},400)</scr`+`ipt></body></html>`);
     w2.document.close();
@@ -5640,6 +5661,39 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
           )}
         </>
       )}
+      {evId && checkLog && checkLog.length > 0 && (() => {
+        const buckets = buildBuckets(checkLog);
+        const mx = Math.max(1, ...buckets.map(b => b.n));
+        const recent = [...checkLog].filter(c => c.checked_in_at).sort((x, y) => new Date(y.checked_in_at) - new Date(x.checked_in_at)).slice(0, 6);
+        return (
+          <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginTop: 14 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>🎟️ Check-ins over time ({checkLog.length} arrived)</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {buckets.map((b, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                  <div style={{ width: 54, fontSize: 11.5, fontWeight: 700, color: W.soft, flexShrink: 0, textAlign: "right" }}>{b.lbl}</div>
+                  <div style={{ flex: 1, background: W.bg, borderRadius: 6, height: 16, overflow: "hidden" }}>
+                    <div style={{ width: `${Math.max(5, Math.round((b.n / mx) * 100))}%`, height: "100%", background: "linear-gradient(90deg,#008069,#2FD4A8)" }} />
+                  </div>
+                  <div style={{ width: 22, fontSize: 12, fontWeight: 800, color: W.ink, flexShrink: 0 }}>{b.n}</div>
+                </div>
+              ))}
+            </div>
+            {recent.length > 0 && (
+              <div style={{ marginTop: 12, borderTop: `1px solid ${W.line}`, paddingTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: W.soft, marginBottom: 6, letterSpacing: .3 }}>JUST ARRIVED</div>
+                {recent.map((c, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, padding: "3px 0" }}>
+                    <span style={{ color: W.teal, fontWeight: 800 }}>✓</span>
+                    <span style={{ flex: 1, color: W.ink, fontWeight: 600 }}>{c.full_name || "Guest"}</span>
+                    <span style={{ color: W.soft, fontSize: 11.5 }}>{fmtClock(c.checked_in_at)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
       {evId && roster !== null && (
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginTop: 14 }}>
           <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
