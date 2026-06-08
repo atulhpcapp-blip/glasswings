@@ -3345,6 +3345,9 @@ function LudoGame({ gameId, meId, onClose }) {
   const [rolling, setRolling] = useState(false);
   const [rollFace, setRollFace] = useState(1);
   const [pavs, setPavs] = useState({});
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatText, setChatText] = useState("");
+  const chatEndRef = useRef(null);
   useEffect(() => {
     const uids = ((g && g.players) || []).map(pl => pl.uid).filter(u => u && !pavs[u]);
     if (!uids.length) return;
@@ -3356,6 +3359,7 @@ function LudoGame({ gameId, meId, onClose }) {
     if (data) setG(data);
   };
   useEffect(() => { load(); const iv = setInterval(load, 2500); return () => clearInterval(iv); }, [gameId]);
+  useEffect(() => { if (chatOpen) chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [g && g.chat ? g.chat.length : 0, chatOpen]);
   if (!g) return <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}>Loading game…</div>;
   const players = g.players || [];
   const myIdx = players.findIndex(pl => pl.uid === meId);
@@ -3387,6 +3391,8 @@ function LudoGame({ gameId, meId, onClose }) {
     if (data?.game) { setG(data.game); if (data.game.last?.captured) playCaptureSound(); if (data.game.status === "done") playWinSound(); }
     setLegal([]);
   };
+  const sendChat = async () => { const t = chatText.trim(); if (!t) return; setChatText(""); const { error } = await supabase.rpc("ludo_say", { p_game: g.id, p_text: t }); if (error) alert(error.message); else load(); };
+  const leaveGame = async () => { try { if (g.status === "lobby") await supabase.rpc("ludo_leave", { p_game: g.id }); } catch {} onClose(); };
   const cellBg = (r, c) => {
     if (r < 6 && c < 6) return LUDO_COLORS[0] + "33";
     if (r < 6 && c > 8) return LUDO_COLORS[1] + "33";
@@ -3427,13 +3433,18 @@ function LudoGame({ gameId, meId, onClose }) {
           <div style={{ fontWeight: 800, fontSize: 16 }}>🎲 Ludo · {g.code}</div>
           <div style={{ fontSize: 11, opacity: .9 }}>{g.status === "lobby" ? `${players.length}/4 players — waiting` : g.status === "done" ? "Game over" : "In progress"}</div>
         </div>
-        {players[0]?.uid === meId && g.status !== "done" && (
-          <button onClick={async () => {
-            if (!window.confirm(g.status === "lobby" ? "Cancel this game?" : "End this game for everyone?")) return;
-            const { error } = await supabase.rpc("ludo_end", { p_game: g.id });
-            if (error) alert(error.message); else load();
-          }} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>🛑 End</button>
-        )}
+        <div style={{ display: "flex", gap: 7, alignItems: "center", flexShrink: 0 }}>
+          <button onClick={() => setChatOpen(true)} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>💬{(g.chat || []).length ? " " + (g.chat || []).length : ""}</button>
+          {players[0]?.uid === meId && g.status !== "done" ? (
+            <button onClick={async () => {
+              if (!window.confirm(g.status === "lobby" ? "Cancel this game?" : "End this game for everyone?")) return;
+              const { error } = await supabase.rpc("ludo_end", { p_game: g.id });
+              if (error) alert(error.message); else load();
+            }} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>🛑 End</button>
+          ) : (
+            <button onClick={leaveGame} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>🚪 {g.status === "lobby" ? "Leave" : "Exit"}</button>
+          )}
+        </div>
       </div>
       <div style={{ display: "flex", gap: 6, padding: "10px 12px", flexWrap: "wrap" }}>
         {players.map((pl, i) => (
@@ -3569,6 +3580,36 @@ function LudoGame({ gameId, meId, onClose }) {
           <div style={{ fontSize: 38 }}>🏆</div>
           <div style={{ fontWeight: 800, color: W.ink, fontSize: 18 }}>{(players[g.winner]?.name || "Player").split(" ")[0]} wins!</div>
           <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>What a game 🎉</div>
+        </div>
+      )}
+      {chatOpen && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 6, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          <div onClick={() => setChatOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.4)" }} />
+          <div style={{ position: "relative", background: "#fff", borderRadius: "18px 18px 0 0", maxHeight: "68%", display: "flex", flexDirection: "column", boxShadow: "0 -6px 24px rgba(0,0,0,.25)" }}>
+            <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", borderBottom: `1px solid ${W.line}` }}>
+              <div style={{ flex: 1, fontWeight: 800, color: W.ink, fontSize: 15 }}>💬 Game chat</div>
+              <X size={20} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setChatOpen(false)} />
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", minHeight: 170 }}>
+              {!(g.chat || []).length && <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: 16 }}>Say hi to the table 👋</div>}
+              {(g.chat || []).map((m, k) => {
+                const mine = String(m.uid) === String(meId);
+                return (
+                  <div key={k} style={{ display: "flex", flexDirection: mine ? "row-reverse" : "row", marginBottom: 8 }}>
+                    <div style={{ maxWidth: "78%" }}>
+                      {!mine && <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700, marginBottom: 2, marginLeft: 4 }}>{(m.name || "Player").split(" ")[0]}</div>}
+                      <div style={{ background: mine ? "#DCF8EF" : "#F0F2F5", border: `1px solid ${mine ? "#BBEBD9" : W.line}`, borderRadius: 12, padding: "8px 12px", fontSize: 14, color: W.ink, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{gwLinkify(m.text)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={chatEndRef} />
+            </div>
+            <div style={{ display: "flex", gap: 8, padding: "10px 12px calc(10px + env(safe-area-inset-bottom))", borderTop: `1px solid ${W.line}` }}>
+              <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") sendChat(); }} placeholder="Message players…" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 20, padding: "10px 14px", fontSize: 14, outline: "none" }} />
+              <button onClick={sendChat} style={{ ...btn(W.teal, "#fff"), borderRadius: 20, padding: "10px 16px" }}>Send</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -9673,7 +9714,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gameshare ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludochat ✅</div>
       </div>
     </div>
   );
