@@ -4925,7 +4925,6 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
   };
   const chip = (label, on, fn) => <div key={label} onClick={fn} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 16, fontSize: 12, fontWeight: 800, cursor: "pointer", background: on ? "#fff" : "rgba(255,255,255,.16)", color: on ? "#0b1f1c" : "#fff", border: "1px solid rgba(255,255,255,.25)" }}>{label}</div>;
   const lensList = [{ kind: "none", name: "Original" }];
-  AR_LENSES.forEach(a => lensList.push({ kind: "ar", id: a.id, name: a.name }));
   GW_LENSES.forEach((l2, i) => { if (i !== 0) lensList.push({ kind: "lens", i, name: l2[0] }); });
   GW_FILTERS.forEach((f, i) => { if (i !== 0) lensList.push({ kind: "filter", i, name: f[0] }); });
   const activeName = arId ? (AR_LENSES.find(a => a.id === arId)?.name || "Lens") : li > 0 ? GW_LENSES[li][0] : fi > 0 ? GW_FILTERS[fi][0] : "Original";
