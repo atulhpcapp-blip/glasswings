@@ -7201,7 +7201,24 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const [view, setView] = useState("upcoming");
   const [membersFor, setMembersFor] = useState(null);
   const todayISO = new Date().toISOString().slice(0, 10);
-  const visEvents = events.filter(e => view === "past" ? (e.event_at && e.event_at < todayISO) : (!e.event_at || e.event_at >= todayISO));
+  const [fCat, setFCat] = useState("all"), [fCity, setFCity] = useState("all"), [fOrg, setFOrg] = useState("all"), [fRole, setFRole] = useState("all");
+  const [hosts, setHosts] = useState({});
+  useEffect(() => {
+    const ids = Array.from(new Set((events || []).map(e => e.host_id).filter(Boolean)));
+    if (!ids.length) { setHosts({}); return; }
+    supabase.from("profiles").select("id, full_name, roles").in("id", ids).then(({ data }) => {
+      const m = {}; (data || []).forEach(pf => { m[pf.id] = { name: pf.full_name || "—", roles: pf.roles || [] }; }); setHosts(m);
+    });
+  }, [events]);
+  const topRole = (roles) => ["superadmin", "admin", "subadmin", "organiser", "promoter"].find(r => (roles || []).includes(r)) || null;
+  const roleLabel = { superadmin: "Superadmin", admin: "Admin", subadmin: "Subadmin", organiser: "Organiser", promoter: "Promoter" };
+  const cityOpts = Array.from(new Set((events || []).map(e => e.city).filter(Boolean))).sort();
+  const orgOpts = Array.from(new Set((events || []).map(e => e.host_id).filter(Boolean)));
+  const visEvents = events.filter(e => (view === "past" ? (e.event_at && e.event_at < todayISO) : (!e.event_at || e.event_at >= todayISO))
+    && (fCat === "all" || e.category === fCat)
+    && (fCity === "all" || e.city === fCity)
+    && (fOrg === "all" || e.host_id === fOrg)
+    && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole)));
   const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
@@ -7402,6 +7419,32 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           ))}
         </div>
       )}
+      {!creating && (
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+          <select value={fCat} onChange={e => setFCat(e.target.value)} style={{ ...sel, flex: "1 1 120px", minWidth: 0, fontSize: 12.5 }}>
+            <option value="all">All categories</option>
+            {categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+          </select>
+          <select value={fCity} onChange={e => setFCity(e.target.value)} style={{ ...sel, flex: "1 1 110px", minWidth: 0, fontSize: 12.5 }}>
+            <option value="all">All cities</option>
+            {cityOpts.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={fOrg} onChange={e => setFOrg(e.target.value)} style={{ ...sel, flex: "1 1 130px", minWidth: 0, fontSize: 12.5 }}>
+            <option value="all">All organisers</option>
+            {orgOpts.map(id => <option key={id} value={id}>{hosts[id]?.name || "Organiser"}</option>)}
+          </select>
+          <select value={fRole} onChange={e => setFRole(e.target.value)} style={{ ...sel, flex: "1 1 120px", minWidth: 0, fontSize: 12.5 }}>
+            <option value="all">Any organiser role</option>
+            <option value="organiser">👤 Organiser</option>
+            <option value="subadmin">🛡️ Subadmin</option>
+            <option value="admin">⭐ Admin</option>
+            <option value="promoter">📣 Promoter</option>
+          </select>
+          {(fCat !== "all" || fCity !== "all" || fOrg !== "all" || fRole !== "all") && (
+            <button onClick={() => { setFCat("all"); setFCity("all"); setFOrg("all"); setFRole("all"); }} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, padding: "8px 12px", fontSize: 12 }}>Clear</button>
+          )}
+        </div>
+      )}
       {!creating && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {visEvents.map(e => (
           <div key={e.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
@@ -7410,6 +7453,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
                 <div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(() => { const tt = (ticketTypes && ticketTypes[e.id]) || []; if (tt.length) { const min = Math.min(...tt.map(t => t.price || 0)); return min === 0 ? "Free" : `From ₹${min}`; } return (e.ticket_price || 0) === 0 ? "Free" : `₹${e.ticket_price}/ticket`; })()}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div>
+                {e.host_id && hosts[e.host_id] && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700, marginTop: 2 }}>👤 {hosts[e.host_id].name}{topRole(hosts[e.host_id].roles) ? ` · ${roleLabel[topRole(hosts[e.host_id].roles)]}` : ""}</div>}
                 <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>{e.promo_pct != null && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>📣 Promo {e.promo_pct}%</span>}{e.approved
                   ? <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>● Live</span>
                   : <span style={{ background: "#FDF6EC", color: "#B45309", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>⏳ Pending approval{canApprove ? "" : " — visible only to you"}</span>}</div>
