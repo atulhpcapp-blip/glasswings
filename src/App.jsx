@@ -6759,6 +6759,38 @@ function EventFAQ({ ev, onUpdate }) {
     </div>
   );
 }
+function FaqDraft({ value = [], onChange }) {
+  const [tpls, setTpls] = useState([]); const [pick, setPick] = useState("");
+  const ip = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13.5, outline: "none", boxSizing: "border-box" };
+  const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 12.5, color: W.ink, outline: "none" };
+  const loadT = () => supabase.from("canned_faqs").select("id, title, faqs").order("title").then(({ data }) => setTpls(data || []));
+  useEffect(() => { loadT(); }, []);
+  const upd = (i, k, val) => onChange(value.map((f, j) => j === i ? { ...f, [k]: val } : f));
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 6 }}>❓ FAQs (optional)</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 7 }}>
+        <select value={pick} onChange={e => { setPick(e.target.value); const t = tpls.find(x => x.id === e.target.value); if (t && Array.isArray(t.faqs)) onChange(t.faqs); }} style={{ ...sel, flex: 1, minWidth: 0 }}>
+          <option value="">📋 Apply saved FAQ set…</option>
+          {tpls.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+        </select>
+        <button onClick={async () => { const title = window.prompt("Name this FAQ set (e.g. 'Standard party FAQs'):"); if (!title || !title.trim()) return; if (!value.length) return alert("Add some FAQs first."); const { error } = await supabase.from("canned_faqs").insert({ title: title.trim(), faqs: value.filter(f => (f.q || "").trim()) }); if (error) return alert(error.message); alert("💾 Saved!"); loadT(); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 11px", fontSize: 12 }}>💾 Save set</button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 8 }}>
+        {value.map((f, i) => (
+          <div key={i} style={{ background: W.bg, borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input value={f.q || ""} onChange={e => upd(i, "q", e.target.value)} placeholder="Question" style={{ ...ip, fontWeight: 700 }} />
+              <button onClick={() => onChange(value.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4, flexShrink: 0 }}><Trash2 size={15} /></button>
+            </div>
+            <textarea value={f.a || ""} onChange={e => upd(i, "a", e.target.value)} placeholder="Answer" rows={2} style={{ ...ip, resize: "vertical", fontFamily: "inherit" }} />
+          </div>
+        ))}
+      </div>
+      <button onClick={() => onChange([...value, { q: "", a: "" }])} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center" }}><Plus size={14} />Add FAQ</button>
+    </div>
+  );
+}
 function ArtistDraft({ value = [], onChange }) {
   const [busy, setBusy] = useState(null);
   const ip = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13.5, outline: "none", boxSizing: "border-box" };
@@ -7446,7 +7478,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fOrg === "all" || e.host_id === fOrg)
     && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole))
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", artists: [], entryBadge: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
@@ -7487,7 +7519,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, entry_badge: f.entryBadge || null }, dates, f.addons);
+    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: f.entryBadge || null }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -7619,6 +7651,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             {ENTRY_BADGES.map(b => <option key={b} value={b}>{b === "" ? "No entry badge" : b}</option>)}
           </select>
           <ArtistDraft value={f.artists} onChange={v => setF({ ...f, artists: v })} />
+          <FaqDraft value={f.faqs} onChange={v => setF({ ...f, faqs: v })} />
           <CannedTerms value={f.terms} onApply={(b) => setF({ ...f, terms: b })} />
           <textarea value={f.terms} onChange={e => setF({ ...f, terms: e.target.value })} rows={2} placeholder="Terms & conditions (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
           <PerkPicker kind="exclusion" label="Not included" color="#C0392B" value={f.exclusions} onChange={v => setF({ ...f, exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
