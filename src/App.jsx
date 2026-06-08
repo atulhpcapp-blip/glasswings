@@ -1837,7 +1837,7 @@ function Main({ user }) {
         (data || []).forEach(r => { if (!m[r.group_id]) m[r.group_id] = { text: gwPreviewText(r), at: new Date(r.created_at).getTime() }; });
         setPreviews(m);
       });
-  }, [user?.id, tab]);
+  }, [user?.id, tab, open]);
   useEffect(() => {
     if (!user?.id) return;
     supabase.rpc("dm_streaks").then(({ data }) => {
@@ -5384,7 +5384,8 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   };
   const vote = async (mid, idx) => {
     setPollVotes(p => { const e = { counts: { ...(p[mid]?.counts || {}) }, total: p[mid]?.total || 0, mine: p[mid]?.mine ?? null }; if (e.mine != null) e.counts[e.mine] = Math.max(0, (e.counts[e.mine] || 0) - 1); e.counts[idx] = (e.counts[idx] || 0) + 1; e.total = Object.values(e.counts).reduce((a, b) => a + b, 0); e.mine = idx; return { ...p, [mid]: e }; });
-    supabase.from("poll_votes").upsert({ message_id: mid, user_id: user.id, option_idx: idx }, { onConflict: "message_id,user_id" }).then(() => { });
+    const { error: voteErr } = await supabase.from("poll_votes").upsert({ message_id: mid, user_id: user.id, option_idx: idx }, { onConflict: "message_id,user_id" });
+    if (voteErr) { console.error("poll vote failed", voteErr); alert("Couldn't save your vote: " + voteErr.message); }
   };
   const shareLocation = () => {
     setPlusOpen(false);
@@ -9973,7 +9974,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • credittopup ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pollvotefix ✅</div>
       </div>
     </div>
   );
