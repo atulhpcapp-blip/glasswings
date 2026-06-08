@@ -6597,6 +6597,11 @@ function CreditsAdmin() {
   const [packs, setPacks] = useState(null);
   const [games, setGames] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState([]);
+  const [sel, setSel] = useState(null);
+  const [amt, setAmt] = useState("");
+  const [tbusy, setTbusy] = useState(false);
   const load = () => {
     supabase.from("credit_packs").select("*").order("sort").then(({ data }) => setPacks(data || []));
     supabase.from("game_costs").select("*").order("sort").then(({ data }) => setGames(data || []));
@@ -6625,6 +6630,30 @@ function CreditsAdmin() {
       window.alert("Game settings saved ✓"); load();
     } catch (e) { window.alert(e.message || "Couldn't save."); }
     setBusy(false);
+  };
+  useEffect(() => {
+    const ql = q.trim();
+    if (ql.length < 2) { setHits([]); return; }
+    const t = setTimeout(() => { supabase.rpc("member_search", { p_q: ql }).then(({ data }) => setHits((data || []).slice(0, 8))); }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  const pickMember = async (m) => {
+    let bal = null;
+    try { const { data } = await supabase.from("profiles").select("game_credits").eq("id", m.id).maybeSingle(); if (data) bal = Number(data.game_credits) || 0; } catch {}
+    setSel({ id: m.id, full_name: m.full_name, avatar_url: m.avatar_url, credits: bal }); setHits([]); setQ("");
+  };
+  const applyTopup = async () => {
+    const n = Math.trunc(Number(amt));
+    if (!n || !sel) return;
+    setTbusy(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_add_credits", { p_user: sel.id, p_n: n });
+      if (error) throw error;
+      setSel(x => ({ ...x, credits: typeof data === "number" ? data : x.credits }));
+      setAmt("");
+      window.alert((n > 0 ? "Added " : "Removed ") + Math.abs(n) + " credit" + (Math.abs(n) === 1 ? "" : "s") + " ✓");
+    } catch (e) { window.alert(e.message || "Couldn't update credits."); }
+    setTbusy(false);
   };
   return (
     <div style={{ padding: 14 }}>
@@ -6656,6 +6685,38 @@ function CreditsAdmin() {
       ))}
       <button onClick={addPack} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", padding: "10px", marginBottom: 8 }}>+ Add a pack</button>
       <button onClick={savePacks} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "11px", opacity: busy ? .6 : 1 }}>{busy ? "…" : "Save credit packs"}</button>
+      <div style={{ height: 1, background: W.line, margin: "24px 0 18px" }} />
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 16, marginBottom: 4 }}>🎁 Top up a member</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Add credits for promos or refunds. Use a negative number to deduct.</div>
+      {!sel ? (
+        <>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search a member by name…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+          {hits.map(m => (
+            <div key={m.id} onClick={() => pickMember(m)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 6px", borderBottom: `1px solid ${W.line}`, cursor: "pointer" }}>
+              {m.avatar_url ? <img src={m.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 36, height: 36, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>{(m.full_name || "?").charAt(0)}</div>}
+              <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{m.full_name || "Member"}</div>
+            </div>
+          ))}
+        </>
+      ) : (
+        <div style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 12 }}>
+            {sel.avatar_url ? <img src={sel.avatar_url} alt="" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 42, height: 42, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>{(sel.full_name || "?").charAt(0)}</div>}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{sel.full_name || "Member"}</div>
+              <div style={{ fontSize: 12.5, color: W.soft }}>Current: {sel.credits == null ? "—" : sel.credits} credits</div>
+            </div>
+            <button onClick={() => { setSel(null); setAmt(""); }} style={{ background: "none", border: "none", color: W.teal, fontWeight: 800, cursor: "pointer", fontSize: 13 }}>Change</button>
+          </div>
+          <div style={{ display: "flex", gap: 7, marginBottom: 10, flexWrap: "wrap" }}>
+            {[5, 10, 25].map(n => <button key={n} onClick={() => setAmt(String(n))} style={{ ...btn("#E7F6EF", W.teal), padding: "7px 12px", fontSize: 13 }}>+{n}</button>)}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input type="number" value={amt} onChange={e => setAmt(e.target.value)} placeholder="Amount (e.g. 10, or -5)" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+            <button onClick={applyTopup} disabled={tbusy || !amt} style={{ ...btn(W.teal, "#fff"), padding: "11px 18px", opacity: (tbusy || !amt) ? .6 : 1 }}>{tbusy ? "…" : "Apply"}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -9912,7 +9973,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • CREDITSTAB ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • credittopup ✅</div>
       </div>
     </div>
   );
