@@ -8811,19 +8811,17 @@ function ConnMemberPicker({ label, value, onChange }) {
 function ConnectionsPanel({ canApprove }) {
   if (!canApprove) return null;
   const [list, setList] = useState([]);
-  const [a, setA] = useState(null);
-  const [b, setB] = useState(null);
+  const [picks, setPicks] = useState([]);
   const [busy, setBusy] = useState(false);
   const load = () => supabase.rpc("list_dm_allow").then(({ data }) => setList(data || []));
   useEffect(() => { load(); }, []);
   const grant = async () => {
-    if (!a || !b) return;
-    if (a.id === b.id) return alert("Pick two different people.");
+    if (picks.length < 2) return;
     setBusy(true);
-    const { error } = await supabase.rpc("grant_dm", { p_a: a.id, p_b: b.id });
+    const { error } = await supabase.rpc("grant_dm_group", { p_ids: picks.map(x => x.id) });
     setBusy(false);
     if (error) return alert(error.message);
-    setA(null); setB(null); load();
+    setPicks([]); load();
   };
   const revoke = async (id) => {
     if (!window.confirm("Revoke this connection? This removes their permission AND deletes their existing chat for both people. This can't be undone.")) return;
@@ -8833,13 +8831,22 @@ function ConnectionsPanel({ canApprove }) {
   };
   return (
     <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "15px 16px", margin: "12px 14px" }}>
-      <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>🔗 Connect two members</div>
-      <div style={{ fontSize: 12, color: W.soft, margin: "3px 0 12px", lineHeight: 1.45 }}>Lets two people message each other privately even if they haven’t met at an event. Both are notified.</div>
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>🔗 Connect members</div>
+      <div style={{ fontSize: 12, color: W.soft, margin: "3px 0 12px", lineHeight: 1.45 }}>Connect up to 10 members so they can message each other privately even if they haven’t met at an event. Everyone you select is connected to one another and notified.</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        <ConnMemberPicker label="Search the first member…" value={a} onChange={setA} />
-        <div style={{ textAlign: "center", color: W.soft, fontWeight: 800, fontSize: 13 }}>↕</div>
-        <ConnMemberPicker label="Search the second member…" value={b} onChange={setB} />
-        <button disabled={!a || !b || busy} onClick={grant} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", opacity: (!a || !b || busy) ? .5 : 1 }}>{busy ? "Connecting…" : "Allow them to chat"}</button>
+        {picks.length < 10 && <ConnMemberPicker label="Search a member to add…" value={null} onChange={(m) => { if (!m) return; setPicks(ps => (ps.length >= 10 || ps.some(x => x.id === m.id)) ? ps : [...ps, m]); }} />}
+        {picks.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {picks.map(pk => (
+              <span key={pk.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#E7F6EF", color: W.ink, borderRadius: 16, padding: "5px 7px 5px 5px", fontSize: 12.5, fontWeight: 700 }}>
+                <PersonAvatar url={pk.avatar_url} name={pk.full_name} size={22} />{(pk.full_name || "Member").split(" ")[0]}
+                <span onClick={() => setPicks(ps => ps.filter(x => x.id !== pk.id))} style={{ cursor: "pointer", color: W.soft, fontSize: 15, fontWeight: 800, padding: "0 1px" }}>×</span>
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: W.soft }}>{picks.length}/10 selected{picks.length >= 10 ? " · max reached" : ""}</div>
+        <button disabled={picks.length < 2 || busy} onClick={grant} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", opacity: (picks.length < 2 || busy) ? .5 : 1 }}>{busy ? "Connecting…" : picks.length >= 2 ? `Connect these ${picks.length} people` : "Add at least 2 people"}</button>
       </div>
       <div style={{ fontWeight: 800, color: W.ink, fontSize: 13, margin: "16px 0 8px" }}>Approved connections</div>
       {list.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No manual connections yet.</div> : list.map(c => (
@@ -9390,7 +9397,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • DMLOCK3 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • DMLOCK4 ✅</div>
       </div>
     </div>
   );
