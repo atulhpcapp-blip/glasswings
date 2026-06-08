@@ -2317,10 +2317,10 @@ function Main({ user }) {
       chatEl = r ? <LockedRoomPreview room={r} count={counts[r.id] || 0} free={freeForUser(r)} planLabel={(() => { const cp = coveringPlanId(r.id); const pl = cp ? allPlans.find(p => p.id === cp) : null; return pl ? `${pl.emoji || "💎"} ${pl.name}` : null; })()} onJoin={() => { const cp = coveringPlanId(r.id); if (cp && !freeForUser(r)) { setOpen(null); setSubPage({ highlight: cp }); } else joinRoom(r); }} onPlan={(mo) => buyRoomPlan(r, mo)} onBack={() => setOpen(null)} /> : null;
     } else if (open.type === "room") {
       const r = rooms.find(x => x.id === open.id);
-      if (r) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
+      if (r) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: r.id, name: r.name, emoji: r.emoji, logo_url: r.logo_url, pinned: r.pinned }} groupType="room" user={user} profile={profile} isAdmin={isAdmin} memberCount={counts[r.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateRoom} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     } else {
       const e = events.find(x => x.id === open.id);
-      if (e) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
+      if (e) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     }
   }
   if (chatEl && !wide) return chatEl;
@@ -2363,7 +2363,7 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
-      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat — no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>}
+      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
@@ -2498,14 +2498,13 @@ function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremiu
   const [q, setQ] = useState("");
   const [memberHits, setMemberHits] = useState([]);
   const [tipDismiss, setTipDismiss] = useState(false);
-  const hasConnection = chats.some(c => c.type === "p2p");
   const ql = q.trim().toLowerCase();
   const shown = ql ? chats.filter(c => (c.name || "").toLowerCase().includes(ql) || (previews[c.id]?.text || "").toLowerCase().includes(ql)) : chats;
   useEffect(() => {
     if (ql.length < 2) { setMemberHits([]); return; }
     let dead = false;
     const t = setTimeout(() => {
-      supabase.from("profiles").select("id, full_name, avatar_url").ilike("full_name", "%" + ql + "%").neq("id", meId).limit(15)
+      supabase.rpc("member_search", { p_q: ql })
         .then(({ data }) => { if (!dead) setMemberHits(data || []); });
     }, 250);
     return () => { dead = true; clearTimeout(t); };
@@ -2513,7 +2512,7 @@ function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremiu
   return (
     <div>
       <TopBar title="Glasswings" />
-      {!hasConnection && !tipDismiss && (
+      {!tipDismiss && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, background: "rgba(0,128,105,.08)", borderBottom: `1px solid ${W.line}`, padding: "11px 14px 12px" }}>
           <span style={{ flex: 1, fontSize: 13, lineHeight: 1.5, color: "#0E5247" }}><b>🔒 Your phone number is private — no one can see it.</b> Personal chats unlock only with people you've actually met at an event (confirmed by event check-in). Until then, chat together in the community rooms.</span>
           <span onClick={() => setTipDismiss(true)} role="button" aria-label="Dismiss" style={{ cursor: "pointer", fontSize: 18, fontWeight: 700, lineHeight: 1, color: W.soft, padding: "0 2px", flexShrink: 0 }}>×</span>
@@ -2727,6 +2726,8 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
   const wave = async (node) => {
     try {
       const first = (node.name || "").split(" ")[0];
+      const { data: okW } = await supabase.rpc("can_dm", { p_other: node.id });
+      if (!okW) { onNotice("You can wave only to people you\u2019ve met at an event, or whom an admin has connected you with."); return; }
       const { data: tid, error: te } = await supabase.rpc("get_dm_thread", { p_other: node.id });
       if (te) return onNotice("Could not start the chat right now.");
       const { error } = await supabase.from("messages").insert({ group_type: "p2p", group_id: tid, sender_id: profile.id, body: `👋 Hi${first ? " " + first : ""}! We've crossed paths at ${r.name} meetups — I'm ${profile.full_name}. Say hi back!` });
@@ -6285,7 +6286,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : seg === "manage" ? <><PendingSignups isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
+                : seg === "manage" ? <><PendingSignups isSuper={isSuper} /><ConnectionsPanel canApprove={canApprove} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
                   : <MembersOverview isSuper={isSuper} />}
     </div>
   );
@@ -8769,6 +8770,85 @@ function MembersOverview({ isSuper }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+function ConnMemberPicker({ label, value, onChange }) {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState([]);
+  const ip = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box" };
+  useEffect(() => {
+    if (q.trim().length < 2) { setHits([]); return; }
+    let dead = false;
+    const t = setTimeout(() => { supabase.rpc("member_search", { p_q: q.trim() }).then(({ data }) => { if (!dead) setHits(data || []); }); }, 250);
+    return () => { dead = true; clearTimeout(t); };
+  }, [q]);
+  if (value) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${W.teal}`, borderRadius: 9, padding: "8px 11px" }}>
+      <PersonAvatar url={value.avatar_url} name={value.full_name} size={34} />
+      <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 14 }}>{value.full_name || "Member"}</div>
+      <span onClick={() => { onChange(null); setQ(""); }} style={{ cursor: "pointer", color: W.soft, fontSize: 17, fontWeight: 700 }}>×</span>
+    </div>
+  );
+  return (
+    <div style={{ position: "relative" }}>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder={label} style={ip} />
+      {hits.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 9, marginTop: 4, maxHeight: 220, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.12)" }}>
+          {hits.map(h => (
+            <div key={h.id} onClick={() => { onChange(h); setHits([]); setQ(""); }} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 11px", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
+              <PersonAvatar url={h.avatar_url} name={h.full_name} size={30} />
+              <span style={{ fontSize: 13.5, color: W.ink, fontWeight: 600 }}>{h.full_name || "Member"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function ConnectionsPanel({ canApprove }) {
+  if (!canApprove) return null;
+  const [list, setList] = useState([]);
+  const [a, setA] = useState(null);
+  const [b, setB] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => supabase.rpc("list_dm_allow").then(({ data }) => setList(data || []));
+  useEffect(() => { load(); }, []);
+  const grant = async () => {
+    if (!a || !b) return;
+    if (a.id === b.id) return alert("Pick two different people.");
+    setBusy(true);
+    const { error } = await supabase.rpc("grant_dm", { p_a: a.id, p_b: b.id });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setA(null); setB(null); load();
+  };
+  const revoke = async (id) => {
+    if (!window.confirm("Revoke this connection? They'll no longer find each other in search. Any existing chat stays.")) return;
+    const { error } = await supabase.rpc("revoke_dm", { p_id: id });
+    if (error) return alert(error.message);
+    load();
+  };
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "15px 16px", margin: "12px 14px" }}>
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>🔗 Connect two members</div>
+      <div style={{ fontSize: 12, color: W.soft, margin: "3px 0 12px", lineHeight: 1.45 }}>Lets two people message each other privately even if they haven’t met at an event. Both are notified.</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        <ConnMemberPicker label="Search the first member…" value={a} onChange={setA} />
+        <div style={{ textAlign: "center", color: W.soft, fontWeight: 800, fontSize: 13 }}>↕</div>
+        <ConnMemberPicker label="Search the second member…" value={b} onChange={setB} />
+        <button disabled={!a || !b || busy} onClick={grant} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", opacity: (!a || !b || busy) ? .5 : 1 }}>{busy ? "Connecting…" : "Allow them to chat"}</button>
+      </div>
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 13, margin: "16px 0 8px" }}>Approved connections</div>
+      {list.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No manual connections yet.</div> : list.map(c => (
+        <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 0", borderTop: `1px solid ${W.line}`, fontSize: 13 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, color: W.ink }}>{c.a_name || "Member"} ↔ {c.b_name || "Member"}</div>
+            <div style={{ fontSize: 11, color: W.soft, marginTop: 1 }}>by {c.by_name || "admin"} · {new Date(c.created_at).toLocaleDateString()}</div>
+          </div>
+          <button onClick={() => revoke(c.id)} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 12px", fontSize: 12, flexShrink: 0 }}>Revoke</button>
+        </div>
+      ))}
     </div>
   );
 }
