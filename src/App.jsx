@@ -6573,6 +6573,7 @@ function GenderBalance({ ev, onUpdate }) {
 function CannedTerms({ value, onApply }) {
   const [list, setList] = useState([]);
   const [pick, setPick] = useState("");
+  const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" };
   const load = () => supabase.from("canned_terms").select("id, title, body").order("title").then(({ data }) => setList(data || []));
   useEffect(() => { load(); }, []);
   return (
@@ -7201,6 +7202,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const [view, setView] = useState("upcoming");
   const [membersFor, setMembersFor] = useState(null);
   const todayISO = new Date().toISOString().slice(0, 10);
+  const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" };
   const [fCat, setFCat] = useState("all"), [fCity, setFCity] = useState("all"), [fOrg, setFOrg] = useState("all"), [fRole, setFRole] = useState("all");
   const [hosts, setHosts] = useState({});
   useEffect(() => {
