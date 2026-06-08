@@ -5199,6 +5199,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   const [plusOpen, setPlusOpen] = useState(false);
   const [gwCamOpen, setGwCamOpen] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
+  const [gamesOpen, setGamesOpen] = useState(false);
   const [pollVotes, setPollVotes] = useState({});
   const [bigPhoto, setBigPhoto] = useState(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -5397,7 +5398,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
                     </a>
                   )}
                   {m.media_url && m.media_type === "file" && <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: W.ink, background: "#F0F2F5", borderRadius: 8, padding: "8px 10px", marginBottom: m.body ? 4 : 0 }}><Paperclip size={16} color={W.teal} /><span style={{ fontSize: 13.5, wordBreak: "break-all" }}>{m.file_name || "file"}</span></a>}
-                  {m.body && m.media_type !== "location" && m.media_type !== "roomlink" && <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{m.body}</div>}
+                  {m.body && m.media_type !== "location" && m.media_type !== "roomlink" && <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.35, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{gwLinkify(m.body)}</div>}
                   <div style={{ fontSize: 11, color: W.soft, textAlign: "right", marginTop: 2, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
                     {fmtTime(m.created_at)}
                     {mine && groupType === "p2p" && (
@@ -5463,6 +5464,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
                   ["💬", "Room", "linear-gradient(135deg,#F59E0B,#EF4444)", () => { setRoomPick(true); setPlusOpen(false); }],
                   ["🎬", "GIF", "linear-gradient(135deg,#10B981,#059669)", () => { setGifOpen(true); setPlusOpen(false); }],
                   ["📊", "Poll", "linear-gradient(135deg,#F59E0B,#D97706)", () => { setPollOpen(true); setPlusOpen(false); }],
+                  ["🎮", "Games", "linear-gradient(135deg,#8B5CF6,#6366F1)", () => { setGamesOpen(true); setPlusOpen(false); }],
                 ].map(([emo, label, bg, fn]) => (
                   <div key={label} onClick={fn} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "8px 2px", cursor: "pointer", borderRadius: 12 }}>
                     <div style={{ width: 54, height: 54, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: "0 3px 8px rgba(0,0,0,.15)" }}>{emo}</div>
@@ -5476,6 +5478,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
       )}
       {snapOpen && <SnapViewer msg={snapOpen} onClose={() => setSnapOpen(null)} />}
       {pollOpen && <PollCreator onClose={() => setPollOpen(false)} onCreate={(q, opts) => { setPollOpen(false); sendSpecial({ body: q, media_type: "poll", file_name: JSON.stringify(opts) }); }} />}
+      {gamesOpen && <GameShareSheet onClose={() => setGamesOpen(false)} onSendToRoom={(label, url) => { setGamesOpen(false); sendSpecial({ body: url ? `${label} ${url}` : label }); }} />}
       {gwCamOpen && <GWCamera meId={user.id} events={gwEvents} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "snap"); }} onClose={() => setGwCamOpen(false)} />}
       {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
@@ -6816,6 +6819,69 @@ function PinEditor({ room, onUpdate }) {
         <button onClick={() => onUpdate(room.id, { pinned: pin.trim() })} style={btn(W.teal, "#fff")}>Pin</button>
       </div>
     </div>
+  );
+}
+function gwLinkify(text, color) {
+  if (!text || typeof text !== "string") return text;
+  const re = /((?:https?:\/\/|www\.)[^\s]+)/gi;
+  const out = []; let last = 0, m, k = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    let raw = m[0], trail = "";
+    while (/[.,!?:;)\]]$/.test(raw)) { trail = raw.slice(-1) + trail; raw = raw.slice(0, -1); }
+    const href = raw.startsWith("http") ? raw : "https://" + raw;
+    out.push(<a key={"lk" + (k++)} href={href} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: color || "#0a66c2", textDecoration: "underline", wordBreak: "break-all" }}>{raw}</a>);
+    if (trail) out.push(trail);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out.length ? out : text;
+}
+function GameShareSheet({ onClose, onSendToRoom }) {
+  const [custom, setCustom] = useState("");
+  const GAMES = [
+    { emoji: "🎲", name: "Ludo", url: "https://glass-wings.com/g/ludo", blurb: "2–4 players · invite with a code" },
+    { emoji: "💘", name: "Vibe Check", url: "https://glass-wings.com/g/vibe", blurb: "Compatibility mini-game" },
+  ];
+  const msgFor = g => `${g.emoji} Play ${g.name} on Glasswings! ${g.url}`;
+  const wa = g => window.open(`https://wa.me/?text=${encodeURIComponent(msgFor(g))}`, "_blank");
+  const share = async g => {
+    if (navigator.share) { try { await navigator.share({ title: g.name, text: `${g.emoji} Play ${g.name} on Glasswings!`, url: g.url }); } catch {} }
+    else { try { await navigator.clipboard.writeText(msgFor(g)); alert("Link copied! Paste it in Instagram, WhatsApp — anywhere."); } catch { alert(msgFor(g)); } }
+  };
+  const shareLink = async (label, url) => {
+    if (navigator.share) { try { await navigator.share({ text: label, url }); } catch {} }
+    else { try { await navigator.clipboard.writeText(label + " " + url); alert("Link copied! Paste it in Instagram, WhatsApp — anywhere."); } catch { alert(label + " " + url); } }
+  };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, marginBottom: 4 }}>🎮 Share a game</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Send it to this room, WhatsApp, Instagram or anywhere.</div>
+      {GAMES.map(g => (
+        <div key={g.name} style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
+            <span style={{ fontSize: 26 }}>{g.emoji}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{g.name}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{g.blurb}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => onSendToRoom(`${g.emoji} Play ${g.name} with us!`, g.url)} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", minWidth: 120 }}>📤 Send to room</button>
+            <button onClick={() => wa(g)} style={{ ...btn("#25D366", "#fff"), justifyContent: "center" }}>WhatsApp</button>
+            <button onClick={() => share(g)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, justifyContent: "center" }}>📸 Share</button>
+          </div>
+        </div>
+      ))}
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, margin: "8px 0 4px" }}>Any other game?</div>
+      <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Paste any link — Ludo King, a reel, any game — and share it.</div>
+      <input value={custom} onChange={e => setCustom(e.target.value)} placeholder="Paste game link…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", marginBottom: 9, boxSizing: "border-box" }} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button disabled={!custom.trim()} onClick={() => onSendToRoom("🎮 Let's play this!", custom.trim())} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", minWidth: 120, opacity: custom.trim() ? 1 : .5 }}>📤 Send to room</button>
+        <button disabled={!custom.trim()} onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent("🎮 Let's play this! " + custom.trim())}`, "_blank")} style={{ ...btn("#25D366", "#fff"), justifyContent: "center", opacity: custom.trim() ? 1 : .5 }}>WhatsApp</button>
+        <button disabled={!custom.trim()} onClick={() => shareLink("🎮 Let's play this!", custom.trim())} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, justifyContent: "center", opacity: custom.trim() ? 1 : .5 }}>📸 Share</button>
+      </div>
+    </Sheet>
   );
 }
 function BannerMedia({ url, type, style }) {
@@ -9607,7 +9673,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lvideo ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gameshare ✅</div>
       </div>
     </div>
   );
