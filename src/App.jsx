@@ -3506,8 +3506,10 @@ function LudoGame({ gameId, meId, onClose }) {
             const av = pavs[pl.uid];
             return (
               <div key={"badge" + pidx} style={{ position: "absolute", left: ccx, top: ccy, transform: "translate(-50%,-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, zIndex: 4, pointerEvents: "none" }}>
-                {av ? <img src={av} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", border: `2px solid ${LUDO_COLORS[pidx]}`, background: "#fff", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.3)", animation: active ? "gwpulse 1.2s infinite" : "none" }} />
-                  : <div style={{ width: 30, height: 30, borderRadius: "50%", background: LUDO_COLORS[pidx], color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, border: "2px solid #fff", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.3)", animation: active ? "gwpulse 1.2s infinite" : "none" }}>{(pl.name || "?").charAt(0)}</div>}
+                <div style={{ position: "relative", width: 30, height: 30, borderRadius: "50%", background: LUDO_COLORS[pidx], color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, border: `2px solid ${av ? LUDO_COLORS[pidx] : "#fff"}`, overflow: "hidden", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.3)", animation: active ? "gwpulse 1.2s infinite" : "none" }}>
+                  {(pl.name || "?").charAt(0)}
+                  {av && <img src={av} alt="" onError={e => { e.currentTarget.style.display = "none"; }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />}
+                </div>
                 <div style={{ fontSize: 8.5, fontWeight: 800, color: "#fff", background: active ? LUDO_COLORS[pidx] : "rgba(11,31,28,.8)", padding: "1px 6px", borderRadius: 7, maxWidth: cell * 3.6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>{(pl.name || "P" + (pidx + 1)).split(" ")[0]}{active ? " 🎲" : ""}</div>
               </div>
             );
@@ -9777,7 +9779,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • vibetiers ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoava ✅</div>
       </div>
     </div>
   );
