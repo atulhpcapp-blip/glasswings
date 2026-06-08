@@ -4674,7 +4674,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     setCamErr(false);
     (async () => {
       try {
-        const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 } }, audio: false });
+        const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1920 }, frameRate: { ideal: 30 } }, audio: false });
         if (dead) { st.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = st;
         if (videoRef.current) { videoRef.current.srcObject = st; videoRef.current.play().catch(() => { }); }
@@ -4683,7 +4683,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     return () => { dead = true; streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null; };
   }, [mode, facing]);
   const toRaw = (srcEl, w, h, mirror) => {
-    const cap = 1280; const sc = Math.min(1, cap / Math.max(w, h));
+    const cap = 2160; const sc = Math.min(1, cap / Math.max(w, h));
     const c = rawRef.current; c.width = Math.round(w * sc); c.height = Math.round(h * sc);
     const x = c.getContext("2d");
     if (mirror) { x.translate(c.width, 0); x.scale(-1, 1); }
@@ -4792,7 +4792,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
         x.fillText(st.v, st.x * W0, st.y * H0); x.shadowBlur = 0;
       }
     });
-    setPreview(c.toDataURL("image/jpeg", .92));
+    setPreview(c.toDataURL("image/jpeg", .95));
   };
   useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers, wm, li]);
   const relPt = (e) => { const r = boxRef.current.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
@@ -4806,7 +4806,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
   const onUp = () => { dragRef.current = -1; };
   const addEmoji = (em) => { setStickers(p => [...p, { t: "emoji", v: em, x: .5, y: .42, s: .17 }]); setSelIdx(stickers.length); };
   const addCaption = () => { const t = capText.trim(); if (!t) return; setStickers(p => [...p, { t: "text", v: t, x: .5, y: .82, s: .065, color: capColor }]); setSelIdx(stickers.length); setCapText(""); };
-  const toFile = () => new Promise(r => outRef.current.toBlob(b => r(new File([b], `glasswings-${Date.now()}.jpg`, { type: "image/jpeg" })), "image/jpeg", .92));
+  const toFile = () => new Promise(r => outRef.current.toBlob(b => r(new File([b], `glasswings-${Date.now()}.jpg`, { type: "image/jpeg" })), "image/jpeg", .95));
   const doSave = async () => {
     const a = document.createElement("a"); a.href = preview; a.download = `glasswings-${Date.now()}.jpg`; a.click();
     try { const f = await toFile(); const url = await uploadPhoto(meId, f); await albumSave(url, "camera"); alert("💾 Saved to My Album (Glasswings Memories) + downloading!"); } catch { }
