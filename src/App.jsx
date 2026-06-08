@@ -4663,6 +4663,11 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
   const videoRef = useRef(null); const streamRef = useRef(null);
   const rawRef = useRef(null); const outRef = useRef(null);
   const boxRef = useRef(null); const dragRef = useRef(null);
+  const [camTab, setCamTab] = useState("beauty");
+  const activeRef = useRef(null);
+  useEffect(() => { const t = setTimeout(() => { try { activeRef.current?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch { } }, 30); return () => clearTimeout(t); }, [camTab, li, fi]);
+  const lensBg = (l2) => { const c = l2[1]; if (!c) return "linear-gradient(135deg,#555,#222)"; if (c.wash) return c.wash; return "linear-gradient(135deg,#7C3AED,#EC4899)"; };
+  const filterBg = (f) => { const fx = f[2] || []; const g = fx.find(o => o[0] === "grad"); if (g) return `linear-gradient(135deg, ${g[1]}, ${g[2]})`; const w = fx.find(o => o[0] === "wash"); if (w) return w[1]; return "linear-gradient(135deg,#3a3a3a,#1c1c1c)"; };
   useEffect(() => {
     if (mode !== "cam") return;
     let dead = false;
@@ -4866,18 +4871,36 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
               return null;
             })}
           </div>
-          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 12px 0" }}>
-            {GW_LENSES.map((l2, i) => chip(l2[0], li === i, () => setLi(i)))}
+          <div style={{ textAlign: "center", color: "#fff", fontWeight: 800, fontSize: 14, padding: "8px 0 4px", textShadow: "0 1px 6px rgba(0,0,0,.55)" }}>
+            {camTab === "beauty" ? GW_LENSES[li][0] : GW_FILTERS[fi][0]}
           </div>
-          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 4px" }}>
-            {GW_FILTERS.map((f, i) => chip(f[0], fi === i, () => setFi(i)))}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 38px 26px" }}>
-            <label style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, cursor: "pointer" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px" }}>
+            <label style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,.16)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>
               🖼️<input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { importPic(e.target.files?.[0]); e.target.value = ""; }} />
             </label>
-            <div onClick={shoot} style={{ width: 76, height: 76, borderRadius: "50%", border: "5px solid #fff", background: "rgba(255,255,255,.25)", cursor: "pointer", boxShadow: "0 0 0 4px rgba(255,255,255,.18)" }} />
-            <div onClick={() => setFacing(f => f === "user" ? "environment" : "user")} style={{ width: 46, height: 46, borderRadius: 12, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, cursor: "pointer" }}>🔄</div>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 11, overflowX: "auto", padding: "10px 40%", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", userSelect: "none" }}>
+              {(camTab === "beauty" ? GW_LENSES : GW_FILTERS).map((item, i) => {
+                const active = camTab === "beauty" ? li === i : fi === i;
+                const name = item[0];
+                const lead = (name || "").split(" ")[0];
+                const isEmoji = !!lead && lead.codePointAt(0) > 0x2000;
+                const bg = camTab === "beauty" ? lensBg(item) : filterBg(item);
+                const glyph = camTab === "beauty" ? (isEmoji ? lead : "\u2300") : (name.split(" ").map(w => w[0] || "").join("").slice(0, 2).toUpperCase());
+                return (
+                  <div key={name} ref={active ? activeRef : null}
+                    onClick={() => active ? shoot() : (camTab === "beauty" ? setLi(i) : setFi(i))}
+                    style={{ flexShrink: 0, scrollSnapAlign: "center", width: active ? 70 : 50, height: active ? 70 : 50, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: active ? 26 : 18, color: "#fff", fontWeight: 800, cursor: "pointer", border: active ? "4px solid #fff" : "2px solid rgba(255,255,255,.45)", boxShadow: active ? "0 0 0 3px rgba(0,0,0,.25)" : "none", transition: "width .15s, height .15s", textShadow: "0 1px 3px rgba(0,0,0,.45)" }}>
+                    {glyph}
+                  </div>
+                );
+              })}
+            </div>
+            <div onClick={() => setFacing(f => f === "user" ? "environment" : "user")} style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,.16)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>🔄</div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "8px 12px 24px" }}>
+            {[["beauty", "✨ Beauty"], ["filters", "🎨 Filters"]].map(([k, l]) => (
+              <button key={k} onClick={() => setCamTab(k)} style={{ padding: "7px 18px", borderRadius: 18, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 13, background: camTab === k ? "#fff" : "rgba(255,255,255,.16)", color: camTab === k ? "#0b1f1c" : "#fff" }}>{l}</button>
+            ))}
           </div>
         </>
       ) : (
