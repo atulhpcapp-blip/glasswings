@@ -6255,6 +6255,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.host ? [["events", "Events"]] : []),
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"]] : []),
+    ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["door", "Door"]] : []),
@@ -6286,7 +6287,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : seg === "manage" ? <><PendingSignups isSuper={isSuper} /><ConnectionsPanel canApprove={canApprove} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
+                : seg === "connect" ? <ConnectionsPanel canApprove={canApprove} />
+                : seg === "manage" ? <><PendingSignups isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
                   : <MembersOverview isSuper={isSuper} />}
     </div>
   );
@@ -9388,7 +9390,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • kbfix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • DMLOCK2 ✅</div>
       </div>
     </div>
   );
