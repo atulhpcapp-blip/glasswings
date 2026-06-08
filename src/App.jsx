@@ -8646,7 +8646,14 @@ function StreakBoard({ events }) {
   );
 }
 function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, events }) {
-  const roleLabel = { admin: "Admin (Owner)", subadmin: "Sub-admin", member: "Member" }[profile?.role] || "Member";
+  const _roles = profile?.roles || [];
+  const roleLabel = _roles.includes("superadmin") ? "Founder ⭐"
+    : _roles.includes("admin") ? "Admin"
+    : _roles.includes("subadmin") ? "Sub-admin"
+    : _roles.includes("organiser") ? "Organiser"
+    : _roles.includes("promoter") ? "Promoter"
+    : (profile?.founding_member ? "Founding Member" : "Member");
+  const _isStaffey = _roles.some(r => ["superadmin", "admin", "subadmin", "organiser", "promoter"].includes(r));
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [stamps, setStamps] = useState(null);
@@ -8676,7 +8683,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <div>
             <div style={{ fontSize: 21, fontWeight: 700, color: W.ink }}>{profile?.full_name || "—"}</div>
             <div style={{ color: W.soft, fontSize: 14 }}>{user.email}</div>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 7, background: "#E7F6EF", color: W.teal, fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{profile?.role !== "member" && <Crown size={13} />}{roleLabel}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 7, background: "#E7F6EF", color: W.teal, fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{_isStaffey && <Crown size={13} />}{roleLabel}</span>
           </div>
         </div>
         <button onClick={() => setEdit(true)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}><Pencil size={15} />Edit profile</button>
