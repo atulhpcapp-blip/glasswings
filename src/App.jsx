@@ -3229,6 +3229,9 @@ function LockedRoomPreview({ room, count, free, planLabel, onJoin, onPlan, onBac
 }
 const LUDO_COLORS = ["#E53935", "#43A047", "#FDD835", "#1E88E5"];
 const LUDO_DARK = ["#9E1B1B", "#1F5E26", "#C99B07", "#0D47A1"];
+const LUDO_EMOJIS = ["😀","😂","😍","😎","😜","🤣","😡","😭","👍","👎","🎉","🔥","❤️","💩","🤡","👋"];
+const LUDO_EMOJI_SET = new Set(LUDO_EMOJIS);
+function isQuickEmoji(t) { return LUDO_EMOJI_SET.has((t || "").trim()); }
 function DiceFace({ n, size = 46 }) {
   const pip = (x, y) => <div key={x + "_" + y} style={{ position: "absolute", left: `${x}%`, top: `${y}%`, width: size * .16, height: size * .16, borderRadius: "50%", background: "#1d2a27", transform: "translate(-50%,-50%)" }} />;
   const P = { 1: [[50, 50]], 2: [[28, 28], [72, 72]], 3: [[26, 26], [50, 50], [74, 74]], 4: [[28, 28], [72, 28], [28, 72], [72, 72]], 5: [[27, 27], [73, 27], [50, 50], [27, 73], [73, 73]], 6: [[30, 24], [70, 24], [30, 50], [70, 50], [30, 76], [70, 76]] };
@@ -3348,6 +3351,13 @@ function LudoGame({ gameId, meId, onClose }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatText, setChatText] = useState("");
   const chatEndRef = useRef(null);
+  const [disp, setDisp] = useState(null);
+  const dispRef = useRef(null);
+  const animRef = useRef(false);
+  const [emojiTray, setEmojiTray] = useState(false);
+  const [floats, setFloats] = useState([]);
+  const chatLenRef = useRef(0);
+  const chatInit = useRef(false);
   useEffect(() => {
     const uids = ((g && g.players) || []).map(pl => pl.uid).filter(u => u && !pavs[u]);
     if (!uids.length) return;
@@ -3359,6 +3369,56 @@ function LudoGame({ gameId, meId, onClose }) {
     if (data) setG(data);
   };
   useEffect(() => { load(); const iv = setInterval(load, 1400); return () => clearInterval(iv); }, [gameId]);
+  useEffect(() => {
+    if (!g || !g.tokens) return;
+    const target = g.tokens;
+    const cur = dispRef.current;
+    if (!cur || cur.length !== target.length) { setDisp(target.slice()); dispRef.current = target.slice(); return; }
+    if (animRef.current) return;
+    let same = true; for (let i = 0; i < target.length; i++) { if (target[i] !== cur[i]) { same = false; break; } }
+    if (same) return;
+    const idx = g.last ? (g.last.by * 4 + g.last.token) : -1;
+    const from = idx >= 0 ? cur[idx] : null;
+    const to = idx >= 0 ? target[idx] : null;
+    const walk = idx >= 0 && from != null && from >= 0 && to != null && to > from && to <= 56 && (to - from) <= 6;
+    if (!walk) {
+      setDisp(target.slice()); dispRef.current = target.slice();
+      if (g.last && g.last.captured) playCaptureSound();
+      return;
+    }
+    animRef.current = true;
+    let sv = from;
+    const stepOnce = () => {
+      sv += 1;
+      const n = (dispRef.current || cur).slice(); n[idx] = sv; dispRef.current = n; setDisp(n);
+      try { _beep(360 + sv * 6, 0.04, "square", 0.06, 0); } catch {}
+      if (sv >= to) {
+        animRef.current = false;
+        const f = (dispRef.current || cur).slice();
+        for (let i = 0; i < target.length; i++) { if (i !== idx) f[i] = target[i]; }
+        dispRef.current = f; setDisp(f);
+        if (g.last && g.last.captured) playCaptureSound();
+        return;
+      }
+      setTimeout(stepOnce, 165);
+    };
+    setTimeout(stepOnce, 70);
+  }, [g ? JSON.stringify(g.tokens) : ""]);
+  useEffect(() => {
+    const chat = (g && g.chat) || [];
+    if (!chatInit.current) { chatInit.current = true; chatLenRef.current = chat.length; return; }
+    const prevLen = chatLenRef.current; chatLenRef.current = chat.length;
+    if (chat.length <= prevLen) return;
+    const pl = (g && g.players) || [];
+    chat.slice(prevLen).forEach(m => {
+      if (m && typeof m.text === "string" && isQuickEmoji(m.text)) {
+        const pidx = pl.findIndex(pp => String(pp.uid) === String(m.uid));
+        const id = Math.random().toString(36).slice(2);
+        setFloats(f => [...f, { id, emoji: m.text.trim(), pidx: pidx < 0 ? 0 : pidx }]);
+        setTimeout(() => setFloats(f => f.filter(x => x.id !== id)), 2200);
+      }
+    });
+  }, [g && g.chat ? g.chat.length : 0]);
   useEffect(() => { if (chatOpen) chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [g && g.chat ? g.chat.length : 0, chatOpen]);
   if (!g) return <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}>Loading game…</div>;
   const players = g.players || [];
@@ -3392,6 +3452,7 @@ function LudoGame({ gameId, meId, onClose }) {
     setLegal([]);
   };
   const sendChat = async () => { const t = chatText.trim(); if (!t) return; setChatText(""); const { error } = await supabase.rpc("ludo_say", { p_game: g.id, p_text: t }); if (error) alert(error.message); else load(); };
+  const sendEmoji = async (e) => { setEmojiTray(false); const { error } = await supabase.rpc("ludo_say", { p_game: g.id, p_text: e }); if (error) alert(error.message); else load(); };
   const leaveGame = async () => { try { if (g.status === "lobby") await supabase.rpc("ludo_leave", { p_game: g.id }); } catch {} onClose(); };
   const cellBg = (r, c) => {
     if (r < 6 && c < 6) return LUDO_COLORS[0] + "33";
@@ -3411,7 +3472,7 @@ function LudoGame({ gameId, meId, onClose }) {
     return "transparent";
   };
   const isStar = (r, c) => { const i = LUDO_PATH.findIndex(([tr, tc]) => tr === r && tc === c); return i >= 0 && LUDO_SAFE.has(i) && !LUDO_START.includes(i); };
-  const tokens = g.tokens || [];
+  const tokens = disp || g.tokens || [];
   const tokenList = [];
   players.forEach((pl, pidx) => {
     for (let j = 0; j < 4; j++) {
@@ -3434,6 +3495,7 @@ function LudoGame({ gameId, meId, onClose }) {
           <div style={{ fontSize: 11, opacity: .9 }}>{g.status === "lobby" ? `${players.length}/4 players — waiting` : g.status === "done" ? "Game over" : "In progress"}</div>
         </div>
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexShrink: 0 }}>
+          <button onClick={() => setEmojiTray(v => !v)} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 9px", fontSize: 14, cursor: "pointer" }}>😀</button>
           <button onClick={() => setChatOpen(true)} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>💬{(g.chat || []).length ? " " + (g.chat || []).length : ""}</button>
           {players[0]?.uid === meId && g.status !== "done" ? (
             <button onClick={() => window.gwConfirm(g.status === "lobby" ? "Cancel this game?" : "End this game for everyone?", async () => {
@@ -3464,7 +3526,7 @@ function LudoGame({ gameId, meId, onClose }) {
       )}
       <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 6px" }}>
         <div style={{ background: "linear-gradient(145deg,#14323C,#0E2228)", padding: 9, borderRadius: 18, boxShadow: "0 8px 26px rgba(0,0,0,.35)" }}>
-        <div style={{ position: "relative", width: B, height: B, background: "#fff", borderRadius: 8, overflow: "hidden" }}>
+        <div style={{ position: "relative", width: B, height: B, background: "#fff", borderRadius: 8, overflow: "visible" }}>
           {Array.from({ length: 15 }).map((_, r) => Array.from({ length: 15 }).map((_, c) => {
             const inBase = (r < 6 && c < 6) || (r < 6 && c > 8) || (r > 8 && c > 8) || (r > 8 && c < 6);
             const baseIdx = r < 6 && c < 6 ? 0 : r < 6 && c > 8 ? 1 : r > 8 && c > 8 ? 2 : r > 8 && c < 6 ? 3 : -1;
@@ -3537,23 +3599,30 @@ function LudoGame({ gameId, meId, onClose }) {
             );
           })()}
           {tokenList.map(t => {
-            const sz = cell * 0.86;
-            const offs = t.stackIdx * 4 - (stacks[t.rc[0] + "_" + t.rc[1]] - 1) * 2;
+            const sz = cell * 0.92, pinW = sz, pinH = sz * 1.32;
+            const k = t.rc[0] + "_" + t.rc[1]; const n = stacks[k] || 1;
+            const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * 7 : 0;
             const clickable = myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
             const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx];
+            const leftPx = t.rc[1] * cell + cell / 2 + offs;
+            const topPx = t.rc[0] * cell + cell / 2 - offs;
             return (
               <div key={t.pidx + "_" + t.j} onClick={() => move(t.j)}
-                style={{ position: "absolute", left: t.rc[1] * cell + (cell - sz) / 2 + offs, top: t.rc[0] * cell + (cell - sz) / 2 - offs, width: sz, height: sz, borderRadius: "50%",
-                  background: `radial-gradient(circle at 32% 26%, rgba(255,255,255,.85) 0%, rgba(255,255,255,.25) 22%, transparent 40%), radial-gradient(circle at 50% 55%, ${col} 40%, ${dk} 100%)`,
-                  border: `1.5px solid ${dk}`,
-                  boxShadow: clickable ? `0 0 0 3px ${col}88, 0 3px 6px rgba(0,0,0,.4)` : "0 3px 6px rgba(0,0,0,.4)",
-                  cursor: clickable ? "pointer" : "default", transition: "left .25s, top .25s", zIndex: 5 + t.stackIdx,
-                  animation: (g.last && g.last.by === t.pidx && g.last.token === t.j && t.sVal !== -1) ? "gwhop .5s ease" : (clickable ? "gwpulse 1s infinite" : "none"), display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ width: sz * .26, height: sz * .26, borderRadius: "50%", background: "#fff", boxShadow: `inset 0 1px 2px ${dk}88` }} />
+                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-86%)", transformOrigin: "50% 86%", transition: "left .15s linear, top .15s linear", zIndex: clickable ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 4px ${col})` : "none" }}>
+                <svg viewBox="0 0 24 31" width={pinW} height={pinH} style={{ display: "block" }}>
+                  <ellipse cx="12" cy="29" rx="6" ry="1.8" fill="rgba(0,0,0,.28)" />
+                  <path d="M12 1.5 C6 1.5 1.6 6 1.6 11 C1.6 17.5 12 28.5 12 28.5 C12 28.5 22.4 17.5 22.4 11 C22.4 6 18 1.5 12 1.5 Z" fill={col} stroke={dk} strokeWidth="1.3" />
+                  <circle cx="12" cy="11" r="5.6" fill="#ffffff" />
+                  <circle cx="12" cy="11" r="3.1" fill={col} />
+                  <ellipse cx="9.4" cy="7.2" rx="2.3" ry="1.5" fill="rgba(255,255,255,.55)" />
+                </svg>
               </div>
             );
           })}
-          <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } } @keyframes gwhop { 0% { transform: translateY(0); } 35% { transform: translateY(-11px) scale(1.05); } 70% { transform: translateY(0); } 85% { transform: translateY(-3px); } 100% { transform: translateY(0); } } @keyframes gwshake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }`}</style>
+          {floats.map(fl => { const q = [[0, 0], [0, 9], [9, 9], [9, 0]][fl.pidx] || [0, 0]; return (
+            <div key={fl.id} style={{ position: "absolute", left: (q[1] + 3) * cell, top: (q[0] + 3) * cell, fontSize: 27, zIndex: 30, pointerEvents: "none", animation: "gwfloat 2.2s ease-out forwards", filter: "drop-shadow(0 2px 3px rgba(0,0,0,.45))" }}>{fl.emoji}</div>
+          ); })}
+          <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } } @keyframes gwhop { 0% { transform: translateY(0); } 35% { transform: translateY(-11px) scale(1.05); } 70% { transform: translateY(0); } 85% { transform: translateY(-3px); } 100% { transform: translateY(0); } } @keyframes gwshake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes gwfloat { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); } 16% { opacity: 1; transform: translate(-50%,-95%) scale(1.35); } 70% { opacity: 1; transform: translate(-50%,-150%) scale(1.1); } 100% { opacity: 0; transform: translate(-50%,-195%) scale(.95); } }`}</style>
         </div>
         </div>
       </div>
@@ -3610,6 +3679,17 @@ function LudoGame({ gameId, meId, onClose }) {
               <input value={chatText} onChange={e => setChatText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") sendChat(); }} placeholder="Message players…" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 20, padding: "10px 14px", fontSize: 14, outline: "none" }} />
               <button onClick={sendChat} style={{ ...btn(W.teal, "#fff"), borderRadius: 20, padding: "10px 16px" }}>Send</button>
             </div>
+          </div>
+        </div>
+      )}
+      {emojiTray && (
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 8, background: "#fff", borderTop: `1px solid ${W.line}`, borderRadius: "18px 18px 0 0", padding: "12px 12px calc(14px + env(safe-area-inset-bottom))", boxShadow: "0 -6px 24px rgba(0,0,0,.18)" }}>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 9 }}>
+            <div style={{ flex: 1, fontWeight: 800, color: W.ink, fontSize: 14 }}>Send a reaction</div>
+            <X size={18} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setEmojiTray(false)} />
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center" }}>
+            {LUDO_EMOJIS.map(e => <button key={e} onClick={() => sendEmoji(e)} style={{ fontSize: 26, background: "#F4F7F6", border: `1px solid ${W.line}`, borderRadius: 12, width: 48, height: 48, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>{e}</button>)}
           </div>
         </div>
       )}
@@ -9974,7 +10054,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pollvotefix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoking ✅</div>
       </div>
     </div>
   );
