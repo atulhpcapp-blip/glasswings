@@ -3358,6 +3358,7 @@ function LudoGame({ gameId, meId, onClose }) {
   const [floats, setFloats] = useState([]);
   const chatLenRef = useRef(0);
   const chatInit = useRef(false);
+  const [vw, setVw] = useState(typeof window !== "undefined" ? window.innerWidth : 390);
   useEffect(() => {
     const uids = ((g && g.players) || []).map(pl => pl.uid).filter(u => u && !pavs[u]);
     if (!uids.length) return;
@@ -3419,12 +3420,13 @@ function LudoGame({ gameId, meId, onClose }) {
       }
     });
   }, [g && g.chat ? g.chat.length : 0]);
+  useEffect(() => { const on = () => setVw(window.innerWidth); window.addEventListener("resize", on); window.addEventListener("orientationchange", on); return () => { window.removeEventListener("resize", on); window.removeEventListener("orientationchange", on); }; }, []);
   useEffect(() => { if (chatOpen) chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [g && g.chat ? g.chat.length : 0, chatOpen]);
   if (!g) return <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}>Loading game…</div>;
   const players = g.players || [];
   const myIdx = players.findIndex(pl => pl.uid === meId);
   const myTurn = g.status === "playing" && g.turn === myIdx;
-  const cell = 23, B = cell * 15;
+  const cell = Math.max(20, Math.floor((Math.min(vw, 430) - 26) / 15)), B = cell * 15;
   const start = async () => {
     setBusy(true);
     const { error } = await supabase.rpc("ludo_start", { p_game: g.id });
@@ -3507,14 +3509,23 @@ function LudoGame({ gameId, meId, onClose }) {
           )}
         </div>
       </div>
-      <div style={{ display: "flex", gap: 6, padding: "10px 12px", flexWrap: "wrap" }}>
-        {players.map((pl, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: g.status === "playing" && g.turn === i ? "#fff" : "transparent", border: `1.5px solid ${g.status === "playing" && g.turn === i ? LUDO_COLORS[i] : W.line}`, borderRadius: 16, padding: "4px 10px" }}>
-            <div style={{ width: 11, height: 11, borderRadius: "50%", background: LUDO_COLORS[i] }} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: W.ink }}>{(pl.name || "P" + (i + 1)).split(" ")[0]}{pl.uid === meId ? " (you)" : ""}</span>
-            {g.status === "playing" && g.turn === i && <span style={{ fontSize: 10.5, fontWeight: 800, color: LUDO_COLORS[i] }}>● turn</span>}
-          </div>
-        ))}
+      <div style={{ display: "flex", gap: 8, padding: "10px 12px", flexWrap: "wrap", justifyContent: "center" }}>
+        {players.map((pl, i) => {
+          const active = g.status === "playing" && g.turn === i;
+          const av = pavs[pl.uid];
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: `2px solid ${active ? LUDO_COLORS[i] : W.line}`, borderRadius: 14, padding: "5px 12px 5px 5px", boxShadow: active ? `0 3px 14px ${LUDO_COLORS[i]}44` : "0 1px 4px rgba(0,0,0,.06)", transform: active ? "translateY(-1px)" : "none", transition: "all .2s" }}>
+              <div style={{ position: "relative", width: 34, height: 34, borderRadius: "50%", background: LUDO_COLORS[i], display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 14, overflow: "hidden", boxShadow: `0 0 0 2px #fff, 0 0 0 3.5px ${LUDO_COLORS[i]}`, animation: active ? "gwpulse 1.3s infinite" : "none" }}>
+                {(pl.name || "?").charAt(0)}
+                {av && <img src={av} alt="" onError={e => { e.currentTarget.style.display = "none"; }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 96 }}>{(pl.name || "P" + (i + 1)).split(" ")[0]}{pl.uid === meId ? " (you)" : ""}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: active ? LUDO_COLORS[i] : W.soft }}>{active ? "● their turn 🎲" : g.status === "playing" ? "waiting" : "ready"}</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
       {g.status === "lobby" && (
         <div style={{ padding: "8px 16px", textAlign: "center" }}>
@@ -3599,7 +3610,7 @@ function LudoGame({ gameId, meId, onClose }) {
             );
           })()}
           {tokenList.map(t => {
-            const sz = cell * 0.92, pinW = sz, pinH = sz * 1.32;
+            const sz = cell * 1.02, pinW = sz, pinH = sz * 1.34;
             const k = t.rc[0] + "_" + t.rc[1]; const n = stacks[k] || 1;
             const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * 7 : 0;
             const clickable = myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
@@ -3609,12 +3620,16 @@ function LudoGame({ gameId, meId, onClose }) {
             return (
               <div key={t.pidx + "_" + t.j} onClick={() => move(t.j)}
                 style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-86%)", transformOrigin: "50% 86%", transition: "left .15s linear, top .15s linear", zIndex: clickable ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 4px ${col})` : "none" }}>
-                <svg viewBox="0 0 24 31" width={pinW} height={pinH} style={{ display: "block" }}>
-                  <ellipse cx="12" cy="29" rx="6" ry="1.8" fill="rgba(0,0,0,.28)" />
-                  <path d="M12 1.5 C6 1.5 1.6 6 1.6 11 C1.6 17.5 12 28.5 12 28.5 C12 28.5 22.4 17.5 22.4 11 C22.4 6 18 1.5 12 1.5 Z" fill={col} stroke={dk} strokeWidth="1.3" />
-                  <circle cx="12" cy="11" r="5.6" fill="#ffffff" />
-                  <circle cx="12" cy="11" r="3.1" fill={col} />
-                  <ellipse cx="9.4" cy="7.2" rx="2.3" ry="1.5" fill="rgba(255,255,255,.55)" />
+                <svg viewBox="0 0 24 31" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
+                  <ellipse cx="12" cy="29.6" rx="8" ry="2.7" fill={col} opacity="0.32" />
+                  <ellipse cx="12" cy="29.9" rx="5" ry="1.5" fill="rgba(0,0,0,.32)" />
+                  <path d="M12 1.3 C5.6 1.3 1.4 5.8 1.4 11 C1.4 17.6 12 28.7 12 28.7 C12 28.7 22.6 17.6 22.6 11 C22.6 5.8 18.4 1.3 12 1.3 Z" fill={col} stroke={dk} strokeWidth="1.2" />
+                  <path d="M12 1.3 C5.6 1.3 1.4 5.8 1.4 11 C1.4 14 3 16.6 5 18.7 C4 15 4.4 9 8 5.5 C9.6 4 11 3.2 12 2.9 Z" fill="rgba(255,255,255,.30)" />
+                  <circle cx="12" cy="11" r="5.7" fill="#ffffff" />
+                  <circle cx="12" cy="11" r="5.7" fill="none" stroke={dk} strokeWidth="0.5" opacity="0.4" />
+                  <circle cx="12" cy="11" r="3.2" fill={col} />
+                  <ellipse cx="10.1" cy="8.7" rx="1.25" ry="0.85" fill="rgba(255,255,255,.85)" />
+                  <ellipse cx="9.4" cy="6.7" rx="2.7" ry="1.7" fill="rgba(255,255,255,.6)" />
                 </svg>
               </div>
             );
@@ -10054,7 +10069,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoking ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludobig ✅</div>
       </div>
     </div>
   );
