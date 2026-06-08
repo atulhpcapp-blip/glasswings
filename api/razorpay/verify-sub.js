@@ -6662,13 +6662,13 @@ function CreditsAdmin() {
 function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
+    ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
-    ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["door", "Door"]] : []),
     ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
