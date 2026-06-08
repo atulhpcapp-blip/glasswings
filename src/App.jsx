@@ -3074,11 +3074,12 @@ function StoryViewer({ list, event, owner, meId, isStaff, onClose, onDeleted }) 
   }, [i, list.length]);
   if (!cur) return null;
   const who = names[cur.user_id];
-  const del = async () => {
-    if (!window.confirm("Delete this story?")) return;
-    await supabase.from("stories").delete().eq("id", cur.id);
-    onDeleted();
-    if (list.length <= 1) onClose(); else setI(Math.max(0, i - 1));
+  const del = () => {
+    window.gwConfirm("Delete this story?", async () => {
+      await supabase.from("stories").delete().eq("id", cur.id);
+      onDeleted();
+      if (list.length <= 1) onClose(); else setI(Math.max(0, i - 1));
+    });
   };
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000", display: "flex", flexDirection: "column" }}>
@@ -4899,13 +4900,14 @@ const GW_FILTERS = [
 // beauty lenses: b=blur strength, a=layer alpha, blend, extra css on layer, wash [color,alpha], vig
 const GW_LENSES = [
   ["No lens", null],
-  ["✨ Smooth", { b: 3, a: .34, blend: "source-over", css: "brightness(1.06) contrast(1.03) saturate(1.04)", wash: ["#FFFFFF", .05] }],
-  ["🌟 Glow", { b: 3.4, a: .34, blend: "lighten", css: "brightness(1.12) saturate(1.06)", wash: ["#FFFFFF", .07] }],
-  ["🤍 Soft Light", { b: 2.8, a: .3, blend: "lighten", css: "brightness(1.13) contrast(.99) saturate(1.04)", wash: ["#FFFFFF", .08] }],
-  ["🇰🇷 Glass Skin", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.15) saturate(1.05)", wash: ["#F2FAFF", .09] }],
-  ["🌸 Porcelain", { b: 3.6, a: .38, blend: "lighten", css: "brightness(1.13) saturate(.96)", wash: ["#FFE9F0", .1] }],
-  ["🇷🇺 Moscow Ice", { b: 3.2, a: .34, blend: "lighten", css: "brightness(1.12) saturate(.9)", wash: ["#CFE5FF", .14] }],
-  ["❄️ Cool Glow", { b: 3, a: .32, blend: "lighten", css: "brightness(1.12) saturate(.95)", wash: ["#D5ECFF", .13] }],
+  ["✨ Beauty", { b: 2.6, a: .28, blend: "source-over", css: "brightness(1.06) contrast(1.02) saturate(1.05)", wash: ["#FFFFFF", .04] }],
+  ["🌫️ Soft Focus", { b: 3.2, a: .32, blend: "lighten", css: "brightness(1.1) contrast(.99) saturate(1.04)", wash: ["#FFF6F0", .07] }],
+  ["💧 Dewy", { b: 2.8, a: .3, blend: "lighten", css: "brightness(1.09) saturate(1.08)", wash: ["#FFF1E8", .08] }],
+  ["🌿 Natural Glow", { b: 2.4, a: .26, blend: "source-over", css: "brightness(1.05) contrast(1.03) saturate(1.1)", wash: ["#FFF4EC", .05] }],
+  ["🧼 Clean", { b: 2.6, a: .28, blend: "source-over", css: "brightness(1.07) contrast(1.04) saturate(1)", wash: ["#FFFFFF", .05] }],
+  ["☀️ Sun-Kissed", { b: 2.6, a: .28, blend: "source-over", css: "brightness(1.05) saturate(1.16) sepia(.06)", wash: ["#FFC07A", .12] }],
+  ["🫧 Velvet", { b: 3, a: .32, blend: "source-over", css: "brightness(1.06) contrast(1.02) saturate(1.02)", wash: ["#FBEFEA", .07] }],
+  ["🌷 Fresh", { b: 2.4, a: .26, blend: "source-over", css: "brightness(1.07) saturate(1.14)", wash: ["#FFE9EE", .09] }],
   ["🇵🇭 Manila Glow", { b: 2.8, a: .3, blend: "source-over", css: "saturate(1.18) brightness(1.08)", wash: ["#FFC878", .15] }],
   ["🇨🇳 Douyin Doll", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.16) saturate(1.04)", wash: ["#FFD6E8", .14] }],
   ["🇯🇵 Tokyo Blush", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.05) saturate(1.1)", wash: ["#FF8FA3", .14] }],
@@ -10069,7 +10071,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludobig ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lenses3 ✅</div>
       </div>
     </div>
   );
