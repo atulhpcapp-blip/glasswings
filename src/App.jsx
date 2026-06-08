@@ -3968,7 +3968,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
   };
   const weekStart = () => { const d = new Date(); const day = (d.getDay() + 6) % 7; d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - day); return d.getTime(); };
   const usedThisWeek = (mine || []).filter(m => m.role === "a" && new Date(m.created_at).getTime() >= weekStart()).length;
-  const unlimited = isStaff || premium;
+  const unlimited = isStaff || premium || myGender === "female";
   const quotaLeft = unlimited ? 99 : Math.max(0, 1 - usedThisWeek);
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -4072,7 +4072,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
             setSearch(""); setView("pick");
           }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 6, background: "linear-gradient(95deg,#EC4899,#8B5CF6)", opacity: quotaLeft <= 0 ? .6 : 1 }}>💘 New Vibe Check</button>
           <div style={{ textAlign: "center", fontSize: 11.5, fontWeight: 700, color: unlimited ? "#8B5CF6" : W.soft, marginBottom: 10 }}>
-            {isStaff ? "👑 Staff — unlimited" : premium ? "💎 Premium — unlimited checks + random match" : `Free plan: ${quotaLeft} of 1 left this week · 💎 Premium = unlimited`}
+            {isStaff ? "👑 Staff — unlimited" : premium ? "💎 Premium — unlimited checks + random match" : myGender === "female" ? "💖 Unlimited — play as much as you like!" : `Free plan: ${quotaLeft} of 1 left this week · 💎 Premium = unlimited`}
           </div>
           {invites.length > 0 && <>
             <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "14px 0 6px" }}>💌 Waiting for your answers</div>
@@ -9779,7 +9779,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoava ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • girlsfree ✅</div>
       </div>
     </div>
   );
