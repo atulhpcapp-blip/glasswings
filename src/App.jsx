@@ -6039,6 +6039,7 @@ function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
   const [list, setList] = useState(null);
   const [view, setView] = useState("roles"); // roles | stats | matrix
   const [tstats, setTstats] = useState([]);
+  const [q, setQ] = useState("");
   useEffect(() => { supabase.rpc("staff_stats").then(({ data }) => setTstats(data || [])); }, []);
   const [draft, setDraft] = useState({}); // memberId -> {roles:Set, city}
   const reload = () => supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
@@ -6088,8 +6089,10 @@ function TeamPanel({ perms, onSavePerm, onSetRoles, cities }) {
         </div>
       ) : list === null ? <Center>loading…</Center> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 12.5, color: W.soft }}>Your team. To promote a member to a role, use the Members tab.</div>
-          {list.filter(m => (m.roles || []).some(r => r === "superadmin" || STAFF_ROLES.includes(r))).map(m => {
+          <div style={{ fontSize: 12.5, color: W.soft }}>Only you (superadmin) can assign or change roles. Search any member below to promote, upgrade, or downgrade them.</div>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search any member to assign a role…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 13px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+          {q.trim() && <div style={{ fontSize: 11.5, color: W.soft, marginTop: -2 }}>Showing members matching "{q.trim()}". Toggle role chips and Save.</div>}
+          {(() => { const qn = q.trim().toLowerCase(); return list.filter(m => qn ? ((m.full_name || "").toLowerCase().includes(qn) || (m.phone || "").includes(qn)) : (m.roles || []).some(r => r === "superadmin" || STAFF_ROLES.includes(r))); })().map(m => {
             const d = getDraft(m);
             const isSuperM = (m.roles || []).includes("superadmin");
             return (
