@@ -3892,6 +3892,43 @@ function BlindBanter({ meId, onUpgrade, onClose }) {
     </div>
   );
 }
+const VIBE_TIERS = [
+  { key: "decent", emoji: "😊", name: "Decent", blurb: "Sweet, get-to-know-you questions", bg: "#E7F6EF" },
+  { key: "flirty", emoji: "😏", name: "Flirty", blurb: "Playful, cheeky, a little bold", bg: "#FFF0F7" },
+  { key: "naughty", emoji: "🔥", name: "Naughty", blurb: "Spicy & daring — for the bold", bg: "#FFE9E0" },
+];
+const VIBE_BANK = {
+  decent: [
+    { q: "Ideal first hangout?", opts: ["Coffee & a long talk", "A live music gig", "Something outdoorsy", "A foodie crawl"] },
+    { q: "Your weekend energy?", opts: ["Cozy at home", "Out with friends", "Spontaneous trip", "Events & parties"] },
+    { q: "What wins you over?", opts: ["A great sense of humour", "Pure kindness", "Ambition & drive", "A good listener"] },
+    { q: "Pick a date vibe:", opts: ["Sunset walk", "Board-games café", "A concert", "Cooking together"] },
+    { q: "Your texting style?", opts: ["Quick replies", "Voice notes", "Memes & GIFs", "Calls over texts"] },
+    { q: "Your love language?", opts: ["Quality time", "Sweet words", "Acts of service", "Little gifts"] },
+    { q: "Travel together means:", opts: ["Beaches", "Mountains", "City lights", "Road trips"] },
+    { q: "Biggest dealbreaker?", opts: ["Bad manners", "No ambition", "No humour", "Always late"] },
+  ],
+  flirty: [
+    { q: "Your first move?", opts: ["Hold eye contact", "Send a cheeky text", "Buy them a drink", "Play it cool"] },
+    { q: "Best flirting vibe?", opts: ["Confident & direct", "Witty banter", "Sweet & shy", "Mysterious"] },
+    { q: "Ideal goodnight?", opts: ["A long hug", "A cheeky text", "A forehead kiss", "Leave them wanting more"] },
+    { q: "Your flirt weapon?", opts: ["The smile", "The eyes", "The compliments", "The teasing"] },
+    { q: "On a date you'd rather:", opts: ["Dance close", "Share dessert", "Whisper secrets", "Steal a moment"] },
+    { q: "They text at 11pm:", opts: ["Call them", "Flirt right back", "Play hard to get", "Make a plan"] },
+    { q: "Your type tonight?", opts: ["Tall & charming", "Funny & bold", "Soft & sweet", "Edgy & fun"] },
+    { q: "Pick a dare:", opts: ["Compliment a stranger", "Slow dance", "Plan a dream date", "Reveal your crush"] },
+  ],
+  naughty: [
+    { q: "How bold on a first date?", opts: ["I keep it classy", "A little teasing", "I make the first move", "No rules 😏"] },
+    { q: "Lights on or off?", opts: ["On", "Off", "Candlelight", "Surprise me"] },
+    { q: "Your guilty pleasure?", opts: ["Late-night texts", "Dirty dancing", "Truth or dare", "Stolen kisses"] },
+    { q: "Pick your fantasy date:", opts: ["Rooftop & wine", "Beach at midnight", "Hotel staycation", "Wherever it goes 🔥"] },
+    { q: "How do you flirt over text?", opts: ["Subtle hints", "Bold & direct", "Lots of emojis 😏", "Voice notes"] },
+    { q: "Ideal slow-song moment?", opts: ["Close dancing", "Whispering", "Hands gently everywhere", "Eyes locked"] },
+    { q: "Spin the bottle lands on you:", opts: ["Cheek kiss", "Quick peck", "Make it count", "Take the dare"] },
+    { q: "Your vibe after midnight?", opts: ["Deep talks", "Cuddles", "Adventurous", "Unpredictable 🔥"] },
+  ],
+};
 function vibeLabel(pct) {
   if (pct >= 90) return "Written in the stars ✨";
   if (pct >= 70) return "Sparks flying 🔥";
@@ -3912,6 +3949,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [premium, setPremium] = useState(false);
+  const [tier, setTier] = useState("flirty");
   const load = async () => {
     const [{ data: q }, { data: m }, { data: me }, { data: subs }] = await Promise.all([
       supabase.from("vibe_questions").select("id, q, opts").eq("active", true).order("id").limit(10),
@@ -3919,7 +3957,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
       supabase.from("profiles").select("gender").eq("id", meId).maybeSingle(),
       supabase.from("room_subscriptions").select("room_id").eq("user_id", meId),
     ]);
-    setQs(q || []); setMine(m || []); setMyGender(me?.gender || null);
+    setQs([]); setMine(m || []); setMyGender(me?.gender || null);
     const rids = (subs || []).map(x => x.room_id);
     if (rids.length) {
       const { data: rms } = await supabase.from("rooms").select("id, price").in("id", rids);
@@ -3947,10 +3985,15 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
     const pool = data || [];
     if (!pool.length) return alert("No members to match right now!");
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    setPartner(pick); setQi(0); setAns([]); setView("quiz");
+    setPartner(pick); setAnswerFor(null); setView("tier");
   };
-  const startQuiz = (pl) => { setPartner(pl); setAnswerFor(null); setQi(0); setAns([]); setView("quiz"); };
-  const answerInvite = (m) => { setAnswerFor(m); setPartner({ id: m.partner_id, full_name: m.partner_name, avatar_url: m.partner_avatar }); setQi(0); setAns([]); setView("quiz"); };
+  const startQuiz = (pl) => { setPartner(pl); setAnswerFor(null); setView("tier"); };
+  const answerInvite = async (m) => {
+    setAnswerFor(m); setPartner({ id: m.partner_id, full_name: m.partner_name, avatar_url: m.partner_avatar });
+    let t = "flirty";
+    try { const { data } = await supabase.from("vibe_match_tier").select("tier").eq("match_id", m.id).maybeSingle(); if (data?.tier) t = data.tier; } catch {}
+    setTier(t); setQs(VIBE_BANK[t] || VIBE_BANK.flirty); setQi(0); setAns([]); setView("quiz");
+  };
   const pickOpt = async (oi) => {
     const next = [...ans, oi];
     if (next.length < qs.length) { setAns(next); setQi(qi + 1); return; }
@@ -3973,21 +4016,25 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
       const { data, error } = await supabase.rpc("vibe_start", { p_partner: partner.id, p_answers: next });
       setBusy(false);
       if (error) return alert(error.message);
+      if (data?.id) { try { await supabase.from("vibe_match_tier").insert({ match_id: data.id, tier }); } catch {} }
       vibeMail(data?.id);
       await load();
       setView("sent");
     }
   };
-  const showResult = (m) => {
+  const showResult = async (m) => {
+    let t = tier;
+    try { const { data } = await supabase.from("vibe_match_tier").select("tier").eq("match_id", m.id).maybeSingle(); if (data?.tier) t = data.tier; } catch {}
+    const bank = VIBE_BANK[t] || VIBE_BANK.flirty;
     const A = m.a_answers || [], B = m.b_answers || [];
-    const n = Math.min(A.length, B.length, (qs || []).length);
+    const n = Math.min(A.length, B.length, bank.length);
     let same = 0; const hits = [], misses = [];
     for (let i = 0; i < n; i++) {
-      if (A[i] === B[i]) { same++; hits.push({ q: qs[i], oi: A[i] }); }
-      else misses.push({ q: qs[i] });
+      if (A[i] === B[i]) { same++; hits.push({ q: bank[i], oi: A[i] }); }
+      else misses.push({ q: bank[i] });
     }
     const pct = n ? Math.round((same / n) * 100) : 0;
-    setResult({ m, pct, hits: hits.slice(0, 3), miss: misses[0] || null });
+    setResult({ m, pct, hits: hits.slice(0, 3), miss: misses[0] || null, tier: t });
     setView("result");
   };
   const Header = ({ title }) => (
@@ -4016,7 +4063,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto", overflowY: "auto" }}>
       {view === "home" && <>
-        <Header title="10 questions · find your match %" />
+        <Header title="Decent → Flirty → Naughty 🔥" />
         <div style={{ padding: 16 }}>
           <button onClick={() => {
             if (quotaLeft <= 0) { window.gwConfirm("💎 Free members get 1 Vibe Check a week — you've used yours!\n\nGo Premium for unlimited Vibe Checks + random matches?", () => { onClose(); onUpgrade && onUpgrade(); }); return; }
@@ -4073,6 +4120,23 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
               <span style={{ color: "#EC4899", fontWeight: 800, fontSize: 13 }}>Pick 💘</span>
             </div>
           ))}
+        </div>
+      </>}
+      {view === "tier" && <>
+        <Header title="Pick your vibe 🔥" />
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 13, color: W.soft, marginBottom: 14, textAlign: "center" }}>How spicy should it get with {partner?.full_name?.split(" ")[0]}? 😏</div>
+          {VIBE_TIERS.map(t => (
+            <div key={t.key} onClick={() => { setTier(t.key); setQs(VIBE_BANK[t.key]); setQi(0); setAns([]); setView("quiz"); }} style={{ display: "flex", alignItems: "center", gap: 13, background: "#fff", border: `1.5px solid ${W.line}`, borderRadius: 15, padding: "15px 16px", marginBottom: 11, cursor: "pointer" }}>
+              <div style={{ width: 48, height: 48, borderRadius: 13, background: t.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 25, flexShrink: 0 }}>{t.emoji}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 15.5 }}>{t.name}</div>
+                <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2 }}>{t.blurb}</div>
+              </div>
+              <span style={{ color: "#EC4899", fontWeight: 800, fontSize: 18 }}>→</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center", marginTop: 6 }}>You both answer the same set — that's how we score your match.</div>
         </div>
       </>}
       {view === "quiz" && qs && <>
@@ -9713,7 +9777,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludochat2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • vibetiers ✅</div>
       </div>
     </div>
   );
