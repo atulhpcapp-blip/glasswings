@@ -1109,6 +1109,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             {e.city && <span style={{ background: W.bg, color: W.soft, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.city}</span>}
           </div>
           <h1 style={{ fontSize: wide ? 34 : 24, fontWeight: 800, color: W.ink, margin: 0, lineHeight: 1.18 }}>{e.emoji} {e.title}</h1>
+          {e.entry_badge && <span style={{ display: "inline-block", marginTop: 9, background: "#FEF3C7", color: "#B45309", fontSize: 12.5, fontWeight: 800, padding: "4px 12px", borderRadius: 20 }}>🔞 {e.entry_badge}</span>}
           <div style={{ background: W.bg, borderRadius: 14, padding: "14px 16px", marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
             {e.event_date && <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14.5, color: W.ink, fontWeight: 600 }}><Calendar size={17} color={W.teal} />{e.event_date}</div>}
             {e.location_type === "online" && (
@@ -1215,6 +1216,37 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 12.5, color: W.soft, fontWeight: 700, marginBottom: 7 }}>🚕 Getting there — opens a cab app with the venue pre-filled</div>
                 <RideButtons e={e} />
+              </div>
+            </Sec>
+          )}
+          {Array.isArray(e.artists) && e.artists.length > 0 && (
+            <Sec title="Line-up">
+              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+                {e.artists.map((a, i) => {
+                  const ig = (a.instagram || "").trim();
+                  const igUrl = ig ? (ig.startsWith("http") ? ig : "https://instagram.com/" + ig.replace(/^@/, "")) : null;
+                  return (
+                    <div key={i} style={{ width: 104, flexShrink: 0, textAlign: "center" }}>
+                      {a.photo ? <img src={a.photo} alt="" style={{ width: 84, height: 84, borderRadius: "50%", objectFit: "cover", margin: "0 auto" }} />
+                        : <div style={{ width: 84, height: 84, borderRadius: "50%", background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, margin: "0 auto" }}>🎤</div>}
+                      <div style={{ fontWeight: 800, color: W.ink, fontSize: 13, marginTop: 7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.name}</div>
+                      {a.role && <div style={{ fontSize: 11, color: W.teal, fontWeight: 700 }}>{a.role}</div>}
+                      {igUrl && <a href={igUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#C0246E", fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 3, marginTop: 2 }}>📸 Instagram</a>}
+                    </div>
+                  );
+                })}
+              </div>
+            </Sec>
+          )}
+          {Array.isArray(e.faqs) && e.faqs.length > 0 && (
+            <Sec title="FAQs">
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {e.faqs.map((f, i) => (
+                  <div key={i}>
+                    <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{f.q}</div>
+                    <div style={{ fontSize: 13.5, color: W.soft, lineHeight: 1.55, marginTop: 3, whiteSpace: "pre-wrap" }}>{f.a}</div>
+                  </div>
+                ))}
               </div>
             </Sec>
           )}
@@ -5944,7 +5976,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
-    ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"]] : []),
+    ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["door", "Door"]] : []),
@@ -5976,7 +6008,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
-                : <><PendingSignups isSuper={isSuper} /><MembersOverview isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>}
+                : seg === "manage" ? <><PendingSignups isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
+                  : <MembersOverview isSuper={isSuper} />}
     </div>
   );
 }
@@ -6621,6 +6654,97 @@ function GenderBalance({ ev, onUpdate }) {
           <button onClick={async () => { await onUpdate(ev.id, { men_per_woman: Number(ratio) || 0, men_open_start: Number(start) || 0 }); setSaved(true); }} style={btn(W.teal, "#fff")}>{saved ? "Saved ✓" : "Save"}</button>
         </div>
       )}
+    </div>
+  );
+}
+const ENTRY_BADGES = ["", "18+", "21+", "Couples only", "Stag allowed", "Ladies special", "Members only"];
+const ARTIST_ROLES = ["DJ", "Host", "Performer", "Singer", "Comedian", "Special Guest", "Artist"];
+function EntryBadgeEditor({ ev, onUpdate }) {
+  const [v, setV] = useState(ev.entry_badge || ""); const [saved, setSaved] = useState(false);
+  const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Entry / age badge</label>
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <select value={v} onChange={e => { setV(e.target.value); setSaved(false); }} style={{ ...sel, flex: 1 }}>
+          {ENTRY_BADGES.map(b => <option key={b} value={b}>{b === "" ? "No badge" : b}</option>)}
+        </select>
+        <button onClick={async () => { await onUpdate(ev.id, { entry_badge: v || null }); setSaved(true); }} style={{ ...btn(W.teal, "#fff") }}>{saved ? "Saved ✓" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
+function ArtistEditor({ ev, onUpdate }) {
+  const [list, setList] = useState(Array.isArray(ev.artists) ? ev.artists : []);
+  const [busy, setBusy] = useState(null); const [saved, setSaved] = useState(false);
+  const ip = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13.5, outline: "none", boxSizing: "border-box" };
+  const upd = (i, k, val) => { setList(l => l.map((a, j) => j === i ? { ...a, [k]: val } : a)); setSaved(false); };
+  const pic = async (i, file) => { if (!file) return; setBusy(i); try { const url = await uploadChatFile("banners", file); upd(i, "photo", url); } catch { } setBusy(null); };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>🎤 Line-up / Artists</label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "8px 0" }}>
+        {list.map((a, i) => (
+          <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", background: W.bg, borderRadius: 10, padding: 10 }}>
+            <label style={{ flexShrink: 0, cursor: "pointer" }}>
+              {a.photo ? <img src={a.photo} alt="" style={{ width: 46, height: 46, borderRadius: "50%", objectFit: "cover" }} />
+                : <div style={{ width: 46, height: 46, borderRadius: "50%", background: "#fff", border: `1px dashed ${W.line}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: W.soft }}>{busy === i ? "…" : "📷"}</div>}
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { pic(i, e.target.files?.[0]); e.target.value = ""; }} />
+            </label>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+              <input value={a.name || ""} onChange={e => upd(i, "name", e.target.value)} placeholder="Artist / performer name" style={ip} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <select value={a.role || "DJ"} onChange={e => upd(i, "role", e.target.value)} style={{ ...ip, width: 120, flexShrink: 0 }}>
+                  {ARTIST_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <input value={a.instagram || ""} onChange={e => upd(i, "instagram", e.target.value)} placeholder="Instagram @ or link" style={ip} />
+              </div>
+            </div>
+            <button onClick={() => { setList(l => l.filter((_, j) => j !== i)); setSaved(false); }} style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4, flexShrink: 0 }}><Trash2 size={16} /></button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={() => { setList(l => [...l, { name: "", role: "DJ", photo: "", instagram: "" }]); setSaved(false); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}><Plus size={14} />Add artist</button>
+        <button onClick={async () => { await onUpdate(ev.id, { artists: list.filter(a => (a.name || "").trim()) }); setSaved(true); }} style={{ ...btn(W.teal, "#fff") }}>{saved ? "Saved ✓" : "Save line-up"}</button>
+      </div>
+    </div>
+  );
+}
+function EventFAQ({ ev, onUpdate }) {
+  const [list, setList] = useState(Array.isArray(ev.faqs) ? ev.faqs : []);
+  const [saved, setSaved] = useState(false);
+  const [tpls, setTpls] = useState([]); const [pick, setPick] = useState("");
+  const ip = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13.5, outline: "none", boxSizing: "border-box" };
+  const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 12.5, color: W.ink, outline: "none" };
+  const loadT = () => supabase.from("canned_faqs").select("id, title, faqs").order("title").then(({ data }) => setTpls(data || []));
+  useEffect(() => { loadT(); }, []);
+  const upd = (i, k, val) => { setList(l => l.map((f, j) => j === i ? { ...f, [k]: val } : f)); setSaved(false); };
+  return (
+    <div style={{ marginTop: 14 }}>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>❓ FAQs</label>
+      <div style={{ display: "flex", gap: 6, margin: "7px 0" }}>
+        <select value={pick} onChange={e => { setPick(e.target.value); const t = tpls.find(x => x.id === e.target.value); if (t && Array.isArray(t.faqs)) { setList(t.faqs); setSaved(false); } }} style={{ ...sel, flex: 1, minWidth: 0 }}>
+          <option value="">📋 Apply saved FAQ set…</option>
+          {tpls.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+        </select>
+        <button onClick={async () => { const title = window.prompt("Name this FAQ set (e.g. 'Standard party FAQs'):"); if (!title || !title.trim()) return; if (!list.length) return alert("Add some FAQs first."); const { error } = await supabase.from("canned_faqs").insert({ title: title.trim(), faqs: list.filter(f => (f.q || "").trim()) }); if (error) return alert(error.message); alert("💾 Saved!"); loadT(); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 11px", fontSize: 12 }}>💾 Save set</button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 8 }}>
+        {list.map((f, i) => (
+          <div key={i} style={{ background: W.bg, borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input value={f.q || ""} onChange={e => upd(i, "q", e.target.value)} placeholder="Question" style={{ ...ip, fontWeight: 700 }} />
+              <button onClick={() => { setList(l => l.filter((_, j) => j !== i)); setSaved(false); }} style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4, flexShrink: 0 }}><Trash2 size={15} /></button>
+            </div>
+            <textarea value={f.a || ""} onChange={e => upd(i, "a", e.target.value)} placeholder="Answer" rows={2} style={{ ...ip, resize: "vertical", fontFamily: "inherit" }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={() => { setList(l => [...l, { q: "", a: "" }]); setSaved(false); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}><Plus size={14} />Add FAQ</button>
+        <button onClick={async () => { await onUpdate(ev.id, { faqs: list.filter(f => (f.q || "").trim()) }); setSaved(true); }} style={{ ...btn(W.teal, "#fff") }}>{saved ? "Saved ✓" : "Save FAQs"}</button>
+      </div>
     </div>
   );
 }
@@ -7565,6 +7689,9 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                 <GenderBalance ev={e} onUpdate={onUpdate} />
                 <EventTerms ev={e} onUpdate={onUpdate} />
+                <EntryBadgeEditor ev={e} onUpdate={onUpdate} />
+                <ArtistEditor ev={e} onUpdate={onUpdate} />
+                <EventFAQ ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
                 {onDuplicate && <button onClick={() => onDuplicate(e)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", justifyContent: "center", marginBottom: 8 }}>📋 Duplicate event</button>}
                 <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
