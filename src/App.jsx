@@ -3969,21 +3969,21 @@ function BuyCreditsSheet({ onClose, onBought }) {
   };
   return (
     <Sheet onClose={onClose}>
-      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, marginBottom: 3 }}>\U0001F39F\uFE0F Buy game credits</div>
-      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Credits let you play Vibe Check & Blind Banter \u2014 1 credit per play.</div>
-      {packs === null ? <div style={{ color: W.soft, fontSize: 13, padding: 12, textAlign: "center" }}>Loading\u2026</div>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, marginBottom: 3 }}>🎟️ Buy game credits</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Credits let you play Vibe Check & Blind Banter — 1 credit per play.</div>
+      {packs === null ? <div style={{ color: W.soft, fontSize: 13, padding: 12, textAlign: "center" }}>Loading…</div>
         : !packs.length ? <div style={{ color: W.soft, fontSize: 13, padding: 12, textAlign: "center" }}>No credit packs available right now.</div>
         : packs.map(pk => (
           <div key={pk.id} onClick={() => !busy && buy(pk)} style={{ display: "flex", alignItems: "center", gap: 12, border: `1.5px solid ${W.line}`, borderRadius: 14, padding: "14px 15px", marginBottom: 10, cursor: busy ? "default" : "pointer", opacity: busy ? .6 : 1 }}>
             <div style={{ width: 46, height: 46, borderRadius: 12, background: "linear-gradient(135deg,#EC4899,#8B5CF6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, flexShrink: 0 }}>{pk.credits}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{pk.label} \u00b7 {pk.credits} credits</div>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{pk.label} · {pk.credits} credits</div>
               <div style={{ fontSize: 12, color: W.soft }}>{pk.credits} plays</div>
             </div>
-            <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>\u20b9{pk.price}</div>
+            <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>₹{pk.price}</div>
           </div>
         ))}
-      <div style={{ fontSize: 11, color: W.soft, textAlign: "center", marginTop: 4 }}>Secure payment via Razorpay \U0001F512</div>
+      <div style={{ fontSize: 11, color: W.soft, textAlign: "center", marginTop: 4 }}>Secure payment via Razorpay 🔒</div>
     </Sheet>
   );
 }
@@ -4010,14 +4010,16 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
   const [tier, setTier] = useState("flirty");
   const [credits, setCredits] = useState(0);
   const [buyOpen, setBuyOpen] = useState(false);
+  const [vibeCost, setVibeCost] = useState({ paid: true, credits: 1 });
   const load = async () => {
-    const [{ data: q }, { data: m }, { data: me }, { data: subs }] = await Promise.all([
+    const [{ data: q }, { data: m }, { data: me }, { data: subs }, { data: gc }] = await Promise.all([
       supabase.from("vibe_questions").select("id, q, opts").eq("active", true).order("id").limit(10),
       supabase.rpc("vibe_my"),
       supabase.from("profiles").select("gender, game_credits").eq("id", meId).maybeSingle(),
       supabase.from("room_subscriptions").select("room_id").eq("user_id", meId),
+      supabase.from("game_costs").select("paid, credits").eq("key", "vibe_check").maybeSingle(),
     ]);
-    setQs([]); setMine(m || []); setMyGender(me?.gender || null); setCredits(Number(me?.game_credits) || 0);
+    setQs([]); setMine(m || []); setMyGender(me?.gender || null); setCredits(Number(me?.game_credits) || 0); if (gc) setVibeCost({ paid: !!gc.paid, credits: Number(gc.credits) || 0 });
     const rids = (subs || []).map(x => x.room_id);
     if (rids.length) {
       const { data: rms } = await supabase.from("rooms").select("id, price").in("id", rids);
@@ -4027,6 +4029,8 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
   const weekStart = () => { const d = new Date(); const day = (d.getDay() + 6) % 7; d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - day); return d.getTime(); };
   const usedThisWeek = (mine || []).filter(m => m.role === "a" && new Date(m.created_at).getTime() >= weekStart()).length;
   const unlimited = isStaff || premium || myGender === "female";
+  const vc = vibeCost.paid ? (Number(vibeCost.credits) || 0) : 0;
+  const mustPay = vc > 0 && !unlimited;
   const quotaLeft = unlimited ? 99 : Math.max(0, 1 - usedThisWeek);
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -4039,7 +4043,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
     return () => clearTimeout(t);
   }, [search, view, myGender]);
   const surprise = async () => {
-    if (!unlimited && credits < 1) { setBuyOpen(true); return; }
+    if (mustPay && credits < vc) { setBuyOpen(true); return; }
     const opp = myGender === "male" ? "female" : "male";
     const { data } = await supabase.from("profiles").select("id, full_name, avatar_url").eq("gender", opp).neq("id", meId).not("avatar_url", "is", null).limit(60);
     const pool = data || [];
@@ -4077,7 +4081,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
       setBusy(false);
       if (error) return alert(error.message);
       if (data?.id) { try { await supabase.from("vibe_match_tier").insert({ match_id: data.id, tier }); } catch {} }
-      if (!unlimited) { try { const { data: left } = await supabase.rpc("spend_game_credit", { p_n: 1 }); if (typeof left === "number") setCredits(left); } catch {} }
+      if (mustPay) { try { const { data: left } = await supabase.rpc("spend_game_credit", { p_n: vc }); if (typeof left === "number") setCredits(left); } catch {} }
       vibeMail(data?.id);
       await load();
       setView("sent");
@@ -4127,13 +4131,13 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
         <Header title="Decent → Flirty → Naughty 🔥" />
         <div style={{ padding: 16 }}>
           <button onClick={() => {
-            if (!unlimited && credits < 1) { setBuyOpen(true); return; }
+            if (mustPay && credits < vc) { setBuyOpen(true); return; }
             setSearch(""); setView("pick");
-          }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 6, background: "linear-gradient(95deg,#EC4899,#8B5CF6)", opacity: (!unlimited && credits < 1) ? .6 : 1 }}>💘 New Vibe Check</button>
+          }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 6, background: "linear-gradient(95deg,#EC4899,#8B5CF6)", opacity: (mustPay && credits < vc) ? .6 : 1 }}>💘 New Vibe Check</button>
           <div style={{ textAlign: "center", fontSize: 11.5, fontWeight: 700, color: unlimited ? "#8B5CF6" : W.soft, marginBottom: 10 }}>
-            {isStaff ? "👑 Staff — unlimited" : premium ? "💎 Premium — unlimited" : myGender === "female" ? "💖 Unlimited — play as much as you like!" : `🎟️ ${credits} credit${credits === 1 ? "" : "s"} left · 1 per Vibe Check`}
+            {isStaff ? "👑 Staff — unlimited" : premium ? "💎 Premium — unlimited" : myGender === "female" ? "💖 Unlimited — play as much as you like!" : (!vibeCost.paid ? "🆓 Free to play right now!" : `🎟️ ${credits} credit${credits === 1 ? "" : "s"} left · ${vc} per Vibe Check`)}
           </div>
-          {!unlimited && <button onClick={() => setBuyOpen(true)} style={{ ...btn("#fff", "#8B5CF6"), border: "1px solid #E6D9F7", width: "100%", justifyContent: "center", padding: "10px", marginBottom: 12, fontSize: 13.5 }}>💳 Buy more credits</button>}
+          {mustPay && <button onClick={() => setBuyOpen(true)} style={{ ...btn("#fff", "#8B5CF6"), border: "1px solid #E6D9F7", width: "100%", justifyContent: "center", padding: "10px", marginBottom: 12, fontSize: 13.5 }}>💳 Buy more credits</button>}
           {invites.length > 0 && <>
             <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "14px 0 6px" }}>💌 Waiting for your answers</div>
             {invites.map(m => (
@@ -6589,9 +6593,76 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     </div>
   );
 }
+function CreditsAdmin() {
+  const [packs, setPacks] = useState(null);
+  const [games, setGames] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    supabase.from("credit_packs").select("*").order("sort").then(({ data }) => setPacks(data || []));
+    supabase.from("game_costs").select("*").order("sort").then(({ data }) => setGames(data || []));
+  };
+  useEffect(() => { load(); }, []);
+  const upPack = (i, k, v) => setPacks(p => p.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  const upGame = (i, k, v) => setGames(g => g.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  const addPack = () => setPacks(p => [...(p || []), { id: "new_" + Date.now() + Math.random().toString(36).slice(2, 6), label: "New pack", credits: 10, price: 99, sort: (p && p.length ? Math.max(...p.map(x => x.sort || 0)) + 1 : 1), active: true, _new: true }]);
+  const savePacks = async () => {
+    setBusy(true);
+    try {
+      for (const pk of (packs || [])) {
+        const row = { label: pk.label, credits: Number(pk.credits) || 0, price: Number(pk.price) || 0, sort: Number(pk.sort) || 0, active: pk.active !== false };
+        if (pk._new) { const { error } = await supabase.from("credit_packs").insert(row); if (error) throw error; }
+        else { const { error } = await supabase.from("credit_packs").update(row).eq("id", pk.id); if (error) throw error; }
+      }
+      window.alert("Credit packs saved ✓"); load();
+    } catch (e) { window.alert(e.message || "Couldn't save."); }
+    setBusy(false);
+  };
+  const delPack = (pk, i) => { if (pk._new) { setPacks(p => p.filter((_, j) => j !== i)); return; } window.gwConfirm("Delete this pack?", async () => { await supabase.from("credit_packs").delete().eq("id", pk.id); load(); }); };
+  const saveGames = async () => {
+    setBusy(true);
+    try {
+      for (const g of (games || [])) { const { error } = await supabase.from("game_costs").update({ paid: !!g.paid, credits: Number(g.credits) || 0 }).eq("key", g.key); if (error) throw error; }
+      window.alert("Game settings saved ✓"); load();
+    } catch (e) { window.alert(e.message || "Couldn't save."); }
+    setBusy(false);
+  };
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 16, marginBottom: 4 }}>🎮 Free vs Paid games</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Mark a game Paid to charge credits per play, then set how many. Free games never cost credits.</div>
+      {games === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div> : games.map((g, i) => (
+        <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
+          <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.label}</div>
+          <button onClick={() => upGame(i, "paid", !g.paid)} style={{ ...btn(g.paid ? "#8B5CF6" : "#E7F6EF", g.paid ? "#fff" : W.teal), padding: "6px 12px", fontSize: 12.5 }}>{g.paid ? "💳 Paid" : "🆓 Free"}</button>
+          {g.paid && <><input type="number" min="0" value={g.credits} onChange={e => upGame(i, "credits", e.target.value)} style={{ width: 56, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 8px", fontSize: 14, textAlign: "center" }} /><span style={{ fontSize: 11.5, color: W.soft }}>cr.</span></>}
+        </div>
+      ))}
+      <button onClick={saveGames} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "11px", marginTop: 4, marginBottom: 24, opacity: busy ? .6 : 1 }}>{busy ? "…" : "Save game settings"}</button>
+
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 16, marginBottom: 4 }}>🎟️ Credit packs & prices</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>What members can buy. Price is in rupees.</div>
+      {packs === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div> : packs.map((pk, i) => (
+        <div key={pk.id} style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+          <input value={pk.label} onChange={e => upPack(i, "label", e.target.value)} placeholder="Label" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 8, padding: "8px 10px", fontSize: 14, marginBottom: 8, boxSizing: "border-box" }} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: W.soft }}>Credits</span>
+            <input type="number" min="1" value={pk.credits} onChange={e => upPack(i, "credits", e.target.value)} style={{ width: 60, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 8px", fontSize: 14, textAlign: "center" }} />
+            <span style={{ fontSize: 12, color: W.soft }}>₹ Price</span>
+            <input type="number" min="0" value={pk.price} onChange={e => upPack(i, "price", e.target.value)} style={{ width: 78, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 8px", fontSize: 14, textAlign: "center" }} />
+            <button onClick={() => upPack(i, "active", !(pk.active !== false))} style={{ ...btn(pk.active !== false ? "#E7F6EF" : "#F0F2F5", pk.active !== false ? W.teal : W.soft), padding: "6px 10px", fontSize: 12 }}>{pk.active !== false ? "Active" : "Hidden"}</button>
+            <button onClick={() => delPack(pk, i)} style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", fontWeight: 800, fontSize: 13, marginLeft: "auto" }}>Delete</button>
+          </div>
+        </div>
+      ))}
+      <button onClick={addPack} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", padding: "10px", marginBottom: 8 }}>+ Add a pack</button>
+      <button onClick={savePacks} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "11px", opacity: busy ? .6 : 1 }}>{busy ? "…" : "Save credit packs"}</button>
+    </div>
+  );
+}
 function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
+    ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
@@ -6629,6 +6700,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
                 : seg === "connect" ? <ConnectionsPanel canApprove={canApprove} />
+                : seg === "credits" ? <CreditsAdmin />
                 : seg === "manage" ? <><PendingSignups isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
                   : <MembersOverview isSuper={isSuper} />}
     </div>
@@ -9840,7 +9912,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • credits2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • CREDITSTAB ✅</div>
       </div>
     </div>
   );
