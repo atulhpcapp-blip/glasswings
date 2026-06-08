@@ -4900,10 +4900,6 @@ const GW_FILTERS = [
 // beauty lenses: b=blur strength, a=layer alpha, blend, extra css on layer, wash [color,alpha], vig
 const GW_LENSES = [
   ["No lens", null],
-  ["✨ Beauty", { b: 2.6, a: .28, blend: "source-over", css: "brightness(1.06) contrast(1.02) saturate(1.05)", wash: ["#FFFFFF", .04] }],
-  ["🌫️ Soft Focus", { b: 3.2, a: .32, blend: "lighten", css: "brightness(1.1) contrast(.99) saturate(1.04)", wash: ["#FFF6F0", .07] }],
-  ["💧 Dewy", { b: 2.8, a: .3, blend: "lighten", css: "brightness(1.09) saturate(1.08)", wash: ["#FFF1E8", .08] }],
-  ["🌿 Natural Glow", { b: 2.4, a: .26, blend: "source-over", css: "brightness(1.05) contrast(1.03) saturate(1.1)", wash: ["#FFF4EC", .05] }],
   ["🧼 Clean", { b: 2.6, a: .28, blend: "source-over", css: "brightness(1.07) contrast(1.04) saturate(1)", wash: ["#FFFFFF", .05] }],
   ["☀️ Sun-Kissed", { b: 2.6, a: .28, blend: "source-over", css: "brightness(1.05) saturate(1.16) sepia(.06)", wash: ["#FFC07A", .12] }],
   ["🫧 Velvet", { b: 3, a: .32, blend: "source-over", css: "brightness(1.06) contrast(1.02) saturate(1.02)", wash: ["#FBEFEA", .07] }],
@@ -10071,7 +10067,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lenses3 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lenses4 ✅</div>
       </div>
     </div>
   );
