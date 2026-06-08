@@ -1648,6 +1648,35 @@ function ProfileGate({ user, profile, reload }) {
 }
 
 /* ---------------- main ---------------- */
+function PhotoGate({ user, profile, reload, onBack }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+  const pick = async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    setErr(""); setBusy(true);
+    try {
+      const url = await uploadPhoto(user.id, f);
+      const { error } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id);
+      if (error) throw error;
+      reload();
+    } catch (x) { setErr("Photo upload failed: " + (x.message || x)); setBusy(false); }
+  };
+  return (
+    <div style={{ padding: "26px 22px 60px", textAlign: "center", maxWidth: 420, margin: "0 auto" }}>
+      {onBack && <div style={{ textAlign: "left" }}><button onClick={onBack} style={{ background: "none", border: "none", color: W.teal, fontWeight: 700, cursor: "pointer", padding: "4px 0", fontSize: 14 }}>← Back</button></div>}
+      <div style={{ fontSize: 38, marginTop: 6 }}>📸</div>
+      <div style={{ fontWeight: 800, fontSize: 19, color: W.ink, marginTop: 8 }}>Add your photo to join the community</div>
+      <div style={{ color: W.soft, fontSize: 14, lineHeight: 1.55, margin: "10px 0 20px" }}>Glasswings members connect face-to-face — a clear profile photo keeps the community trusted and friendly. You can still browse and buy tickets without one, but chats and rooms need a photo.</div>
+      <div onClick={() => !busy && fileRef.current?.click()} style={{ display: "inline-block", cursor: "pointer", borderRadius: "50%", border: `3px dashed ${W.teal}`, padding: 4 }}>
+        <PersonAvatar url={profile.avatar_url} name={profile.full_name} size={108} />
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+      {err && <div style={{ color: "#C0392B", fontSize: 13, marginTop: 12 }}>{err}</div>}
+      <button onClick={() => fileRef.current?.click()} disabled={busy} style={{ display: "block", width: "100%", marginTop: 20, padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 800, fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Uploading…" : "Upload a photo"}</button>
+    </div>
+  );
+}
 function Main({ user }) {
   const wide = useWide(900);
   const SW = 248;
@@ -2293,6 +2322,8 @@ function Main({ user }) {
   );
   const pendingBuy = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   if (profile && !profile.profile_completed && !pendingBuy) return <ProfileGate user={user} profile={profile} reload={load} />;
+  const needPhoto = !!profile && profile.profile_completed && !((profile.avatar_url || "").trim()) && !pendingBuy;
+  if (needPhoto) return <PhotoGate user={user} profile={profile} reload={load} />;
 
   const listW = 340;
   const twoPane = wide && (tab === "chats" || !!open);
@@ -2323,7 +2354,7 @@ function Main({ user }) {
       if (e) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     }
   }
-  if (chatEl && !wide) return chatEl;
+  if (chatEl && !wide) return needPhoto ? <PhotoGate user={user} profile={profile} reload={load} onBack={() => setOpen(null)} /> : chatEl;
 
   const myChats = [
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
@@ -2363,7 +2394,7 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
-      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>}
+      {tab === "chats" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>)}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
@@ -8986,9 +9017,9 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
         <span style={{ fontSize: 13.5, color: W.soft }}><b style={{ color: W.ink }}>{filtered.length}</b> member{filtered.length === 1 ? "" : "s"}</span>
         <button onClick={messageAll} disabled={!filtered.length} style={{ ...btn(W.teal, "#fff"), opacity: filtered.length ? 1 : .5 }}><Send size={15} />Message {filtered.length}</button>
       </div>
-      <div style={{ display: wideM ? "grid" : "flex", gridTemplateColumns: wideM ? "repeat(2, 1fr)" : undefined, flexDirection: wideM ? undefined : "column", gap: 10, alignItems: wideM ? "start" : "stretch" }}>
+      <div style={{ display: wideM ? "grid" : "flex", gridTemplateColumns: wideM ? "repeat(2, 1fr)" : undefined, flexDirection: wideM ? undefined : "column", gap: 10, alignItems: wideM ? "start" : "stretch", width: "100%", maxWidth: "100%", overflowX: "hidden" }}>
         {filtered.map(m => (
-          <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, boxSizing: "border-box", minWidth: 0, overflow: "hidden" }}>
+          <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, boxSizing: "border-box", minWidth: 0, width: "100%", maxWidth: "100%", overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <PersonAvatar url={m.avatar_url} name={m.full_name} size={42} />
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -9397,7 +9428,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • mcardfix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • photogate ✅</div>
       </div>
     </div>
   );
