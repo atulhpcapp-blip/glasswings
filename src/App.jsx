@@ -5808,6 +5808,11 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
   const [evId, setEvId] = useState("");
   const ev = manageable.find(e => e.id === evId);
+  const eventEnded = (() => {
+    if (!ev) return false;
+    const endTs = ev.end_at ? new Date(ev.end_at).getTime() : (ev.event_at ? new Date(ev.event_at).getTime() + 6 * 3600000 : null);
+    return endTs != null && endTs < Date.now();
+  })();
   const [scanOn, setScanOn] = useState(false);
   const [manual, setManual] = useState("");
   const [res, setRes] = useState(null);
@@ -5877,7 +5882,12 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
         <option value="">Choose event…</option>
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
       </select>
-      {ev && (
+      {ev && eventEnded && (
+        <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", borderRadius: 12, padding: "14px 16px", color: "#B23B2E", fontWeight: 700, fontSize: 13.5, lineHeight: 1.5 }}>
+          🔒 This event has ended — door check-in is closed.<div style={{ fontWeight: 500, color: "#8a4a42", marginTop: 4, fontSize: 12.5 }}>Guests already scanned still show as checked in. Reopen isn't possible from here; edit the event's end time if it ran longer.</div>
+        </div>
+      )}
+      {ev && !eventEnded && (
         <>
           <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
             <button onClick={() => { setScanOn(v => !v); setSaleOpen(false); }} style={{ ...btn(scanOn ? W.ink : W.teal, "#fff"), flex: 1, justifyContent: "center" }}>📷 {scanOn ? "Stop scanning" : "Scan tickets"}</button>
