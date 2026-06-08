@@ -2363,7 +2363,7 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
-      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} /></>}
+      {tab === "chats" && <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} /></>}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
@@ -2494,10 +2494,20 @@ function Notice({ text, onClose }) {
 }
 
 /* ---------------- chats ---------------- */
-function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremium, onUpgrade }) {
+function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremium, onUpgrade, meId, onStartDM }) {
   const [q, setQ] = useState("");
+  const [memberHits, setMemberHits] = useState([]);
   const ql = q.trim().toLowerCase();
   const shown = ql ? chats.filter(c => (c.name || "").toLowerCase().includes(ql) || (previews[c.id]?.text || "").toLowerCase().includes(ql)) : chats;
+  useEffect(() => {
+    if (ql.length < 2) { setMemberHits([]); return; }
+    let dead = false;
+    const t = setTimeout(() => {
+      supabase.from("profiles").select("id, full_name, avatar_url").ilike("full_name", "%" + ql + "%").neq("id", meId).limit(15)
+        .then(({ data }) => { if (!dead) setMemberHits(data || []); });
+    }, 250);
+    return () => { dead = true; clearTimeout(t); };
+  }, [ql, meId]);
   return (
     <div>
       <TopBar title="Glasswings" />
@@ -2527,11 +2537,6 @@ function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremiu
           <div style={{ fontSize: 14, marginTop: 6 }}>Join a room or grab an event ticket to start chatting.</div>
           <button onClick={onExplore} style={{ marginTop: 16, padding: "11px 20px", border: "none", borderRadius: 22, background: W.teal, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Explore</button>
         </div>
-      ) : (ql && shown.length === 0) ? (
-        <div style={{ textAlign: "center", padding: "60px 30px", color: W.soft }}>
-          <div style={{ fontSize: 14.5, color: W.ink, fontWeight: 600 }}>No chats found</div>
-          <div style={{ fontSize: 13, marginTop: 5 }}>Nothing matches "{q.trim()}".</div>
-        </div>
       ) : shown.map(c => (
         <div key={c.type + c.id} onClick={() => onOpen({ id: c.id, type: c.type })} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
           <Avatar room={{ emoji: c.emoji, logo_url: c.logo_url }} size={52} />
@@ -2546,6 +2551,26 @@ function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremiu
           </div>
         </div>
       ))}
+      {ql && (
+        <>
+          {memberHits.length > 0 && <div style={{ padding: "12px 16px 5px", fontSize: 11.5, fontWeight: 800, color: W.soft, textTransform: "uppercase", letterSpacing: .5 }}>Start a new chat</div>}
+          {memberHits.map(mem => (
+            <div key={"m" + mem.id} onClick={() => onStartDM(mem.id, mem.full_name || "Member")} style={{ display: "flex", gap: 13, alignItems: "center", padding: "11px 16px", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
+              <PersonAvatar url={mem.avatar_url} name={mem.full_name} size={46} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 15.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mem.full_name || "Member"}</div>
+                <div style={{ color: W.teal, fontSize: 12.5, marginTop: 2, fontWeight: 600 }}>Tap to message</div>
+              </div>
+            </div>
+          ))}
+          {shown.length === 0 && memberHits.length === 0 && (
+            <div style={{ textAlign: "center", padding: "50px 30px", color: W.soft }}>
+              <div style={{ fontSize: 14.5, color: W.ink, fontWeight: 600 }}>No results</div>
+              <div style={{ fontSize: 13, marginTop: 5 }}>Nothing matches "{q.trim()}".</div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
