@@ -3727,6 +3727,7 @@ function BlindBanter({ meId, onUpgrade, onClose }) {
   const [cupid, setCupid] = useState(null); // {msg, onOk} or {msg}
   const cupidAlert = (msg) => setCupid({ msg });
   const cupidConfirm = (msg, onOk) => setCupid({ msg, onOk });
+  const [buyOpen, setBuyOpen] = useState(false);
   const endRef = useRef(null);
   const loadStatus = async () => {
     const { data, error } = await supabase.rpc("banter_status");
@@ -3752,6 +3753,7 @@ function BlindBanter({ meId, onUpgrade, onClose }) {
     const { error } = await supabase.rpc("banter_join");
     setBusy(false);
     if (error) {
+      if (/NO_CREDITS/i.test(error.message || "")) { setBuyOpen(true); return; }
       if (/premium/i.test(error.message || "")) return cupidConfirm(error.message + "\n\nView membership plans?", () => { onClose(); onUpgrade && onUpgrade(); });
       return cupidAlert(error.message);
     }
@@ -3802,7 +3804,8 @@ function BlindBanter({ meId, onUpgrade, onClose }) {
             At any point, tap 💚 if you're vibing. <b>Profiles reveal only if you BOTH tap 💚.</b> If not, the mystery stays a mystery — no awkwardness, ever. 🌙
           </div>
           <button onClick={join} disabled={busy} style={{ ...btn("#6D28D9", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginTop: 20 }}>{busy ? "…" : "🎭 Find my mystery match"}</button>
-          <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, fontWeight: 700, marginTop: 9 }}>Girls play free 💃 · Guys need 💎 Premium (any paid room)</div>
+          <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, fontWeight: 700, marginTop: 9 }}>Girls play free 💃 · Guys: 1 credit per match</div>
+          <button onClick={() => setBuyOpen(true)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E0D5F5", width: "100%", justifyContent: "center", padding: "10px", marginTop: 8, fontSize: 13 }}>💳 Buy credits</button>
         </div>
       </>}
       {st.state === "queued" && <>
@@ -3828,7 +3831,7 @@ function BlindBanter({ meId, onUpgrade, onClose }) {
               const { error: e1 } = await supabase.rpc("banter_finish");
               if (e1) return cupidAlert(e1.message);
               const { error: e2 } = await supabase.rpc("banter_join");
-              if (e2) { cupidAlert(e2.message); loadStatus(); return; }
+              if (e2) { if (/NO_CREDITS/i.test(e2.message || "")) { setBuyOpen(true); return; } cupidAlert(e2.message); loadStatus(); return; }
               loadStatus();
             })} style={{ background: "rgba(255,255,255,.2)", border: "1.5px solid rgba(255,255,255,.7)", color: "#fff", borderRadius: 10, padding: "8px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer", flexShrink: 0 }}>🎭 New<br />mystery</button>
           </div>
@@ -3891,6 +3894,7 @@ function BlindBanter({ meId, onUpgrade, onClose }) {
           </div>
         </div>
       )}
+      {buyOpen && <BuyCreditsSheet onClose={() => setBuyOpen(false)} onBought={() => loadStatus()} />}
     </div>
   );
 }
@@ -3931,6 +3935,58 @@ const VIBE_BANK = {
     { q: "Your vibe after midnight?", opts: ["Deep talks", "Cuddles", "Adventurous", "Unpredictable 🔥"] },
   ],
 };
+function BuyCreditsSheet({ onClose, onBought }) {
+  const [packs, setPacks] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { supabase.from("credit_packs").select("id, label, credits, price").eq("active", true).order("sort").then(({ data }) => setPacks(data || [])); }, []);
+  const buy = async (pack) => {
+    setBusy(true);
+    try {
+      const ready = await loadRazorpay();
+      if (!ready) { setBusy(false); return window.alert("Couldn't open the payment window. Check your connection and try again."); }
+      const { data: ses } = await supabase.auth.getSession();
+      const token = ses?.session?.access_token;
+      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose: "credits", pack_id: pack.id }) });
+      const od = await r.json();
+      if (!r.ok || !od.order_id) { setBusy(false); return window.alert(od.error || "Could not start the payment."); }
+      const rzp = new window.Razorpay({
+        key: od.key_id, amount: od.amount, currency: od.currency, order_id: od.order_id,
+        name: "Glasswings", description: rzpDesc(`${pack.credits} game credits`),
+        theme: { color: "#008069" },
+        handler: async (resp) => {
+          try {
+            const v = await fetch("/api/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
+            const vd = await v.json();
+            setBusy(false);
+            if (v.ok && vd.ok) { onBought && onBought(); onClose(); window.alert(`\u2705 ${pack.credits} credits added \u2014 have fun!`); }
+            else window.alert(vd.error || "Payment couldn't be confirmed.");
+          } catch { setBusy(false); window.alert("Payment couldn't be confirmed."); }
+        },
+      });
+      rzp.on("payment.failed", () => { setBusy(false); window.alert("Payment failed or was cancelled \u2014 nothing was charged."); });
+      rzp.open();
+    } catch { setBusy(false); window.alert("Could not start the payment. Please try again."); }
+  };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, marginBottom: 3 }}>\U0001F39F\uFE0F Buy game credits</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Credits let you play Vibe Check & Blind Banter \u2014 1 credit per play.</div>
+      {packs === null ? <div style={{ color: W.soft, fontSize: 13, padding: 12, textAlign: "center" }}>Loading\u2026</div>
+        : !packs.length ? <div style={{ color: W.soft, fontSize: 13, padding: 12, textAlign: "center" }}>No credit packs available right now.</div>
+        : packs.map(pk => (
+          <div key={pk.id} onClick={() => !busy && buy(pk)} style={{ display: "flex", alignItems: "center", gap: 12, border: `1.5px solid ${W.line}`, borderRadius: 14, padding: "14px 15px", marginBottom: 10, cursor: busy ? "default" : "pointer", opacity: busy ? .6 : 1 }}>
+            <div style={{ width: 46, height: 46, borderRadius: 12, background: "linear-gradient(135deg,#EC4899,#8B5CF6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, flexShrink: 0 }}>{pk.credits}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{pk.label} \u00b7 {pk.credits} credits</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{pk.credits} plays</div>
+            </div>
+            <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>\u20b9{pk.price}</div>
+          </div>
+        ))}
+      <div style={{ fontSize: 11, color: W.soft, textAlign: "center", marginTop: 4 }}>Secure payment via Razorpay \U0001F512</div>
+    </Sheet>
+  );
+}
 function vibeLabel(pct) {
   if (pct >= 90) return "Written in the stars ✨";
   if (pct >= 70) return "Sparks flying 🔥";
@@ -3952,14 +4008,16 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
   const [result, setResult] = useState(null);
   const [premium, setPremium] = useState(false);
   const [tier, setTier] = useState("flirty");
+  const [credits, setCredits] = useState(0);
+  const [buyOpen, setBuyOpen] = useState(false);
   const load = async () => {
     const [{ data: q }, { data: m }, { data: me }, { data: subs }] = await Promise.all([
       supabase.from("vibe_questions").select("id, q, opts").eq("active", true).order("id").limit(10),
       supabase.rpc("vibe_my"),
-      supabase.from("profiles").select("gender").eq("id", meId).maybeSingle(),
+      supabase.from("profiles").select("gender, game_credits").eq("id", meId).maybeSingle(),
       supabase.from("room_subscriptions").select("room_id").eq("user_id", meId),
     ]);
-    setQs([]); setMine(m || []); setMyGender(me?.gender || null);
+    setQs([]); setMine(m || []); setMyGender(me?.gender || null); setCredits(Number(me?.game_credits) || 0);
     const rids = (subs || []).map(x => x.room_id);
     if (rids.length) {
       const { data: rms } = await supabase.from("rooms").select("id, price").in("id", rids);
@@ -3981,7 +4039,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
     return () => clearTimeout(t);
   }, [search, view, myGender]);
   const surprise = async () => {
-    if (!unlimited) { window.gwConfirm("🎲 Random match is a 💎 Premium perk!\n\nGo Premium to unlock it — plus unlimited Vibe Checks?", () => { onClose(); onUpgrade && onUpgrade(); }); return; }
+    if (!unlimited && credits < 1) { setBuyOpen(true); return; }
     const opp = myGender === "male" ? "female" : "male";
     const { data } = await supabase.from("profiles").select("id, full_name, avatar_url").eq("gender", opp).neq("id", meId).not("avatar_url", "is", null).limit(60);
     const pool = data || [];
@@ -4019,6 +4077,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
       setBusy(false);
       if (error) return alert(error.message);
       if (data?.id) { try { await supabase.from("vibe_match_tier").insert({ match_id: data.id, tier }); } catch {} }
+      if (!unlimited) { try { const { data: left } = await supabase.rpc("spend_game_credit", { p_n: 1 }); if (typeof left === "number") setCredits(left); } catch {} }
       vibeMail(data?.id);
       await load();
       setView("sent");
@@ -4068,12 +4127,13 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
         <Header title="Decent → Flirty → Naughty 🔥" />
         <div style={{ padding: 16 }}>
           <button onClick={() => {
-            if (quotaLeft <= 0) { window.gwConfirm("💎 Free members get 1 Vibe Check a week — you've used yours!\n\nGo Premium for unlimited Vibe Checks + random matches?", () => { onClose(); onUpgrade && onUpgrade(); }); return; }
+            if (!unlimited && credits < 1) { setBuyOpen(true); return; }
             setSearch(""); setView("pick");
-          }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 6, background: "linear-gradient(95deg,#EC4899,#8B5CF6)", opacity: quotaLeft <= 0 ? .6 : 1 }}>💘 New Vibe Check</button>
+          }} style={{ ...btn("linear-gradient(95deg,#EC4899,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 15, marginBottom: 6, background: "linear-gradient(95deg,#EC4899,#8B5CF6)", opacity: (!unlimited && credits < 1) ? .6 : 1 }}>💘 New Vibe Check</button>
           <div style={{ textAlign: "center", fontSize: 11.5, fontWeight: 700, color: unlimited ? "#8B5CF6" : W.soft, marginBottom: 10 }}>
-            {isStaff ? "👑 Staff — unlimited" : premium ? "💎 Premium — unlimited checks + random match" : myGender === "female" ? "💖 Unlimited — play as much as you like!" : `Free plan: ${quotaLeft} of 1 left this week · 💎 Premium = unlimited`}
+            {isStaff ? "👑 Staff — unlimited" : premium ? "💎 Premium — unlimited" : myGender === "female" ? "💖 Unlimited — play as much as you like!" : `🎟️ ${credits} credit${credits === 1 ? "" : "s"} left · 1 per Vibe Check`}
           </div>
+          {!unlimited && <button onClick={() => setBuyOpen(true)} style={{ ...btn("#fff", "#8B5CF6"), border: "1px solid #E6D9F7", width: "100%", justifyContent: "center", padding: "10px", marginBottom: 12, fontSize: 13.5 }}>💳 Buy more credits</button>}
           {invites.length > 0 && <>
             <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "14px 0 6px" }}>💌 Waiting for your answers</div>
             {invites.map(m => (
@@ -4186,6 +4246,7 @@ function VibeCheck({ meId, isStaff, onUpgrade, onClose }) {
           <a href={`https://wa.me/?text=${encodeURIComponent(`💘 We scored ${result.pct}% on the Glasswings Vibe Check — ${vibeLabel(result.pct)}! Try yours: https://glass-wings.com/g/vibe`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", display: "flex", justifyContent: "center", marginTop: 14, padding: "13px" }}>Share on WhatsApp</a>
         </div>
       </>}
+      {buyOpen && <BuyCreditsSheet onClose={() => setBuyOpen(false)} onBought={() => load()} />}
     </div>
   );
 }
@@ -9779,7 +9840,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludospeed ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • credits2 ✅</div>
       </div>
     </div>
   );
