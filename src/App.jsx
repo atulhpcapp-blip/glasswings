@@ -4626,27 +4626,27 @@ const GW_FILTERS = [
 // beauty lenses: b=blur strength, a=layer alpha, blend, extra css on layer, wash [color,alpha], vig
 const GW_LENSES = [
   ["No lens", null],
-  ["✨ Smooth", { b: 3, a: .34, blend: "source-over", css: "brightness(1.03) contrast(1.02)" }],
-  ["🌟 Glow", { b: 3.4, a: .32, blend: "lighten", css: "brightness(1.09) saturate(1.05)" }],
-  ["🤍 Soft Light", { b: 2.8, a: .3, blend: "lighten", css: "brightness(1.11) contrast(.99) saturate(1.03)", wash: ["#FFFFFF", .05] }],
-  ["🇰🇷 Glass Skin", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.13) saturate(1.04)", wash: ["#FFFFFF", .05] }],
-  ["🌸 Porcelain", { b: 3.6, a: .38, blend: "lighten", css: "brightness(1.12) saturate(.96)", wash: ["#FFE9F0", .06] }],
-  ["🇷🇺 Moscow Ice", { b: 3.2, a: .34, blend: "lighten", css: "brightness(1.1) saturate(.9)", wash: ["#CFE5FF", .1] }],
-  ["❄️ Cool Glow", { b: 3, a: .32, blend: "lighten", css: "brightness(1.1) saturate(.96)", wash: ["#D5ECFF", .09] }],
-  ["🇵🇭 Manila Glow", { b: 2.8, a: .3, blend: "source-over", css: "saturate(1.16) brightness(1.06)", wash: ["#FFC878", .1] }],
-  ["🇨🇳 Douyin Doll", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.14) saturate(1.02)", wash: ["#FFD6E8", .1] }],
-  ["🇯🇵 Tokyo Blush", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.04) saturate(1.08)", wash: ["#FF8FA3", .1] }],
-  ["🍑 Peach", { b: 3, a: .3, blend: "source-over", css: "brightness(1.05) saturate(1.1)", wash: ["#FFB29E", .1] }],
-  ["🇮🇳 Desi Bridal", { b: 3, a: .33, blend: "source-over", css: "saturate(1.22) brightness(1.05)", wash: ["#FFC04D", .1], vig: .22 }],
-  ["🌅 Golden Hour", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.05) saturate(1.16)", wash: ["#FFB55C", .14], vig: .2 }],
-  ["🌍 Melanin Gold", { b: 2.6, a: .3, blend: "source-over", css: "contrast(1.08) saturate(1.2) brightness(1.06)", wash: ["#FFB347", .08] }],
-  ["🇧🇷 Ipanema Bronze", { b: 3, a: .32, blend: "source-over", css: "saturate(1.24) sepia(.14) brightness(1.04)", wash: ["#D98A4B", .12] }],
-  ["🇺🇸 LA Baddie", { b: 3, a: .33, blend: "source-over", css: "contrast(1.12) saturate(1.22) brightness(1.04)", wash: ["#FF9E6D", .08], vig: .18 }],
-  ["💋 Bombshell", { b: 3.2, a: .34, blend: "source-over", css: "contrast(1.13) saturate(1.26) brightness(1.03)", wash: ["#FF8A5C", .08], vig: .24 }],
-  ["💎 Glam", { b: 3.4, a: .35, blend: "source-over", css: "contrast(1.08) saturate(1.1) brightness(1.04)", vig: .22 }],
-  ["🧖 Spa Fresh", { b: 3.4, a: .35, blend: "lighten", css: "brightness(1.13) saturate(.98)", wash: ["#CFF5E6", .06] }],
-  ["🇫🇷 Paris Bare", { b: 2.2, a: .26, blend: "source-over", css: "saturate(.92) brightness(1.05) contrast(1.03)" }],
-  ["🌙 Arabian Night", { b: 3.2, a: .34, blend: "source-over", css: "contrast(1.1) saturate(1.16)", wash: ["#7C3AED", .07], vig: .4 }],
+  ["✨ Smooth", { b: 3, a: .34, blend: "source-over", css: "brightness(1.06) contrast(1.03) saturate(1.04)", wash: ["#FFFFFF", .05] }],
+  ["🌟 Glow", { b: 3.4, a: .34, blend: "lighten", css: "brightness(1.12) saturate(1.06)", wash: ["#FFFFFF", .07] }],
+  ["🤍 Soft Light", { b: 2.8, a: .3, blend: "lighten", css: "brightness(1.13) contrast(.99) saturate(1.04)", wash: ["#FFFFFF", .08] }],
+  ["🇰🇷 Glass Skin", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.15) saturate(1.05)", wash: ["#F2FAFF", .09] }],
+  ["🌸 Porcelain", { b: 3.6, a: .38, blend: "lighten", css: "brightness(1.13) saturate(.96)", wash: ["#FFE9F0", .1] }],
+  ["🇷🇺 Moscow Ice", { b: 3.2, a: .34, blend: "lighten", css: "brightness(1.12) saturate(.9)", wash: ["#CFE5FF", .14] }],
+  ["❄️ Cool Glow", { b: 3, a: .32, blend: "lighten", css: "brightness(1.12) saturate(.95)", wash: ["#D5ECFF", .13] }],
+  ["🇵🇭 Manila Glow", { b: 2.8, a: .3, blend: "source-over", css: "saturate(1.18) brightness(1.08)", wash: ["#FFC878", .15] }],
+  ["🇨🇳 Douyin Doll", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.16) saturate(1.04)", wash: ["#FFD6E8", .14] }],
+  ["🇯🇵 Tokyo Blush", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.05) saturate(1.1)", wash: ["#FF8FA3", .14] }],
+  ["🍑 Peach", { b: 3, a: .3, blend: "source-over", css: "brightness(1.06) saturate(1.12)", wash: ["#FFB29E", .14] }],
+  ["🇮🇳 Desi Bridal", { b: 3, a: .33, blend: "source-over", css: "saturate(1.24) brightness(1.06)", wash: ["#FFC04D", .14], vig: .22 }],
+  ["🌅 Golden Hour", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.06) saturate(1.18)", wash: ["#FFB55C", .18], vig: .2 }],
+  ["🌍 Melanin Gold", { b: 2.6, a: .3, blend: "source-over", css: "contrast(1.08) saturate(1.22) brightness(1.07)", wash: ["#FFB347", .12] }],
+  ["🇧🇷 Ipanema Bronze", { b: 3, a: .32, blend: "source-over", css: "saturate(1.26) sepia(.16) brightness(1.05)", wash: ["#D98A4B", .15] }],
+  ["🇺🇸 LA Baddie", { b: 3, a: .33, blend: "source-over", css: "contrast(1.12) saturate(1.24) brightness(1.05)", wash: ["#FF9E6D", .12], vig: .18 }],
+  ["💋 Bombshell", { b: 3.2, a: .34, blend: "source-over", css: "contrast(1.14) saturate(1.28) brightness(1.04)", wash: ["#FF8A5C", .12], vig: .24 }],
+  ["💎 Glam", { b: 3.4, a: .35, blend: "source-over", css: "contrast(1.1) saturate(1.12) brightness(1.05)", wash: ["#FFFFFF", .04], vig: .22 }],
+  ["🧖 Spa Fresh", { b: 3.4, a: .35, blend: "lighten", css: "brightness(1.15) saturate(.98)", wash: ["#CFF5E6", .1] }],
+  ["🇫🇷 Paris Bare", { b: 2.2, a: .26, blend: "source-over", css: "saturate(.92) brightness(1.06) contrast(1.04)" }],
+  ["🌙 Arabian Night", { b: 3.2, a: .34, blend: "source-over", css: "contrast(1.12) saturate(1.18)", wash: ["#7C3AED", .1], vig: .4 }],
 ];
 const GW_FRAMES = ["None", "Glasswings", "Party", "Polaroid", "Retro"];
 const GW_STICKERS = ["🦋", "❤️", "🔥", "✨", "🪩", "🥂", "💃", "😎", "🎉", "💘", "🌙", "👑"];
@@ -4754,6 +4754,8 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
   useEffect(() => { const t = setTimeout(() => { try { activeRef.current?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch { } }, 30); return () => clearTimeout(t); }, [camTab, li, fi]);
   const lensBg = (l2) => { const c = l2[1]; if (!c) return "linear-gradient(135deg,#555,#222)"; if (c.wash) return c.wash; return "linear-gradient(135deg,#7C3AED,#EC4899)"; };
   const filterBg = (f) => { const fx = f[2] || []; const g = fx.find(o => o[0] === "grad"); if (g) return `linear-gradient(135deg, ${g[1]}, ${g[2]})`; const w = fx.find(o => o[0] === "wash"); if (w) return w[1]; return "linear-gradient(135deg,#3a3a3a,#1c1c1c)"; };
+  const lensCssNow = (GW_LENSES[li] && GW_LENSES[li][1] && GW_LENSES[li][1].css) ? GW_LENSES[li][1].css : "";
+  const mainFilter = [GW_FILTERS[fi][1] !== "none" ? GW_FILTERS[fi][1] : "", lensCssNow].filter(Boolean).join(" ") || "none";
   useEffect(() => {
     if (mode !== "cam") return;
     let dead = false;
@@ -4782,12 +4784,11 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     const raw = rawRef.current, c = outRef.current; if (!raw || !raw.width || !c) return;
     const W0 = raw.width, H0 = raw.height; c.width = W0; c.height = H0;
     const x = c.getContext("2d");
-    x.filter = GW_FILTERS[fi][1]; x.drawImage(raw, 0, 0); x.filter = "none";
+    x.filter = mainFilter; x.drawImage(raw, 0, 0); x.filter = "none";
     const lz = GW_LENSES[li][1];
     if (lz) {
       x.save();
-      const baseF = GW_FILTERS[fi][1] === "none" ? "" : GW_FILTERS[fi][1] + " ";
-      x.filter = `${baseF}${lz.css ? lz.css + " " : ""}blur(${lz.b * (W0 / 1000) * 1.15}px)`;
+      x.filter = `${mainFilter === "none" ? "" : mainFilter + " "}blur(${lz.b * (W0 / 1000) * 1.15}px)`;
       x.globalAlpha = lz.a; x.globalCompositeOperation = lz.blend || "source-over";
       x.drawImage(raw, 0, 0);
       x.restore();
@@ -4946,7 +4947,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
         <>
           <div ref={previewRef} style={{ flex: 1, position: "relative", overflow: "hidden", borderRadius: 18, margin: "0 8px" }}>
             {!camErr ? (
-              <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", filter: GW_FILTERS[fi][1], transform: facing === "user" ? "scaleX(-1)" : "none" }} />
+              <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", filter: mainFilter, transform: facing === "user" ? "scaleX(-1)" : "none" }} />
             ) : (
               <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", gap: 10, padding: 30, textAlign: "center" }}>
                 <span style={{ fontSize: 40 }}>📷</span>
@@ -4958,9 +4959,15 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
               <video ref={el => { if (el && streamRef.current && el.srcObject !== streamRef.current) { el.srcObject = streamRef.current; el.play().catch(() => { }); } }}
                 autoPlay playsInline muted
                 style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-                  filter: `${GW_FILTERS[fi][1] === "none" ? "" : GW_FILTERS[fi][1] + " "}${GW_LENSES[li][1].css ? GW_LENSES[li][1].css + " " : ""}blur(4px)`,
+                  filter: `${mainFilter === "none" ? "" : mainFilter + " "}blur(5px)`,
                   opacity: GW_LENSES[li][1].a, mixBlendMode: GW_LENSES[li][1].blend === "lighten" ? "lighten" : "normal",
                   transform: facing === "user" ? "scaleX(-1)" : "none", pointerEvents: "none" }} />
+            )}
+            {!camErr && GW_LENSES[li][1] && GW_LENSES[li][1].wash && (
+              <div style={{ position: "absolute", inset: 0, background: GW_LENSES[li][1].wash[0], opacity: GW_LENSES[li][1].wash[1], mixBlendMode: GW_LENSES[li][1].blend === "lighten" ? "screen" : "normal", pointerEvents: "none" }} />
+            )}
+            {!camErr && GW_LENSES[li][1] && GW_LENSES[li][1].vig && (
+              <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle, rgba(0,0,0,0) 45%, rgba(0,0,0,${GW_LENSES[li][1].vig}) 100%)`, pointerEvents: "none" }} />
             )}
             {!camErr && (GW_FILTERS[fi][2] || []).map((fx2, k) => {
               if (fx2[0] === "grad") return <div key={k} style={{ position: "absolute", inset: 0, background: `linear-gradient(135deg, ${fx2[1]}, ${fx2[2]})`, opacity: fx2[3], mixBlendMode: fx2[4] && fx2[4] !== "source-over" ? fx2[4] : "normal", pointerEvents: "none" }} />;
@@ -9554,7 +9561,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • photogate ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lensfix ✅</div>
       </div>
     </div>
   );
