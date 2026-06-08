@@ -3584,12 +3584,12 @@ function LudoGame({ gameId, meId, onClose }) {
       {chatOpen && (
         <div style={{ position: "absolute", inset: 0, zIndex: 6, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
           <div onClick={() => setChatOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.4)" }} />
-          <div style={{ position: "relative", background: "#fff", borderRadius: "18px 18px 0 0", maxHeight: "68%", display: "flex", flexDirection: "column", boxShadow: "0 -6px 24px rgba(0,0,0,.25)" }}>
+          <div style={{ position: "relative", background: "#fff", borderRadius: "18px 18px 0 0", maxHeight: "42%", display: "flex", flexDirection: "column", boxShadow: "0 -6px 24px rgba(0,0,0,.25)" }}>
             <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", borderBottom: `1px solid ${W.line}` }}>
               <div style={{ flex: 1, fontWeight: 800, color: W.ink, fontSize: 15 }}>💬 Game chat</div>
               <X size={20} color={W.soft} style={{ cursor: "pointer" }} onClick={() => setChatOpen(false)} />
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", minHeight: 170 }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "10px 14px", minHeight: 90 }}>
               {!(g.chat || []).length && <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: 16 }}>Say hi to the table 👋</div>}
               {(g.chat || []).map((m, k) => {
                 const mine = String(m.uid) === String(meId);
@@ -9713,7 +9713,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoconfirm ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludochat2 ✅</div>
       </div>
     </div>
   );
