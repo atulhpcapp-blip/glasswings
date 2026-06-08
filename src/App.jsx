@@ -2497,6 +2497,8 @@ function Notice({ text, onClose }) {
 function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremium, onUpgrade, meId, onStartDM }) {
   const [q, setQ] = useState("");
   const [memberHits, setMemberHits] = useState([]);
+  const [tipDismiss, setTipDismiss] = useState(false);
+  const hasConnection = chats.some(c => c.type === "p2p");
   const ql = q.trim().toLowerCase();
   const shown = ql ? chats.filter(c => (c.name || "").toLowerCase().includes(ql) || (previews[c.id]?.text || "").toLowerCase().includes(ql)) : chats;
   useEffect(() => {
@@ -2511,6 +2513,12 @@ function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremiu
   return (
     <div>
       <TopBar title="Glasswings" />
+      {!hasConnection && !tipDismiss && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, background: "rgba(0,128,105,.08)", borderBottom: `1px solid ${W.line}`, padding: "11px 14px 12px" }}>
+          <span style={{ flex: 1, fontSize: 13, lineHeight: 1.5, color: "#0E5247" }}><b>🔒 Your phone number is private — no one can see it.</b> Personal chats unlock only with people you've actually met at an event (confirmed by event check-in). Until then, chat together in the community rooms.</span>
+          <span onClick={() => setTipDismiss(true)} role="button" aria-label="Dismiss" style={{ cursor: "pointer", fontSize: 18, fontWeight: 700, lineHeight: 1, color: W.soft, padding: "0 2px", flexShrink: 0 }}>×</span>
+        </div>
+      )}
       {chats.length > 0 && (
         <div style={{ padding: "8px 12px", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 0, zIndex: 5 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 10, padding: "9px 12px" }}>
