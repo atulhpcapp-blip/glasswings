@@ -1120,6 +1120,8 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {((e.banner_type !== "video" && e.banner_url) || e.poster_url) && <img src={(e.banner_type !== "video" && e.banner_url) || e.poster_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />}
           <video src={e.vertical_video_url || e.portrait_video_url} autoPlay loop muted playsInline controls style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
+      ) : e.landscape_video_url ? (
+        <div style={{ background: "#0b1f1c" }}><video src={e.landscape_video_url} autoPlay loop muted playsInline controls style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
       ) : (e.banner_url || e.poster_url) ? (e.banner_type === "video" && e.banner_url ? (
         <div style={{ background: "#0b1f1c" }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
       ) : (
@@ -7933,7 +7935,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fOrg === "all" || e.host_id === fOrg)
     && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole))
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const [up, setUp] = useState(false);
@@ -7948,6 +7950,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const pickVVideo = async (e) => { const file = e.target.files?.[0]; if (!file) return; if (!file.type.startsWith("video")) { alert("Please choose a video file for the vertical video."); return; } setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, vvideo: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const pvRef = useRef(null);
   const pickPVideo = async (e) => { const file = e.target.files?.[0]; if (!file) return; if (!file.type.startsWith("video")) { alert("Please choose a video file for the portrait video."); return; } setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, pvideo: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
+  const lvRef = useRef(null);
+  const pickLVideo = async (e) => { const file = e.target.files?.[0]; if (!file) return; if (!file.type.startsWith("video")) { alert("Please choose a video file for the landscape video."); return; } setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, lvideo: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }); };
   const withTime = lbl => lbl + (f.time ? ` · ${f.time}` : "");
   const occ = iso => ({ label: withTime(fmtDay(iso)), iso });
@@ -7978,7 +7982,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: f.entryBadge || null }, dates, f.addons);
+    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: f.entryBadge || null }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -8020,6 +8024,17 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.pvideo ? "Portrait video added ✓" : "+ Portrait video (optional)"}</div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Portrait clip (3:4). Plays full — no cropping — on the event page.</div>
               {f.pvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, pvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
+            </div>
+          </div>
+          <input ref={lvRef} type="file" accept="video/*" onChange={pickLVideo} style={{ display: "none" }} />
+          <div onClick={() => lvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
+            <div style={{ width: 110, aspectRatio: "16/9", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.lvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+              {f.lvideo ? <video src={f.lvideo} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🎥")}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.lvideo ? "Landscape video added ✓" : "+ Landscape video (optional)"}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Wide clip (16:9). Fills the banner area on the event page.</div>
+              {f.lvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, lvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
@@ -9592,7 +9607,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • pvideo ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lvideo ✅</div>
       </div>
     </div>
   );
