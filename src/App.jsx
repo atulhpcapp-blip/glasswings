@@ -2202,6 +2202,19 @@ function Main({ user }) {
     setNotice(`Event sent privately to ${target.length} member${target.length === 1 ? "" : "s"}.`);
   };
   const updateEvent = async (id, p) => { const { error } = await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
+  const duplicateEvent = async (e) => {
+    const { id, created_at, ...rest } = e;
+    rest.title = (e.title || "Event") + " (copy)";
+    rest.approved = false;
+    const { data: ne, error } = await supabase.from("events").insert(rest).select("id").single();
+    if (error) return setNotice(error.message);
+    const { data: tts } = await supabase.from("event_ticket_types").select("*").eq("event_id", id);
+    for (const t of (tts || [])) { const { id: _i, created_at: _c, ...tr } = t; tr.event_id = ne.id; await supabase.from("event_ticket_types").insert(tr); }
+    const { data: ads } = await supabase.from("event_addons").select("*").eq("event_id", id);
+    for (const ad of (ads || [])) { const { id: _i2, created_at: _c2, ...ar } = ad; ar.event_id = ne.id; await supabase.from("event_addons").insert(ar); }
+    await load();
+    setNotice("📋 Event duplicated as a draft — edit it and approve when ready.");
+  };
   const deleteEvent = async (id) => { const { error } = await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
   const addOption = async (kind, name) => { const n = name.trim(); if (!n) return; const { error } = await supabase.from("event_options").insert({ kind, name: n }); if (error) return setNotice(error.message); await load(); };
   const delOption = async (id) => { const { error } = await supabase.from("event_options").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
@@ -2301,7 +2314,7 @@ function Main({ user }) {
       {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
-      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} myAlbum={<MyAlbum meId={user.id} />} /></>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
@@ -5871,7 +5884,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     </div>
   );
 }
-function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
+function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
@@ -5905,7 +5918,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
-        : seg === "events" ? <AdminEvents canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents onDuplicate={onDuplicateEvent} canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -6557,11 +6570,34 @@ function GenderBalance({ ev, onUpdate }) {
     </div>
   );
 }
+function CannedTerms({ value, onApply }) {
+  const [list, setList] = useState([]);
+  const [pick, setPick] = useState("");
+  const load = () => supabase.from("canned_terms").select("id, title, body").order("title").then(({ data }) => setList(data || []));
+  useEffect(() => { load(); }, []);
+  return (
+    <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+      <select value={pick} onChange={e => { setPick(e.target.value); const t = list.find(x => x.id === e.target.value); if (t) onApply(t.body); }} style={{ ...sel, flex: "1 1 150px", minWidth: 0, fontSize: 12.5 }}>
+        <option value="">📋 Apply saved T&C…</option>
+        {list.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+      </select>
+      <button onClick={async () => {
+        const title = window.prompt("Name this T&C template (e.g. 'Standard party rules'):");
+        if (!title || !title.trim()) return;
+        if (!value || !value.trim()) return alert("Type some terms first, then save them as a template.");
+        const { error } = await supabase.from("canned_terms").insert({ title: title.trim(), body: value });
+        if (error) return alert(error.message);
+        alert("💾 Saved! It'll appear in the dropdown."); load();
+      }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 11px", fontSize: 12 }}>💾 Save current</button>
+    </div>
+  );
+}
 function EventTerms({ ev, onUpdate }) {
   const [t, setT] = useState(ev.terms || ""); const [saved, setSaved] = useState(false);
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Terms &amp; conditions</label>
+      <CannedTerms value={t} onApply={(b) => { setT(b); setSaved(false); }} />
       <textarea value={t} onChange={e => { setT(e.target.value); setSaved(false); }} rows={3} placeholder="e.g. No refunds. Carry a valid photo ID. Entry subject to availability." style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", marginTop: 6, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
       <button onClick={async () => { await onUpdate(ev.id, { terms: t }); setSaved(true); }} style={{ ...btn(W.teal, "#fff"), marginTop: 6 }}>{saved ? "Saved ✓" : "Save terms"}</button>
     </div>
@@ -7160,7 +7196,7 @@ function EventDetailsEditor({ event, onUpdate }) {
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const [membersFor, setMembersFor] = useState(null);
@@ -7334,6 +7370,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
               ))}
             </div>
           </div>
+          <CannedTerms value={f.terms} onApply={(b) => setF({ ...f, terms: b })} />
           <textarea value={f.terms} onChange={e => setF({ ...f, terms: e.target.value })} rows={2} placeholder="Terms & conditions (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
           <PerkPicker kind="exclusion" label="Not included" color="#C0392B" value={f.exclusions} onChange={v => setF({ ...f, exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
           <AddonDraft value={f.addons} onChange={v => setF({ ...f, addons: v })} />
@@ -7429,6 +7466,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, lockCity,
                 <GenderBalance ev={e} onUpdate={onUpdate} />
                 <EventTerms ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
+                {onDuplicate && <button onClick={() => onDuplicate(e)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", justifyContent: "center", marginBottom: 8 }}>📋 Duplicate event</button>}
                 <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
               </div>
             )}
