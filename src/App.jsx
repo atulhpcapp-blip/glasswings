@@ -4300,6 +4300,7 @@ function TriviaSheet({ meId, alreadyScore, onClose }) {
 }
 function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh }) {
   const [camOpen, setCamOpen] = useState(false);
+  const [sTab, setSTab] = useState("me");
   const [viewer, setViewer] = useState(null); // { k: "e"|"u", id }
   const [busy, setBusy] = useState(false);
   const [pickFile, setPickFile] = useState(null);
@@ -4342,28 +4343,33 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
   return (
     <>
       {camOpen && <GWCamera meId={meId} events={events} onClose={() => { setCamOpen(false); onRefresh(); }} />}
+      <div style={{ display: "flex", gap: 8, padding: "10px 14px 0", background: "#fff" }}>
+        {[["me", "🟣 My stories"], ["event", "🟢 Event stories"]].map(([k, l]) => <button key={k} onClick={() => setSTab(k)} style={{ padding: "6px 14px", borderRadius: 16, border: `1px solid ${sTab === k ? W.teal : W.line}`, background: sTab === k ? W.teal : "#fff", color: sTab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>)}
+      </div>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "12px 14px 4px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
-        <div>
+        {sTab === "me" && <div>
           <Bubble onClick={() => setCamOpen(true)} ring={"2.5px solid #EC4899"} inner={<div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "linear-gradient(135deg,#7C3AED,#EC4899)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>📷</div>} label="GW Camera" />
-        </div>
-        <label style={{ display: "block" }}>
+        </div>}
+        {sTab === "me" && <label style={{ display: "block" }}>
           <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add story" />
           <input type="file" accept="image/*" style={{ display: "none" }} disabled={busy}
             onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; if (!eligible.length) post(null, f); else setPickFile(f); }} />
-        </label>
-        {meIds.map(uid => {
+        </label>}
+        {sTab === "me" && meIds.map(uid => {
           const w = pp[uid];
           return <Bubble key={"u" + uid} onClick={() => setViewer({ k: "u", id: uid })} ring="linear-gradient(135deg,#7C3AED,#EC4899)"
             inner={w?.avatar_url ? <img src={w.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 20, fontWeight: 800, color: "#7C3AED" }}>{(w?.full_name || "?").charAt(0)}</span>}
             label={uid === meId ? "My story" : (w?.full_name || "Member").split(" ")[0]} />;
         })}
-        {evIds.map(id => {
+        {sTab === "event" && evIds.map(id => {
           const e = evMap[id];
           const thumb = (e.banner_url && e.banner_type !== "video") ? e.banner_url : e.poster_url;
           return <Bubble key={"e" + id} onClick={() => setViewer({ k: "e", id })} ring="linear-gradient(135deg,#008069,#2FD4A8)"
             inner={thumb ? <img src={thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 24 }}>{e.emoji || "🎟️"}</span>}
             label={e.title} />;
         })}
+        {sTab === "event" && evIds.length === 0 && <div style={{ alignSelf: "center", fontSize: 12.5, color: W.soft, padding: "16px 6px" }}>No event stories right now.</div>}
+        {sTab === "me" && meIds.length === 0 && <div style={{ alignSelf: "center", fontSize: 12.5, color: W.soft, padding: "16px 6px" }}>Be the first — tap + or 📷 to add your story.</div>}
       </div>
       {pickFile && (
         <div onClick={() => setPickFile(null)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
@@ -8926,6 +8932,7 @@ function MyAlbum({ meId }) {
   );
 }
 function Gallery({ isAdmin, myAlbum = null }) {
+  const [gtab, setGtab] = useState("galleries");
   const [albums, setAlbums] = useState([]);
   const [photos, setPhotos] = useState({});
   const [open, setOpen] = useState(null);
@@ -8972,8 +8979,11 @@ function Gallery({ isAdmin, myAlbum = null }) {
   return (
     <div>
       <TopBar title="Glasswings Memories" />
-      {myAlbum}
-      <div style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 8, padding: "12px 14px 0" }}>
+        {[["galleries", "📸 Event galleries"], ["mine", "📒 My album"]].map(([k, l]) => <button key={k} onClick={() => setGtab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${gtab === k ? W.teal : W.line}`, background: gtab === k ? W.teal : "#fff", color: gtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>)}
+      </div>
+      {gtab === "mine" && myAlbum}
+      {gtab === "galleries" && <div style={{ padding: 14 }}>
         {isAdmin && <button onClick={newAlbum} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}><Plus size={18} />New album</button>}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
           {albums.map(a => { const cover = (photos[a.id] || [])[0]; const n = (photos[a.id] || []).length; return (
@@ -8984,7 +8994,7 @@ function Gallery({ isAdmin, myAlbum = null }) {
           ); })}
         </div>
         {albums.length === 0 && <Center>No galleries yet.{isAdmin ? " Create your first album above." : ""}</Center>}
-      </div>
+      </div>}
     </div>
   );
 }
