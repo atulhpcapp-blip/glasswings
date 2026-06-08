@@ -5629,7 +5629,20 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
       )}
       {evId && roster !== null && (
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginTop: 14 }}>
-          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 6 }}>👥 Members ({roster.length})</div>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, flex: 1 }}>👥 Guests ({roster.length})</div>
+            {roster.length > 0 && <button onClick={() => {
+              const evt = (events || []).find(e => e.id === evId);
+              const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+              const head = ["Name", "Phone", "Ticket type", "Qty", "Checked in"];
+              const lines = roster.map(m => [m.full_name || "", m.phone || "", m.types || "Standard", m.qty || 1, m.checked_in ? "Yes" : "No"].map(esc).join(","));
+              const csv = [head.map(esc).join(","), ...lines].join("\n");
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+              a.download = `${(evt?.title || "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-guests.csv`;
+              a.click();
+            }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "6px 12px", fontSize: 12 }}>⬇️ Export CSV</button>}
+          </div>
           {roster.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No ticket holders yet.</div> : roster.map(m => (
             <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
               <PersonAvatar url={m.avatar_url} name={m.full_name} size={36} />
