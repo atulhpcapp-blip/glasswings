@@ -8142,6 +8142,28 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
   }, [evFlt]);
   const [pending, setPending] = useState(null);
   const [pendOpen, setPendOpen] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [mPlans, setMPlans] = useState({});
+  const [planPick, setPlanPick] = useState({});
+  const [planDur, setPlanDur] = useState({});
+  const [wideM, setWideM] = useState(typeof window !== "undefined" && window.innerWidth >= 900);
+  useEffect(() => { const f = () => setWideM(window.innerWidth >= 900); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
+  const loadMPlans = () => supabase.from("member_plans").select("user_id, plan_id, expires_at").then(({ data }) => {
+    const m = {}; (data || []).filter(x => !x.expires_at || new Date(x.expires_at).getTime() > Date.now()).forEach(x => { m[x.user_id] = x; }); setMPlans(m);
+  });
+  useEffect(() => {
+    supabase.from("plans").select("id, name, emoji, active").eq("active", true).order("position").then(({ data }) => setPlans(data || []));
+    loadMPlans();
+  }, []);
+  const enrollPlan = async (uid) => {
+    const pid = planPick[uid]; if (!pid) return;
+    const mo = Number(planDur[uid] || 1);
+    const { error } = await supabase.rpc("admin_enroll_plan", { p_user: uid, p_plan: pid, p_months: mo });
+    if (error) return alert(error.message);
+    alert(`💎 Enrolled for ${mo} month${mo > 1 ? "s" : ""}`);
+    setPlanPick(p => ({ ...p, [uid]: "" })); loadMPlans();
+  };
+  const planDaysLeft = (uid) => { const mp = mPlans[uid]; return mp?.expires_at ? Math.max(0, Math.ceil((new Date(mp.expires_at).getTime() - Date.now()) / 86400000)) : null; };
   const reload = () => {
     supabase.rpc("staff_directory").then(({ data }) => setList(data || []));
     supabase.rpc("pending_signups").then(({ data, error }) => setPending(error ? null : (data || [])));
@@ -8225,7 +8247,7 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
         <span style={{ fontSize: 13.5, color: W.soft }}><b style={{ color: W.ink }}>{filtered.length}</b> member{filtered.length === 1 ? "" : "s"}</span>
         <button onClick={messageAll} disabled={!filtered.length} style={{ ...btn(W.teal, "#fff"), opacity: filtered.length ? 1 : .5 }}><Send size={15} />Message {filtered.length}</button>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: wideM ? "grid" : "flex", gridTemplateColumns: wideM ? "repeat(2, 1fr)" : undefined, flexDirection: wideM ? undefined : "column", gap: 10, alignItems: "start" }}>
         {filtered.map(m => (
           <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
@@ -8288,6 +8310,21 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
                 ) : null; })()}
                 {canAdd && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onGrantRoom(m.id, rid, dur[m.id] ? Number(dur[m.id]) : null); setPick(p => ({ ...p, [m.id]: "" })); setDur(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn(W.ink, "#fff"), opacity: pick[m.id] ? 1 : .5 }}><Plus size={14} />Add</button>}
                 {canRemove && <button disabled={!pick[m.id]} onClick={async () => { const rid = pick[m.id]; if (!rid) return; await onRemoveRoom(m.id, rid); setPick(p => ({ ...p, [m.id]: "" })); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", opacity: pick[m.id] ? 1 : .5 }}>Remove</button>}
+              </div>
+            )}
+            {plans.length > 0 && isSuper && (
+              <div style={{ marginTop: 10, borderTop: `1px dashed ${W.line}`, paddingTop: 10 }}>
+                {mPlans[m.id] && <div style={{ fontSize: 12, fontWeight: 800, color: "#6D28D9", marginBottom: 5 }}>💎 {(plans.find(p => p.id === mPlans[m.id].plan_id) || {}).name || "Plan"}{planDaysLeft(m.id) !== null ? ` · ⌛ ${planDaysLeft(m.id)}d left` : " · ∞"}</div>}
+                <div style={{ display: "flex", gap: 6 }}>
+                  <select value={planPick[m.id] || ""} onChange={e => setPlanPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: 1, minWidth: 0 }}>
+                    <option value="">💎 Enroll in plan…</option>
+                    {plans.map(pl => <option key={pl.id} value={pl.id}>{(pl.emoji || "💎") + " " + pl.name}</option>)}
+                  </select>
+                  <select value={planDur[m.id] || "1"} onChange={e => setPlanDur(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, width: 84, flexShrink: 0 }}>
+                    <option value="1">1 mo</option><option value="3">3 mo</option><option value="6">6 mo</option><option value="12">1 yr</option>
+                  </select>
+                  <button disabled={!planPick[m.id]} onClick={() => enrollPlan(m.id)} style={{ ...btn("#6D28D9", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: planPick[m.id] ? 1 : .5 }}>Enroll</button>
+                </div>
               </div>
             )}
           </div>
