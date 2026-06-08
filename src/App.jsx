@@ -119,13 +119,13 @@ async function makePosterBlob(d) {
   x.textAlign = "left";
   return await new Promise(res => c.toBlob(res, "image/png"));
 }
-async function compressImage(file, maxW = 1600, quality = 0.82) {
+async function compressImage(file, maxW = 2048, quality = 0.92) {
   if (!file || !file.type || !file.type.startsWith("image/") || file.type === "image/gif") return file;
   try {
     const url = URL.createObjectURL(file);
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
     const scale = Math.min(1, maxW / (img.width || maxW));
-    if (scale === 1 && file.size < 400 * 1024) { URL.revokeObjectURL(url); return file; }
+    if (scale === 1 && file.size < 900 * 1024) { URL.revokeObjectURL(url); return file; }
     const c = document.createElement("canvas");
     c.width = Math.max(1, Math.round(img.width * scale)); c.height = Math.max(1, Math.round(img.height * scale));
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
