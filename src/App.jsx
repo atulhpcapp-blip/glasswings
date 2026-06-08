@@ -3358,7 +3358,7 @@ function LudoGame({ gameId, meId, onClose }) {
     const { data } = await supabase.from("ludo_games").select("*").eq("id", gameId).maybeSingle();
     if (data) setG(data);
   };
-  useEffect(() => { load(); const iv = setInterval(load, 2500); return () => clearInterval(iv); }, [gameId]);
+  useEffect(() => { load(); const iv = setInterval(load, 1400); return () => clearInterval(iv); }, [gameId]);
   useEffect(() => { if (chatOpen) chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [g && g.chat ? g.chat.length : 0, chatOpen]);
   if (!g) return <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}>Loading game…</div>;
   const players = g.players || [];
@@ -3374,9 +3374,9 @@ function LudoGame({ gameId, meId, onClose }) {
   const roll = async () => {
     if (busy || rolling) return;
     setRolling(true); playDiceSound();
-    const iv = setInterval(() => setRollFace(1 + Math.floor(Math.random() * 6)), 90);
+    const iv = setInterval(() => setRollFace(1 + Math.floor(Math.random() * 6)), 130);
     const { data, error } = await supabase.rpc("ludo_roll", { p_game: g.id });
-    await new Promise(r => setTimeout(r, 520));
+    await new Promise(r => setTimeout(r, 900));
     clearInterval(iv); setRolling(false);
     if (error) return alert(error.message);
     if (data?.game) setG(data.game);
@@ -9779,7 +9779,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • girlsfree ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludospeed ✅</div>
       </div>
     </div>
   );
