@@ -5454,6 +5454,136 @@ function EmailMarketingPanel({ meId }) {
     </div>
   );
 }
+function AnalyticsOverview({ events, myEventsOnly, meId }) {
+  const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
+  const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 12.5, color: W.ink, outline: "none" };
+  const money = v => "\u20B9" + Number(v || 0).toLocaleString("en-IN");
+  const [hosts, setHosts] = useState({});
+  useEffect(() => {
+    const ids = Array.from(new Set(manageable.map(e => e.host_id).filter(Boolean)));
+    if (!ids.length) return;
+    supabase.from("profiles").select("id, full_name, roles").in("id", ids).then(({ data }) => {
+      const m = {}; (data || []).forEach(pf => { m[pf.id] = { name: pf.full_name || "—", roles: pf.roles || [] }; }); setHosts(m);
+    });
+  }, [events]);
+  const [fCity, setFCity] = useState("all"), [fCat, setFCat] = useState("all"), [fOrg, setFOrg] = useState("all"), [fRole, setFRole] = useState("all"), [fArtist, setFArtist] = useState("all"), [fScope, setFScope] = useState("all");
+  const cityOpts = Array.from(new Set(manageable.map(e => e.city).filter(Boolean))).sort();
+  const catOpts = Array.from(new Set(manageable.map(e => e.category).filter(Boolean))).sort();
+  const orgOpts = Array.from(new Set(manageable.map(e => e.host_id).filter(Boolean)));
+  const artistOpts = Array.from(new Set(manageable.flatMap(e => (Array.isArray(e.artists) ? e.artists : []).map(a => (a.name || "").trim()).filter(Boolean)))).sort();
+  const nowI = new Date().toISOString();
+  const filtered = manageable.filter(e =>
+    (fCity === "all" || e.city === fCity)
+    && (fCat === "all" || e.category === fCat)
+    && (fOrg === "all" || e.host_id === fOrg)
+    && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole))
+    && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist))
+    && (fScope === "all" || (fScope === "past" ? (e.event_at && e.event_at < nowI) : (!e.event_at || e.event_at >= nowI)))
+  );
+  const [agg, setAgg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const fKey = filtered.map(e => e.id).join(",");
+  useEffect(() => {
+    if (!filtered.length) { setAgg({ rows: [], tickets: 0, revenue: 0, checked: 0, byCity: {}, byCat: {} }); return; }
+    let dead = false; setBusy(true);
+    const slice = filtered.slice(0, 60);
+    Promise.all(slice.map(e => supabase.rpc("event_ticket_analysis", { p_event: e.id }).then(({ data }) => ({ e, a: data || {} })).catch(() => ({ e, a: {} }))))
+      .then(results => {
+        if (dead) return;
+        let tickets = 0, revenue = 0, checked = 0; const byCity = {}, byCat = {}; const rows = [];
+        results.forEach(({ e, a }) => {
+          const rev = Number(a.paid_gross || 0) + Number(a.door_cash || 0) + Number(a.door_upi || 0);
+          const tk = Number(a.tickets || 0), ci = Number(a.checked_in || 0);
+          tickets += tk; revenue += rev; checked += ci;
+          const cty = e.city || "—", cat = e.category || "—";
+          (byCity[cty] = byCity[cty] || { tickets: 0, revenue: 0, events: 0 });
+          byCity[cty].tickets += tk; byCity[cty].revenue += rev; byCity[cty].events++;
+          (byCat[cat] = byCat[cat] || { tickets: 0, revenue: 0, events: 0 });
+          byCat[cat].tickets += tk; byCat[cat].revenue += rev; byCat[cat].events++;
+          rows.push({ id: e.id, title: e.title, city: cty, category: cat, tickets: tk, checked: ci, revenue: rev });
+        });
+        rows.sort((x, y) => y.revenue - x.revenue);
+        setAgg({ rows, tickets, revenue, checked, byCity, byCat }); setBusy(false);
+      });
+    return () => { dead = true; };
+  }, [fKey]);
+  const clearF = () => { setFCity("all"); setFCat("all"); setFOrg("all"); setFRole("all"); setFArtist("all"); setFScope("all"); };
+  const anyF = fCity !== "all" || fCat !== "all" || fOrg !== "all" || fRole !== "all" || fArtist !== "all" || fScope !== "all";
+  const ciPct = agg && agg.tickets ? Math.round((agg.checked / agg.tickets) * 100) : 0;
+  const Bars = ({ map, label }) => {
+    const ents = Object.entries(map).sort((a, b) => b[1].revenue - a[1].revenue);
+    const mx = Math.max(1, ...ents.map(([, v]) => v.revenue));
+    return (
+      <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginTop: 12 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>{label}</div>
+        {ents.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No data.</div> : ents.map(([k, v]) => (
+          <div key={k} style={{ marginBottom: 9 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 3 }}><span style={{ fontWeight: 700, color: W.ink }}>{k}</span><span style={{ color: W.teal, fontWeight: 800 }}>{money(v.revenue)} · {v.tickets} tix · {v.events} ev</span></div>
+            <div style={{ background: W.bg, borderRadius: 6, height: 12, overflow: "hidden" }}><div style={{ width: `${Math.max(4, Math.round((v.revenue / mx) * 100))}%`, height: "100%", background: "linear-gradient(90deg,#008069,#2FD4A8)" }} /></div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  const exportPdf = () => {
+    if (!agg) return;
+    const esc = t => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const m2 = v => "\u20B9" + Number(v || 0).toLocaleString("en-IN");
+    const cityRows = Object.entries(agg.byCity).sort((a, b) => b[1].revenue - a[1].revenue).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.events}</td><td>${v.tickets}</td><td>${m2(v.revenue)}</td></tr>`).join("");
+    const catRows = Object.entries(agg.byCat).sort((a, b) => b[1].revenue - a[1].revenue).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.events}</td><td>${v.tickets}</td><td>${m2(v.revenue)}</td></tr>`).join("");
+    const evRows = agg.rows.map(r => `<tr><td>${esc(r.title)}</td><td>${esc(r.city)}</td><td>${esc(r.category)}</td><td>${r.tickets}</td><td>${r.checked}</td><td>${m2(r.revenue)}</td></tr>`).join("");
+    const w = window.open("", "_blank"); if (!w) return alert("Allow pop-ups to export the PDF.");
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Glasswings Analytics Overview</title><style>body{font-family:system-ui,Arial;color:#0b1f1c;padding:24px;max-width:820px;margin:0 auto}h1{color:#008069}h2{margin-top:26px;border-bottom:2px solid #e3eae7;padding-bottom:6px}.k{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}.kk{background:#f4f7f6;border-radius:12px;padding:13px 16px;flex:1 1 120px}.kk b{font-size:22px;display:block;color:#008069}.kk span{font-size:11px;color:#5a6b67;font-weight:700;text-transform:uppercase}table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}td,th{text-align:left;padding:7px 9px;border-bottom:1px solid #eee}th{color:#5a6b67;font-size:11px;text-transform:uppercase}@media print{body{padding:0}}</style></head><body>
+    <h1>\uD83E\uDD8B Glasswings \u2014 Analytics Overview</h1>
+    <div style="color:#5a6b67;font-size:13px">${esc([fScope !== "all" ? fScope : "All dates", fCity !== "all" ? fCity : null, fCat !== "all" ? fCat : null, fArtist !== "all" ? fArtist : null].filter(Boolean).join(" \u00B7 "))} \u2014 ${agg.rows.length} events</div>
+    <div class="k"><div class="kk"><b>${agg.rows.length}</b><span>Events</span></div><div class="kk"><b>${agg.tickets}</b><span>Tickets sold</span></div><div class="kk"><b>${m2(agg.revenue)}</b><span>Revenue</span></div><div class="kk"><b>${agg.checked} \u00B7 ${ciPct}%</b><span>Checked in</span></div></div>
+    <h2>By city</h2><table><tr><th>City</th><th>Events</th><th>Tickets</th><th>Revenue</th></tr>${cityRows}</table>
+    <h2>By category</h2><table><tr><th>Category</th><th>Events</th><th>Tickets</th><th>Revenue</th></tr>${catRows}</table>
+    <h2>Events</h2><table><tr><th>Event</th><th>City</th><th>Category</th><th>Tickets</th><th>In</th><th>Revenue</th></tr>${evRows}</table>
+    <script>setTimeout(function(){window.print()},400)<`+`/script></body></html>`);
+    w.document.close();
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
+        <select value={fScope} onChange={e => setFScope(e.target.value)} style={{ ...sel, flex: "1 1 110px", minWidth: 0 }}><option value="all">All dates</option><option value="upcoming">Upcoming</option><option value="past">Past</option></select>
+        <select value={fCity} onChange={e => setFCity(e.target.value)} style={{ ...sel, flex: "1 1 110px", minWidth: 0 }}><option value="all">All cities</option>{cityOpts.map(c => <option key={c} value={c}>{c}</option>)}</select>
+        <select value={fCat} onChange={e => setFCat(e.target.value)} style={{ ...sel, flex: "1 1 120px", minWidth: 0 }}><option value="all">All categories</option>{catOpts.map(c => <option key={c} value={c}>{c}</option>)}</select>
+        <select value={fOrg} onChange={e => setFOrg(e.target.value)} style={{ ...sel, flex: "1 1 130px", minWidth: 0 }}><option value="all">All organisers</option>{orgOpts.map(id => <option key={id} value={id}>{hosts[id]?.name || "Organiser"}</option>)}</select>
+        <select value={fRole} onChange={e => setFRole(e.target.value)} style={{ ...sel, flex: "1 1 120px", minWidth: 0 }}><option value="all">Any organiser role</option><option value="organiser">Organiser</option><option value="subadmin">Subadmin</option><option value="admin">Admin</option><option value="promoter">Promoter</option></select>
+        {artistOpts.length > 0 && <select value={fArtist} onChange={e => setFArtist(e.target.value)} style={{ ...sel, flex: "1 1 120px", minWidth: 0 }}><option value="all">All artists</option>{artistOpts.map(n => <option key={n} value={n}>{n}</option>)}</select>}
+        {anyF && <button onClick={clearF} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, padding: "8px 12px", fontSize: 12 }}>Clear</button>}
+      </div>
+      {busy || !agg ? <Center>crunching numbers across {filtered.length} events…</Center> : (
+        <>
+          <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+            {[["Events", agg.rows.length], ["Tickets sold", agg.tickets], ["Revenue", money(agg.revenue)], ["Checked in", `${agg.checked} · ${ciPct}%`]].map(([l, v]) => (
+              <div key={l} style={{ flex: "1 1 120px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px" }}>
+                <div style={{ fontSize: 21, fontWeight: 800, color: W.teal }}>{v}</div>
+                <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 800, letterSpacing: .4, textTransform: "uppercase", marginTop: 2 }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          {filtered.length > 60 && <div style={{ fontSize: 11.5, color: "#B45309", marginTop: 8 }}>Showing the first 60 of {filtered.length} matching events — narrow the filters for an exact total.</div>}
+          <Bars map={agg.byCity} label="🏙️ By city" />
+          <Bars map={agg.byCat} label="🎬 By category" />
+          <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "13px 15px", marginTop: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, flex: 1 }}>🏆 Top events</div>
+              {agg.rows.length > 0 && <button onClick={exportPdf} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "6px 12px", fontSize: 12 }}>📄 Export PDF</button>}
+            </div>
+            {agg.rows.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No events match these filters.</div> : agg.rows.slice(0, 25).map(r => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: `1px solid ${W.line}`, fontSize: 13 }}>
+                <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div><div style={{ fontSize: 11, color: W.soft }}>{r.city} · {r.category} · {r.checked}/{r.tickets} in</div></div>
+                <div style={{ color: W.teal, fontWeight: 800, flexShrink: 0 }}>{money(r.revenue)}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 function AnalyticsPanel({ events, myEventsOnly, meId }) {
   const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
   const [evId, setEvId] = useState("");
@@ -5462,6 +5592,7 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
   const [roster, setRoster] = useState(null);
   const [checkLog, setCheckLog] = useState(null);
   const ev = manageable.find(e => e.id === evId);
+  const [mode, setMode] = useState("single");
   const loadAll = (eid) => {
     supabase.rpc("event_ticket_analysis", { p_event: eid }).then(({ data, error }) => { setA(error ? null : data); setAErr(error ? (error.message || "Could not load analytics.") : ""); });
     supabase.rpc("event_member_list", { p_event: eid }).then(({ data, error }) => { if (!error) setRoster(data || []); });
@@ -5607,7 +5738,11 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
   return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 640, margin: "0 auto" }}>
       <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>📊 Analytics</div>
-      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 14px" }}>Sales, revenue, check-ins and capacity for any of your events.</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 14px" }}>Sales, revenue, check-ins and capacity — single event or aggregated.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[["single", "🎟️ Single event"], ["overview", "📊 Overview"]].map(([m, l]) => <button key={m} onClick={() => setMode(m)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${mode === m ? W.teal : W.line}`, background: mode === m ? W.teal : "#fff", color: mode === m ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>)}
+      </div>
+      {mode === "overview" ? <AnalyticsOverview events={events} myEventsOnly={myEventsOnly} meId={meId} /> : <>
       <select value={evId} onChange={e => setEvId(e.target.value)} style={{ ...ip2, width: "100%", marginBottom: 16 }}>
         <option value="">Choose event…</option>
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
@@ -5776,6 +5911,7 @@ function AnalyticsPanel({ events, myEventsOnly, meId }) {
           ))}
         </div>
       )}
+      </>}
     </div>
   );
 }
