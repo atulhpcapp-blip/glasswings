@@ -4361,6 +4361,11 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
             inner={w?.avatar_url ? <img src={w.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 20, fontWeight: 800, color: "#7C3AED" }}>{(w?.full_name || "?").charAt(0)}</span>}
             label={uid === meId ? "My story" : (w?.full_name || "Member").split(" ")[0]} />;
         })}
+        {sTab === "event" && (isStaff || eligible.length > 0) && <label style={{ display: "block" }}>
+          <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add event story" />
+          <input type="file" accept="image/*" style={{ display: "none" }} disabled={busy}
+            onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; if (!eligible.length) { alert("Event stories can be added only around an event happening within 36 hours."); return; } setPickFile(f); }} />
+        </label>}
         {sTab === "event" && evIds.map(id => {
           const e = evMap[id];
           const thumb = (e.banner_url && e.banner_type !== "video") ? e.banner_url : e.poster_url;
