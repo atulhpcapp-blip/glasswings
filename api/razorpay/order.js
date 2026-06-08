@@ -40,6 +40,7 @@ export default async function handler(req, res) {
     const { data: me } = await sb.from("profiles").select("gender, founding_member").eq("id", uid).single();
 
     let amount = 0;          // paise
+    let creditsGrant = 0;    // credits to grant when purpose==="credits"
     let addonRows = [];      // resolved [{id,name,price,qty}]
     let ticketRev = 0;       // rupees (for commission)
     const notes = { purpose, uid };
@@ -173,6 +174,12 @@ export default async function handler(req, res) {
       if (!planPrice || planPrice <= 0) return res.status(400).json({ error: "That plan is not available for this room." });
       amount = planPrice * 100;
       Object.assign(notes, { room_id, plan_months: pm });
+    } else if (purpose === "credits") {
+      const { data: pack } = await sb.from("credit_packs").select("id, credits, price, active").eq("id", body.pack_id).single();
+      if (!pack || !pack.active) return res.status(400).json({ error: "Credit pack not found." });
+      amount = pack.price * 100;
+      creditsGrant = pack.credits;
+      Object.assign(notes, { pack_id: pack.id, credits: pack.credits });
     } else {
       return res.status(400).json({ error: "Unknown purpose." });
     }
@@ -200,7 +207,7 @@ export default async function handler(req, res) {
     await sb.from("payments").insert({
       user_id: uid, purpose, event_id: event_id || null,
       ticket_type_id: (purpose === "ticket" ? (items[0]?.ticket_type_id || null) : null),
-      room_id: room_id || null, plan_id: (purpose === "plan" ? plan_id : null), plan_months: (purpose === "room" || purpose === "plan" ? (Number(plan_months) || 1) : null), quantity: (purpose === "ticket" ? totalQty : qty), amount, status: "created", razorpay_order_id: order.id,
+      room_id: room_id || null, plan_id: (purpose === "plan" ? plan_id : null), plan_months: (purpose === "room" || purpose === "plan" ? (Number(plan_months) || 1) : null), quantity: (purpose === "ticket" ? totalQty : purpose === "credits" ? creditsGrant : qty), amount, status: "created", razorpay_order_id: order.id,
       addons: addonRows, referrer_id, commission_amount,
       items: (purpose === "ticket" ? items : null),
     });
