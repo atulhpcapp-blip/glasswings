@@ -4626,22 +4626,27 @@ const GW_FILTERS = [
 // beauty lenses: b=blur strength, a=layer alpha, blend, extra css on layer, wash [color,alpha], vig
 const GW_LENSES = [
   ["No lens", null],
-  ["✨ Smooth", { b: 5.5, a: .5, blend: "source-over" }],
-  ["🌟 Glow", { b: 8, a: .45, blend: "lighten", css: "brightness(1.07)" }],
-  ["🇰🇷 Glass Skin", { b: 7.5, a: .62, blend: "lighten", css: "brightness(1.12)", wash: ["#FFFFFF", .06] }],
-  ["🇷🇺 Moscow Ice", { b: 6.5, a: .58, blend: "lighten", css: "brightness(1.1) saturate(.85)", wash: ["#CFE5FF", .12] }],
-  ["🇵🇭 Manila Glow", { b: 5.5, a: .5, blend: "source-over", css: "saturate(1.15) brightness(1.05)", wash: ["#FFC878", .13] }],
-  ["🇨🇳 Douyin Doll", { b: 8, a: .65, blend: "lighten", css: "brightness(1.13) saturate(.95)", wash: ["#FFD6E8", .12] }],
-  ["🇯🇵 Tokyo Blush", { b: 5, a: .45, blend: "source-over", wash: ["#FF8FA3", .12] }],
-  ["🇮🇳 Desi Bridal", { b: 6, a: .5, blend: "source-over", css: "saturate(1.2) brightness(1.04)", wash: ["#FFC04D", .12], vig: .28 }],
-  ["🌍 Melanin Gold", { b: 5, a: .42, blend: "lighten", css: "contrast(1.08) saturate(1.18) brightness(1.05)", wash: ["#FFB347", .10] }],
-  ["🇧🇷 Ipanema Bronze", { b: 5.5, a: .48, blend: "source-over", css: "saturate(1.25) sepia(.18) brightness(1.03)", wash: ["#D98A4B", .14] }],
-  ["🇫🇷 Paris Bare", { b: 4, a: .4, blend: "source-over", css: "saturate(.9) brightness(1.04)" }],
-  ["🌙 Arabian Night", { b: 6.5, a: .5, blend: "source-over", css: "contrast(1.1) saturate(1.15)", wash: ["#7C3AED", .08], vig: .45 }],
-  ["🇺🇸 LA Baddie", { b: 6, a: .52, blend: "source-over", css: "contrast(1.1) saturate(1.2) brightness(1.03)", wash: ["#FF9E6D", .10], vig: .2 }],
-  ["🍑 Peach", { b: 5.5, a: .45, blend: "source-over", wash: ["#FFB29E", .11] }],
-  ["💎 Glam", { b: 7, a: .55, blend: "source-over", css: "contrast(1.06) saturate(1.08)", vig: .25 }],
-  ["🌸 Porcelain", { b: 6.5, a: .6, blend: "lighten", css: "brightness(1.1) saturate(.92)", wash: ["#FFE9F0", .08] }],
+  ["✨ Smooth", { b: 3, a: .34, blend: "source-over", css: "brightness(1.03) contrast(1.02)" }],
+  ["🌟 Glow", { b: 3.4, a: .32, blend: "lighten", css: "brightness(1.09) saturate(1.05)" }],
+  ["🤍 Soft Light", { b: 2.8, a: .3, blend: "lighten", css: "brightness(1.11) contrast(.99) saturate(1.03)", wash: ["#FFFFFF", .05] }],
+  ["🇰🇷 Glass Skin", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.13) saturate(1.04)", wash: ["#FFFFFF", .05] }],
+  ["🌸 Porcelain", { b: 3.6, a: .38, blend: "lighten", css: "brightness(1.12) saturate(.96)", wash: ["#FFE9F0", .06] }],
+  ["🇷🇺 Moscow Ice", { b: 3.2, a: .34, blend: "lighten", css: "brightness(1.1) saturate(.9)", wash: ["#CFE5FF", .1] }],
+  ["❄️ Cool Glow", { b: 3, a: .32, blend: "lighten", css: "brightness(1.1) saturate(.96)", wash: ["#D5ECFF", .09] }],
+  ["🇵🇭 Manila Glow", { b: 2.8, a: .3, blend: "source-over", css: "saturate(1.16) brightness(1.06)", wash: ["#FFC878", .1] }],
+  ["🇨🇳 Douyin Doll", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.14) saturate(1.02)", wash: ["#FFD6E8", .1] }],
+  ["🇯🇵 Tokyo Blush", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.04) saturate(1.08)", wash: ["#FF8FA3", .1] }],
+  ["🍑 Peach", { b: 3, a: .3, blend: "source-over", css: "brightness(1.05) saturate(1.1)", wash: ["#FFB29E", .1] }],
+  ["🇮🇳 Desi Bridal", { b: 3, a: .33, blend: "source-over", css: "saturate(1.22) brightness(1.05)", wash: ["#FFC04D", .1], vig: .22 }],
+  ["🌅 Golden Hour", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.05) saturate(1.16)", wash: ["#FFB55C", .14], vig: .2 }],
+  ["🌍 Melanin Gold", { b: 2.6, a: .3, blend: "source-over", css: "contrast(1.08) saturate(1.2) brightness(1.06)", wash: ["#FFB347", .08] }],
+  ["🇧🇷 Ipanema Bronze", { b: 3, a: .32, blend: "source-over", css: "saturate(1.24) sepia(.14) brightness(1.04)", wash: ["#D98A4B", .12] }],
+  ["🇺🇸 LA Baddie", { b: 3, a: .33, blend: "source-over", css: "contrast(1.12) saturate(1.22) brightness(1.04)", wash: ["#FF9E6D", .08], vig: .18 }],
+  ["💋 Bombshell", { b: 3.2, a: .34, blend: "source-over", css: "contrast(1.13) saturate(1.26) brightness(1.03)", wash: ["#FF8A5C", .08], vig: .24 }],
+  ["💎 Glam", { b: 3.4, a: .35, blend: "source-over", css: "contrast(1.08) saturate(1.1) brightness(1.04)", vig: .22 }],
+  ["🧖 Spa Fresh", { b: 3.4, a: .35, blend: "lighten", css: "brightness(1.13) saturate(.98)", wash: ["#CFF5E6", .06] }],
+  ["🇫🇷 Paris Bare", { b: 2.2, a: .26, blend: "source-over", css: "saturate(.92) brightness(1.05) contrast(1.03)" }],
+  ["🌙 Arabian Night", { b: 3.2, a: .34, blend: "source-over", css: "contrast(1.1) saturate(1.16)", wash: ["#7C3AED", .07], vig: .4 }],
 ];
 const GW_FRAMES = ["None", "Glasswings", "Party", "Polaroid", "Retro"];
 const GW_STICKERS = ["🦋", "❤️", "🔥", "✨", "🪩", "🥂", "💃", "😎", "🎉", "💘", "🌙", "👑"];
@@ -4782,7 +4787,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     if (lz) {
       x.save();
       const baseF = GW_FILTERS[fi][1] === "none" ? "" : GW_FILTERS[fi][1] + " ";
-      x.filter = `${baseF}${lz.css ? lz.css + " " : ""}blur(${lz.b * (W0 / 1000) * 1.7}px)`;
+      x.filter = `${baseF}${lz.css ? lz.css + " " : ""}blur(${lz.b * (W0 / 1000) * 1.15}px)`;
       x.globalAlpha = lz.a; x.globalCompositeOperation = lz.blend || "source-over";
       x.drawImage(raw, 0, 0);
       x.restore();
@@ -4953,7 +4958,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
               <video ref={el => { if (el && streamRef.current && el.srcObject !== streamRef.current) { el.srcObject = streamRef.current; el.play().catch(() => { }); } }}
                 autoPlay playsInline muted
                 style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-                  filter: `${GW_FILTERS[fi][1] === "none" ? "" : GW_FILTERS[fi][1] + " "}${GW_LENSES[li][1].css ? GW_LENSES[li][1].css + " " : ""}blur(6px)`,
+                  filter: `${GW_FILTERS[fi][1] === "none" ? "" : GW_FILTERS[fi][1] + " "}${GW_LENSES[li][1].css ? GW_LENSES[li][1].css + " " : ""}blur(4px)`,
                   opacity: GW_LENSES[li][1].a, mixBlendMode: GW_LENSES[li][1].blend === "lighten" ? "lighten" : "normal",
                   transform: facing === "user" ? "scaleX(-1)" : "none", pointerEvents: "none" }} />
             )}
