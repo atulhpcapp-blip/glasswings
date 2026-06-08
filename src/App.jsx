@@ -8826,7 +8826,7 @@ function ConnectionsPanel({ canApprove }) {
     setA(null); setB(null); load();
   };
   const revoke = async (id) => {
-    if (!window.confirm("Revoke this connection? They'll no longer find each other in search. Any existing chat stays.")) return;
+    if (!window.confirm("Revoke this connection? This removes their permission AND deletes their existing chat for both people. This can't be undone.")) return;
     const { error } = await supabase.rpc("revoke_dm", { p_id: id });
     if (error) return alert(error.message);
     load();
@@ -9390,7 +9390,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • DMLOCK2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • DMLOCK3 ✅</div>
       </div>
     </div>
   );
