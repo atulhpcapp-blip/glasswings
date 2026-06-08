@@ -8986,9 +8986,9 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
         <span style={{ fontSize: 13.5, color: W.soft }}><b style={{ color: W.ink }}>{filtered.length}</b> member{filtered.length === 1 ? "" : "s"}</span>
         <button onClick={messageAll} disabled={!filtered.length} style={{ ...btn(W.teal, "#fff"), opacity: filtered.length ? 1 : .5 }}><Send size={15} />Message {filtered.length}</button>
       </div>
-      <div style={{ display: wideM ? "grid" : "flex", gridTemplateColumns: wideM ? "repeat(2, 1fr)" : undefined, flexDirection: wideM ? undefined : "column", gap: 10, alignItems: "start" }}>
+      <div style={{ display: wideM ? "grid" : "flex", gridTemplateColumns: wideM ? "repeat(2, 1fr)" : undefined, flexDirection: wideM ? undefined : "column", gap: 10, alignItems: wideM ? "start" : "stretch" }}>
         {filtered.map(m => (
-          <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
+          <div key={m.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, boxSizing: "border-box", minWidth: 0, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <PersonAvatar url={m.avatar_url} name={m.full_name} size={42} />
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -9033,8 +9033,8 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
               </div>
             )}
             {rooms && rooms.length > 0 && (canAdd || canRemove) && (
-              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                <select value={pick[m.id] || ""} onChange={e => setPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                <select value={pick[m.id] || ""} onChange={e => setPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: "1 1 140px", minWidth: 0 }}>
                   <option value="">Pick a room…</option>
                   {rooms.map(r => <option key={r.id} value={r.id}>{r.name}{gwRoomPlan(r.id) ? " · 💎 " + (gwRoomPlan(r.id).label || "").replace(/^💎\s*/, "") : ""}</option>)}
                 </select>
@@ -9054,8 +9054,8 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
             {plans.length > 0 && isSuper && (
               <div style={{ marginTop: 10, borderTop: `1px dashed ${W.line}`, paddingTop: 10 }}>
                 {mPlans[m.id] && <div style={{ fontSize: 12, fontWeight: 800, color: "#6D28D9", marginBottom: 5 }}>💎 {(plans.find(p => p.id === mPlans[m.id].plan_id) || {}).name || "Plan"}{planDaysLeft(m.id) !== null ? ` · ⌛ ${planDaysLeft(m.id)}d left` : " · ∞"}</div>}
-                <div style={{ display: "flex", gap: 6 }}>
-                  <select value={planPick[m.id] || ""} onChange={e => setPlanPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <select value={planPick[m.id] || ""} onChange={e => setPlanPick(p => ({ ...p, [m.id]: e.target.value }))} style={{ ...sel, flex: "1 1 140px", minWidth: 0 }}>
                     <option value="">💎 Enroll in plan…</option>
                     {plans.map(pl => <option key={pl.id} value={pl.id}>{(pl.emoji || "💎") + " " + pl.name}</option>)}
                   </select>
@@ -9397,7 +9397,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • DMLOCK4 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • mcardfix ✅</div>
       </div>
     </div>
   );
