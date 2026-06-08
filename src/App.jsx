@@ -53,6 +53,9 @@ async function makeTicketBlob(d) {
   x.fillStyle = "#ffffff"; x.font = "900 48px system-ui,Arial"; x.fillText(fitText(x, ((d.emoji ? d.emoji + " " : "") + d.title), 600), 48, 120);
   x.fillStyle = "rgba(255,255,255,.92)"; x.font = "500 24px system-ui,Arial";
   const meta = [d.dateStr, d.place].filter(Boolean).join("   ·   "); if (meta) x.fillText(fitText(x, meta, 600), 48, 166);
+  const meta2 = [d.category && "\uD83C\uDFAC " + d.category, d.entryBadge && "\uD83D\uDD1E " + d.entryBadge, d.dressCode && "\uD83D\uDC57 " + d.dressCode].filter(Boolean).join("   \u00B7   ");
+  if (meta2) { x.fillStyle = "rgba(47,212,168,.95)"; x.font = "700 19px system-ui,Arial"; x.fillText(fitText(x, meta2, 600), 48, 198); }
+  if ((d.terms || "").trim()) { x.fillStyle = "rgba(255,255,255,.5)"; x.font = "600 15px system-ui,Arial"; x.fillText(fitText(x, "Terms apply \u2014 " + d.terms.replace(/\s+/g, " ").trim(), 600), 48, 452); }
   x.strokeStyle = "rgba(255,255,255,.25)"; x.setLineDash([12, 10]); x.beginPath(); x.moveTo(Wd - 320, 30); x.lineTo(Wd - 320, Ht - 30); x.stroke(); x.setLineDash([]);
   x.fillStyle = "#2FD4A8"; x.font = "800 19px system-ui,Arial"; x.fillText("ATTENDEE", 48, 256);
   x.fillStyle = "#ffffff"; x.font = "800 36px system-ui,Arial"; x.fillText(fitText(x, d.name || "", 560), 48, 300);
@@ -237,6 +240,7 @@ function PushToggle({ user }) {
 
 function GuestTicketPage({ code }) {
   const [t, setT] = useState(undefined);
+  const [showGT, setShowGT] = useState(false);
   useEffect(() => { supabase.rpc("guest_ticket_public", { p_code: code }).then(({ data, error }) => setT(error ? null : (data || null))); }, [code]);
   if (t === undefined) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#5d6f6b", fontSize: 14 }}>Loading your ticket…</div>;
   if (!t) return (
@@ -258,6 +262,11 @@ function GuestTicketPage({ code }) {
             <div style={{ fontSize: 11, letterSpacing: 4, fontWeight: 800, color: "#2FD4A8" }}>GLASSWINGS EVENTS</div>
             <div style={{ fontSize: 25, fontWeight: 900, marginTop: 8, lineHeight: 1.15, color: "#fff" }}>{t.title}</div>
             <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.9)", marginTop: 8 }}>{t.event_date || ""}{place ? ` · ${place}` : ""}</div>
+            {(t.category || t.entry_badge || (t.dress_code || "").trim()) && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+              {t.category && <span style={{ background: "rgba(255,255,255,.16)", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🎬 {t.category}</span>}
+              {t.entry_badge && <span style={{ background: "rgba(255,255,255,.16)", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔞 {t.entry_badge}</span>}
+              {(t.dress_code || "").trim() && <span style={{ background: "rgba(255,255,255,.16)", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>👗 {t.dress_code}</span>}
+            </div>}
           </div>
           <div style={{ borderTop: "2px dashed rgba(255,255,255,.25)", padding: "18px 22px", display: "flex", gap: 18, alignItems: "center" }}>
             <img src={qr} alt="Entry QR" width={132} height={132} style={{ background: "#fff", padding: 8, borderRadius: 10, flexShrink: 0 }} />
@@ -271,6 +280,14 @@ function GuestTicketPage({ code }) {
           </div>
           <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>{t.checked_in ? "✓ Already checked in" : "Show this QR at the door"}</div>
         </div>
+        {(t.terms || "").trim() && (
+          <div style={{ background: "#fff", borderRadius: 14, marginTop: 12, overflow: "hidden", border: "1px solid #e3eae7" }}>
+            <button onClick={() => setShowGT(v => !v)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 800, fontSize: 13.5, color: "#1b2a27" }}>
+              <span>📋 Terms &amp; conditions</span><span style={{ color: "#5d6f6b" }}>{showGT ? "▴" : "▾"}</span>
+            </button>
+            {showGT && <div style={{ padding: "0 16px 14px", fontSize: 12.5, color: "#5d6f6b", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{t.terms}</div>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5892,7 +5909,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                     <button onClick={async () => {
                       const text = `🎟️ ${ev.title}\nYour ticket — show the QR at the door.\nCode: ${sDone.code}\nTicket: https://glass-wings.com/?gt=${sDone.code}\n— Glasswings Events`;
                       try {
-                        const blob = await makeTicketBlob({ emoji: "🎟️", title: ev.title, dateStr: ev.event_date, place: [ev.venue, ev.city].filter(Boolean).join(", "), name: sDone.name, qty: sDone.qty, code: sDone.code });
+                        const blob = await makeTicketBlob({ emoji: "🎟️", title: ev.title, dateStr: ev.event_date, place: [ev.venue, ev.city].filter(Boolean).join(", "), name: sDone.name, qty: sDone.qty, code: sDone.code, category: ev.category, entryBadge: ev.entry_badge, dressCode: ev.dress_code, terms: ev.terms });
                         const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
                         if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: ev.title, text }); return; }
                       } catch (e2) {}
@@ -6466,6 +6483,7 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose })
 }
 function MyTicket({ event: e, profile, rows, onClose }) {
   const [busy, setBusy] = useState(false);
+  const [showT, setShowT] = useState(false);
   const name = profile?.full_name || profile?.name || "Member";
   const qty = rows.reduce((s, r) => s + (r.quantity || 1), 0) || 1;
   const base = (rows[0]?.id || ((profile?.id || "") + (e.id || ""))).replace(/-/g, "");
@@ -6513,7 +6531,7 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   const shareWhatsApp = async () => {
     setBusy(true);
     try {
-      const blob = await makeTicketBlob({ emoji: e.emoji, title: e.title, dateStr: e.event_date, place, name, qty, code });
+      const blob = await makeTicketBlob({ emoji: e.emoji, title: e.title, dateStr: e.event_date, place, name, qty, code, category: e.category, entryBadge: e.entry_badge, dressCode: e.dress_code, terms: e.terms });
       const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: e.title, text: summary });
@@ -6539,7 +6557,8 @@ function MyTicket({ event: e, profile, rows, onClose }) {
         <div style={{ padding: "16px 20px 4px", color: "#fff" }}>
           {e.event_date && <div style={{ fontSize: 13.5, marginBottom: 6, display: "flex", gap: 9, alignItems: "center" }}><Calendar size={15} color="#2FD4A8" />{e.event_date}</div>}
           {place && <div style={{ fontSize: 13.5, marginBottom: 6, display: "flex", gap: 9, alignItems: "flex-start", color: "rgba(255,255,255,.92)" }}><MapPin size={15} color="#2FD4A8" style={{ marginTop: 1, flexShrink: 0 }} />{place}</div>}
-          {(e.entry_badge || (e.dress_code || "").trim()) && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+          {(e.category || e.entry_badge || (e.dress_code || "").trim()) && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+            {e.category && <span style={{ background: "rgba(255,255,255,.16)", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🎬 {e.category}</span>}
             {e.entry_badge && <span style={{ background: "rgba(255,255,255,.16)", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔞 {e.entry_badge}</span>}
             {(e.dress_code || "").trim() && <span style={{ background: "rgba(255,255,255,.16)", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>👗 {e.dress_code}</span>}
           </div>}
@@ -6561,6 +6580,14 @@ function MyTicket({ event: e, profile, rows, onClose }) {
         </div>
         <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>Show this ticket at entry</div>
       </div>
+      {(e.terms || "").trim() && (
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, marginTop: 12, overflow: "hidden" }}>
+          <button onClick={() => setShowT(v => !v)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 800, fontSize: 13.5, color: W.ink }}>
+            <span>📋 Terms &amp; conditions</span><span style={{ color: W.soft }}>{showT ? "▴" : "▾"}</span>
+          </button>
+          {showT && <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: W.soft, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{e.terms}</div>}
+        </div>
+      )}
       {rideRow}
         <div style={{ display: "flex", gap: 10 }}>
         <button onClick={print} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}><Printer size={16} />Print</button>
@@ -7112,7 +7139,7 @@ function CheckInSheet({ event, onClose }) {
   const shareGuest = async (g) => {
     const text = `🎟️ ${event.title}\nGuest ticket for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nCode: ${g.code}\nTicket: https://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
     try {
-      const blob = await makeTicketBlob({ emoji: "🎟️", title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code });
+      const blob = await makeTicketBlob({ emoji: "🎟️", title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
       const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: event.title, text }); return; }
     } catch (e2) {}
