@@ -3436,11 +3436,10 @@ function LudoGame({ gameId, meId, onClose }) {
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexShrink: 0 }}>
           <button onClick={() => setChatOpen(true)} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>💬{(g.chat || []).length ? " " + (g.chat || []).length : ""}</button>
           {players[0]?.uid === meId && g.status !== "done" ? (
-            <button onClick={async () => {
-              if (!window.confirm(g.status === "lobby" ? "Cancel this game?" : "End this game for everyone?")) return;
+            <button onClick={() => window.gwConfirm(g.status === "lobby" ? "Cancel this game?" : "End this game for everyone?", async () => {
               const { error } = await supabase.rpc("ludo_end", { p_game: g.id });
               if (error) alert(error.message); else load();
-            }} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>🛑 End</button>
+            })} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>🛑 End</button>
           ) : (
             <button onClick={leaveGame} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>🚪 {g.status === "lobby" ? "Leave" : "Exit"}</button>
           )}
@@ -9714,7 +9713,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludochat ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ludoconfirm ✅</div>
       </div>
     </div>
   );
