@@ -840,6 +840,7 @@ function gwPreviewText(m) {
   const t = m.media_type;
   if (t === "image") return "📷 Photo";
   if (t === "snap") return "📷 Snap 🔥";
+  if (t === "poll") return "📊 Poll";
   if (t === "file") return "📎 " + (m.body || "File");
   if (t === "location") return "📍 Location";
   if (t === "roomlink") return "💬 Shared a room";
@@ -2494,9 +2495,21 @@ function Notice({ text, onClose }) {
 
 /* ---------------- chats ---------------- */
 function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremium, onUpgrade }) {
+  const [q, setQ] = useState("");
+  const ql = q.trim().toLowerCase();
+  const shown = ql ? chats.filter(c => (c.name || "").toLowerCase().includes(ql) || (previews[c.id]?.text || "").toLowerCase().includes(ql)) : chats;
   return (
     <div>
       <TopBar title="Glasswings" />
+      {chats.length > 0 && (
+        <div style={{ padding: "8px 12px", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 0, zIndex: 5 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 10, padding: "9px 12px" }}>
+            <span style={{ fontSize: 14, opacity: .55 }}>🔍</span>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search chats" style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 14.5, color: W.ink }} />
+            {q && <span onClick={() => setQ("")} style={{ cursor: "pointer", color: W.soft, fontSize: 18, fontWeight: 700, lineHeight: 1, padding: "0 2px" }}>×</span>}
+          </div>
+        </div>
+      )}
       {!isPremium && (
         <div onClick={onUpgrade} style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(95deg,#6D28D9,#EC4899)", color: "#fff", padding: "11px 15px", cursor: "pointer" }}>
           <span style={{ fontSize: 19 }}>💎</span>
@@ -2514,7 +2527,12 @@ function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremiu
           <div style={{ fontSize: 14, marginTop: 6 }}>Join a room or grab an event ticket to start chatting.</div>
           <button onClick={onExplore} style={{ marginTop: 16, padding: "11px 20px", border: "none", borderRadius: 22, background: W.teal, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Explore</button>
         </div>
-      ) : chats.map(c => (
+      ) : (ql && shown.length === 0) ? (
+        <div style={{ textAlign: "center", padding: "60px 30px", color: W.soft }}>
+          <div style={{ fontSize: 14.5, color: W.ink, fontWeight: 600 }}>No chats found</div>
+          <div style={{ fontSize: 13, marginTop: 5 }}>Nothing matches "{q.trim()}".</div>
+        </div>
+      ) : shown.map(c => (
         <div key={c.type + c.id} onClick={() => onOpen({ id: c.id, type: c.type })} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
           <Avatar room={{ emoji: c.emoji, logo_url: c.logo_url }} size={52} />
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -4837,6 +4855,28 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     </div>
   );
 }
+function PollCreator({ onCreate, onClose }) {
+  const [q, setQ] = useState("");
+  const [opts, setOpts] = useState(["", ""]);
+  const ip = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" };
+  const valid = q.trim() && opts.filter(o => o.trim()).length >= 2;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 160, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, borderRadius: "18px 18px 0 0", padding: "18px 16px calc(20px + env(safe-area-inset-bottom))" }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 16, marginBottom: 12 }}>📊 Create a poll</div>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ask a question…" style={{ ...ip, fontWeight: 700, marginBottom: 10 }} />
+        {opts.map((o, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            <input value={o} onChange={e => setOpts(opts.map((x, j) => j === i ? e.target.value : x))} placeholder={`Option ${i + 1}`} style={ip} />
+            {opts.length > 2 && <button onClick={() => setOpts(opts.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={16} /></button>}
+          </div>
+        ))}
+        {opts.length < 5 && <button onClick={() => setOpts([...opts, ""])} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginBottom: 12 }}><Plus size={14} />Add option</button>}
+        <button disabled={!valid} onClick={() => onCreate(q.trim(), opts.map(o => o.trim()).filter(Boolean))} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", opacity: valid ? 1 : .5 }}>Post poll</button>
+      </div>
+    </div>
+  );
+}
 function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, onDeleteThread, allRooms = [], readOnly = false, wide = false, sidebar = 0 }) {
   const [showMembers, setShowMembers] = useState(false);
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
@@ -4933,8 +4973,10 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
       .then(({ data }) => { const g2 = {}; (data || []).forEach(r3 => { (g2[r3.message_id] = g2[r3.message_id] || new Set()).add(r3.user_id); }); setSnapViews(g2); });
     const loadR = () => supabase.from("message_reactions").select("message_id, user_id, emoji").in("message_id", ids)
       .then(({ data }) => { const g = {}; (data || []).forEach(r2 => { (g[r2.message_id] = g[r2.message_id] || []).push(r2); }); setReacts(g); });
-    loadR();
-    const iv = setInterval(loadR, 12000);
+    const loadP = () => supabase.from("poll_votes").select("message_id, user_id, option_idx").in("message_id", ids)
+      .then(({ data }) => { const g = {}; (data || []).forEach(v => { const e = g[v.message_id] = g[v.message_id] || { counts: {}, total: 0, mine: null }; e.counts[v.option_idx] = (e.counts[v.option_idx] || 0) + 1; e.total++; if (v.user_id === user.id) e.mine = v.option_idx; }); setPollVotes(g); });
+    loadR(); loadP();
+    const iv = setInterval(() => { loadR(); loadP(); }, 12000);
     return () => clearInterval(iv);
   }, [msgs ? msgs.length : 0, room.id]);
   const reactTo = async (mid, emoji) => {
@@ -4959,6 +5001,8 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   };
   const [plusOpen, setPlusOpen] = useState(false);
   const [gwCamOpen, setGwCamOpen] = useState(false);
+  const [pollOpen, setPollOpen] = useState(false);
+  const [pollVotes, setPollVotes] = useState({});
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [roomPick, setRoomPick] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
@@ -4967,6 +5011,10 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
     const { data, error } = await supabase.from("messages").insert({ group_type: groupType, group_id: room.id, sender_id: user.id, ...extra }).select("id, body, media_url, media_type, file_name, reply_to, sender_id, created_at").single();
     if (error) { alert(error.message); return; }
     setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
+  };
+  const vote = async (mid, idx) => {
+    setPollVotes(p => { const e = { counts: { ...(p[mid]?.counts || {}) }, total: p[mid]?.total || 0, mine: p[mid]?.mine ?? null }; if (e.mine != null) e.counts[e.mine] = Math.max(0, (e.counts[e.mine] || 0) - 1); e.counts[idx] = (e.counts[idx] || 0) + 1; e.total = Object.values(e.counts).reduce((a, b) => a + b, 0); e.mine = idx; return { ...p, [mid]: e }; });
+    supabase.from("poll_votes").upsert({ message_id: mid, user_id: user.id, option_idx: idx }, { onConflict: "message_id,user_id" }).then(() => { });
   };
   const shareLocation = () => {
     setPlusOpen(false);
@@ -5095,6 +5143,22 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
                     </div>
                   ); })()}
                   {m.media_url && m.media_type === "image" && <img src={m.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block", marginBottom: m.body ? 4 : 0 }} />}
+                  {m.media_type === "poll" && (() => {
+                    let opts = []; try { opts = JSON.parse(m.file_name || "[]"); } catch { }
+                    const pv = pollVotes[m.id] || { counts: {}, total: 0, mine: null };
+                    return (
+                      <div style={{ background: "#fff", borderRadius: 12, padding: 12, minWidth: 230, border: `1px solid ${W.line}` }}>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: W.ink, marginBottom: 9 }}>📊 {m.body}</div>
+                        {opts.map((opt, i2) => { const c = pv.counts[i2] || 0; const pct = pv.total ? Math.round((c / pv.total) * 100) : 0; const mine = pv.mine === i2; return (
+                          <div key={i2} onClick={() => vote(m.id, i2)} style={{ position: "relative", border: `1px solid ${mine ? W.teal : W.line}`, borderRadius: 9, padding: "9px 11px", marginBottom: 6, cursor: "pointer", overflow: "hidden" }}>
+                            <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: `${pct}%`, background: mine ? "rgba(0,128,105,.16)" : "rgba(0,0,0,.05)" }} />
+                            <div style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, fontWeight: mine ? 800 : 600, color: W.ink }}><span>{mine ? "✓ " : ""}{opt}</span><span style={{ color: W.soft }}>{pct}%</span></div>
+                          </div>
+                        ); })}
+                        <div style={{ fontSize: 11, color: W.soft, marginTop: 2 }}>{pv.total} vote{pv.total === 1 ? "" : "s"} · tap to vote / change</div>
+                      </div>
+                    );
+                  })()}
                   {m.media_url && m.media_type === "snap" && (() => {
                     const viewed = snapViews[m.id]?.has(user.id);
                     if (m.sender_id === user.id) return (
@@ -5193,6 +5257,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
                   ["📍", "Location", "linear-gradient(135deg,#04B08F,#008069)", () => { shareLocation(); }],
                   ["💬", "Room", "linear-gradient(135deg,#F59E0B,#EF4444)", () => { setRoomPick(true); setPlusOpen(false); }],
                   ["🎬", "GIF", "linear-gradient(135deg,#10B981,#059669)", () => { setGifOpen(true); setPlusOpen(false); }],
+                  ["📊", "Poll", "linear-gradient(135deg,#F59E0B,#D97706)", () => { setPollOpen(true); setPlusOpen(false); }],
                 ].map(([emo, label, bg, fn]) => (
                   <div key={label} onClick={fn} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "8px 2px", cursor: "pointer", borderRadius: 12 }}>
                     <div style={{ width: 54, height: 54, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: "0 3px 8px rgba(0,0,0,.15)" }}>{emo}</div>
@@ -5205,6 +5270,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
         </>
       )}
       {snapOpen && <SnapViewer msg={snapOpen} onClose={() => setSnapOpen(null)} />}
+      {pollOpen && <PollCreator onClose={() => setPollOpen(false)} onCreate={(q, opts) => { setPollOpen(false); sendSpecial({ body: q, media_type: "poll", file_name: JSON.stringify(opts) }); }} />}
       {gwCamOpen && <GWCamera meId={user.id} events={gwEvents} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "snap"); }} onClose={() => setGwCamOpen(false)} />}
       {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
