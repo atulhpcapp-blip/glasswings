@@ -4645,6 +4645,63 @@ const GW_LENSES = [
 ];
 const GW_FRAMES = ["None", "Glasswings", "Party", "Polaroid", "Retro"];
 const GW_STICKERS = ["🦋", "❤️", "🔥", "✨", "🪩", "🥂", "💃", "😎", "🎉", "💘", "🌙", "👑"];
+let _faceapiP = null;
+function loadFaceApi() {
+  if (_faceapiP) return _faceapiP;
+  _faceapiP = new Promise((resolve, reject) => {
+    if (window.faceapi && window.faceapi.nets.tinyFaceDetector.params) return resolve(window.faceapi);
+    const done = async () => {
+      try {
+        const M = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
+        if (!window.faceapi.nets.tinyFaceDetector.params) await window.faceapi.nets.tinyFaceDetector.loadFromUri(M);
+        if (!window.faceapi.nets.faceLandmark68TinyNet.params) await window.faceapi.nets.faceLandmark68TinyNet.loadFromUri(M);
+        resolve(window.faceapi);
+      } catch (e) { reject(e); }
+    };
+    if (window.faceapi) return done();
+    const sc = document.createElement("script");
+    sc.src = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js";
+    sc.onload = done; sc.onerror = reject;
+    document.head.appendChild(sc);
+  });
+  return _faceapiP;
+}
+const AR_LENSES = [
+  { id: "glasses", name: "👓 Glasses" },
+  { id: "hearts", name: "💖 Heart Crown" },
+  { id: "butterflies", name: "🦋 Butterflies" },
+  { id: "moons", name: "🌙 Moons" },
+  { id: "sparkle", name: "✨ Sparkle" },
+];
+function buildOverlay(arId, lm, vw, vh) {
+  const avg = pts => { let x = 0, y = 0; pts.forEach(p => { x += p.x; y += p.y; }); return { x: x / pts.length, y: y / pts.length }; };
+  const le = avg(lm.getLeftEye()), re = avg(lm.getRightEye());
+  const mid = { x: (le.x + re.x) / 2, y: (le.y + re.y) / 2 };
+  const eyeDist = Math.hypot(re.x - le.x, re.y - le.y) || vw * 0.18;
+  const rot = Math.atan2(re.y - le.y, re.x - le.x);
+  const jaw = lm.getJawOutline();
+  const faceW = (jaw[16] && jaw[0]) ? Math.hypot(jaw[16].x - jaw[0].x, jaw[16].y - jaw[0].y) : eyeDist * 2.4;
+  const F = (x, y, e, sizePx, r) => ({ e, fx: x / vw, fy: y / vh, s: sizePx / vw, r: r || 0 });
+  const out = [];
+  if (arId === "glasses") {
+    out.push(F(mid.x, mid.y, "👓", eyeDist * 2.7, rot));
+  } else if (arId === "hearts") {
+    const fy0 = mid.y - eyeDist * 1.4, N = 7;
+    for (let i = 0; i < N; i++) { const a = (-72 + 144 * i / (N - 1)) * Math.PI / 180; out.push(F(mid.x + Math.sin(a) * faceW * 0.6, fy0 - Math.cos(a) * faceW * 0.26, "💖", eyeDist * 0.62, 0)); }
+  } else if (arId === "butterflies" || arId === "moons") {
+    const e = arId === "moons" ? "🌙" : "🦋";
+    const nose = lm.getNose();
+    const pts = [jaw[2], jaw[5], jaw[8], jaw[11], jaw[14], le, re, { x: mid.x, y: mid.y - eyeDist * 1.1 }, nose[3] || mid, { x: mid.x - eyeDist, y: mid.y + eyeDist }];
+    pts.forEach(pt => { if (pt) out.push(F(pt.x, pt.y, e, eyeDist * 0.66, 0)); });
+  } else if (arId === "sparkle") {
+    out.push(F(le.x, le.y, "✨", eyeDist * 0.55, 0));
+    out.push(F(re.x, re.y, "✨", eyeDist * 0.55, 0));
+    out.push(F(mid.x, mid.y - eyeDist * 1.5, "✨", eyeDist * 0.8, 0));
+    out.push(F(jaw[2].x, jaw[2].y, "✨", eyeDist * 0.45, 0));
+    out.push(F(jaw[14].x, jaw[14].y, "✨", eyeDist * 0.45, 0));
+  }
+  return out;
+}
 function GWCamera({ meId, onSend, onClose, events = [] }) {
   const liveEvents = (events || []).filter(e => e.event_at && Math.abs(Date.now() - new Date(e.event_at).getTime()) < 36 * 3600000).slice(0, 3);
   const [mode, setMode] = useState("cam");
@@ -4664,6 +4721,30 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
   const rawRef = useRef(null); const outRef = useRef(null);
   const boxRef = useRef(null); const dragRef = useRef(null);
   const [camTab, setCamTab] = useState("beauty");
+  const [arId, setArId] = useState(null);
+  const [arOverlay, setArOverlay] = useState([]);
+  const [arErr, setArErr] = useState(false);
+  const [boxW, setBoxW] = useState(360);
+  const previewRef = useRef(null);
+  useEffect(() => { const el = previewRef.current; if (!el || typeof ResizeObserver === "undefined") return; const ro = new ResizeObserver(() => setBoxW(el.clientWidth || 360)); ro.observe(el); setBoxW(el.clientWidth || 360); return () => ro.disconnect(); }, [mode]);
+  useEffect(() => {
+    if (mode !== "cam" || !arId) { setArOverlay([]); return; }
+    let stop = false, timer = null, fa = null;
+    setArErr(false);
+    loadFaceApi().then(f => { fa = f; loop(); }).catch(() => setArErr(true));
+    const loop = async () => {
+      if (stop) return;
+      const v = videoRef.current;
+      if (v && v.videoWidth && fa) {
+        try {
+          const det = await fa.detectSingleFace(v, new fa.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 })).withFaceLandmarks(true);
+          if (!stop) setArOverlay(det ? buildOverlay(arId, det.landmarks, v.videoWidth, v.videoHeight) : []);
+        } catch { }
+      }
+      if (!stop) timer = setTimeout(() => requestAnimationFrame(loop), 90);
+    };
+    return () => { stop = true; if (timer) clearTimeout(timer); };
+  }, [arId, mode, facing]);
   const activeRef = useRef(null);
   useEffect(() => { const t = setTimeout(() => { try { activeRef.current?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch { } }, 30); return () => clearTimeout(t); }, [camTab, li, fi]);
   const lensBg = (l2) => { const c = l2[1]; if (!c) return "linear-gradient(135deg,#555,#222)"; if (c.wash) return c.wash; return "linear-gradient(135deg,#7C3AED,#EC4899)"; };
@@ -4737,6 +4818,14 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
       x.restore();
     });
     const u = W0 / 1000;
+    if (arId && arOverlay.length) {
+      arOverlay.forEach(o => {
+        const ox = (facing === "user" ? (1 - o.fx) : o.fx) * W0, oy = o.fy * H0;
+        x.save(); x.translate(ox, oy); if (o.r) x.rotate(o.r);
+        x.font = `${Math.max(10, Math.round(o.s * W0))}px serif`; x.textAlign = "center"; x.textBaseline = "middle";
+        x.fillText(o.e, 0, 0); x.restore();
+      });
+    }
     if (frame === "Glasswings") {
       x.fillStyle = "rgba(0,0,0,.42)"; const bw = 320 * u, bh = 64 * u, bx = W0 - bw - 26 * u, by = H0 - bh - 26 * u;
       x.beginPath(); x.roundRect(bx, by, bw, bh, 32 * u); x.fill();
@@ -4794,7 +4883,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
     });
     setPreview(c.toDataURL("image/jpeg", .95));
   };
-  useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers, wm, li]);
+  useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers, wm, li, arId, arOverlay]);
   const relPt = (e) => { const r = boxRef.current.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
   const onDown = (e) => {
     const pt = relPt(e); let best = -1, bd = 0.12;
@@ -4836,9 +4925,10 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
   };
   const chip = (label, on, fn) => <div key={label} onClick={fn} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 16, fontSize: 12, fontWeight: 800, cursor: "pointer", background: on ? "#fff" : "rgba(255,255,255,.16)", color: on ? "#0b1f1c" : "#fff", border: "1px solid rgba(255,255,255,.25)" }}>{label}</div>;
   const lensList = [{ kind: "none", name: "Original" }];
+  AR_LENSES.forEach(a => lensList.push({ kind: "ar", id: a.id, name: a.name }));
   GW_LENSES.forEach((l2, i) => { if (i !== 0) lensList.push({ kind: "lens", i, name: l2[0] }); });
   GW_FILTERS.forEach((f, i) => { if (i !== 0) lensList.push({ kind: "filter", i, name: f[0] }); });
-  const activeName = li > 0 ? GW_LENSES[li][0] : fi > 0 ? GW_FILTERS[fi][0] : "Original";
+  const activeName = arId ? (AR_LENSES.find(a => a.id === arId)?.name || "Lens") : li > 0 ? GW_LENSES[li][0] : fi > 0 ? GW_FILTERS[fi][0] : "Original";
   const sel = stickers[selIdx];
   return (
     <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, height: "100%", zIndex: 260, background: "#000", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -4850,7 +4940,7 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
       </div>
       {mode === "cam" ? (
         <>
-          <div style={{ flex: 1, position: "relative", overflow: "hidden", borderRadius: 18, margin: "0 8px" }}>
+          <div ref={previewRef} style={{ flex: 1, position: "relative", overflow: "hidden", borderRadius: 18, margin: "0 8px" }}>
             {!camErr ? (
               <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", filter: GW_FILTERS[fi][1], transform: facing === "user" ? "scaleX(-1)" : "none" }} />
             ) : (
@@ -4874,6 +4964,10 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
               if (fx2[0] === "vig") return <div key={k} style={{ position: "absolute", inset: 0, background: `radial-gradient(circle, rgba(0,0,0,0) 45%, rgba(0,0,0,${fx2[1]}) 100%)`, pointerEvents: "none" }} />;
               return null;
             })}
+            {arId && arOverlay.map((o, k2) => (
+              <span key={k2} style={{ position: "absolute", left: `${(facing === "user" ? (1 - o.fx) : o.fx) * 100}%`, top: `${o.fy * 100}%`, transform: `translate(-50%,-50%) rotate(${o.r}rad)`, fontSize: Math.max(12, o.s * boxW), lineHeight: 1, pointerEvents: "none", userSelect: "none", textShadow: "0 1px 4px rgba(0,0,0,.35)" }}>{o.e}</span>
+            ))}
+            {arId && arErr && <div style={{ position: "absolute", top: 10, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 12, background: "rgba(0,0,0,.4)", padding: "5px 0" }}>Face lenses couldn't load — check your connection.</div>}
           </div>
           <div style={{ textAlign: "center", color: "#fff", fontWeight: 800, fontSize: 14, padding: "8px 0 6px", textShadow: "0 1px 6px rgba(0,0,0,.55)" }}>{activeName}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px 22px" }}>
@@ -4882,15 +4976,15 @@ function GWCamera({ meId, onSend, onClose, events = [] }) {
             </label>
             <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 11, overflowX: "auto", padding: "10px 40%", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", userSelect: "none" }}>
               {lensList.map((o, k) => {
-                const active = o.kind === "none" ? (li === 0 && fi === 0) : o.kind === "lens" ? (li === o.i) : (fi === o.i);
+                const active = o.kind === "ar" ? (arId === o.id) : o.kind === "none" ? (!arId && li === 0 && fi === 0) : o.kind === "lens" ? (!arId && li === o.i) : (!arId && fi === o.i);
                 const name = o.name;
                 const lead = (name || "").split(" ")[0];
                 const isEmoji = !!lead && lead.codePointAt(0) > 0x2000;
-                const bg = o.kind === "none" ? "linear-gradient(135deg,#555,#222)" : o.kind === "lens" ? lensBg(GW_LENSES[o.i]) : filterBg(GW_FILTERS[o.i]);
-                const glyph = o.kind === "none" ? "\u2300" : o.kind === "lens" ? (isEmoji ? lead : "\u2728") : (name.split(" ").map(w => w[0] || "").join("").slice(0, 2).toUpperCase());
+                const bg = o.kind === "ar" ? "linear-gradient(135deg,#7C3AED,#EC4899)" : o.kind === "none" ? "linear-gradient(135deg,#555,#222)" : o.kind === "lens" ? lensBg(GW_LENSES[o.i]) : filterBg(GW_FILTERS[o.i]);
+                const glyph = o.kind === "ar" ? lead : o.kind === "none" ? "\u2300" : o.kind === "lens" ? (isEmoji ? lead : "\u2728") : (name.split(" ").map(w => w[0] || "").join("").slice(0, 2).toUpperCase());
                 return (
                   <div key={o.kind + k} ref={active ? activeRef : null}
-                    onClick={() => { if (active) { shoot(); return; } if (o.kind === "none") { setLi(0); setFi(0); } else if (o.kind === "lens") { setLi(o.i); setFi(0); } else { setFi(o.i); setLi(0); } }}
+                    onClick={() => { if (active) { shoot(); return; } if (o.kind === "ar") { setArId(o.id); setLi(0); setFi(0); } else if (o.kind === "none") { setArId(null); setLi(0); setFi(0); } else if (o.kind === "lens") { setArId(null); setLi(o.i); setFi(0); } else { setArId(null); setFi(o.i); setLi(0); } }}
                     style={{ flexShrink: 0, scrollSnapAlign: "center", width: active ? 70 : 50, height: active ? 70 : 50, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: active ? 26 : 18, color: "#fff", fontWeight: 800, cursor: "pointer", border: active ? "4px solid #fff" : "2px solid rgba(255,255,255,.45)", boxShadow: active ? "0 0 0 3px rgba(0,0,0,.25)" : "none", transition: "width .15s, height .15s", textShadow: "0 1px 3px rgba(0,0,0,.45)" }}>
                     {glyph}
                   </div>
