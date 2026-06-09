@@ -4435,12 +4435,17 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
   const [playLudo, setPlayLudo] = useState(false);
   const [playVibe, setPlayVibe] = useState(false);
   const [playBanter, setPlayBanter] = useState(false);
+  const [playRiddle, setPlayRiddle] = useState(false);
+  const [playHousie, setPlayHousie] = useState(false);
+  const [riddleDone, setRiddleDone] = useState(null);
   useEffect(() => {
     if (initialGame === "antakshari") setPlayAnt(true);
     else if (initialGame === "trivia") setPlayTrivia(true);
     else if (initialGame === "ludo") setPlayLudo(true);
     else if (initialGame === "vibe") setPlayVibe(true);
     else if (initialGame === "banter") setPlayBanter(true);
+    else if (initialGame === "riddles") setPlayRiddle(true);
+    else if (initialGame === "housie") setPlayHousie(true);
     if (initialGame && onConsumedInitial) onConsumedInitial();
   }, []);
   const loadAwards = () => supabase.from("game_awards").select("id, prize, created_at, profiles:user_id(full_name, avatar_url)").order("created_at", { ascending: false }).limit(12)
@@ -4450,6 +4455,9 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
     supabase.rpc("trivia_board").then(({ data }) => setBoard(data || []));
     loadAwards();
   }, [meId, playTrivia]);
+  useEffect(() => {
+    supabase.from("riddle_scores").select("score").eq("user_id", meId).eq("day", new Date().toISOString().slice(0, 10)).maybeSingle().then(({ data }) => setRiddleDone(data ? data.score : null));
+  }, [meId, playRiddle]);
   const Card = ({ emoji, title, sub, cta, onClick, soft }) => (
     <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "14px 15px", display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
       <div style={{ width: 46, height: 46, borderRadius: 12, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>{emoji}</div>
@@ -4474,8 +4482,8 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
         <Card emoji="🎲" title="Ludo" sub="2–4 players · invite friends with a code" cta="Play" onClick={() => setPlayLudo(true)} />
         <Card emoji="💘" title="Vibe Check" sub="How compatible are you two? 10 questions" cta="Play" onClick={() => setPlayVibe(true)} />
         <Card emoji="🎭" title="Blind Banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys 💎" cta="Play" onClick={() => setPlayBanter(true)} />
-        <Card emoji="🎯" title="Bollywood Riddles" sub="Guess the film from emojis — coming soon" cta="Soon" />
-        <Card emoji="🎲" title="Tambola / Housie" sub="Played live at our events 🎉" />
+        <Card emoji="🎯" title="Bollywood Riddles" sub={riddleDone !== null ? `Played today — ${riddleDone}/5` : "Guess the film from emojis · new set daily"} cta={riddleDone !== null ? "Board" : "Play"} onClick={() => setPlayRiddle(true)} />
+        <Card emoji="🎲" title="Tambola / Housie" sub="Live number-draw · daub your ticket · win prizes 🎉" cta="Play" onClick={() => setPlayHousie(true)} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px" }}>
           <Trophy size={18} color="#E67E22" />
@@ -4515,6 +4523,8 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
       {playLudo && <LudoHub meId={meId} onClose={() => setPlayLudo(false)} />}
       {playVibe && <VibeCheck meId={meId} isStaff={isStaff} onUpgrade={onUpgrade} onClose={() => setPlayVibe(false)} />}
       {playBanter && <BlindBanter meId={meId} onUpgrade={onUpgrade} onClose={() => setPlayBanter(false)} />}
+      {playRiddle && <RiddleSheet meId={meId} alreadyScore={riddleDone} onClose={() => setPlayRiddle(false)} />}
+      {playHousie && <HousieHub meId={meId} isStaff={isStaff} events={events} onClose={() => setPlayHousie(false)} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -4668,6 +4678,377 @@ function TriviaSheet({ meId, alreadyScore, onClose }) {
     </div>
   );
 }
+function RiddleSheet({ meId, alreadyScore, onClose }) {
+  const [qs, setQs] = useState(null);
+  const [i, setI] = useState(0);
+  const [picked, setPicked] = useState(null);
+  const [answers, setAnswers] = useState([]);
+  const [result, setResult] = useState(null);
+  const [board, setBoard] = useState(null);
+  const [view, setView] = useState(alreadyScore !== null ? "board" : "quiz");
+  useEffect(() => {
+    if (view === "quiz") supabase.rpc("riddle_today").then(({ data, error }) => setQs(error ? [] : (data || [])));
+  }, [view]);
+  useEffect(() => {
+    if (view !== "board") return;
+    supabase.rpc("riddle_board").then(({ data }) => setBoard(data || []));
+  }, [view, result]);
+  const pick = (idx) => {
+    if (picked !== null) return;
+    setPicked(idx);
+    setTimeout(() => {
+      const next = [...answers, idx];
+      setAnswers(next); setPicked(null);
+      if (i + 1 < qs.length) setI(i + 1);
+      else {
+        supabase.rpc("riddle_submit", { p_answers: next }).then(({ data, error }) => {
+          if (error) { alert(error.message); onClose(); return; }
+          setResult(data); setView("board");
+        });
+      }
+    }, 300);
+  };
+  const q = qs && qs[i];
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 180, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "18px 18px 0 0", padding: "18px 16px calc(24px + env(safe-area-inset-bottom))", minHeight: 320, maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, flex: 1 }}>\U0001f3af Bollywood Riddles</div>
+          <X size={21} color={W.soft} onClick={onClose} style={{ cursor: "pointer" }} />
+        </div>
+        {view === "quiz" && (qs === null ? <div style={{ color: W.soft, padding: 20, textAlign: "center" }}>Loading today's riddles\u2026</div>
+          : !qs.length ? <div style={{ color: W.soft, padding: 20, textAlign: "center" }}>Today's riddles aren't ready \u2014 try again in a minute.</div>
+          : (
+            <>
+              <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+                {qs.map((_, k) => <div key={k} style={{ flex: 1, height: 4, borderRadius: 2, background: k <= i ? W.teal : W.line }} />)}
+              </div>
+              <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, textAlign: "center", marginBottom: 4 }}>Riddle {i + 1} of {qs.length} \u00b7 which film?</div>
+              <div style={{ fontSize: 46, textAlign: "center", lineHeight: 1.25, margin: "8px 0 20px", letterSpacing: 3 }}>{q.emojis}</div>
+              {(q.options || []).map((opt, idx) => (
+                <div key={idx} onClick={() => pick(idx)} style={{ padding: "13px 15px", borderRadius: 12, border: `1.5px solid ${picked === idx ? W.teal : W.line}`, background: picked === idx ? "#E7F6EF" : "#fff", fontWeight: 700, color: W.ink, fontSize: 14.5, marginBottom: 10, cursor: "pointer" }}>{opt}</div>
+              ))}
+              <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center" }}>Answers are checked at the end \u2014 no pressure \U0001f609</div>
+            </>
+          ))}
+        {view === "board" && (
+          <>
+            {result && (
+              <div style={{ background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", borderRadius: 14, padding: "16px 18px", textAlign: "center", marginBottom: 14 }}>
+                <div style={{ fontSize: 26, fontWeight: 800 }}>{result.score}/5</div>
+                <div style={{ fontSize: 12.5, opacity: .9 }}>{result.score === 5 ? "Filmy genius! \U0001f3c6" : result.score >= 3 ? "Solid! \U0001f3ac" : "Tomorrow's a new reel \U0001f604"} \u00b7 day streak: \U0001f525 {result.streak}</div>
+              </div>
+            )}
+            {alreadyScore !== null && !result && <div style={{ fontSize: 13, color: W.soft, marginBottom: 10 }}>You scored <b style={{ color: W.ink }}>{alreadyScore}/5</b> today. New riddles at midnight!</div>}
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 6 }}>Today's leaderboard</div>
+            {board === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading\u2026</div>
+              : !board.length ? <div style={{ color: W.soft, fontSize: 13 }}>No players yet \u2014 you could be first!</div>
+              : board.map((r, k) => (
+                <div key={r.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${W.line}` }}>
+                  <div style={{ width: 20, textAlign: "center", fontWeight: 800, color: k < 3 ? "#E67E22" : W.soft, fontSize: 13 }}>{k + 1}</div>
+                  {r.avatar_url ? <img src={r.avatar_url} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{(r.full_name || "?").slice(0, 1)}</div>}
+                  <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{r.full_name || "Member"}</div>
+                  <div style={{ fontWeight: 800, color: W.teal, fontSize: 13 }}>{r.score}/5</div>
+                  <div style={{ fontWeight: 700, color: "#E67E22", fontSize: 12 }}>\U0001f525{r.streak}</div>
+                </div>
+              ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+function genHousieTicket() {
+  const colRange = (c) => c === 0 ? [1, 9] : c === 8 ? [80, 90] : [c * 10, c * 10 + 9];
+  let counts = Array(9).fill(1), extra = 6;
+  while (extra > 0) { const c = Math.floor(Math.random() * 9); if (counts[c] < 3) { counts[c]++; extra--; } }
+  function tryFill() {
+    const rowCount = [0, 0, 0], cells = [];
+    for (let c = 0; c < 9; c++) {
+      const avail = [0, 1, 2].filter(r => rowCount[r] < 5);
+      if (avail.length < counts[c]) return null;
+      avail.sort((a, b) => (5 - rowCount[b]) - (5 - rowCount[a]) || Math.random() - 0.5);
+      const chosen = avail.slice(0, counts[c]);
+      chosen.forEach(r => rowCount[r]++);
+      cells.push({ c, rows: chosen });
+    }
+    if (rowCount[0] !== 5 || rowCount[1] !== 5 || rowCount[2] !== 5) return null;
+    return cells;
+  }
+  let cells = null;
+  for (let i = 0; i < 300 && !cells; i++) cells = tryFill();
+  if (!cells) return genHousieTicket();
+  const grid = [Array(9).fill(null), Array(9).fill(null), Array(9).fill(null)];
+  const numbers = [];
+  for (const { c, rows } of cells) {
+    const [lo, hi] = colRange(c);
+    const pool = []; for (let n = lo; n <= hi; n++) pool.push(n);
+    const pick = [];
+    for (let k = 0; k < rows.length; k++) pick.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    pick.sort((a, b) => a - b);
+    [...rows].sort((a, b) => a - b).forEach((r, k) => { grid[r][c] = pick[k]; numbers.push(pick[k]); });
+  }
+  return { grid, numbers };
+}
+const HOUSIE_PRIZES = [
+  ["early_five", "Early Five", "First 5 numbers"],
+  ["top_line", "Top Line", "Whole 1st row"],
+  ["middle_line", "Middle Line", "Whole 2nd row"],
+  ["bottom_line", "Bottom Line", "Whole 3rd row"],
+  ["four_corners", "Four Corners", "4 corner numbers"],
+  ["full_house", "Full House", "All 15 numbers"],
+];
+function HousieHub({ meId, isStaff, events, onClose }) {
+  const [view, setView] = useState("menu");
+  const [game, setGame] = useState(null);
+  const [ticket, setTicket] = useState(null);
+  const [players, setPlayers] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [openGames, setOpenGames] = useState([]);
+  const [codeInput, setCodeInput] = useState("");
+  const [hostEvent, setHostEvent] = useState("");
+  const [hostPrizes, setHostPrizes] = useState(HOUSIE_PRIZES.map(p => p[0]));
+  const [flash, setFlash] = useState(null);
+  const [lastBall, setLastBall] = useState(null);
+  const [daub, setDaub] = useState({});
+  const evMap = {}; (events || []).forEach(e => { evMap[e.id] = e; });
+
+  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(null), 2600); return () => clearTimeout(t); }, [flash]);
+
+  const loadOpen = async () => {
+    const { data } = await supabase.from("housie_games").select("id, event_id, status, created_at")
+      .neq("status", "ended").not("event_id", "is", null).order("created_at", { ascending: false }).limit(20);
+    setOpenGames(data || []);
+  };
+  useEffect(() => { if (view === "menu") loadOpen(); }, [view]);
+
+  const refreshGame = async (id) => {
+    const { data } = await supabase.from("housie_games").select("*").eq("id", id).maybeSingle();
+    if (data) setGame(data);
+    const { count } = await supabase.from("housie_tickets").select("id", { count: "exact", head: true }).eq("game_id", id);
+    if (typeof count === "number") setPlayers(count);
+  };
+  useEffect(() => {
+    if (view !== "game" || !game?.id) return;
+    const id = game.id;
+    refreshGame(id);
+    const ch = supabase.channel("housie-" + id)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "housie_games", filter: `id=eq.${id}` }, (payload) => {
+        const g = payload.new;
+        setGame(prev => { if (g.called && (!prev || g.called.length > (prev.called || []).length)) setLastBall(g.called[g.called.length - 1]); return g; });
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "housie_tickets", filter: `game_id=eq.${id}` }, () => {
+        supabase.from("housie_tickets").select("id", { count: "exact", head: true }).eq("game_id", id).then(({ count }) => { if (typeof count === "number") setPlayers(count); });
+      })
+      .subscribe();
+    const iv = setInterval(() => refreshGame(id), 3000);
+    return () => { supabase.removeChannel(ch); clearInterval(iv); };
+  }, [view, game?.id]);
+
+  const enterGame = async (gPartial) => {
+    setBusy(true);
+    const { grid, numbers } = genHousieTicket();
+    const { data: tk, error } = await supabase.rpc("housie_join", { p_game: gPartial.id, p_code: null, p_grid: grid, p_numbers: numbers });
+    setBusy(false);
+    if (error) { setFlash(error.message); return; }
+    setTicket(tk);
+    const { data: full } = await supabase.from("housie_games").select("*").eq("id", gPartial.id).maybeSingle();
+    setGame(full || gPartial); setView("game");
+  };
+  const joinByCode = async () => {
+    if (!codeInput.trim()) return;
+    setBusy(true);
+    const { grid, numbers } = genHousieTicket();
+    const { data: tk, error } = await supabase.rpc("housie_join", { p_game: null, p_code: codeInput.trim().toUpperCase(), p_grid: grid, p_numbers: numbers });
+    setBusy(false);
+    if (error) { setFlash(error.message); return; }
+    setTicket(tk);
+    const { data: g } = await supabase.from("housie_games").select("*").eq("id", tk.game_id).maybeSingle();
+    setGame(g); setView("game");
+  };
+  const createGame = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("housie_create", { p_event: hostEvent || null, p_prizes: hostPrizes });
+    setBusy(false);
+    if (error) { setFlash(error.message); return; }
+    await enterGame(data);
+  };
+  const draw = async () => {
+    if (busy) return; setBusy(true);
+    const { data, error } = await supabase.rpc("housie_draw", { p_game: game.id });
+    setBusy(false);
+    if (error) { setFlash(error.message); return; }
+    if (data == null) setFlash("All 90 numbers are out!");
+    else { setLastBall(data); refreshGame(game.id); }
+  };
+  const claim = async (key, label) => {
+    const { data, error } = await supabase.rpc("housie_claim", { p_game: game.id, p_prize: key });
+    if (error) { setFlash(error.message); return; }
+    if (data.ok) { setFlash("\uD83C\uDF89 " + label + " \u2014 you won!"); refreshGame(game.id); }
+    else setFlash(data.reason || "Not yet!");
+  };
+  const endGame = async () => { await supabase.rpc("housie_end", { p_game: game.id }); refreshGame(game.id); };
+
+  const wrap = { position: "fixed", inset: 0, zIndex: 200, background: W.bg, display: "flex", flexDirection: "column", maxWidth: 480, margin: "0 auto" };
+  const Header = ({ title, onBack }) => (
+    <div style={{ background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", padding: "16px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+      {onBack && <span onClick={onBack} style={{ cursor: "pointer", fontSize: 20, fontWeight: 800 }}>{"\u2039"}</span>}
+      <div style={{ fontWeight: 800, fontSize: 17, flex: 1 }}>{title}</div>
+      <X size={22} color="#fff" onClick={onClose} style={{ cursor: "pointer" }} />
+    </div>
+  );
+
+  if (view === "menu") {
+    return (
+      <div style={wrap}>
+        <Header title="\uD83C\uDFB2 Tambola / Housie" />
+        <div style={{ padding: 16, overflowY: "auto" }}>
+          {isStaff && <div onClick={() => setView("host")} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "16px 16px", marginBottom: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 46, height: 46, borderRadius: 12, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{"\uD83C\uDFA4"}</div>
+            <div style={{ flex: 1 }}><div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>Host a live game</div><div style={{ fontSize: 12, color: W.soft }}>Draw numbers for everyone in the room</div></div>
+            <span style={{ fontSize: 20, color: W.soft }}>{"\u203A"}</span>
+          </div>}
+
+          <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "14px 15px", marginBottom: 16 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 8 }}>Join with a code</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={codeInput} onChange={e => setCodeInput(e.target.value.toUpperCase())} placeholder="6-letter code" maxLength={6}
+                style={{ flex: 1, padding: "11px 13px", borderRadius: 11, border: `1.5px solid ${W.line}`, fontSize: 16, letterSpacing: 3, fontWeight: 800, color: W.ink, outline: "none", textTransform: "uppercase" }} />
+              <button onClick={joinByCode} disabled={busy || !codeInput.trim()} style={{ ...btn(codeInput.trim() ? W.teal : "#EBEEF0", codeInput.trim() ? "#fff" : W.soft), padding: "11px 18px" }}>Join</button>
+            </div>
+          </div>
+
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 8 }}>Live at events</div>
+          {!openGames.length ? <div style={{ color: W.soft, fontSize: 13 }}>No event games running right now.</div>
+            : openGames.map(g => (
+              <div key={g.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "12px 14px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 22 }}>{evMap[g.event_id]?.emoji || "\uD83C\uDFAB"}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{evMap[g.event_id]?.title || "Event game"}</div>
+                  <div style={{ fontSize: 11.5, color: g.status === "live" ? W.teal : W.soft, fontWeight: 700 }}>{g.status === "live" ? "\uD83D\uDFE2 Live now" : "\u23F3 In lobby"}</div>
+                </div>
+                <button onClick={() => enterGame(g)} disabled={busy} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px", fontSize: 12.5 }}>Join</button>
+              </div>
+            ))}
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 12, lineHeight: 1.5 }}>Event games are open to anyone holding a ticket to that event. Code games are open to anyone with the code.</div>
+        </div>
+        {flash && <Flash text={flash} />}
+      </div>
+    );
+  }
+
+  if (view === "host") {
+    const togglePrize = (k) => setHostPrizes(p => p.includes(k) ? p.filter(x => x !== k) : [...p, k]);
+    return (
+      <div style={wrap}>
+        <Header title="Host a game" onBack={() => setView("menu")} />
+        <div style={{ padding: 16, overflowY: "auto" }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 6 }}>Who can join?</div>
+          <select value={hostEvent} onChange={e => setHostEvent(e.target.value)}
+            style={{ width: "100%", padding: "12px 13px", borderRadius: 11, border: `1.5px solid ${W.line}`, fontSize: 14, color: W.ink, background: "#fff", outline: "none", marginBottom: 6 }}>
+            <option value="">{"\uD83D\uDD11 Open game \u2014 share a code"}</option>
+            {(events || []).map(e => <option key={e.id} value={e.id}>{"\uD83C\uDFAB " + (e.title || "Event")}</option>)}
+          </select>
+          <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 18 }}>{hostEvent ? "Only this event's ticket-holders can join." : "Anyone you share the code with can join."}</div>
+
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 8 }}>Prizes in play</div>
+          {HOUSIE_PRIZES.map(([k, label, sub]) => (
+            <div key={k} onClick={() => togglePrize(k)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 12, border: `1.5px solid ${hostPrizes.includes(k) ? W.teal : W.line}`, background: hostPrizes.includes(k) ? "#E7F6EF" : "#fff", marginBottom: 9, cursor: "pointer" }}>
+              <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${hostPrizes.includes(k) ? W.teal : W.line}`, background: hostPrizes.includes(k) ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>{hostPrizes.includes(k) ? "\u2713" : ""}</div>
+              <div style={{ flex: 1 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{label}</div><div style={{ fontSize: 11.5, color: W.soft }}>{sub}</div></div>
+            </div>
+          ))}
+          <button onClick={createGame} disabled={busy || !hostPrizes.length} style={{ ...btn(hostPrizes.length ? W.teal : "#EBEEF0", hostPrizes.length ? "#fff" : W.soft), width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 8 }}>{busy ? "Creating\u2026" : "Start game"}</button>
+        </div>
+        {flash && <Flash text={flash} />}
+      </div>
+    );
+  }
+
+  // ---- game view ----
+  const g = game || {};
+  const called = g.called || [];
+  const calledSet = new Set(called);
+  const isHost = g.host_id === meId;
+  const ended = g.status === "ended";
+  const won = g.won || {};
+  return (
+    <div style={wrap}>
+      <Header title="\uD83C\uDFB2 Housie" onBack={() => { setView("menu"); setGame(null); setTicket(null); }} />
+      <div style={{ padding: "12px 14px 90px", overflowY: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: ended ? W.soft : W.teal }}>{ended ? "Game over" : g.status === "live" ? "\uD83D\uDFE2 Live" : "\u23F3 Lobby"}</div>
+          <div style={{ fontSize: 12.5, color: W.soft }}>{"\u00b7 \uD83D\uDC65 " + players}</div>
+          {g.join_code && <div style={{ marginLeft: "auto", background: "#E7F6EF", color: W.teal, fontWeight: 800, fontSize: 13, letterSpacing: 2, padding: "5px 12px", borderRadius: 9 }}>{"CODE " + g.join_code}</div>}
+        </div>
+
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "16px", textAlign: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{called.length ? "Latest number" : "Waiting for the first number\u2026"}</div>
+          <div style={{ width: 78, height: 78, borderRadius: "50%", background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", fontSize: 34, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", margin: "10px auto 6px" }}>{lastBall || (called.length ? called[called.length - 1] : "\u2013")}</div>
+          <div style={{ fontSize: 12, color: W.soft }}>{called.length}/90 drawn</div>
+        </div>
+
+        {isHost && !ended && (
+          <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+            <button onClick={draw} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "14px", fontSize: 15 }}>{busy ? "\u2026" : "\uD83C\uDFB1 Draw next"}</button>
+            <button onClick={() => window.gwConfirm("End this game for everyone?", endGame)} style={{ ...btn("#fff", "#B00020"), border: "1px solid #F1C7CD", padding: "14px 16px", fontSize: 14 }}>End</button>
+          </div>
+        )}
+
+        {/* numbers board */}
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 10, marginBottom: 14, display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 4 }}>
+          {Array.from({ length: 90 }, (_, k) => k + 1).map(n => (
+            <div key={n} style={{ aspectRatio: "1", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, background: calledSet.has(n) ? W.teal : "#F0F2F5", color: calledSet.has(n) ? "#fff" : "#AEB6BB" }}>{n}</div>
+          ))}
+        </div>
+
+        {/* my ticket */}
+        {ticket && (
+          <>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 8 }}>Your ticket <span style={{ fontWeight: 600, color: W.soft, fontSize: 12 }}>\u00b7 tap to daub</span></div>
+            <div style={{ background: "#7A1F1F", borderRadius: 12, padding: 6, marginBottom: 14 }}>
+              {(ticket.grid || []).map((row, ri) => (
+                <div key={ri} style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 4, marginBottom: ri < 2 ? 4 : 0 }}>
+                  {row.map((cell, ci) => {
+                    const hit = cell != null && calledSet.has(cell);
+                    const stamped = cell != null && daub[cell];
+                    return <div key={ci} onClick={() => cell != null && setDaub(d => ({ ...d, [cell]: !d[cell] }))}
+                      style={{ aspectRatio: "1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, position: "relative", cursor: cell != null ? "pointer" : "default", background: cell == null ? "#601717" : hit ? "#04B08F" : "#FFF7EC", color: cell == null ? "transparent" : hit ? "#fff" : "#7A1F1F" }}>
+                      {cell || ""}
+                      {stamped && <span style={{ position: "absolute", inset: 0, borderRadius: 6, background: "rgba(216,27,122,.55)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 16 }}>{"\u25CF"}</span>}
+                    </div>;
+                  })}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* claims */}
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 8 }}>Prizes</div>
+        {(g.active_prizes || []).map(k => {
+          const meta = HOUSIE_PRIZES.find(p => p[0] === k);
+          const w = won[k];
+          return (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 9 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{meta ? meta[1] : k}</div>
+                <div style={{ fontSize: 11.5, color: w ? "#B0529C" : W.soft, fontWeight: w ? 700 : 400 }}>{w ? ("\uD83C\uDFC6 " + (w.name || "Won")) : (meta ? meta[2] : "")}</div>
+              </div>
+              {!w && ticket && !ended && <button onClick={() => claim(k, meta ? meta[1] : k)} style={{ ...btn(W.teal, "#fff"), padding: "8px 15px", fontSize: 12.5 }}>Claim</button>}
+            </div>
+          );
+        })}
+        {ended && <div style={{ textAlign: "center", color: W.soft, fontSize: 13, marginTop: 14 }}>Thanks for playing! \uD83C\uDF89</div>}
+      </div>
+      {flash && <Flash text={flash} />}
+    </div>
+  );
+}
+function Flash({ text }) {
+  return <div style={{ position: "fixed", left: "50%", bottom: 36, transform: "translateX(-50%)", background: "#111B21", color: "#fff", padding: "11px 18px", borderRadius: 12, fontSize: 13.5, fontWeight: 700, zIndex: 260, maxWidth: "88%", textAlign: "center", boxShadow: "0 6px 20px rgba(0,0,0,.3)" }}>{text}</div>;
+}
+
 function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh }) {
   const [camOpen, setCamOpen] = useState(false);
   const [sTab, setSTab] = useState("me");
@@ -10080,7 +10461,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gwprompt ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • housie ✅</div>
       </div>
     </div>
   );
