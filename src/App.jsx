@@ -4535,15 +4535,20 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
   useEffect(() => {
     supabase.from("riddle_scores").select("score").eq("user_id", meId).eq("day", new Date().toISOString().slice(0, 10)).maybeSingle().then(({ data }) => setRiddleDone(data ? data.score : null));
   }, [meId, playRiddle]);
-  const Card = ({ emoji, title, sub, cta, onClick, soft, shareId }) => (
-    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "14px 15px", display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
-      <div style={{ width: 46, height: 46, borderRadius: 12, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>{emoji}</div>
+  const Card = ({ emoji, title, sub, cta, onClick, tint, shareId, badge }) => (
+    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 18, padding: "13px 14px", display: "flex", alignItems: "center", gap: 13, marginBottom: 11, boxShadow: "0 1px 4px rgba(17,27,33,.05)" }}>
+      <div style={{ width: 52, height: 52, borderRadius: 15, background: tint || "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>{emoji}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{title}</div>
-        <div style={{ fontSize: 12, color: W.soft }}>{sub}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 800, color: W.ink, fontSize: 15.5 }}>{title}</span>
+          {badge && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: .3, color: "#6D28D9", background: "#F1ECFC", padding: "2px 8px", borderRadius: 20 }}>{badge}</span>}
+        </div>
+        <div style={{ fontSize: 12.3, color: W.soft, lineHeight: 1.45, marginTop: 3 }}>{sub}</div>
       </div>
-      {shareId && <button onClick={() => shareGameWA(shareId, title)} title="Share on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "8px 11px", fontSize: 12.5, flexShrink: 0 }}>\uD83D\uDCE4</button>}
-      {cta && <button onClick={onClick} disabled={!onClick} style={{ ...btn(onClick ? W.teal : "#EBEEF0", onClick ? "#fff" : W.soft), padding: "8px 14px", fontSize: 12.5, flexShrink: 0 }}>{cta}</button>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 7, flexShrink: 0, width: 78 }}>
+        {cta && <button onClick={onClick} disabled={!onClick} style={{ ...btn(onClick ? W.teal : "#EBEEF0", onClick ? "#fff" : W.soft), padding: "8px 0", fontSize: 12.5, justifyContent: "center", width: "100%" }}>{cta}</button>}
+        {shareId && <button onClick={() => shareGameWA(shareId, title)} title="Share with friends" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#fff", color: W.teal, border: `1px solid ${W.line}`, borderRadius: 10, padding: "6px 0", fontSize: 11.5, fontWeight: 700, cursor: "pointer", width: "100%" }}><Share2 size={13} /> Share</button>}
+      </div>
     </div>
   );
   return (
@@ -4551,17 +4556,27 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
       <div style={{ background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", padding: "22px 18px 24px" }}>
         <div style={{ fontSize: 11, letterSpacing: 3, fontWeight: 800, opacity: .9 }}>GLASSWINGS</div>
         <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6 }}>🎮 Game Zone</div>
-        <div style={{ fontSize: 12.5, opacity: .9, marginTop: 3 }}>Free to play · climb the leaderboard · win real perks 🎁</div>
+        <div style={{ fontSize: 12.5, opacity: .9, marginTop: 3 }}>Play · compete on the leaderboard · win real perks 🎁</div>
       </div>
       <BattleBanner />
       <div style={{ padding: 14 }}>
-        <Card emoji="🧠" title="Daily Trivia" shareId="trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
-        <Card emoji="🎵" title="Antakshari" shareId="antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
-        <Card emoji="🎲" title="Ludo" shareId="ludo" sub="2–4 players · invite friends with a code" cta="Play" onClick={() => setPlayLudo(true)} />
-        <Card emoji="💘" title="Vibe Check" shareId="vibe" sub="How compatible are you two? 10 questions" cta="Play" onClick={() => setPlayVibe(true)} />
-        <Card emoji="🎭" title="Blind Banter" shareId="banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys 💎" cta="Play" onClick={() => setPlayBanter(true)} />
-        <Card emoji="🎯" title="Bollywood Riddles" shareId="riddles" sub={riddleDone !== null ? `Played today — ${riddleDone}/5` : "Guess the film from emojis · new set daily"} cta={riddleDone !== null ? "Board" : "Play"} onClick={() => setPlayRiddle(true)} />
-        <Card emoji="🎲" title="Tambola / Housie" shareId="housie" sub="Live number-draw · daub your ticket · win prizes 🎉" cta="Play" onClick={() => setPlayHousie(true)} />
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", margin: "2px 2px 11px" }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>Free games</div>
+          <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 600 }}>Play as much as you like</div>
+        </div>
+        <Card emoji="🧠" title="Daily Trivia" tint="#FCE9E9" shareId="trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
+        <Card emoji="🎵" title="Antakshari" tint="#EFE8FB" shareId="antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
+        <Card emoji="🎲" title="Ludo" tint="#FFF1D9" shareId="ludo" sub="2–4 players · invite friends with a code" cta="Play" onClick={() => setPlayLudo(true)} />
+        <Card emoji="🎯" title="Bollywood Riddles" tint="#E0F3EC" shareId="riddles" sub={riddleDone !== null ? `Played today — ${riddleDone}/5` : "Guess the film from emojis · new set daily"} cta={riddleDone !== null ? "Board" : "Play"} onClick={() => setPlayRiddle(true)} />
+        <Card emoji="🎰" title="Tambola / Housie" tint="#E4EEFC" shareId="housie" sub="Live number-draw · daub your ticket · win prizes 🎉" cta="Play" onClick={() => setPlayHousie(true)} />
+
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", margin: "22px 2px 4px" }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>Premium games</div>
+          <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 600 }}>Play with credits</div>
+        </div>
+        <div style={{ fontSize: 12, color: W.soft, margin: "0 2px 11px", lineHeight: 1.45 }}>A few credits per play. Top up anytime in Profile → Wallet.</div>
+        <Card emoji="💘" title="Vibe Check" tint="#FCE3EF" badge="💎 Premium" shareId="vibe" sub="How compatible are you two? 10 quick questions" cta="Play" onClick={() => setPlayVibe(true)} />
+        <Card emoji="🎭" title="Blind Banter" tint="#E9E6FB" badge="💎 Premium" shareId="banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys use credits" cta="Play" onClick={() => setPlayBanter(true)} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px" }}>
           <Trophy size={18} color="#E67E22" />
@@ -10565,7 +10580,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • terms ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gamesui ✅</div>
       </div>
     </div>
   );
