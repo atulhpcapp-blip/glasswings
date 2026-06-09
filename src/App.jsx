@@ -2252,7 +2252,13 @@ function Main({ user }) {
     try { const code = localStorage.getItem("gw_ref"); if (code) { const { data } = await supabase.rpc("resolve_ref", { p_code: code }); if (data && data !== user.id) referrer_id = data; } } catch {}
     for (let ci = 0; ci < cart.length; ci++) {
       const c = cart[ci];
-      const { error } = await supabase.from("event_tickets").insert({ event_id: e.id, user_id: user.id, ticket_type_id: c.type ? c.type.id : null, quantity: c.qty, addons: ci === 0 ? chosen.map(a => ({ id: a.id, name: a.name, price: a.price, qty: a.qty })) : [], referrer_id });
+      const { error } = await supabase.rpc("claim_free_ticket", {
+        p_event: e.id,
+        p_type: c.type ? c.type.id : null,
+        p_qty: c.qty,
+        p_addons: ci === 0 ? chosen.map(a => ({ id: a.id, name: a.name, price: a.price, qty: a.qty })) : [],
+        p_referrer: referrer_id,
+      });
       if (error && error.code !== "23505") { setBuyTarget(null); return setNotice(error.message); }
     }
     setBuyTarget(null);
@@ -11068,7 +11074,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • grouplite2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • freeclaim ✅</div>
       </div>
     </div>
   );
