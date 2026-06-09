@@ -776,13 +776,17 @@ function RideButtons({ e, compact }) {
   const ola = hasGeo
     ? `https://book.olacabs.com/?serviceType=p2p&drop_lat=${e.venue_lat}&drop_lng=${e.venue_lng}`
     : `https://book.olacabs.com/`;
+  const rapido = "https://www.rapido.bike/";
   const a = (href, bg, fg, label, icon) => (
     <a key={label} href={href} target="_blank" rel="noreferrer" style={{ ...btn(bg, fg), padding: compact ? "8px 13px" : "10px 16px", fontSize: compact ? 12.5 : 13.5, textDecoration: "none", flex: compact ? "0 0 auto" : 1, justifyContent: "center" }}>{icon} {label}</a>
   );
+  const venueText = (e.venue || e.title || "").trim();
+  const copyVenue = () => { try { navigator.clipboard.writeText(venueText); window.alert && window.alert("Venue copied — paste it as the drop in Rapido."); } catch {} };
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {a(uber, "#000", "#fff", "Uber", "🚕")}
       {a(ola, "#C6D62E", "#1b1b1b", "Ola", "🚖")}
+      <a href={rapido} target="_blank" rel="noreferrer" onClick={() => { if (venueText) copyVenue(); }} style={{ ...btn("#FFD200", "#1b1b1b"), padding: compact ? "8px 13px" : "10px 16px", fontSize: compact ? 12.5 : 13.5, textDecoration: "none", flex: compact ? "0 0 auto" : 1, justifyContent: "center" }}>🛵 Rapido</a>
       {hasGeo ? a(`https://www.google.com/maps/dir/?api=1&destination=${e.venue_lat},${e.venue_lng}`, "#fff", W.ink, "Directions", "🗺️") : null}
     </div>
   );
@@ -9698,7 +9702,6 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <EventVideos ev={e} onUpdate={onUpdate} />
                 <EventShare event={e} />
                 <GuestTickets event={e} />
-                <EventMediaEditor event={e} onUpdate={onUpdate} />
                 <EventDetailsEditor event={e} onUpdate={onUpdate} />
                 <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
                 <div style={{ marginTop: 16 }}>
@@ -11080,7 +11083,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • roomadd ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • rapido ✅</div>
       </div>
     </div>
   );
