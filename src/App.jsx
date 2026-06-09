@@ -2245,7 +2245,7 @@ function Main({ user }) {
     setOpen({ id: e.id, type: "event" });
   };
 
-  const confirmPurchaseWithCredits = async (cart) => {
+  const confirmPurchaseWithCredits = async (cart, chosen = []) => {
     const { event: e } = buyTarget;
     for (const c of cart) {
       if (c.type) {
@@ -2262,7 +2262,8 @@ function Main({ user }) {
     }
     const items = cart.filter(c => c.type).map(c => ({ ticket_type_id: c.type.id, quantity: c.qty }));
     if (!items.length) { setBuyTarget(null); return setNotice("Pick a ticket type to use credits."); }
-    const { data, error } = await supabase.rpc("buy_ticket_with_credits", { p_event: e.id, p_items: items });
+    const adds = (chosen || []).filter(a => (a.qty || 0) > 0).map(a => ({ id: a.id, qty: a.qty }));
+    const { data, error } = await supabase.rpc("buy_ticket_with_credits", { p_event: e.id, p_items: items, p_addons: adds });
     if (error) { setBuyTarget(null); return setNotice(error.message); }
     if (!data || !data.ok) { setBuyTarget(null); return setNotice((data && data.reason) || "Couldn’t complete with credits."); }
     setBuyTarget(null);
@@ -2293,7 +2294,7 @@ function Main({ user }) {
     }
     if (addonsList && addonsList.length && ids.length) {
       const rows = [];
-      ids.forEach(id => addonsList.forEach(a => { if ((a.name || "").trim()) rows.push({ event_id: id, name: a.name.trim(), price: Number(a.price) || 0 }); }));
+      ids.forEach(id => addonsList.forEach(a => { if ((a.name || "").trim()) rows.push({ event_id: id, name: a.name.trim(), price: Number(a.price) || 0, credit_price: (a.credit_price === "" || a.credit_price == null) ? null : Number(a.credit_price) }); }));
       if (rows.length) await supabase.from("event_addons").insert(rows);
     }
     const line = [list[0].label, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
@@ -2350,7 +2351,7 @@ function Main({ user }) {
   const setOptionImage = async (id, url) => { const { error } = await supabase.from("event_options").update({ image_url: url }).eq("id", id); if (error) return setNotice(error.message); await load(); };
   const addPerk = async (kind, label) => { const n = (label || "").trim(); if (!n) return; const { error } = await supabase.from("event_perks").insert({ kind, label: n }); if (error && !String(error.message).includes("duplicate")) return; await load(); };
   const delPerk = async (id) => { await supabase.from("event_perks").delete().eq("id", id); await load(); };
-  const addAddon = async (eventId, d) => { const n = (d.name || "").trim(); if (!n) return; const { error } = await supabase.from("event_addons").insert({ event_id: eventId, name: n, price: Number(d.price) || 0 }); if (error) return setNotice(error.message); await load(); };
+  const addAddon = async (eventId, d) => { const n = (d.name || "").trim(); if (!n) return; const { error } = await supabase.from("event_addons").insert({ event_id: eventId, name: n, price: Number(d.price) || 0, credit_price: (d.credit_price === "" || d.credit_price == null) ? null : Number(d.credit_price) }); if (error) return setNotice(error.message); await load(); };
   const delAddon = async (id) => { await supabase.from("event_addons").delete().eq("id", id); await load(); };
   const addTicketType = async (eventId, d) => { const { error } = await supabase.from("event_ticket_types").insert({ event_id: eventId, ...d }); if (error) return setNotice(error.message); await load(); };
   const delTicketType = async (id) => { const { error } = await supabase.from("event_ticket_types").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
@@ -7784,7 +7785,11 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
   const canConfirm = (!needAgree || agree) && live.length > 0;
   const [bal, setBal] = useState(null);
   useEffect(() => { if (!meId) return; (async () => { try { await supabase.rpc("gw_sweep_credits", { p_user: meId }); } catch {} const { data } = await supabase.from("profiles").select("game_credits").eq("id", meId).maybeSingle(); setBal(Number(data?.game_credits) || 0); })(); }, [meId]);
-  const creditCost = (live.length > 0 && addonTotal === 0 && live.every(c => c.type && Number(c.type.credit_price) > 0)) ? live.reduce((a, c) => a + Number(c.type.credit_price) * c.qty, 0) : null;
+  const selAdd = sel.filter(a => a.qty > 0);
+  const addonCreditOK = selAdd.filter(a => Number(a.price) > 0).every(a => Number(a.credit_price) > 0);
+  const creditCost = (live.length > 0 && live.every(c => c.type && Number(c.type.credit_price) > 0) && addonCreditOK)
+    ? (live.reduce((a, c) => a + Number(c.type.credit_price) * c.qty, 0) + selAdd.reduce((s, a) => s + (Number(a.credit_price) || 0) * a.qty, 0))
+    : null;
   const setLine = (idx, q) => setCart(cs => cs.map((c, k) => k === idx ? { ...c, qty: Math.max(0, q) } : c));
   const miniBtn = { width: 30, height: 30, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 18, color: W.ink, cursor: "pointer", lineHeight: 1 };
   return (
@@ -7850,7 +7855,7 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
       {creditCost != null && total > 0 && (
         <>
           <div style={{ textAlign: "center", color: W.soft, fontSize: 12, margin: "12px 0 8px" }}>— or pay with credits —</div>
-          <button disabled={!canConfirm || (bal != null && bal < creditCost)} onClick={() => onConfirmCredits && onConfirmCredits(live)} style={{ ...btn("#6D28D9", "#fff"), width: "100%", justifyContent: "center", opacity: (canConfirm && !(bal != null && bal < creditCost)) ? 1 : .5 }}>💳 Use {creditCost} credits</button>
+          <button disabled={!canConfirm || (bal != null && bal < creditCost)} onClick={() => onConfirmCredits && onConfirmCredits(live, selAdd)} style={{ ...btn("#6D28D9", "#fff"), width: "100%", justifyContent: "center", opacity: (canConfirm && !(bal != null && bal < creditCost)) ? 1 : .5 }}>💳 Use {creditCost} credits</button>
           <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, marginTop: 6 }}>{bal == null ? "Checking your wallet…" : bal < creditCost ? `Wallet: ${bal} credits — top up in Profile → Wallet` : `Wallet: ${bal} credits`}</div>
         </>
       )}
@@ -8663,22 +8668,23 @@ function VenueAutocomplete({ value, onChange }) {
   );
 }
 function AddonDraft({ value, onChange }) {
-  const [name, setName] = useState(""); const [price, setPrice] = useState("");
+  const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [credit, setCredit] = useState("");
   const inp = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink };
-  const add = () => { const n = name.trim(); if (!n) return; onChange([...value, { name: n, price: Number(price) || 0 }]); setName(""); setPrice(""); };
+  const add = () => { const n = name.trim(); if (!n) return; onChange([...value, { name: n, price: Number(price) || 0, credit_price: credit === "" ? null : Number(credit) }]); setName(""); setPrice(""); setCredit(""); };
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: W.ink, marginBottom: 2 }}>What's included (add-ons)</div>
-      <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Each is priced separately (₹0 = free). Buyers pick these at checkout.</div>
+      <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Each is priced separately (₹0 = free). Set 💳 to also let members buy it with credits. Buyers pick these at checkout.</div>
       {value.map((a, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0", borderTop: `1px solid ${W.line}` }}>
-          <span style={{ fontSize: 14, color: W.ink }}>{a.name} · <b style={{ color: a.price > 0 ? W.teal : W.soft }}>{a.price > 0 ? `₹${a.price}` : "Free"}</b></span>
+          <span style={{ fontSize: 14, color: W.ink }}>{a.name} · <b style={{ color: a.price > 0 ? W.teal : W.soft }}>{a.price > 0 ? `₹${a.price}` : "Free"}</b>{a.credit_price ? <span style={{ color: "#6D28D9", fontWeight: 700 }}> · 💳 {a.credit_price}</span> : null}</span>
           <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onChange(value.filter((_, j) => j !== i))} />
         </div>
       ))}
       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Welcome drink" style={{ ...inp, flex: 1, minWidth: 0 }} />
-        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹" inputMode="numeric" style={{ ...inp, width: 64 }} />
+        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹" inputMode="numeric" style={{ ...inp, width: 56 }} />
+        <input value={credit} onChange={e => setCredit(e.target.value.replace(/\D/g, ""))} placeholder="💳" inputMode="numeric" style={{ ...inp, width: 56 }} />
         <button onClick={add} style={btn(W.ink, "#fff")}><Plus size={14} />Add</button>
       </div>
     </div>
@@ -9312,22 +9318,23 @@ function EventShare({ event }) {
   );
 }
 function AddonEditor({ eventId, list, onAdd, onDel }) {
-  const [name, setName] = useState(""); const [price, setPrice] = useState("");
+  const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [credit, setCredit] = useState("");
   const inp = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", color: W.ink };
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Add-ons</label>
-      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Extras buyers can add at checkout (₹0 = free perk). E.g. Welcome drink ₹50, Table ₹500.</div>
+      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Extras buyers can add at checkout (₹0 = free perk). Set 💳 to also accept credits. E.g. Welcome drink ₹50, Table ₹500.</div>
       {(list || []).map(a => (
         <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderTop: `1px solid ${W.line}` }}>
-          <span style={{ fontSize: 14, color: W.ink }}>{a.name} · <b style={{ color: a.price > 0 ? W.teal : W.soft }}>{a.price > 0 ? `₹${a.price}` : "Free"}</b></span>
+          <span style={{ fontSize: 14, color: W.ink }}>{a.name} · <b style={{ color: a.price > 0 ? W.teal : W.soft }}>{a.price > 0 ? `₹${a.price}` : "Free"}</b>{a.credit_price ? <span style={{ color: "#6D28D9", fontWeight: 700 }}> · 💳 {a.credit_price}</span> : null}</span>
           <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(a.id)} />
         </div>
       ))}
       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Add-on name" style={{ ...inp, flex: 1, minWidth: 0 }} />
-        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹" inputMode="numeric" style={{ ...inp, width: 70 }} />
-        <button onClick={async () => { if (!name.trim()) return; await onAdd(eventId, { name, price }); setName(""); setPrice(""); }} style={btn(W.ink, "#fff")}><Plus size={14} />Add</button>
+        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹" inputMode="numeric" style={{ ...inp, width: 56 }} />
+        <input value={credit} onChange={e => setCredit(e.target.value.replace(/\D/g, ""))} placeholder="💳" inputMode="numeric" style={{ ...inp, width: 56 }} />
+        <button onClick={async () => { if (!name.trim()) return; await onAdd(eventId, { name, price, credit_price: credit === "" ? null : Number(credit) }); setName(""); setPrice(""); setCredit(""); }} style={btn(W.ink, "#fff")}><Plus size={14} />Add</button>
       </div>
     </div>
   );
@@ -10557,7 +10564,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • creditbuy ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • addoncredits ✅</div>
       </div>
     </div>
   );
