@@ -3272,9 +3272,9 @@ function LockedRoomPreview({ room, count, free, planLabel, onJoin, onPlan, onBac
     </div>
   );
 }
-const LUDO_COLORS = ["#EF3E3E", "#2EAD5A", "#F5B400", "#2A7DE1"];
-const LUDO_DARK = ["#A11E1E", "#16793A", "#B07E06", "#15539C"];
-const LUDO_LIGHT = ["#FF9B9B", "#7BE0A4", "#FFD876", "#92BEF6"];
+const LUDO_COLORS = ["#ED2D2D", "#21B24C", "#FFC107", "#1F8FE5"];
+const LUDO_DARK = ["#A81818", "#147A33", "#C98A00", "#15609F"];
+const LUDO_LIGHT = ["#FF8E8E", "#7BE0A0", "#FFE08A", "#8FC4F2"];
 const LUDO_EMOJIS = ["😀","😂","😍","😎","😜","🤣","😡","😭","👍","👎","🎉","🔥","❤️","💩","🤡","👋"];
 const LUDO_EMOJI_SET = new Set(LUDO_EMOJIS);
 function isQuickEmoji(t) { return LUDO_EMOJI_SET.has((t || "").trim()); }
@@ -3456,11 +3456,11 @@ function LudoGame({ gameId, meId, onClose }) {
         const f = (dispRef.current || cur).slice();
         for (let i = 0; i < target.length; i++) { if (i !== idx) f[i] = target[i]; }
         dispRef.current = f; setDisp(f);
-        setTimeout(() => setHop({ idx: -1, tick: tick + 1 }), 620);
+        setTimeout(() => setHop({ idx: -1, tick: tick + 1 }), 320);
         if (g.last && g.last.captured) playCaptureSound();
         return;
       }
-      setTimeout(stepOnce, 680);
+      setTimeout(stepOnce, 300);
     };
     setTimeout(stepOnce, 70);
   }, [g ? JSON.stringify(g.tokens) : ""]);
@@ -3591,6 +3591,9 @@ function LudoGame({ gameId, meId, onClose }) {
       tokenList.push({ pidx, j, sVal, rc });
     }
   });
+  for (let pidx = players.length; pidx < 4; pidx++) {
+    for (let j = 0; j < 4; j++) tokenList.push({ pidx, j, sVal: -1, rc: LUDO_BASE[pidx][j], ghost: true });
+  }
   const stacks = {};
   tokenList.forEach(t => { const k = t.rc[0] + "_" + t.rc[1]; stacks[k] = (stacks[k] || 0); t.stackIdx = stacks[k]; stacks[k]++; });
   return (
@@ -3664,25 +3667,13 @@ function LudoGame({ gameId, meId, onClose }) {
               <div key={"court" + pidx}>
                 <div style={{ position: "absolute", left: qc * cell + cell * .9, top: qr * cell + cell * .9, width: cell * 4.2, height: cell * 4.2, background: "#fff", borderRadius: 14, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
                 {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = cell * 1.18; return (
-                  <div key={k} style={{ position: "absolute", left: (bc + 0.5) * cell - ps / 2, top: (br + 0.5) * cell - ps / 2, width: ps, height: ps, borderRadius: "50%", background: "#F2F6F4", boxShadow: `inset 0 0 0 3px ${LUDO_COLORS[pidx]}55, inset 0 2px 4px rgba(0,0,0,.12)` }} />
+                  <div key={k} style={{ position: "absolute", left: (bc + 0.5) * cell - ps / 2, top: (br + 0.5) * cell - ps / 2, width: ps, height: ps, borderRadius: "50%", background: "#FFFFFF", boxShadow: `inset 0 0 0 3.5px ${LUDO_COLORS[pidx]}, inset 0 2px 5px rgba(0,0,0,.18)` }} />
                 ); })}
               </div>
             );
           })}
           {players.map((pl, pidx) => {
-            const [qr, qc] = [[0, 0], [0, 9], [9, 9], [9, 0]][pidx];
-            const ccx = (qc + 3) * cell, ccy = (qr + 3) * cell;
-            const active = g.status === "playing" && g.turn === pidx;
-            const av = pavs[pl.uid];
-            return (
-              <div key={"badge" + pidx} style={{ position: "absolute", left: ccx, top: ccy, transform: "translate(-50%,-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, zIndex: 4, pointerEvents: "none" }}>
-                <div style={{ position: "relative", width: 30, height: 30, borderRadius: "50%", background: LUDO_COLORS[pidx], color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, border: `2px solid ${av ? LUDO_COLORS[pidx] : "#fff"}`, overflow: "hidden", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[pidx]}66, 0 2px 6px rgba(0,0,0,.3)` : "0 1px 4px rgba(0,0,0,.3)", animation: active ? "gwpulse 1.2s infinite" : "none" }}>
-                  {(pl.name || "?").charAt(0)}
-                  {av && <img src={av} alt="" onError={e => { e.currentTarget.style.display = "none"; }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />}
-                </div>
-                <div style={{ fontSize: 8.5, fontWeight: 800, color: "#fff", background: active ? LUDO_COLORS[pidx] : "rgba(11,31,28,.8)", padding: "1px 6px", borderRadius: 7, maxWidth: cell * 3.6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>{(pl.name || "P" + (pidx + 1)).split(" ")[0]}{active ? " 🎲" : ""}</div>
-              </div>
-            );
+            return null;
           })}
           {(() => {
             const cx = 6 * cell, sz = 3 * cell;
@@ -3710,28 +3701,25 @@ function LudoGame({ gameId, meId, onClose }) {
             const pinW = Math.round(cell * 0.9), pinH = Math.round(cell * 1.18);
             const k = t.rc[0] + "_" + t.rc[1]; const n = stacks[k] || 1;
             const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * (cell * 0.24) : 0;
-            const clickable = myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
-            const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx];
+            const clickable = !t.ghost && myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
+            const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx], lt = LUDO_LIGHT[t.pidx];
             const flatIdx = t.pidx * 4 + t.j;
-            const hopping = hop.idx === flatIdx;
+            const hopping = !t.ghost && hop.idx === flatIdx;
             const leftPx = t.rc[1] * cell + cell / 2 + offs;
             const topPx = t.rc[0] * cell + cell / 2 - offs;
             return (
-              <div key={t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
-                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-58%)", transformOrigin: "50% 58%", transition: hopping ? "none" : "left .14s linear, top .14s linear", zIndex: (clickable || hopping) ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none" }}>
-                <div key={hopping ? hop.tick : "s"} style={{ width: "100%", height: "100%", animation: hopping ? "gwhop 600ms ease-in-out" : "none" }}>
+              <div key={(t.ghost ? "g" : "") + t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
+                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-58%)", transformOrigin: "50% 58%", transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
                 <svg viewBox="0 0 24 32" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
                   <ellipse cx="12" cy="30.2" rx="7.7" ry="2.5" fill="rgba(0,0,0,.25)" />
-                  <ellipse cx="12" cy="29.2" rx="7.4" ry="2.8" fill={col} />
-                  <ellipse cx="12" cy="29.2" rx="7.4" ry="2.8" fill="none" stroke={dk} strokeWidth="0.7" />
-                  <ellipse cx="12" cy="28.7" rx="3.5" ry="1.2" fill={dk} opacity="0.55" />
-                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill="#ffffff" stroke={col} strokeWidth="1.7" />
-                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill="none" stroke={dk} strokeWidth="0.5" opacity="0.4" />
-                  <circle cx="12" cy="11.1" r="3.1" fill={col} />
-                  <circle cx="12" cy="11.1" r="3.1" fill="none" stroke={dk} strokeWidth="0.5" opacity="0.5" />
-                  <ellipse cx="9.4" cy="6.6" rx="2.1" ry="1.4" fill="rgba(255,255,255,.85)" />
+                  <ellipse cx="12" cy="29.1" rx="7.4" ry="2.8" fill={dk} />
+                  <ellipse cx="12" cy="28.7" rx="4.6" ry="1.7" fill="rgba(0,0,0,.18)" />
+                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill={col} stroke={dk} strokeWidth="1.4" />
+                  <path d="M7.6 4.6 C5 6.2 3.4 8.6 3.3 11.3 C3.3 13.2 4.4 15.6 6 18 C4.7 14.8 4.6 11 6 8 C6.4 6.8 6.9 5.6 7.6 4.6 Z" fill={lt} opacity="0.6" />
+                  <circle cx="12" cy="11.1" r="3.7" fill="#ffffff" />
+                  <circle cx="12" cy="11.1" r="3.7" fill="none" stroke={dk} strokeWidth="0.6" opacity="0.5" />
+                  <ellipse cx="10.6" cy="9.7" rx="1.3" ry="0.9" fill="rgba(255,255,255,.95)" />
                 </svg>
-                </div>
               </div>
             );
           })}
@@ -10968,7 +10956,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoslow ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking ✅</div>
       </div>
     </div>
   );
