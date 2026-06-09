@@ -4096,6 +4096,46 @@ function BuyCreditsSheet({ onClose, onBought }) {
     </Sheet>
   );
 }
+function WalletCard({ userId }) {
+  const [bal, setBal] = useState(null);
+  const [log, setLog] = useState(null);
+  const [buyOpen, setBuyOpen] = useState(false);
+  const load = async () => {
+    const [{ data: pr }, { data: l }] = await Promise.all([
+      supabase.from("profiles").select("game_credits").eq("id", userId).maybeSingle(),
+      supabase.from("credit_ledger").select("delta, balance_after, reason, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(30),
+    ]);
+    setBal(Number(pr?.game_credits) || 0); setLog(l || []);
+  };
+  useEffect(() => { load(); }, [userId]);
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, flex: 1 }}>💳 My wallet</div>
+        <button onClick={() => setBuyOpen(true)} style={{ ...btn(W.teal, "#fff"), padding: "8px 14px", fontSize: 12.5 }}>Buy credits</button>
+      </div>
+      <div style={{ background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", borderRadius: 14, padding: "16px 18px", marginBottom: 14 }}>
+        <div style={{ fontSize: 11.5, opacity: .9, fontWeight: 700, letterSpacing: 1 }}>BALANCE</div>
+        <div style={{ fontSize: 30, fontWeight: 800 }}>{bal === null ? "…" : bal} <span style={{ fontSize: 14, fontWeight: 700, opacity: .9 }}>credits</span></div>
+        <div style={{ fontSize: 11.5, opacity: .9, marginTop: 2 }}>Use for games & event tickets</div>
+      </div>
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, marginBottom: 6 }}>History</div>
+      {log === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div>
+        : !log.length ? <div style={{ color: W.soft, fontSize: 13 }}>No credit activity yet.</div>
+        : log.map((r, k) => (
+          <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: k ? `1px solid ${W.line}` : "none" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{r.reason}</div>
+              <div style={{ fontSize: 11, color: W.soft }}>{new Date(r.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 14, color: r.delta >= 0 ? W.teal : "#C0392B" }}>{r.delta >= 0 ? "+" : ""}{r.delta}</div>
+            <div style={{ fontSize: 11, color: W.soft, minWidth: 56, textAlign: "right" }}>bal {r.balance_after}</div>
+          </div>
+        ))}
+      {buyOpen && <BuyCreditsSheet onClose={() => setBuyOpen(false)} onBought={() => load()} />}
+    </div>
+  );
+}
 function vibeLabel(pct) {
   if (pct >= 90) return "Written in the stars ✨";
   if (pct >= 70) return "Sparks flying 🔥";
@@ -4458,13 +4498,14 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
   useEffect(() => {
     supabase.from("riddle_scores").select("score").eq("user_id", meId).eq("day", new Date().toISOString().slice(0, 10)).maybeSingle().then(({ data }) => setRiddleDone(data ? data.score : null));
   }, [meId, playRiddle]);
-  const Card = ({ emoji, title, sub, cta, onClick, soft }) => (
+  const Card = ({ emoji, title, sub, cta, onClick, soft, shareId }) => (
     <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "14px 15px", display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
       <div style={{ width: 46, height: 46, borderRadius: 12, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>{emoji}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{title}</div>
         <div style={{ fontSize: 12, color: W.soft }}>{sub}</div>
       </div>
+      {shareId && <button onClick={() => shareGameWA(shareId, title)} title="Share on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "8px 11px", fontSize: 12.5, flexShrink: 0 }}>\uD83D\uDCE4</button>}
       {cta && <button onClick={onClick} disabled={!onClick} style={{ ...btn(onClick ? W.teal : "#EBEEF0", onClick ? "#fff" : W.soft), padding: "8px 14px", fontSize: 12.5, flexShrink: 0 }}>{cta}</button>}
     </div>
   );
@@ -4477,13 +4518,13 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
       </div>
       <BattleBanner />
       <div style={{ padding: 14 }}>
-        <Card emoji="🧠" title="Daily Trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
-        <Card emoji="🎵" title="Antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
-        <Card emoji="🎲" title="Ludo" sub="2–4 players · invite friends with a code" cta="Play" onClick={() => setPlayLudo(true)} />
-        <Card emoji="💘" title="Vibe Check" sub="How compatible are you two? 10 questions" cta="Play" onClick={() => setPlayVibe(true)} />
-        <Card emoji="🎭" title="Blind Banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys 💎" cta="Play" onClick={() => setPlayBanter(true)} />
-        <Card emoji="🎯" title="Bollywood Riddles" sub={riddleDone !== null ? `Played today — ${riddleDone}/5` : "Guess the film from emojis · new set daily"} cta={riddleDone !== null ? "Board" : "Play"} onClick={() => setPlayRiddle(true)} />
-        <Card emoji="🎲" title="Tambola / Housie" sub="Live number-draw · daub your ticket · win prizes 🎉" cta="Play" onClick={() => setPlayHousie(true)} />
+        <Card emoji="🧠" title="Daily Trivia" shareId="trivia" sub={triviaDone !== null ? `Played today — ${triviaDone}/5` : "5 fresh questions every day"} cta={triviaDone !== null ? "Board" : "Play"} onClick={() => setPlayTrivia(true)} />
+        <Card emoji="🎵" title="Antakshari" shareId="antakshari" sub="Community song chain — keep it alive!" cta="Play" onClick={() => setPlayAnt(true)} />
+        <Card emoji="🎲" title="Ludo" shareId="ludo" sub="2–4 players · invite friends with a code" cta="Play" onClick={() => setPlayLudo(true)} />
+        <Card emoji="💘" title="Vibe Check" shareId="vibe" sub="How compatible are you two? 10 questions" cta="Play" onClick={() => setPlayVibe(true)} />
+        <Card emoji="🎭" title="Blind Banter" shareId="banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys 💎" cta="Play" onClick={() => setPlayBanter(true)} />
+        <Card emoji="🎯" title="Bollywood Riddles" shareId="riddles" sub={riddleDone !== null ? `Played today — ${riddleDone}/5` : "Guess the film from emojis · new set daily"} cta={riddleDone !== null ? "Board" : "Play"} onClick={() => setPlayRiddle(true)} />
+        <Card emoji="🎲" title="Tambola / Housie" shareId="housie" sub="Live number-draw · daub your ticket · win prizes 🎉" cta="Play" onClick={() => setPlayHousie(true)} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px" }}>
           <Trophy size={18} color="#E67E22" />
@@ -4757,6 +4798,11 @@ function RiddleSheet({ meId, alreadyScore, onClose }) {
       </div>
     </div>
   );
+}
+function shareGameWA(id, title) {
+  const url = "https://glass-wings.com/?game=" + id;
+  const text = "\uD83C\uDFAE Come play " + title + " on Glasswings!\n" + url;
+  window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
 }
 function genHousieTicket() {
   const colRange = (c) => c === 0 ? [1, 9] : c === 8 ? [80, 90] : [c * 10, c * 10 + 9];
@@ -10425,6 +10471,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             </div>
           );
         })()}
+        <WalletCard userId={user.id} />
         {paidSubs.length > 0 && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16 }}>
             <div style={{ fontWeight: 700, color: W.ink, marginBottom: 4 }}>Your subscriptions</div>
@@ -10461,7 +10508,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gamesfix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • wallet ✅</div>
       </div>
     </div>
   );
