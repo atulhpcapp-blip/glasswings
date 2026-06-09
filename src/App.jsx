@@ -297,7 +297,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [recovery, setRecovery] = useState(false);
   useEffect(() => {
-    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const gm = sp.get("game"); if (gm) localStorage.setItem("gw_open_game", gm.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); } catch {}
+    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const gm = sp.get("game"); if (gm) localStorage.setItem("gw_open_game", gm.trim()); const spk = sp.get("spark"); if (spk) localStorage.setItem("gw_open_spark", spk.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); } catch {}
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -1888,7 +1888,11 @@ function Main({ user }) {
     try { const g = localStorage.getItem("gw_open_game"); if (g) { localStorage.removeItem("gw_open_game"); return g; } } catch { }
     return null;
   });
-  useEffect(() => { if (autoGame) setTab("games"); }, []);
+  const [autoSpark, setAutoSpark] = useState(() => {
+    try { const s = localStorage.getItem("gw_open_spark"); if (s) { localStorage.removeItem("gw_open_spark"); return s; } } catch { }
+    return null;
+  });
+  useEffect(() => { if (autoGame || autoSpark) setTab("games"); }, []);
   const roomParamDone = useRef(false);
   useEffect(() => {
     if (roomParamDone.current || !rooms.length) return;
@@ -2443,7 +2447,7 @@ function Main({ user }) {
       )}
       {tab === "chats" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>)}
       {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
-      {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
+      {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
@@ -4502,7 +4506,7 @@ function StreakBoardCard() {
     </>
   );
 }
-function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onConsumedInitial }) {
+function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onConsumedInitial, autoSpark = null, onConsumedSpark }) {
   const [playTrivia, setPlayTrivia] = useState(false);
   const [triviaDone, setTriviaDone] = useState(null);
   const [board, setBoard] = useState(null);
@@ -4514,6 +4518,8 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
   const [playBanter, setPlayBanter] = useState(false);
   const [playRiddle, setPlayRiddle] = useState(false);
   const [playHousie, setPlayHousie] = useState(false);
+  const [playSpark, setPlaySpark] = useState(false);
+  const [sparkCode, setSparkCode] = useState(null);
   const [riddleDone, setRiddleDone] = useState(null);
   useEffect(() => {
     if (initialGame === "antakshari") setPlayAnt(true);
@@ -4524,6 +4530,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
     else if (initialGame === "riddles") setPlayRiddle(true);
     else if (initialGame === "housie") setPlayHousie(true);
     if (initialGame && onConsumedInitial) onConsumedInitial();
+    if (autoSpark) { setSparkCode(autoSpark); setPlaySpark(true); if (onConsumedSpark) onConsumedSpark(); }
   }, []);
   const loadAwards = () => supabase.from("game_awards").select("id, prize, created_at, profiles:user_id(full_name, avatar_url)").order("created_at", { ascending: false }).limit(12)
     .then(({ data }) => setAwards(data || []));
@@ -4575,6 +4582,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
           <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 600 }}>Play with credits</div>
         </div>
         <div style={{ fontSize: 12, color: W.soft, margin: "0 2px 11px", lineHeight: 1.45 }}>A few credits per play. Top up anytime in Profile → Wallet.</div>
+        <Card emoji="💞" title="Spark" tint="#FDE7F1" badge="💎 Premium" sub="36 questions for two · pair by code or invite · girls free, guys use credits" cta="Play" onClick={() => { setSparkCode(null); setPlaySpark(true); }} />
         <Card emoji="💘" title="Vibe Check" tint="#FCE3EF" badge="💎 Premium" shareId="vibe" sub="How compatible are you two? 10 quick questions" cta="Play" onClick={() => setPlayVibe(true)} />
         <Card emoji="🎭" title="Blind Banter" tint="#E9E6FB" badge="💎 Premium" shareId="banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys use credits" cta="Play" onClick={() => setPlayBanter(true)} />
 
@@ -4618,6 +4626,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
       {playBanter && <BlindBanter meId={meId} onUpgrade={onUpgrade} onClose={() => setPlayBanter(false)} />}
       {playRiddle && <RiddleSheet meId={meId} alreadyScore={riddleDone} onClose={() => setPlayRiddle(false)} />}
       {playHousie && <HousieHub meId={meId} isStaff={isStaff} events={events} onClose={() => setPlayHousie(false)} />}
+      {playSpark && <SparkHub meId={meId} autoCode={sparkCode} onClose={() => { setPlaySpark(false); setSparkCode(null); }} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -4896,6 +4905,311 @@ const HOUSIE_PRIZES = [
   ["four_corners", "Four Corners", "4 corner numbers"],
   ["full_house", "Full House", "All 15 numbers"],
 ];
+/* ---------------- Spark · 36 Questions ---------------- */
+const SPARK_Q = [
+  "If you could have anyone in the world over for dinner tonight, who would it be?",
+  "What would a perfect day look like for you?",
+  "When did you last sing to yourself? And to someone else?",
+  "What is something you are surprisingly good at?",
+  "If you could wake up tomorrow having gained one quality or ability, what would it be?",
+  "What is the most spontaneous thing you have ever done?",
+  "What is one small thing that instantly makes your day better?",
+  "What song always pulls you onto the dance floor?",
+  "What did you want to be when you were a kid?",
+  "If you could keep only one memory forever, which would you choose?",
+  "What are two things you already seem to have in common with the person across from you?",
+  "What is a place you would love to travel to together?",
+  "What is the greatest accomplishment of your life so far?",
+  "What do you value most in a friendship?",
+  "What is a dream you have not told many people about?",
+  "What is the most honest compliment you could give the person across from you right now?",
+  "What role does affection play in your life?",
+  "When did you last cry in front of another person? By yourself?",
+  "What is something you have changed your mind about as you have grown?",
+  "What would a perfect relationship look like for you?",
+  "Share an embarrassing moment you can finally laugh about.",
+  "What is something about your family or childhood that shaped who you are?",
+  "If you could change one thing about how you were raised, what would it be?",
+  "What is a fear you have learned to live with?",
+  "Take turns making three true 'we' statements — for example, 'We are both sitting here feeling…'",
+  "Complete this sentence: 'I wish I had someone to share…'",
+  "If you were going to become close with the person across from you, what is important for them to know?",
+  "Tell them what you genuinely like about them — something you would not say to a stranger.",
+  "Share a difficult moment in your life and how you came through it.",
+  "When did you last tell someone you loved them?",
+  "What is something you would want a partner to always remember about you?",
+  "What is one of your most treasured memories?",
+  "If you knew you had one more day, who would you call and what would you say?",
+  "Your home is on fire. After loved ones and pets are safe, you can grab one thing — what is it, and why?",
+  "Of everyone you know, whose good opinion matters most to you, and why?",
+  "Look at the person across from you and share what you are feeling about this moment, right now.",
+];
+function sparkLevel(i) {
+  return i < 12 ? { n: "Level 1 · Warm-up", c: "#04B08F" }
+    : i < 24 ? { n: "Level 2 · Going deeper", c: "#6D28D9" }
+    : { n: "Level 3 · Closeness", c: "#DB2777" };
+}
+
+function SparkHub({ meId, autoCode = null, onClose }) {
+  const [view, setView] = useState("menu");   // menu | lobby | play | done
+  const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState(null);
+  const [joinCode, setJoinCode] = useState("");
+  const [ses, setSes] = useState(null);
+  const [people, setPeople] = useState({});
+  const [answers, setAnswers] = useState([]);
+  const [draft, setDraft] = useState("");
+  const [locked, setLocked] = useState(false);
+  const [cost, setCost] = useState(0);
+  const [gender, setGender] = useState(null);
+  const [invView, setInvView] = useState(false);
+  const [q, setQ] = useState(""); const [hits, setHits] = useState([]);
+  const [invited, setInvited] = useState(false);
+  const [rated, setRated] = useState(false);
+  const [look, setLook] = useState(null);
+
+  useEffect(() => { (async () => {
+    const [{ data: me }, { data: gc }] = await Promise.all([
+      supabase.from("profiles").select("gender").eq("id", meId).maybeSingle(),
+      supabase.from("game_costs").select("paid, credits").eq("key", "spark").maybeSingle(),
+    ]);
+    setGender(me?.gender || null);
+    setCost(gc && gc.paid ? (Number(gc.credits) || 0) : 0);
+  })(); }, [meId]);
+
+  const fetchPeople = async (s) => {
+    const ids = [s.host_id, s.guest_id].filter(Boolean);
+    if (!ids.length) return;
+    const { data } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids);
+    const m = {}; (data || []).forEach(p => { m[p.id] = p; }); setPeople(prev => ({ ...prev, ...m }));
+  };
+  const refresh = async (id) => {
+    const { data: s } = await supabase.from("spark_sessions").select("*").eq("id", id).maybeSingle();
+    if (!s) return;
+    setSes(s); fetchPeople(s);
+    const { data: a } = await supabase.from("spark_answers").select("user_id, answer, q_index").eq("session_id", id).eq("q_index", s.idx);
+    setAnswers(a || []);
+    if (s.status === "live") setView(v => v === "done" ? v : "play");
+    if (s.status === "done") setView("done");
+  };
+
+  const doCreate = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("spark_create");
+    setBusy(false);
+    if (error) return window.alert(error.message);
+    if (!data?.ok) return window.alert(data?.reason || "Couldn't start a Spark.");
+    setCode(data.code);
+    const { data: s } = await supabase.from("spark_sessions").select("*").eq("code", data.code).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (s) { setSes(s); fetchPeople(s); }
+    setView("lobby");
+  };
+  const doJoin = async (c) => {
+    const cc = (c || joinCode).trim();
+    if (!cc) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc("spark_join", { p_code: cc });
+    setBusy(false);
+    if (error) return window.alert(error.message);
+    if (!data?.ok) return window.alert(data?.reason || "Couldn't join.");
+    setCode(data.code || cc.toUpperCase());
+    await refresh(data.id);
+    setView("play");
+  };
+  useEffect(() => { if (autoCode) doJoin(autoCode); }, []);
+
+  useEffect(() => {
+    if (!ses?.id) return;
+    const id = ses.id;
+    const ch = supabase.channel("spark-" + id)
+      .on("postgres_changes", { event: "*", schema: "public", table: "spark_sessions", filter: `id=eq.${id}` }, () => refresh(id))
+      .on("postgres_changes", { event: "*", schema: "public", table: "spark_answers", filter: `session_id=eq.${id}` }, () => refresh(id))
+      .subscribe();
+    const iv = setInterval(() => refresh(id), 3000);
+    return () => { supabase.removeChannel(ch); clearInterval(iv); };
+  }, [ses?.id]);
+
+  useEffect(() => { setDraft(""); setLocked(false); }, [ses?.idx]);
+  useEffect(() => { if (ses && answers.some(a => a.user_id === meId)) setLocked(true); }, [answers, ses?.idx]);
+  useEffect(() => { if (look == null) return; if (look <= 0) { setLook(null); return; } const t = setTimeout(() => setLook(look - 1), 1000); return () => clearTimeout(t); }, [look]);
+
+  const lockIn = async () => {
+    if (!draft.trim()) return;
+    setBusy(true);
+    await supabase.rpc("spark_answer", { p_session: ses.id, p_index: ses.idx, p_answer: draft.trim() });
+    setBusy(false); setLocked(true); refresh(ses.id);
+  };
+  const next = async () => {
+    if (ses.idx >= 35) { await supabase.rpc("spark_finish", { p_session: ses.id }); setView("done"); return; }
+    await supabase.rpc("spark_advance", { p_session: ses.id, p_from: ses.idx }); refresh(ses.id);
+  };
+  const shareWA = () => { const link = "https://glass-wings.com/?spark=" + code; window.open("https://wa.me/?text=" + encodeURIComponent("💞 Let's play Spark — 36 Questions on Glasswings!\n" + link), "_blank"); };
+  const sendInvite = async (m) => {
+    try {
+      const { data: ok } = await supabase.rpc("can_dm", { p_other: m.id });
+      if (!ok) return window.alert("You can invite only people you've met at an event or been connected with.");
+      const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: m.id });
+      if (error || !tid) return window.alert("Couldn't open a chat with them.");
+      const link = "https://glass-wings.com/?spark=" + code;
+      await supabase.from("messages").insert({ group_type: "p2p", group_id: tid, sender_id: meId, body: "💞 Let's play Spark — 36 Questions on Glasswings. Tap to join me:\n" + link });
+      setInvited(true); setInvView(false);
+    } catch { window.alert("Couldn't send the invite."); }
+  };
+  useEffect(() => {
+    if (!invView) { return; }
+    const ql = q.trim(); if (ql.length < 2) { setHits([]); return; }
+    const t = setTimeout(() => supabase.rpc("member_search", { p_q: ql }).then(({ data }) => setHits((data || []).slice(0, 8))), 250);
+    return () => clearTimeout(t);
+  }, [q, invView]);
+  const rate = async (n) => { await supabase.rpc("spark_rate", { p_session: ses.id, p_rating: n }); setRated(true); refresh(ses.id); };
+
+  const shell = (body) => (
+    <div style={{ position: "fixed", inset: 0, background: "#fff", zIndex: 9000, display: "flex", flexDirection: "column" }}>
+      <div style={{ background: "linear-gradient(135deg,#DB2777,#A21CAF)", color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <ArrowLeft size={24} style={{ cursor: "pointer" }} onClick={onClose} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>💞 Spark</div>
+          <div style={{ fontSize: 11.5, opacity: .9 }}>36 Questions · for two</div>
+        </div>
+      </div>
+      <div style={{ overflowY: "auto", padding: "18px 16px 44px", flex: 1, maxWidth: 620, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>{body}</div>
+    </div>
+  );
+
+  if (view === "menu") return shell(
+    <>
+      <div style={{ background: "#FDF2F8", border: "1px solid #FBCFE8", borderRadius: 16, padding: 16, marginBottom: 16 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, marginBottom: 4 }}>How it works</div>
+        <div style={{ fontSize: 13, color: W.soft, lineHeight: 1.6 }}>Two people answer 36 questions that grow closer across three levels. You'll see each other's answers as you go. Best played slowly, somewhere comfortable.</div>
+      </div>
+      <button onClick={doCreate} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, opacity: busy ? .6 : 1 }}>Start a Spark</button>
+      <div style={{ fontSize: 12, color: W.soft, textAlign: "center", margin: "8px 0 14px" }}>{cost > 0 ? (gender === "male" ? `${cost} credits to play · free for women` : "Free for you 💞") : "Free to play"}</div>
+      <div style={{ borderTop: `1px solid ${W.line}`, paddingTop: 14 }}>
+        <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, marginBottom: 8 }}>Got a code from someone?</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} placeholder="Enter code" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, letterSpacing: 2, outline: "none", color: W.ink }} />
+          <button onClick={() => doJoin()} disabled={busy || !joinCode.trim()} style={{ ...btn(W.ink, "#fff"), padding: "0 18px", opacity: (busy || !joinCode.trim()) ? .5 : 1 }}>Join</button>
+        </div>
+      </div>
+    </>
+  );
+
+  if (view === "lobby") return shell(
+    invView ? (
+      <>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, marginBottom: 10 }}>Invite a connection</div>
+        <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search people you've met…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", color: W.ink, marginBottom: 10, boxSizing: "border-box" }} />
+        {hits.map(m => (
+          <div key={m.id} onClick={() => sendInvite(m)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 4px", borderBottom: `1px solid ${W.line}`, cursor: "pointer" }}>
+            <PersonAvatar url={m.avatar_url} name={m.full_name} size={36} />
+            <div style={{ flex: 1, fontWeight: 600, color: W.ink, fontSize: 14 }}>{m.full_name}</div>
+            <span style={{ color: W.teal, fontWeight: 700, fontSize: 12.5 }}>Invite</span>
+          </div>
+        ))}
+        {q.trim().length >= 2 && !hits.length && <div style={{ color: W.soft, fontSize: 13, padding: "10px 4px" }}>No one found.</div>}
+        <button onClick={() => setInvView(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 14 }}>Back</button>
+      </>
+    ) : (
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 13, color: W.soft, marginTop: 4 }}>Share this code or link with the person you want to play with. The game starts the moment they join.</div>
+        <div style={{ fontSize: 40, fontWeight: 900, letterSpacing: 8, color: W.ink, margin: "18px 0 6px" }}>{code}</div>
+        {invited && <div style={{ color: W.teal, fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>Invite sent ✓</div>}
+        <button onClick={shareWA} style={{ ...btn("#25D366", "#fff"), width: "100%", justifyContent: "center", padding: "12px", marginTop: 8 }}>Share on WhatsApp</button>
+        <button onClick={() => { setInvView(true); setQ(""); setHits([]); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", padding: "12px", marginTop: 10 }}>Invite a connection</button>
+        <div style={{ color: W.soft, fontSize: 13, marginTop: 20 }}>Waiting for your partner to join…</div>
+        <button onClick={onClose} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 18 }}>Cancel</button>
+      </div>
+    )
+  );
+
+  if (view === "play" && ses) {
+    const lvl = sparkLevel(ses.idx);
+    const otherId = meId === ses.host_id ? ses.guest_id : ses.host_id;
+    const meAns = answers.find(a => a.user_id === meId);
+    const otherAns = answers.find(a => a.user_id === otherId);
+    const bothIn = !!meAns && !!otherAns;
+    return shell(
+      <>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: lvl.c }}>{lvl.n}</span>
+          <span style={{ fontSize: 12, color: W.soft, fontWeight: 700 }}>Question {ses.idx + 1} / 36</span>
+        </div>
+        <div style={{ height: 6, background: W.line, borderRadius: 6, overflow: "hidden", marginBottom: 16 }}>
+          <div style={{ width: `${Math.round((ses.idx + 1) / 36 * 100)}%`, height: "100%", background: lvl.c }} />
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 18, padding: 18, boxShadow: "0 2px 10px rgba(17,27,33,.06)", marginBottom: 16 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: W.ink, lineHeight: 1.45 }}>{SPARK_Q[ses.idx]}</div>
+        </div>
+        {!locked ? (
+          <>
+            <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder="Your answer…" rows={4} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 12, padding: "12px 13px", fontSize: 14.5, outline: "none", color: W.ink, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }} />
+            <button onClick={lockIn} disabled={busy || !draft.trim()} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", marginTop: 10, opacity: (busy || !draft.trim()) ? .5 : 1 }}>Lock in answer</button>
+          </>
+        ) : !bothIn ? (
+          <div style={{ textAlign: "center", color: W.soft, fontSize: 13.5, padding: "20px 0", lineHeight: 1.6 }}>Answer locked in ✓<br />Waiting for {people[otherId]?.full_name || "your partner"}…</div>
+        ) : (
+          <>
+            {[[meId, "You"], [otherId, people[otherId]?.full_name || "Them"]].map(([uid, label]) => {
+              const a = answers.find(x => x.user_id === uid);
+              return (
+                <div key={uid} style={{ background: "#F7F9FA", borderRadius: 14, padding: "12px 14px", marginBottom: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: W.teal, marginBottom: 4 }}>{label}</div>
+                  <div style={{ fontSize: 14.5, color: W.ink, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{a?.answer}</div>
+                </div>
+              );
+            })}
+            <button onClick={next} style={{ ...btn(ses.idx >= 35 ? "#DB2777" : W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", marginTop: 6 }}>{ses.idx >= 35 ? "Finish ✨" : "Next question"}</button>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (view === "done" && ses) {
+    const otherId = meId === ses.host_id ? ses.guest_id : ses.host_id;
+    const me = people[meId], other = people[otherId];
+    const both = (ses.host_rating || 0) >= 4 && (ses.guest_rating || 0) >= 4;
+    return shell(
+      <div style={{ textAlign: "center" }}>
+        {look != null ? (
+          <div style={{ padding: "40px 0" }}>
+            <div style={{ fontSize: 15, color: W.ink, fontWeight: 700, marginBottom: 14 }}>Look into each other's eyes…</div>
+            <div style={{ fontSize: 56, fontWeight: 900, color: "#DB2777" }}>{look}</div>
+            <button onClick={() => setLook(null)} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, justifyContent: "center", padding: "10px 20px", marginTop: 18 }}>Stop</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 40, marginTop: 4 }}>✨</div>
+            <div style={{ fontWeight: 900, color: W.ink, fontSize: 22, margin: "6px 0 14px" }}>You sparked!</div>
+            <div style={{ background: "linear-gradient(135deg,#FDF2F8,#FCE7F3)", border: "1px solid #FBCFE8", borderRadius: 20, padding: "22px 18px", marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 14, marginBottom: 12 }}>
+                <PersonAvatar url={me?.avatar_url} name={me?.full_name} size={56} />
+                <span style={{ fontSize: 24 }}>💞</span>
+                <PersonAvatar url={other?.avatar_url} name={other?.full_name} size={56} />
+              </div>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{me?.full_name || "You"} &amp; {other?.full_name || "Them"}</div>
+              <div style={{ fontSize: 12.5, color: W.soft, marginTop: 3 }}>36 questions · {new Date().toLocaleDateString()}</div>
+            </div>
+            {!rated ? (
+              <>
+                <div style={{ fontSize: 13.5, color: W.ink, fontWeight: 700, marginBottom: 8 }}>How was the connection?</div>
+                <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
+                  {[1, 2, 3, 4, 5].map(n => <span key={n} onClick={() => rate(n)} style={{ fontSize: 30, cursor: "pointer" }}>⭐</span>)}
+                </div>
+              </>
+            ) : both ? <div style={{ color: "#DB2777", fontWeight: 800, fontSize: 15, marginBottom: 14 }}>You both felt it ✨</div>
+              : <div style={{ color: W.soft, fontSize: 13, marginBottom: 14 }}>Thanks for rating 💞</div>}
+            <button onClick={() => setLook(60)} style={{ ...btn("#fff", "#DB2777"), border: "1px solid #FBCFE8", width: "100%", justifyContent: "center", padding: "12px", marginBottom: 10 }}>Try the 60-second look</button>
+            <button onClick={shareWA} style={{ ...btn("#25D366", "#fff"), width: "100%", justifyContent: "center", padding: "12px", marginBottom: 10 }}>Share on WhatsApp</button>
+            <button onClick={onClose} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px" }}>Done</button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return shell(<div style={{ color: W.soft, fontSize: 14, textAlign: "center", padding: "30px 0" }}>Loading…</div>);
+}
 function HousieHub({ meId, isStaff, events, onClose }) {
   const [view, setView] = useState("menu");
   const [game, setGame] = useState(null);
@@ -10580,7 +10894,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gamesui ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • spark ✅</div>
       </div>
     </div>
   );
