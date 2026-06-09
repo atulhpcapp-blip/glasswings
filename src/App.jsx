@@ -867,8 +867,10 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished }) {
   return (
     <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
       <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
-        {(e.poster_url || (e.banner_url && e.banner_type !== "video"))
-          ? <img src={e.poster_url || e.banner_url} alt={e.title} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        {e.vertical_video_url
+          ? <video src={e.vertical_video_url} autoPlay loop muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          : (e.vertical_banner_url || e.poster_url || (e.banner_url && e.banner_type !== "video"))
+          ? <img src={e.vertical_banner_url || e.poster_url || e.banner_url} alt={e.title} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{e.emoji || "🎟️"}</div>}
         {popular && <span style={{ position: "absolute", top: 8, left: 8, background: "#D35400", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔥 Popular</span>}
         {going && <span style={{ position: "absolute", top: 8, right: 8, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Going</span>}
@@ -1125,10 +1127,20 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         <button onClick={share} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(255,255,255,.4)", color: "#fff", borderRadius: 9, padding: "7px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}><Share2 size={14} />{copied ? "Copied ✓" : "Share"}</button>
       </div>
       {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>⏳ UNPUBLISHED — members and the public can't see this event yet. Approve it from Admin → Events.</div>}
-      {(e.vertical_video_url || e.portrait_video_url) ? (
+      {e.portrait_video_url ? (
         <div style={{ position: "relative", height: wide ? 460 : 300, background: "#0b1f1c", overflow: "hidden" }}>
-          {((e.banner_type !== "video" && e.banner_url) || e.poster_url) && <img src={(e.banner_type !== "video" && e.banner_url) || e.poster_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />}
-          <video src={e.vertical_video_url || e.portrait_video_url} autoPlay loop muted playsInline controls style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+          {(e.portrait_banner_url || (e.banner_type !== "video" && e.banner_url) || e.poster_url) && <img src={e.portrait_banner_url || (e.banner_type !== "video" && e.banner_url) || e.poster_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />}
+          <video src={e.portrait_video_url} autoPlay loop playsInline controls ref={el => { if (el) { el.muted = false; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(() => {}); } }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+        </div>
+      ) : e.portrait_banner_url ? (
+        <div style={{ position: "relative", height: wide ? 460 : 300, background: "#0b1f1c", overflow: "hidden" }}>
+          <img src={e.portrait_banner_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />
+          <img src={e.portrait_banner_url} alt={e.title} decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+        </div>
+      ) : (e.vertical_video_url) ? (
+        <div style={{ position: "relative", height: wide ? 460 : 300, background: "#0b1f1c", overflow: "hidden" }}>
+          {((e.banner_type !== "video" && e.banner_url) || e.poster_url || e.vertical_banner_url) && <img src={e.vertical_banner_url || (e.banner_type !== "video" && e.banner_url) || e.poster_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />}
+          <video src={e.vertical_video_url} autoPlay loop muted playsInline controls style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
       ) : e.landscape_video_url ? (
         <div style={{ background: "#0b1f1c" }}><video src={e.landscape_video_url} autoPlay loop muted playsInline controls style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
@@ -8671,20 +8683,21 @@ function EventTerms({ ev, onUpdate }) {
 }
 function EventVideos({ ev, onUpdate }) {
   const [busy, setBusy] = useState("");
-  const vR = useRef(null), pR = useRef(null), lR = useRef(null);
-  const up = async (file, field) => {
+  const vR = useRef(null), pR = useRef(null), lR = useRef(null), vbR = useRef(null), pbR = useRef(null);
+  const up = async (file, field, kind) => {
     if (!file) return;
-    if (!file.type.startsWith("video")) { alert("Please choose a video file."); return; }
+    if (kind === "video" && !file.type.startsWith("video")) { alert("Please choose a video file."); return; }
+    if (kind === "image" && !file.type.startsWith("image")) { alert("Please choose an image file."); return; }
     setBusy(field);
     try { const url = await uploadChatFile("banners", file); await onUpdate(ev.id, { [field]: url }); }
     catch (x) { alert("Upload failed: " + (x.message || x)); }
     setBusy("");
   };
-  const row = (field, val, ratio, w, emoji, title, hint, inpRef) => (
+  const row = (field, val, ratio, w, emoji, title, hint, inpRef, kind) => (
     <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
-      <input ref={inpRef} type="file" accept="video/*" onChange={e => { up(e.target.files?.[0], field); e.target.value = ""; }} style={{ display: "none" }} />
+      <input ref={inpRef} type="file" accept={kind === "image" ? "image/*" : "video/*"} onChange={e => { up(e.target.files?.[0], field, kind); e.target.value = ""; }} style={{ display: "none" }} />
       <div onClick={() => inpRef.current?.click()} style={{ width: w, aspectRatio: ratio, flexShrink: 0, borderRadius: 12, overflow: "hidden", border: val ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, cursor: "pointer" }}>
-        {busy === field ? <span style={{ fontSize: 11, color: "#fff" }}>…</span> : val ? <video src={val} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : emoji}
+        {busy === field ? <span style={{ fontSize: 11, color: "#fff" }}>…</span> : val ? (kind === "image" ? <img src={val} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : <video src={val} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />) : emoji}
       </div>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{val ? title + " ✓" : title}</div>
@@ -8698,11 +8711,14 @@ function EventVideos({ ev, onUpdate }) {
   );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>🎬 Event videos — play on the event page <span style={{ fontWeight: 700, color: W.teal }}>before</span> the banner</label>
-      {row("vertical_video_url", ev.vertical_video_url, "9/16", 80, "🎬", "Vertical video (9:16)", "Reel-style. Shown first — highest priority.", vR)}
-      {row("portrait_video_url", ev.portrait_video_url, "3/4", 80, "🎞️", "Portrait video (3:4)", "Used if there's no vertical video.", pR)}
-      {row("landscape_video_url", ev.landscape_video_url, "16/9", 110, "🎥", "Landscape video (16:9)", "Wide clip. Fills the banner area.", lR)}
-      <div style={{ fontSize: 11.5, color: W.soft }}>Changes save instantly. Any video here is shown on the event page instead of the banner.</div>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>🎬 Event card media <span style={{ fontWeight: 600 }}>— shown on the events list</span></label>
+      {row("vertical_video_url", ev.vertical_video_url, "9/16", 80, "🎬", "Vertical video (9:16)", "Plays on the event card. Highest priority.", vR, "video")}
+      {row("vertical_banner_url", ev.vertical_banner_url, "9/16", 80, "🖼️", "Vertical banner (9:16)", "Image used on the card if there's no vertical video.", vbR, "image")}
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft, marginTop: 6 }}>📲 Event page media <span style={{ fontWeight: 600 }}>— shown when the card is opened</span></label>
+      {row("portrait_video_url", ev.portrait_video_url, "3/4", 80, "🎞️", "Portrait video (3:4)", "Plays on the event page with sound on. Highest priority.", pR, "video")}
+      {row("portrait_banner_url", ev.portrait_banner_url, "3/4", 80, "🖼️", "Portrait banner (3:4)", "Image used on the event page if there's no portrait video.", pbR, "image")}
+      {row("landscape_video_url", ev.landscape_video_url, "16/9", 110, "🎥", "Landscape video (16:9)", "Wide fallback if none of the above are set.", lR, "video")}
+      <div style={{ fontSize: 11.5, color: W.soft }}>Changes save instantly. Card: vertical video → vertical banner. Event page: portrait video → portrait banner.</div>
     </div>
   );
 }
@@ -9327,7 +9343,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fOrg === "all" || e.host_id === fOrg)
     && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole))
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const [newBadge, setNewBadge] = useState("");
@@ -9345,6 +9361,10 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const pickPVideo = async (e) => { const file = e.target.files?.[0]; if (!file) return; if (!file.type.startsWith("video")) { alert("Please choose a video file for the portrait video."); return; } setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, pvideo: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const lvRef = useRef(null);
   const pickLVideo = async (e) => { const file = e.target.files?.[0]; if (!file) return; if (!file.type.startsWith("video")) { alert("Please choose a video file for the landscape video."); return; } setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, lvideo: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
+  const vbRef = useRef(null);
+  const pickVBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; if (!file.type.startsWith("image")) { alert("Please choose an image for the vertical banner."); return; } setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, vbanner: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
+  const pbRef = useRef(null);
+  const pickPBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; if (!file.type.startsWith("image")) { alert("Please choose an image for the portrait banner."); return; } setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, pbanner: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }); };
   const withTime = lbl => lbl + (f.time ? ` · ${f.time}` : "");
   const occ = iso => ({ label: withTime(fmtDay(iso)), iso });
@@ -9375,7 +9395,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null }, dates, f.addons);
+    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -9408,6 +9428,17 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               {f.vvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, vvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
             </div>
           </div>
+          <input ref={vbRef} type="file" accept="image/*" onChange={pickVBanner} style={{ display: "none" }} />
+          <div onClick={() => vbRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
+            <div style={{ width: 80, aspectRatio: "9/16", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.vbanner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+              {f.vbanner ? <img src={f.vbanner} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🖼️")}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.vbanner ? "Vertical banner added ✓" : "+ Vertical banner (9:16)"}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Shown on the event card when there's no vertical video.</div>
+              {f.vbanner && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, vbanner: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
+            </div>
+          </div>
           <input ref={pvRef} type="file" accept="video/*" onChange={pickPVideo} style={{ display: "none" }} />
           <div onClick={() => pvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
             <div style={{ width: 80, aspectRatio: "3/4", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.pvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
@@ -9417,6 +9448,17 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.pvideo ? "Portrait video added ✓" : "+ Portrait video (optional)"}</div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Portrait clip (3:4). Plays full — no cropping — on the event page.</div>
               {f.pvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, pvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
+            </div>
+          </div>
+          <input ref={pbRef} type="file" accept="image/*" onChange={pickPBanner} style={{ display: "none" }} />
+          <div onClick={() => pbRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
+            <div style={{ width: 80, aspectRatio: "3/4", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.pbanner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+              {f.pbanner ? <img src={f.pbanner} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🖼️")}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.pbanner ? "Portrait banner added ✓" : "+ Portrait banner (3:4)"}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Shown on the event page when there's no portrait video.</div>
+              {f.pbanner && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, pbanner: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
             </div>
           </div>
           <input ref={lvRef} type="file" accept="video/*" onChange={pickLVideo} style={{ display: "none" }} />
@@ -11011,7 +11053,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ticketfix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • vmedia ✅</div>
       </div>
     </div>
   );
