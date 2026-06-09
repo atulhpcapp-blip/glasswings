@@ -26,6 +26,7 @@ export default function SnapLensCamera({ onCapture, onClose }) {
   const [lenses, setLenses] = useState([]);
   const [activeLens, setActiveLens] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [lensErr, setLensErr] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -54,9 +55,15 @@ export default function SnapLensCamera({ onCapture, onClose }) {
         let list = [];
         try {
           const res = await cameraKit.lensRepository.loadLensGroups([LENS_GROUP_ID]);
-          list = res?.lenses || (Array.isArray(res) ? (res[0]?.lenses || []) : []);
+          list = (res && Array.isArray(res.lenses)) ? res.lenses : [];
+          if (!list.length && res && Array.isArray(res.errors) && res.errors.length) {
+            const msg = res.errors.map((er) => (er && (er.message || er.name)) || String(er)).join(" | ");
+            console.error("lens group errors", res.errors);
+            if (!cancelled) setLensErr(msg);
+          }
         } catch (e) {
           console.error("lens group load failed", e);
+          if (!cancelled) setLensErr(e?.message || String(e));
         }
         if (cancelled) return;
         setLenses(list);
@@ -150,7 +157,7 @@ export default function SnapLensCamera({ onCapture, onClose }) {
                 <div style={{ color: "#fff", fontSize: 10, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lens.name || "Lens"}</div>
               </div>
             ))}
-            {!lenses.length && <div style={{ color: "#fff", opacity: .6, fontSize: 12.5, padding: "18px 14px" }}>No lenses found in this group yet.</div>}
+            {!lenses.length && <div style={{ color: "#fff", opacity: .8, fontSize: 12, padding: "14px", maxWidth: 320, lineHeight: 1.5 }}>{lensErr ? ("Lens group error: " + lensErr) : "No lenses found in this group. Check the Lens Group ID matches your token's environment (staging vs production)."}</div>}
           </div>
           <div style={{ display: "flex", justifyContent: "center" }}>
             <button onClick={capture} disabled={busy} aria-label="Capture" style={{ width: 72, height: 72, borderRadius: "50%", background: "#fff", border: "5px solid rgba(255,255,255,.4)", cursor: "pointer", opacity: busy ? .6 : 1 }} />
