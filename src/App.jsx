@@ -1137,13 +1137,8 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           <img src={e.portrait_banner_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />
           <img src={e.portrait_banner_url} alt={e.title} decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
-      ) : (e.vertical_video_url) ? (
-        <div style={{ position: "relative", height: wide ? 460 : 300, background: "#0b1f1c", overflow: "hidden" }}>
-          {((e.banner_type !== "video" && e.banner_url) || e.poster_url || e.vertical_banner_url) && <img src={e.vertical_banner_url || (e.banner_type !== "video" && e.banner_url) || e.poster_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />}
-          <video src={e.vertical_video_url} autoPlay loop muted playsInline controls style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
-        </div>
       ) : e.landscape_video_url ? (
-        <div style={{ background: "#0b1f1c" }}><video src={e.landscape_video_url} autoPlay loop muted playsInline controls style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
+        <div style={{ background: "#0b1f1c" }}><video src={e.landscape_video_url} autoPlay loop playsInline controls ref={el => { if (el) { el.muted = false; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(() => {}); } }} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
       ) : (e.banner_url || e.poster_url) ? (e.banner_type === "video" && e.banner_url ? (
         <div style={{ background: "#0b1f1c" }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
       ) : (
@@ -8683,13 +8678,15 @@ function EventTerms({ ev, onUpdate }) {
 }
 function EventVideos({ ev, onUpdate }) {
   const [busy, setBusy] = useState("");
+  const [saved, setSaved] = useState(false);
+  const flashSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2200); };
   const vR = useRef(null), pR = useRef(null), lR = useRef(null), vbR = useRef(null), pbR = useRef(null);
   const up = async (file, field, kind) => {
     if (!file) return;
     if (kind === "video" && !file.type.startsWith("video")) { alert("Please choose a video file."); return; }
     if (kind === "image" && !file.type.startsWith("image")) { alert("Please choose an image file."); return; }
     setBusy(field);
-    try { const url = await uploadChatFile("banners", file); await onUpdate(ev.id, { [field]: url }); }
+    try { const url = await uploadChatFile("banners", file); await onUpdate(ev.id, { [field]: url }); flashSaved(); }
     catch (x) { alert("Upload failed: " + (x.message || x)); }
     setBusy("");
   };
@@ -8704,7 +8701,7 @@ function EventVideos({ ev, onUpdate }) {
         <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>{hint}</div>
         <div style={{ display: "flex", gap: 14, marginTop: 4 }}>
           <span onClick={() => inpRef.current?.click()} style={{ fontSize: 12, color: W.teal, fontWeight: 700, cursor: "pointer" }}>{val ? "Replace" : "Upload"}</span>
-          {val && <span onClick={() => onUpdate(ev.id, { [field]: null })} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
+          {val && <span onClick={() => { onUpdate(ev.id, { [field]: null }); flashSaved(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
         </div>
       </div>
     </div>
@@ -8717,8 +8714,13 @@ function EventVideos({ ev, onUpdate }) {
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft, marginTop: 6 }}>📲 Event page media <span style={{ fontWeight: 600 }}>— shown when the card is opened</span></label>
       {row("portrait_video_url", ev.portrait_video_url, "3/4", 80, "🎞️", "Portrait video (3:4)", "Plays on the event page with sound on. Highest priority.", pR, "video")}
       {row("portrait_banner_url", ev.portrait_banner_url, "3/4", 80, "🖼️", "Portrait banner (3:4)", "Image used on the event page if there's no portrait video.", pbR, "image")}
-      {row("landscape_video_url", ev.landscape_video_url, "16/9", 110, "🎥", "Landscape video (16:9)", "Wide fallback if none of the above are set.", lR, "video")}
-      <div style={{ fontSize: 11.5, color: W.soft }}>Changes save instantly. Card: vertical video → vertical banner. Event page: portrait video → portrait banner.</div>
+      {row("landscape_video_url", ev.landscape_video_url, "16/9", 110, "🎥", "Landscape video (16:9)", "Wide fallback on the event page (plays with sound) if there's no portrait video/banner.", lR, "video")}
+      <div style={{ fontSize: 11.5, color: W.soft }}>Card: vertical video → vertical banner. Event page: portrait video → portrait banner → landscape video → banner.</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+        <button onClick={flashSaved} style={{ ...btn(W.teal, "#fff"), opacity: busy ? 0.6 : 1 }} disabled={!!busy}>{busy ? "Uploading…" : "Save"}</button>
+        {saved && <span style={{ fontSize: 13, fontWeight: 800, color: W.teal }}>Saved ✓</span>}
+        <span style={{ fontSize: 11.5, color: W.soft }}>Each upload is saved automatically.</span>
+      </div>
     </div>
   );
 }
@@ -11053,7 +11055,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • vmedia ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • vmedia2 ✅</div>
       </div>
     </div>
   );
