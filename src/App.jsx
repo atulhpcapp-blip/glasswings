@@ -4073,27 +4073,28 @@ const VIBE_BANK = {
 function BuyCreditsSheet({ onClose, onBought }) {
   const [packs, setPacks] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [custom, setCustom] = useState("");
   useEffect(() => { supabase.from("credit_packs").select("id, label, credits, price").eq("active", true).order("sort").then(({ data }) => setPacks(data || [])); }, []);
-  const buy = async (pack) => {
+  const startPay = async (extra, creditsN) => {
     setBusy(true);
     try {
       const ready = await loadRazorpay();
       if (!ready) { setBusy(false); return window.alert("Couldn't open the payment window. Check your connection and try again."); }
       const { data: ses } = await supabase.auth.getSession();
       const token = ses?.session?.access_token;
-      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose: "credits", pack_id: pack.id }) });
+      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose: "credits", ...extra }) });
       const od = await r.json();
       if (!r.ok || !od.order_id) { setBusy(false); return window.alert(od.error || "Could not start the payment."); }
       const rzp = new window.Razorpay({
         key: od.key_id, amount: od.amount, currency: od.currency, order_id: od.order_id,
-        name: "Glasswings", description: rzpDesc(`${pack.credits} game credits`),
+        name: "Glasswings", description: rzpDesc(`${creditsN} credits`),
         theme: { color: "#008069" },
         handler: async (resp) => {
           try {
             const v = await fetch("/api/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
             const vd = await v.json();
             setBusy(false);
-            if (v.ok && vd.ok) { onBought && onBought(); onClose(); window.alert(`\u2705 ${pack.credits} credits added \u2014 have fun!`); }
+            if (v.ok && vd.ok) { onBought && onBought(); onClose(); window.alert(`\u2705 ${creditsN} credits added \u2014 have fun!`); }
             else window.alert(vd.error || "Payment couldn't be confirmed.");
           } catch { setBusy(false); window.alert("Payment couldn't be confirmed."); }
         },
@@ -4102,10 +4103,17 @@ function BuyCreditsSheet({ onClose, onBought }) {
       rzp.open();
     } catch { setBusy(false); window.alert("Could not start the payment. Please try again."); }
   };
+  const buy = (pack) => startPay({ pack_id: pack.id }, pack.credits);
+  const buyCustom = () => { const n = Math.floor(Number(custom) || 0); if (n < 1) return; startPay({ credits: n }, n); };
   return (
     <Sheet onClose={onClose}>
-      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, marginBottom: 3 }}>🎟️ Buy game credits</div>
-      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Credits let you play Vibe Check & Blind Banter — 1 credit per play.</div>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, marginBottom: 3 }}>🎟️ Buy credits</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>For games & event tickets · valid for 1 year.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+        <input value={custom} onChange={e => setCustom(e.target.value.replace(/\D/g, ""))} placeholder="Amount of credits" inputMode="numeric" style={{ flex: 1, padding: "12px 13px", borderRadius: 11, border: `1.5px solid ${W.line}`, fontSize: 15, color: W.ink, outline: "none" }} />
+        <button onClick={() => !busy && buyCustom()} disabled={busy || !Number(custom)} style={{ ...btn(Number(custom) ? W.teal : "#EBEEF0", Number(custom) ? "#fff" : W.soft), padding: "12px 16px", whiteSpace: "nowrap" }}>Buy ₹{Number(custom) || 0}</button>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 14 }}>1 credit = ₹1. Or pick a pack:</div>
       {packs === null ? <div style={{ color: W.soft, fontSize: 13, padding: 12, textAlign: "center" }}>Loading…</div>
         : !packs.length ? <div style={{ color: W.soft, fontSize: 13, padding: 12, textAlign: "center" }}>No credit packs available right now.</div>
         : packs.map(pk => (
@@ -4113,7 +4121,7 @@ function BuyCreditsSheet({ onClose, onBought }) {
             <div style={{ width: 46, height: 46, borderRadius: 12, background: "linear-gradient(135deg,#EC4899,#8B5CF6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, flexShrink: 0 }}>{pk.credits}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{pk.label} · {pk.credits} credits</div>
-              <div style={{ fontSize: 12, color: W.soft }}>{pk.credits} plays</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{pk.credits - pk.price > 0 ? `Save ₹${pk.credits - pk.price}` : "Bulk pack"}</div>
             </div>
             <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>₹{pk.price}</div>
           </div>
@@ -4126,12 +4134,14 @@ function WalletCard({ userId }) {
   const [bal, setBal] = useState(null);
   const [log, setLog] = useState(null);
   const [buyOpen, setBuyOpen] = useState(false);
+  const [exp, setExp] = useState(null);
   const load = async () => {
+    try { await supabase.rpc("gw_sweep_credits", { p_user: userId }); } catch {}
     const [{ data: pr }, { data: l }] = await Promise.all([
-      supabase.from("profiles").select("game_credits").eq("id", userId).maybeSingle(),
+      supabase.from("profiles").select("game_credits, credits_expire_at").eq("id", userId).maybeSingle(),
       supabase.from("credit_ledger").select("delta, balance_after, reason, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(30),
     ]);
-    setBal(Number(pr?.game_credits) || 0); setLog(l || []);
+    setBal(Number(pr?.game_credits) || 0); setExp(pr?.credits_expire_at || null); setLog(l || []);
   };
   useEffect(() => { load(); }, [userId]);
   return (
@@ -4143,7 +4153,7 @@ function WalletCard({ userId }) {
       <div style={{ background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", borderRadius: 14, padding: "16px 18px", marginBottom: 14 }}>
         <div style={{ fontSize: 11.5, opacity: .9, fontWeight: 700, letterSpacing: 1 }}>BALANCE</div>
         <div style={{ fontSize: 30, fontWeight: 800 }}>{bal === null ? "…" : bal} <span style={{ fontSize: 14, fontWeight: 700, opacity: .9 }}>credits</span></div>
-        <div style={{ fontSize: 11.5, opacity: .9, marginTop: 2 }}>Use for games & event tickets</div>
+        <div style={{ fontSize: 11.5, opacity: .9, marginTop: 2 }}>{exp && bal > 0 ? `Valid till ${new Date(exp).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : "Use for games & event tickets"}</div>
       </div>
       <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, marginBottom: 6 }}>History</div>
       {log === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div>
@@ -7773,7 +7783,7 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
   const live = cart.filter(c => c.qty > 0);
   const canConfirm = (!needAgree || agree) && live.length > 0;
   const [bal, setBal] = useState(null);
-  useEffect(() => { if (!meId) return; supabase.from("profiles").select("game_credits").eq("id", meId).maybeSingle().then(({ data }) => setBal(Number(data?.game_credits) || 0)); }, [meId]);
+  useEffect(() => { if (!meId) return; (async () => { try { await supabase.rpc("gw_sweep_credits", { p_user: meId }); } catch {} const { data } = await supabase.from("profiles").select("game_credits").eq("id", meId).maybeSingle(); setBal(Number(data?.game_credits) || 0); })(); }, [meId]);
   const creditCost = (live.length > 0 && addonTotal === 0 && live.every(c => c.type && Number(c.type.credit_price) > 0)) ? live.reduce((a, c) => a + Number(c.type.credit_price) * c.qty, 0) : null;
   const setLine = (idx, q) => setCart(cs => cs.map((c, k) => k === idx ? { ...c, qty: Math.max(0, q) } : c));
   const miniBtn = { width: 30, height: 30, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 18, color: W.ink, cursor: "pointer", lineHeight: 1 };
@@ -10547,7 +10557,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticketcredits ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • creditbuy ✅</div>
       </div>
     </div>
   );
