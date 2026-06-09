@@ -4626,7 +4626,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
       {playBanter && <BlindBanter meId={meId} onUpgrade={onUpgrade} onClose={() => setPlayBanter(false)} />}
       {playRiddle && <RiddleSheet meId={meId} alreadyScore={riddleDone} onClose={() => setPlayRiddle(false)} />}
       {playHousie && <HousieHub meId={meId} isStaff={isStaff} events={events} onClose={() => setPlayHousie(false)} />}
-      {playSpark && <SparkHub meId={meId} autoCode={sparkCode} onClose={() => { setPlaySpark(false); setSparkCode(null); }} />}
+      {playSpark && <SparkHub meId={meId} isStaff={isStaff} autoCode={sparkCode} onClose={() => { setPlaySpark(false); setSparkCode(null); }} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
   );
@@ -4950,7 +4950,7 @@ function sparkLevel(i) {
     : { n: "Level 3 · Closeness", c: "#DB2777" };
 }
 
-function SparkHub({ meId, autoCode = null, onClose }) {
+function SparkHub({ meId, isStaff = false, autoCode = null, onClose }) {
   const [view, setView] = useState("menu");   // menu | lobby | play | done
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState(null);
@@ -4962,6 +4962,7 @@ function SparkHub({ meId, autoCode = null, onClose }) {
   const [locked, setLocked] = useState(false);
   const [cost, setCost] = useState(0);
   const [gender, setGender] = useState(null);
+  const [freeLeft, setFreeLeft] = useState(null);
   const [invView, setInvView] = useState(false);
   const [q, setQ] = useState(""); const [hits, setHits] = useState([]);
   const [invited, setInvited] = useState(false);
@@ -4969,12 +4970,14 @@ function SparkHub({ meId, autoCode = null, onClose }) {
   const [look, setLook] = useState(null);
 
   useEffect(() => { (async () => {
-    const [{ data: me }, { data: gc }] = await Promise.all([
+    const [{ data: me }, { data: gc }, { count }] = await Promise.all([
       supabase.from("profiles").select("gender").eq("id", meId).maybeSingle(),
       supabase.from("game_costs").select("paid, credits").eq("key", "spark").maybeSingle(),
+      supabase.from("spark_sessions").select("id", { count: "exact", head: true }).in("status", ["live", "done"]),
     ]);
     setGender(me?.gender || null);
     setCost(gc && gc.paid ? (Number(gc.credits) || 0) : 0);
+    setFreeLeft(Math.max(0, 2 - (count || 0)));
   })(); }, [meId]);
 
   const fetchPeople = async (s) => {
@@ -5083,7 +5086,7 @@ function SparkHub({ meId, autoCode = null, onClose }) {
         <div style={{ fontSize: 13, color: W.soft, lineHeight: 1.6 }}>Two people answer 36 questions that grow closer across three levels. You'll see each other's answers as you go. Best played slowly, somewhere comfortable.</div>
       </div>
       <button onClick={doCreate} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, opacity: busy ? .6 : 1 }}>Start a Spark</button>
-      <div style={{ fontSize: 12, color: W.soft, textAlign: "center", margin: "8px 0 14px" }}>{cost > 0 ? (gender === "male" ? `${cost} credits to play · free for women` : "Free for you 💞") : "Free to play"}</div>
+      <div style={{ fontSize: 12, color: W.soft, textAlign: "center", margin: "8px 0 14px" }}>{cost === 0 ? "Free to play" : (isStaff || gender === "female") ? "Free for you 💞 · unlimited" : freeLeft === null ? "\u00A0" : freeLeft > 0 ? `${freeLeft} free play${freeLeft === 1 ? "" : "s"} left, then ${cost} credits` : `${cost} credits to play · free for women`}</div>
       <div style={{ borderTop: `1px solid ${W.line}`, paddingTop: 14 }}>
         <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, marginBottom: 8 }}>Got a code from someone?</div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -10894,7 +10897,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • spark ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • sparkfree ✅</div>
       </div>
     </div>
   );
