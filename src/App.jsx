@@ -5630,13 +5630,15 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
   const [coupleInfo, setCoupleInfo] = useState({});
   const [reloadKey, setReloadKey] = useState(0);
   const [aq, setAq] = useState(""); const [dir, setDir] = useState([]); const [addMsg, setAddMsg] = useState("");
-  const canAddHere = canAdd && groupType === "event";
+  const canAddHere = canAdd && (groupType === "event" || groupType === "room");
   useEffect(() => { if (!canAddHere) return; supabase.rpc("staff_directory").then(({ data }) => setDir(data || [])); }, [canAddHere]);
   const addToGroup = async (m) => {
     setAddMsg("");
-    const { error } = await supabase.rpc("add_event_group_member", { p_event: room.id, p_user: m.id });
-    if (error) return setAddMsg(error.message);
-    setAddMsg(`✓ ${m.full_name} added to the group.`);
+    const { error } = groupType === "event"
+      ? await supabase.rpc("add_event_group_member", { p_event: room.id, p_user: m.id })
+      : await supabase.rpc("admin_grant_room_v2", { p_user: m.id, p_room: room.id, p_months: null });
+    if (error) return setAddMsg(/duplicate|unique/i.test(error.message) ? "Already in this group." : error.message);
+    setAddMsg(`✓ ${m.full_name} added.`);
     setAq(""); setReloadKey(k => k + 1);
   };
   const addMatches = aq.trim().length < 2 ? [] : dir.filter(m => (m.full_name || "").toLowerCase().includes(aq.trim().toLowerCase()) && !(rows || []).some(r => r.user_id === m.id)).slice(0, 6);
@@ -5727,7 +5729,7 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
               </div>
             ))}
             {addMsg && <div style={{ fontSize: 12.5, color: addMsg.startsWith("✓") ? W.teal : "#C0392B", marginTop: 8 }}>{addMsg}</div>}
-            <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Adds them to the group chat only — no ticket is created.</div>
+            <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>{groupType === "event" ? "Adds them to the group chat only — no ticket is created." : "Gives them access to this room and its chat."}</div>
           </div>
         )}
         {err ? <div style={{ marginTop: 16, color: "#C0392B", fontSize: 13.5 }}>{err}</div>
@@ -11078,7 +11080,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • media4 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • roomadd ✅</div>
       </div>
     </div>
   );
