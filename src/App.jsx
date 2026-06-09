@@ -3311,10 +3311,10 @@ const LUDO_HOME = [
   [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7]],
 ];
 const LUDO_BASE = [
-  [[2.15, 2.15], [2.15, 3.85], [3.85, 2.15], [3.85, 3.85]],
-  [[2.15, 11.15], [2.15, 12.85], [3.85, 11.15], [3.85, 12.85]],
-  [[11.15, 11.15], [11.15, 12.85], [12.85, 11.15], [12.85, 12.85]],
-  [[11.15, 2.15], [11.15, 3.85], [12.85, 2.15], [12.85, 3.85]],
+  [[2.5, 2.3], [2.5, 3.7], [4.0, 2.3], [4.0, 3.7]],
+  [[2.5, 11.3], [2.5, 12.7], [4.0, 11.3], [4.0, 12.7]],
+  [[11.5, 11.3], [11.5, 12.7], [13.0, 11.3], [13.0, 12.7]],
+  [[11.5, 2.3], [11.5, 3.7], [13.0, 2.3], [13.0, 3.7]],
 ];
 const LUDO_START = [0, 13, 26, 39];
 const LUDO_SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]);
@@ -3698,7 +3698,7 @@ function LudoGame({ gameId, meId, onClose }) {
             );
           })()}
           {tokenList.map(t => {
-            const pinW = Math.round(cell * 1.12), pinH = Math.round(cell * 1.47);
+            const pinW = Math.round(cell * 1.12), pinH = Math.round(cell * 1.32);
             const k = t.rc[0] + "_" + t.rc[1]; const n = stacks[k] || 1;
             const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * (cell * 0.24) : 0;
             const clickable = !t.ghost && myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
@@ -3708,17 +3708,15 @@ function LudoGame({ gameId, meId, onClose }) {
             const leftPx = t.rc[1] * cell + cell / 2 + offs;
             const topPx = t.rc[0] * cell + cell / 2 - offs;
             const atBase = t.sVal === -1 || t.sVal == null;
-            const yAnchor = atBase ? 80 : 65;
+            const yAnchor = atBase ? 84 : 65;
             return (
               <div key={(t.ghost ? "g" : "") + t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
                 style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: `translate(-50%,-${yAnchor}%)`, transformOrigin: `50% ${yAnchor}%`, transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
                 <svg viewBox="0 0 24 32" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
-                  <ellipse cx="12" cy="30.2" rx="7" ry="2.3" fill="rgba(0,0,0,.3)" />
-                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill={col} stroke={dk} strokeWidth="1.3" />
-                  <ellipse cx="9.8" cy="9" rx="4.3" ry="6.2" fill={lt} opacity="0.5" />
-                  <circle cx="12" cy="11" r="3.4" fill={dk} opacity="0.45" />
-                  <circle cx="12" cy="11" r="3.4" fill="none" stroke={dk} strokeWidth="0.6" opacity="0.7" />
-                  <ellipse cx="10.2" cy="6.6" rx="2.2" ry="1.5" fill="#ffffff" opacity="0.8" />
+                  <ellipse cx="12" cy="30" rx="6.8" ry="2.2" fill="rgba(0,0,0,.3)" />
+                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill={col} stroke={dk} strokeWidth="1.2" />
+                  <ellipse cx="11" cy="9" rx="4.6" ry="6" fill={lt} opacity="0.42" />
+                  <ellipse cx="10" cy="6.4" rx="2" ry="1.4" fill="#ffffff" opacity="0.5" />
                 </svg>
               </div>
             );
@@ -10956,7 +10954,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking6 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking7 ✅</div>
       </div>
     </div>
   );
