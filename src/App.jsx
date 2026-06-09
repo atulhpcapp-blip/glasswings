@@ -3311,10 +3311,10 @@ const LUDO_HOME = [
   [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7]],
 ];
 const LUDO_BASE = [
-  [[2.3, 2.3], [2.3, 3.7], [3.7, 2.3], [3.7, 3.7]],
-  [[2.3, 11.3], [2.3, 12.7], [3.7, 11.3], [3.7, 12.7]],
-  [[11.3, 11.3], [11.3, 12.7], [12.7, 11.3], [12.7, 12.7]],
-  [[11.3, 2.3], [11.3, 3.7], [12.7, 2.3], [12.7, 3.7]],
+  [[2.15, 2.15], [2.15, 3.85], [3.85, 2.15], [3.85, 3.85]],
+  [[2.15, 11.15], [2.15, 12.85], [3.85, 11.15], [3.85, 12.85]],
+  [[11.15, 11.15], [11.15, 12.85], [12.85, 11.15], [12.85, 12.85]],
+  [[11.15, 2.15], [11.15, 3.85], [12.85, 2.15], [12.85, 3.85]],
 ];
 const LUDO_START = [0, 13, 26, 39];
 const LUDO_SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]);
@@ -3665,8 +3665,8 @@ function LudoGame({ gameId, meId, onClose }) {
             const [qr, qc] = [[0, 0], [0, 9], [9, 9], [9, 0]][pidx];
             return (
               <div key={"court" + pidx}>
-                <div style={{ position: "absolute", left: qc * cell + cell * .9, top: qr * cell + cell * .9, width: cell * 4.2, height: cell * 4.2, background: "#fff", borderRadius: 14, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
-                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = Math.round(cell * 0.92); const scx = (bc + 0.5) * cell, scy = (br + 0.5) * cell; return (
+                <div style={{ position: "absolute", left: qc * cell + cell * .6, top: qr * cell + cell * .6, width: cell * 4.8, height: cell * 4.8, background: "#fff", borderRadius: 16, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
+                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = Math.round(cell * 1.12); const scx = (bc + 0.5) * cell, scy = (br + 0.5) * cell; return (
                   <div key={k} style={{ position: "absolute", left: scx - ps / 2, top: scy - ps / 2, width: ps, height: ps, borderRadius: "50%", background: LUDO_COLORS[pidx], boxShadow: `inset 0 0 0 1.5px ${LUDO_DARK[pidx]}, inset 0 0 ${Math.round(ps * 0.28)}px ${Math.round(ps * 0.1)}px ${LUDO_DARK[pidx]}, 0 2px 4px rgba(0,0,0,.3)`, boxSizing: "border-box" }} />
                 ); })}
               </div>
@@ -3698,7 +3698,7 @@ function LudoGame({ gameId, meId, onClose }) {
             );
           })()}
           {tokenList.map(t => {
-            const pinW = Math.round(cell * 0.9), pinH = Math.round(cell * 1.18);
+            const pinW = Math.round(cell * 1.12), pinH = Math.round(cell * 1.47);
             const k = t.rc[0] + "_" + t.rc[1]; const n = stacks[k] || 1;
             const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * (cell * 0.24) : 0;
             const clickable = !t.ghost && myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
@@ -10956,7 +10956,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking5 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking6 ✅</div>
       </div>
     </div>
   );
