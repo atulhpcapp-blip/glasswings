@@ -3404,6 +3404,7 @@ function LudoGame({ gameId, meId, onClose }) {
   const chatLenRef = useRef(0);
   const chatInit = useRef(false);
   const [vw, setVw] = useState(typeof window !== "undefined" ? window.innerWidth : 390);
+  const [vh, setVh] = useState(typeof window !== "undefined" ? window.innerHeight : 740);
   useEffect(() => {
     const uids = ((g && g.players) || []).map(pl => pl.uid).filter(u => u && !pavs[u]);
     if (!uids.length) return;
@@ -3465,13 +3466,14 @@ function LudoGame({ gameId, meId, onClose }) {
       }
     });
   }, [g && g.chat ? g.chat.length : 0]);
-  useEffect(() => { const on = () => setVw(window.innerWidth); window.addEventListener("resize", on); window.addEventListener("orientationchange", on); return () => { window.removeEventListener("resize", on); window.removeEventListener("orientationchange", on); }; }, []);
+  useEffect(() => { const on = () => { setVw(window.innerWidth); setVh(window.innerHeight); }; window.addEventListener("resize", on); window.addEventListener("orientationchange", on); return () => { window.removeEventListener("resize", on); window.removeEventListener("orientationchange", on); }; }, []);
   useEffect(() => { if (chatOpen) chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [g && g.chat ? g.chat.length : 0, chatOpen]);
   if (!g) return <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}>Loading game…</div>;
   const players = g.players || [];
   const myIdx = players.findIndex(pl => pl.uid === meId);
   const myTurn = g.status === "playing" && g.turn === myIdx;
-  const cell = Math.max(20, Math.floor((Math.min(vw, 430) - 26) / 15)), B = cell * 15;
+  const boardMax = Math.min(vw - 16, vh - 250);
+  const cell = Math.max(18, Math.min(46, Math.floor(boardMax / 15))), B = cell * 15;
   const start = async () => {
     setBusy(true);
     const { error } = await supabase.rpc("ludo_start", { p_game: g.id });
@@ -3501,6 +3503,47 @@ function LudoGame({ gameId, meId, onClose }) {
   const sendChat = async () => { const t = chatText.trim(); if (!t) return; setChatText(""); const { error } = await supabase.rpc("ludo_say", { p_game: g.id, p_text: t }); if (error) alert(error.message); else load(); };
   const sendEmoji = async (e) => { setEmojiTray(false); const { error } = await supabase.rpc("ludo_say", { p_game: g.id, p_text: e }); if (error) alert(error.message); else load(); };
   const leaveGame = async () => { try { if (g.status === "lobby") await supabase.rpc("ludo_leave", { p_game: g.id }); } catch {} onClose(); };
+
+  if (g.status === "lobby") {
+    const isHost = players[0]?.uid === meId;
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 190, background: "radial-gradient(circle at 50% 0%, #EAF4F1, #E4E9EB)", display: "flex", flexDirection: "column" }}>
+        <div style={{ background: "linear-gradient(135deg,#1E88E5,#43A047)", color: "#fff", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          <ArrowLeft size={22} onClick={leaveGame} style={{ cursor: "pointer", flexShrink: 0 }} />
+          <div style={{ flex: 1, fontWeight: 800, fontSize: 17 }}>🎲 Ludo</div>
+          {isHost
+            ? <button onClick={() => window.gwConfirm("Cancel this game?", async () => { const { error } = await supabase.rpc("ludo_end", { p_game: g.id }); if (error) alert(error.message); else onClose(); })} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Cancel</button>
+            : <button onClick={leaveGame} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Leave</button>}
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "22px 18px calc(28px + env(safe-area-inset-bottom))", maxWidth: 460, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: "22px 18px", textAlign: "center", boxShadow: "0 6px 24px rgba(0,0,0,.08)", marginBottom: 18 }}>
+            <div style={{ fontSize: 12, color: W.soft, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase" }}>Game code</div>
+            <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: 10, color: W.ink, margin: "8px 0 4px" }}>{g.code}</div>
+            <div style={{ fontSize: 13, color: W.soft, marginBottom: 16, lineHeight: 1.45 }}>Friends join from Games → Ludo → enter this code.</div>
+            <a href={`https://wa.me/?text=${encodeURIComponent(`🎲 Ludo time on Glasswings! Join my game with code ${g.code} → https://glass-wings.com/g/ludo`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", display: "flex", width: "100%", justifyContent: "center", padding: "12px", boxSizing: "border-box" }}>Share on WhatsApp</a>
+          </div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>Players · {players.length}/4</div>
+          {[0, 1, 2, 3].map(i => {
+            const pl = players[i];
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 12px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, marginBottom: 8, opacity: pl ? 1 : .5 }}>
+                <div style={{ width: 30, height: 30, borderRadius: "50%", background: pl ? LUDO_COLORS[i] : "#fff", border: `2px solid ${LUDO_COLORS[i]}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", color: "#fff", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
+                  {pl ? (pavs[pl.uid] ? <img src={pavs[pl.uid]} alt="" onError={e => { e.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (pl.name || "?").charAt(0)) : ""}
+                </div>
+                <div style={{ flex: 1, fontWeight: 700, color: pl ? W.ink : W.soft, fontSize: 14 }}>{pl ? ((pl.name || "Player").split(" ")[0] + (pl.uid === meId ? " (you)" : "")) : "Waiting for a player…"}</div>
+                {i === 0 && pl && <span style={{ fontSize: 10, fontWeight: 800, color: W.soft, letterSpacing: .5 }}>HOST</span>}
+              </div>
+            );
+          })}
+          <div style={{ marginTop: 18 }}>
+            {isHost
+              ? <button onClick={start} disabled={busy || players.length < 2} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 16, opacity: players.length < 2 ? .55 : 1 }}>{players.length < 2 ? "Need at least 2 players…" : "▶ Start game"}</button>
+              : <div style={{ textAlign: "center", color: W.soft, fontSize: 13.5, padding: "12px 0" }}>Waiting for the host to start… 🎲</div>}
+          </div>
+        </div>
+      </div>
+    );
+  }
   const cellBg = (r, c) => {
     if (r < 6 && c < 6) return LUDO_COLORS[0] + "33";
     if (r < 6 && c > 8) return LUDO_COLORS[1] + "33";
@@ -3534,12 +3577,12 @@ function LudoGame({ gameId, meId, onClose }) {
   const stacks = {};
   tokenList.forEach(t => { const k = t.rc[0] + "_" + t.rc[1]; stacks[k] = (stacks[k] || 0); t.stackIdx = stacks[k]; stacks[k]++; });
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: W.bg, display: "flex", flexDirection: "column", maxWidth: 430, margin: "0 auto", overflowY: "auto" }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: "radial-gradient(circle at 50% 16%, #16333B, #0B1D22)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
       <div style={{ background: "linear-gradient(135deg,#1E88E5,#43A047)", color: "#fff", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12 }}>
         <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer", flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>🎲 Ludo · {g.code}</div>
-          <div style={{ fontSize: 11, opacity: .9 }}>{g.status === "lobby" ? `${players.length}/4 players — waiting` : g.status === "done" ? "Game over" : "In progress"}</div>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>🎲 Ludo</div>
+          <div style={{ fontSize: 11, opacity: .9 }}>{g.status === "done" ? "Game over" : "In progress"}</div>
         </div>
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexShrink: 0 }}>
           <button onClick={() => setEmojiTray(v => !v)} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 9px", fontSize: 14, cursor: "pointer" }}>😀</button>
@@ -3572,14 +3615,6 @@ function LudoGame({ gameId, meId, onClose }) {
           );
         })}
       </div>
-      {g.status === "lobby" && (
-        <div style={{ padding: "8px 16px", textAlign: "center" }}>
-          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6 }}>Share this code with friends:</div>
-          <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: 6, color: W.ink, marginBottom: 10 }}>{g.code}</div>
-          <a href={`https://wa.me/?text=${encodeURIComponent(`🎲 Ludo time on Glasswings! Join my game with code ${g.code} → https://glass-wings.com/g/ludo`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", display: "inline-flex", marginBottom: 10 }}>Share on WhatsApp</a>
-          {players[0]?.uid === meId && <button onClick={start} disabled={busy || players.length < 2} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", opacity: players.length < 2 ? .55 : 1 }}>{players.length < 2 ? "Need at least 2 players…" : "▶ Start game"}</button>}
-        </div>
-      )}
       <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 6px" }}>
         <div style={{ background: "linear-gradient(145deg,#14323C,#0E2228)", padding: 9, borderRadius: 18, boxShadow: "0 8px 26px rgba(0,0,0,.35)" }}>
         <div style={{ position: "relative", width: B, height: B, background: "#fff", borderRadius: 8, overflow: "visible" }}>
@@ -3688,28 +3723,28 @@ function LudoGame({ gameId, meId, onClose }) {
       </div>
       {g.status === "playing" && (
         <div style={{ padding: "8px 16px calc(20px + env(safe-area-inset-bottom))", textAlign: "center" }}>
-          {g.last && <div style={{ fontSize: 12, color: W.soft, marginBottom: 7 }}>{(players[g.last.by]?.name || "Player").split(" ")[0]} rolled 🎲 {g.last.dice}{g.last.captured ? " — and captured! 💥" : ""}{g.last.passed ? " — no moves, turn passed" : ""}</div>}
+          {g.last && <div style={{ fontSize: 12, color: "rgba(255,255,255,.7)", marginBottom: 7 }}>{(players[g.last.by]?.name || "Player").split(" ")[0]} rolled 🎲 {g.last.dice}{g.last.captured ? " — and captured! 💥" : ""}{g.last.passed ? " — no moves, turn passed" : ""}</div>}
           {rolling ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}><div style={{ animation: "gwshake .18s infinite" }}><DiceFace n={rollFace} size={54} /></div></div>
           ) : myTurn ? (
             g.dice == null
               ? <button onClick={roll} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 16 }}>🎲 Roll the dice</button>
-              : <div style={{ fontWeight: 800, color: W.ink, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}><DiceFace n={g.dice} /> Tap a glowing token to move</div>
-          ) : <div style={{ fontWeight: 700, color: W.soft, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>{g.dice != null && <DiceFace n={g.dice} size={34} />} Waiting for {(players[g.turn]?.name || "player").split(" ")[0]}'s move…</div>}
+              : <div style={{ fontWeight: 800, color: "#fff", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}><DiceFace n={g.dice} /> Tap a glowing token to move</div>
+          ) : <div style={{ fontWeight: 700, color: "rgba(255,255,255,.78)", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>{g.dice != null && <DiceFace n={g.dice} size={34} />} Waiting for {(players[g.turn]?.name || "player").split(" ")[0]}'s move…</div>}
         </div>
       )}
       {g.status === "done" && g.winner == null && (
         <div style={{ padding: "14px 16px calc(24px + env(safe-area-inset-bottom))", textAlign: "center" }}>
           <div style={{ fontSize: 34 }}>🛑</div>
-          <div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>Game ended by the host</div>
-          <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No winner this time — rematch? 🎲</div>
+          <div style={{ fontWeight: 800, color: "#fff", fontSize: 16 }}>Game ended by the host</div>
+          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", marginTop: 4 }}>No winner this time — rematch? 🎲</div>
         </div>
       )}
       {g.status === "done" && g.winner != null && (
         <div style={{ padding: "14px 16px calc(24px + env(safe-area-inset-bottom))", textAlign: "center" }}>
           <div style={{ fontSize: 38 }}>🏆</div>
-          <div style={{ fontWeight: 800, color: W.ink, fontSize: 18 }}>{(players[g.winner]?.name || "Player").split(" ")[0]} wins!</div>
-          <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>What a game 🎉</div>
+          <div style={{ fontWeight: 800, color: "#fff", fontSize: 18 }}>{(players[g.winner]?.name || "Player").split(" ")[0]} wins!</div>
+          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,.7)", marginTop: 4 }}>What a game 🎉</div>
         </div>
       )}
       {chatOpen && (
@@ -10898,7 +10933,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • sparkcopy ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludofull ✅</div>
       </div>
     </div>
   );
