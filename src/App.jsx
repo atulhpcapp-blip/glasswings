@@ -3311,10 +3311,10 @@ const LUDO_HOME = [
   [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7]],
 ];
 const LUDO_BASE = [
-  [[1, 1], [1, 4], [4, 1], [4, 4]],
-  [[1, 10], [1, 13], [4, 10], [4, 13]],
-  [[10, 10], [10, 13], [13, 10], [13, 13]],
-  [[10, 1], [10, 4], [13, 1], [13, 4]],
+  [[2.4, 2.4], [2.4, 3.6], [3.6, 2.4], [3.6, 3.6]],
+  [[2.4, 11.4], [2.4, 12.6], [3.6, 11.4], [3.6, 12.6]],
+  [[11.4, 11.4], [11.4, 12.6], [12.6, 11.4], [12.6, 12.6]],
+  [[11.4, 2.4], [11.4, 3.6], [12.6, 2.4], [12.6, 3.6]],
 ];
 const LUDO_START = [0, 13, 26, 39];
 const LUDO_SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]);
@@ -3666,8 +3666,8 @@ function LudoGame({ gameId, meId, onClose }) {
             return (
               <div key={"court" + pidx}>
                 <div style={{ position: "absolute", left: qc * cell + cell * .9, top: qr * cell + cell * .9, width: cell * 4.2, height: cell * 4.2, background: "#fff", borderRadius: 14, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
-                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = Math.round(cell * 1.04); const ringT = Math.max(3, Math.round(cell * 0.16)); const scx = (bc + 0.5) * cell, scy = (br + 0.5) * cell + cell * 0.30; return (
-                  <div key={k} style={{ position: "absolute", left: scx - ps / 2, top: scy - ps / 2, width: ps, height: ps, borderRadius: "50%", background: "rgba(255,255,255,.45)", boxShadow: `inset 0 0 0 ${ringT}px ${LUDO_COLORS[pidx]}, inset 0 0 0 ${ringT + 1.5}px ${LUDO_DARK[pidx]}66, 0 1px 3px rgba(0,0,0,.22)`, boxSizing: "border-box" }} />
+                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = Math.round(cell * 0.9); const scx = (bc + 0.5) * cell, scy = (br + 0.5) * cell; return (
+                  <div key={k} style={{ position: "absolute", left: scx - ps / 2, top: scy - ps / 2, width: ps, height: ps, borderRadius: "50%", background: `radial-gradient(circle at 50% 38%, ${LUDO_LIGHT[pidx]} 0%, ${LUDO_COLORS[pidx]} 56%, ${LUDO_DARK[pidx]} 100%)`, boxShadow: `inset 0 0 0 1.5px ${LUDO_DARK[pidx]}, inset 0 -2px 4px ${LUDO_DARK[pidx]}, inset 0 2px 3px rgba(255,255,255,.4), 0 2px 5px rgba(0,0,0,.3)`, boxSizing: "border-box" }} />
                 ); })}
               </div>
             );
@@ -3707,9 +3707,11 @@ function LudoGame({ gameId, meId, onClose }) {
             const hopping = !t.ghost && hop.idx === flatIdx;
             const leftPx = t.rc[1] * cell + cell / 2 + offs;
             const topPx = t.rc[0] * cell + cell / 2 - offs;
+            const atBase = t.sVal === -1 || t.sVal == null;
+            const yAnchor = atBase ? 86 : 65;
             return (
               <div key={(t.ghost ? "g" : "") + t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
-                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-65%)", transformOrigin: "50% 65%", transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
+                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: `translate(-50%,-${yAnchor}%)`, transformOrigin: `50% ${yAnchor}%`, transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
                 <svg viewBox="0 0 24 32" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
                   <ellipse cx="12" cy="30.2" rx="7.7" ry="2.5" fill="rgba(0,0,0,.25)" />
                   <ellipse cx="12" cy="29.1" rx="7.4" ry="2.8" fill={dk} />
@@ -10956,7 +10958,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoring ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking3 ✅</div>
       </div>
     </div>
   );
