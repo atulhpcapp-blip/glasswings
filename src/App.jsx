@@ -8667,6 +8667,43 @@ function EventTerms({ ev, onUpdate }) {
     </div>
   );
 }
+function EventVideos({ ev, onUpdate }) {
+  const [busy, setBusy] = useState("");
+  const vR = useRef(null), pR = useRef(null), lR = useRef(null);
+  const up = async (file, field) => {
+    if (!file) return;
+    if (!file.type.startsWith("video")) { alert("Please choose a video file."); return; }
+    setBusy(field);
+    try { const url = await uploadChatFile("banners", file); await onUpdate(ev.id, { [field]: url }); }
+    catch (x) { alert("Upload failed: " + (x.message || x)); }
+    setBusy("");
+  };
+  const row = (field, val, ratio, w, emoji, title, hint, inpRef) => (
+    <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+      <input ref={inpRef} type="file" accept="video/*" onChange={e => { up(e.target.files?.[0], field); e.target.value = ""; }} style={{ display: "none" }} />
+      <div onClick={() => inpRef.current?.click()} style={{ width: w, aspectRatio: ratio, flexShrink: 0, borderRadius: 12, overflow: "hidden", border: val ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, cursor: "pointer" }}>
+        {busy === field ? <span style={{ fontSize: 11, color: "#fff" }}>…</span> : val ? <video src={val} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : emoji}
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{val ? title + " ✓" : title}</div>
+        <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>{hint}</div>
+        <div style={{ display: "flex", gap: 14, marginTop: 4 }}>
+          <span onClick={() => inpRef.current?.click()} style={{ fontSize: 12, color: W.teal, fontWeight: 700, cursor: "pointer" }}>{val ? "Replace" : "Upload"}</span>
+          {val && <span onClick={() => onUpdate(ev.id, { [field]: null })} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>🎬 Event videos — play on the event page <span style={{ fontWeight: 700, color: W.teal }}>before</span> the banner</label>
+      {row("vertical_video_url", ev.vertical_video_url, "9/16", 80, "🎬", "Vertical video (9:16)", "Reel-style. Shown first — highest priority.", vR)}
+      {row("portrait_video_url", ev.portrait_video_url, "3/4", 80, "🎞️", "Portrait video (3:4)", "Used if there's no vertical video.", pR)}
+      {row("landscape_video_url", ev.landscape_video_url, "16/9", 110, "🎥", "Landscape video (16:9)", "Wide clip. Fills the banner area.", lR)}
+      <div style={{ fontSize: 11.5, color: W.soft }}>Changes save instantly. Any video here is shown on the event page instead of the banner.</div>
+    </div>
+  );
+}
 function EventBanner({ ev, onUpdate }) {
   const ref = useRef(null); const [busy, setBusy] = useState(false);
   const pick = async (e) => { const f = e.target.files?.[0]; if (!f) return; setBusy(true); try { const url = await uploadChatFile("banners", f); const banner_type = f.type.startsWith("video") ? "video" : "image"; await onUpdate(ev.id, { banner_url: url, banner_type }); } catch (x) { alert("Upload failed: " + x.message); } setBusy(false); };
@@ -9599,6 +9636,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <EventBanner ev={e} onUpdate={onUpdate} />
+                <EventVideos ev={e} onUpdate={onUpdate} />
                 <EventShare event={e} />
                 <GuestTickets event={e} />
                 <EventMediaEditor event={e} onUpdate={onUpdate} />
@@ -10971,7 +11009,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • entrybadges ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • eventvideos ✅</div>
       </div>
     </div>
   );
