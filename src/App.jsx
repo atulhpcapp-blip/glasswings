@@ -3312,10 +3312,10 @@ const LUDO_HOME = [
   [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7]],
 ];
 const LUDO_BASE = [
-  [[2.5, 2.3], [2.5, 3.7], [4.0, 2.3], [4.0, 3.7]],
-  [[2.5, 11.3], [2.5, 12.7], [4.0, 11.3], [4.0, 12.7]],
-  [[11.5, 11.3], [11.5, 12.7], [13.0, 11.3], [13.0, 12.7]],
-  [[11.5, 2.3], [11.5, 3.7], [13.0, 2.3], [13.0, 3.7]],
+  [[2.4, 2.3], [2.4, 3.7], [4.1, 2.3], [4.1, 3.7]],
+  [[2.4, 11.3], [2.4, 12.7], [4.1, 11.3], [4.1, 12.7]],
+  [[11.4, 11.3], [11.4, 12.7], [13.1, 11.3], [13.1, 12.7]],
+  [[11.4, 2.3], [11.4, 3.7], [13.1, 2.3], [13.1, 3.7]],
 ];
 const LUDO_START = [0, 13, 26, 39];
 const LUDO_SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]);
@@ -3699,7 +3699,9 @@ function LudoGame({ gameId, meId, onClose }) {
             );
           })()}
           {tokenList.map(t => {
-            const pinW = Math.round(cell * 1.12), pinH = Math.round(cell * 1.32);
+            const atBase = t.sVal === -1 || t.sVal == null;
+            const pinW = atBase ? Math.round(cell * 1.12) : Math.round(cell * 0.92);
+            const pinH = atBase ? Math.round(cell * 1.22) : Math.round(cell * 1.12);
             const k = t.rc[0] + "_" + t.rc[1]; const n = stacks[k] || 1;
             const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * (cell * 0.24) : 0;
             const clickable = !t.ghost && myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
@@ -3708,8 +3710,7 @@ function LudoGame({ gameId, meId, onClose }) {
             const hopping = !t.ghost && hop.idx === flatIdx;
             const leftPx = t.rc[1] * cell + cell / 2 + offs;
             const topPx = t.rc[0] * cell + cell / 2 - offs;
-            const atBase = t.sVal === -1 || t.sVal == null;
-            const yAnchor = atBase ? 84 : 65;
+            const yAnchor = atBase ? 82 : 66;
             return (
               <div key={(t.ghost ? "g" : "") + t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
                 style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: `translate(-50%,-${yAnchor}%)`, transformOrigin: `50% ${yAnchor}%`, transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
@@ -10958,7 +10959,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • multidim ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking8 ✅</div>
       </div>
     </div>
   );
