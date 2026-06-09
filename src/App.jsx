@@ -3278,10 +3278,11 @@ const LUDO_EMOJIS = ["😀","😂","😍","😎","😜","🤣","😡","😭","�
 const LUDO_EMOJI_SET = new Set(LUDO_EMOJIS);
 function isQuickEmoji(t) { return LUDO_EMOJI_SET.has((t || "").trim()); }
 function DiceFace({ n, size = 46 }) {
-  const pip = (x, y) => <div key={x + "_" + y} style={{ position: "absolute", left: `${x}%`, top: `${y}%`, width: size * .16, height: size * .16, borderRadius: "50%", background: "#1d2a27", transform: "translate(-50%,-50%)" }} />;
+  const ps = size * 0.21;
+  const pip = (x, y) => <div key={x + "_" + y} style={{ position: "absolute", left: `${x}%`, top: `${y}%`, width: ps, height: ps, borderRadius: "50%", background: "radial-gradient(circle at 35% 28%, #555, #050505 72%)", boxShadow: "inset 0 1.5px 2px rgba(255,255,255,.4), inset 0 -1.5px 2px rgba(0,0,0,.65), 0 0 1px rgba(0,0,0,.5)", transform: "translate(-50%,-50%)" }} />;
   const P = { 1: [[50, 50]], 2: [[28, 28], [72, 72]], 3: [[26, 26], [50, 50], [74, 74]], 4: [[28, 28], [72, 28], [28, 72], [72, 72]], 5: [[27, 27], [73, 27], [50, 50], [27, 73], [73, 73]], 6: [[30, 24], [70, 24], [30, 50], [70, 50], [30, 76], [70, 76]] };
   return (
-    <div style={{ position: "relative", width: size, height: size, background: "linear-gradient(145deg,#ffffff,#e9efec)", borderRadius: size * .22, boxShadow: "0 3px 8px rgba(0,0,0,.3), inset 0 -2px 4px rgba(0,0,0,.08)", display: "inline-block", verticalAlign: "middle" }}>
+    <div style={{ position: "relative", width: size, height: size, borderRadius: size * .2, background: "linear-gradient(150deg,#ffffff 0%,#f3f6f4 46%,#d9e2de 100%)", boxShadow: "0 5px 11px rgba(0,0,0,.4), inset 0 2px 3px rgba(255,255,255,.95), inset 0 -3px 6px rgba(0,0,0,.18)", border: "1px solid rgba(255,255,255,.65)", display: "inline-block", verticalAlign: "middle" }}>
       {(P[n] || []).map(([x, y]) => pip(x, y))}
     </div>
   );
@@ -3406,6 +3407,7 @@ function LudoGame({ gameId, meId, onClose }) {
   const [vw, setVw] = useState(typeof window !== "undefined" ? window.innerWidth : 390);
   const [vh, setVh] = useState(typeof window !== "undefined" ? window.innerHeight : 740);
   const [lastDice, setLastDice] = useState({});
+  const [hop, setHop] = useState({ idx: -1, tick: 0 });
   useEffect(() => {
     const l = g && g.last;
     if (l && l.by != null && l.dice != null) setLastDice(prev => prev[l.by] === l.dice ? prev : { ...prev, [l.by]: l.dice });
@@ -3440,19 +3442,22 @@ function LudoGame({ gameId, meId, onClose }) {
     }
     animRef.current = true;
     let sv = from;
+    let tick = hop.tick;
     const stepOnce = () => {
-      sv += 1;
+      sv += 1; tick += 1;
       const n = (dispRef.current || cur).slice(); n[idx] = sv; dispRef.current = n; setDisp(n);
+      setHop({ idx, tick });
       try { _beep(360 + sv * 6, 0.04, "square", 0.06, 0); } catch {}
       if (sv >= to) {
         animRef.current = false;
         const f = (dispRef.current || cur).slice();
         for (let i = 0; i < target.length; i++) { if (i !== idx) f[i] = target[i]; }
         dispRef.current = f; setDisp(f);
+        setTimeout(() => setHop({ idx: -1, tick: tick + 1 }), 170);
         if (g.last && g.last.captured) playCaptureSound();
         return;
       }
-      setTimeout(stepOnce, 165);
+      setTimeout(stepOnce, 175);
     };
     setTimeout(stepOnce, 70);
   }, [g ? JSON.stringify(g.tokens) : ""]);
@@ -3488,7 +3493,7 @@ function LudoGame({ gameId, meId, onClose }) {
   const roll = async () => {
     if (busy || rolling) return;
     setRolling(true); playDiceSound();
-    const iv = setInterval(() => setRollFace(1 + Math.floor(Math.random() * 6)), 130);
+    const iv = setInterval(() => setRollFace(1 + Math.floor(Math.random() * 6)), 80);
     const { data, error } = await supabase.rpc("ludo_roll", { p_game: g.id });
     await new Promise(r => setTimeout(r, 900));
     clearInterval(iv); setRolling(false);
@@ -3700,11 +3705,14 @@ function LudoGame({ gameId, meId, onClose }) {
             const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * 7 : 0;
             const clickable = myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
             const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx];
+            const flatIdx = t.pidx * 4 + t.j;
+            const hopping = hop.idx === flatIdx;
             const leftPx = t.rc[1] * cell + cell / 2 + offs;
             const topPx = t.rc[0] * cell + cell / 2 - offs;
             return (
               <div key={t.pidx + "_" + t.j} onClick={() => move(t.j)}
-                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-86%)", transformOrigin: "50% 86%", transition: "left .15s linear, top .15s linear", zIndex: clickable ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 4px ${col})` : "none" }}>
+                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-86%)", transformOrigin: "50% 86%", transition: hopping ? "none" : "left .14s linear, top .14s linear", zIndex: (clickable || hopping) ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 4px ${col})` : hopping ? "drop-shadow(0 4px 4px rgba(0,0,0,.35))" : "none" }}>
+                <div key={hopping ? hop.tick : "s"} style={{ animation: hopping ? "gwhop 175ms ease-out" : "none" }}>
                 <svg viewBox="0 0 24 31" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
                   <ellipse cx="12" cy="29.6" rx="8" ry="2.7" fill={col} opacity="0.32" />
                   <ellipse cx="12" cy="29.9" rx="5" ry="1.5" fill="rgba(0,0,0,.32)" />
@@ -3716,13 +3724,14 @@ function LudoGame({ gameId, meId, onClose }) {
                   <ellipse cx="10.1" cy="8.7" rx="1.25" ry="0.85" fill="rgba(255,255,255,.85)" />
                   <ellipse cx="9.4" cy="6.7" rx="2.7" ry="1.7" fill="rgba(255,255,255,.6)" />
                 </svg>
+                </div>
               </div>
             );
           })}
           {floats.map(fl => { const q = [[0, 0], [0, 9], [9, 9], [9, 0]][fl.pidx] || [0, 0]; return (
             <div key={fl.id} style={{ position: "absolute", left: (q[1] + 3) * cell, top: (q[0] + 3) * cell, fontSize: 27, zIndex: 30, pointerEvents: "none", animation: "gwfloat 2.2s ease-out forwards", filter: "drop-shadow(0 2px 3px rgba(0,0,0,.45))" }}>{fl.emoji}</div>
           ); })}
-          <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } } @keyframes gwhop { 0% { transform: translateY(0); } 35% { transform: translateY(-11px) scale(1.05); } 70% { transform: translateY(0); } 85% { transform: translateY(-3px); } 100% { transform: translateY(0); } } @keyframes gwshake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes gwfloat { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); } 16% { opacity: 1; transform: translate(-50%,-95%) scale(1.35); } 70% { opacity: 1; transform: translate(-50%,-150%) scale(1.1); } 100% { opacity: 0; transform: translate(-50%,-195%) scale(.95); } }`}</style>
+          <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } } @keyframes gwhop { 0% { transform: translateY(0) scale(1); } 40% { transform: translateY(-14px) scale(1.08); } 72% { transform: translateY(0) scale(.97); } 86% { transform: translateY(-4px); } 100% { transform: translateY(0) scale(1); } } @keyframes gwshake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes gwroll { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-200deg) scale(1.14); } 50% { transform: rotate(-360deg) scale(.92); } 75% { transform: rotate(-540deg) scale(1.12); } 100% { transform: rotate(-720deg) scale(1); } } @keyframes gwfloat { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); } 16% { opacity: 1; transform: translate(-50%,-95%) scale(1.35); } 70% { opacity: 1; transform: translate(-50%,-150%) scale(1.1); } 100% { opacity: 0; transform: translate(-50%,-195%) scale(.95); } }`}</style>
         </div>
         </div>
       </div>
@@ -3741,8 +3750,8 @@ function LudoGame({ gameId, meId, onClose }) {
               const showRollAnim = active && rolling;
               return (
                 <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, opacity: active ? 1 : .72 }}>
-                  <div onClick={canRoll ? roll : undefined} style={{ width: 50, height: 50, borderRadius: 12, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[i]}, 0 5px 16px ${LUDO_COLORS[i]}66` : `0 0 0 2px ${LUDO_COLORS[i]}55`, cursor: canRoll ? "pointer" : "default", animation: canRoll ? "gwpulse 1s infinite" : "none" }}>
-                    {showRollAnim ? <div style={{ animation: "gwshake .18s infinite" }}><DiceFace n={rollFace} size={34} /></div> : val != null ? <DiceFace n={val} size={34} /> : <span style={{ fontSize: 22 }}>🎲</span>}
+                  <div onClick={canRoll ? roll : undefined} style={{ width: 58, height: 58, borderRadius: 14, background: "rgba(255,255,255,.08)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[i]}, 0 6px 18px ${LUDO_COLORS[i]}77` : `0 0 0 2px ${LUDO_COLORS[i]}55`, cursor: canRoll ? "pointer" : "default", animation: canRoll ? "gwpulse 1s infinite" : "none" }}>
+                    {showRollAnim ? <div style={{ animation: "gwroll .45s linear infinite" }}><DiceFace n={rollFace} size={42} /></div> : val != null ? <DiceFace n={val} size={42} /> : <span style={{ fontSize: 26 }}>🎲</span>}
                   </div>
                   <div style={{ fontSize: 10.5, fontWeight: 800, color: active ? "#fff" : "rgba(255,255,255,.6)", maxWidth: 66, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(pl.name || "P" + (i + 1)).split(" ")[0]}{isMe ? " (you)" : ""}</div>
                   {canRoll ? <div style={{ fontSize: 9, fontWeight: 800, color: LUDO_COLORS[i], letterSpacing: .5 }}>TAP TO ROLL</div> : <div style={{ height: 12 }} />}
@@ -10952,7 +10961,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludodice ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludohop ✅</div>
       </div>
     </div>
   );
