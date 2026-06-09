@@ -3,8 +3,12 @@ import React, { useEffect, useRef, useState } from "react";
 // Reads from Vercel env (must be VITE_-prefixed so the client can see them):
 //   VITE_SNAP_CAMERA_KIT_TOKEN  -> API token from the Camera Kit portal
 //   VITE_SNAP_LENS_GROUP_ID     -> Lens Group ID published from Lens Studio
-const TOKEN = import.meta.env.VITE_SNAP_CAMERA_KIT_TOKEN;
-const LENS_GROUP_ID = import.meta.env.VITE_SNAP_LENS_GROUP_ID;
+// TEMP OVERRIDE for branch testing only — paste your STAGING values here to bypass
+// Vercel env vars. Leave "" to use the Vercel env vars. Remove these before production.
+const MANUAL_TOKEN = "";
+const MANUAL_LENS_GROUP_ID = "";
+const TOKEN = MANUAL_TOKEN || (typeof import.meta !== "undefined" && import.meta.env ? import.meta.env.VITE_SNAP_CAMERA_KIT_TOKEN : "");
+const LENS_GROUP_ID = MANUAL_LENS_GROUP_ID || (typeof import.meta !== "undefined" && import.meta.env ? import.meta.env.VITE_SNAP_LENS_GROUP_ID : "");
 const TEAL = "#008069";
 
 /**
