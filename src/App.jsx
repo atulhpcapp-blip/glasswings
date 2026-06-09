@@ -3405,6 +3405,11 @@ function LudoGame({ gameId, meId, onClose }) {
   const chatInit = useRef(false);
   const [vw, setVw] = useState(typeof window !== "undefined" ? window.innerWidth : 390);
   const [vh, setVh] = useState(typeof window !== "undefined" ? window.innerHeight : 740);
+  const [lastDice, setLastDice] = useState({});
+  useEffect(() => {
+    const l = g && g.last;
+    if (l && l.by != null && l.dice != null) setLastDice(prev => prev[l.by] === l.dice ? prev : { ...prev, [l.by]: l.dice });
+  }, [g && g.last ? g.last.by + "_" + g.last.dice : ""]);
   useEffect(() => {
     const uids = ((g && g.players) || []).map(pl => pl.uid).filter(u => u && !pavs[u]);
     if (!uids.length) return;
@@ -3615,7 +3620,7 @@ function LudoGame({ gameId, meId, onClose }) {
           );
         })}
       </div>
-      <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 6px" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 0" }}>
         <div style={{ background: "linear-gradient(145deg,#14323C,#0E2228)", padding: 9, borderRadius: 18, boxShadow: "0 8px 26px rgba(0,0,0,.35)" }}>
         <div style={{ position: "relative", width: B, height: B, background: "#fff", borderRadius: 8, overflow: "visible" }}>
           {Array.from({ length: 15 }).map((_, r) => Array.from({ length: 15 }).map((_, c) => {
@@ -3722,15 +3727,29 @@ function LudoGame({ gameId, meId, onClose }) {
         </div>
       </div>
       {g.status === "playing" && (
-        <div style={{ padding: "8px 16px calc(20px + env(safe-area-inset-bottom))", textAlign: "center" }}>
-          {g.last && <div style={{ fontSize: 12, color: "rgba(255,255,255,.7)", marginBottom: 7 }}>{(players[g.last.by]?.name || "Player").split(" ")[0]} rolled 🎲 {g.last.dice}{g.last.captured ? " — and captured! 💥" : ""}{g.last.passed ? " — no moves, turn passed" : ""}</div>}
-          {rolling ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}><div style={{ animation: "gwshake .18s infinite" }}><DiceFace n={rollFace} size={54} /></div></div>
-          ) : myTurn ? (
-            g.dice == null
-              ? <button onClick={roll} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "14px", fontSize: 16 }}>🎲 Roll the dice</button>
-              : <div style={{ fontWeight: 800, color: "#fff", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}><DiceFace n={g.dice} /> Tap a glowing token to move</div>
-          ) : <div style={{ fontWeight: 700, color: "rgba(255,255,255,.78)", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>{g.dice != null && <DiceFace n={g.dice} size={34} />} Waiting for {(players[g.turn]?.name || "player").split(" ")[0]}'s move…</div>}
+        <div style={{ flexShrink: 0, padding: "6px 12px calc(16px + env(safe-area-inset-bottom))" }}>
+          <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,.92)", minHeight: 18, marginBottom: 9 }}>
+            {myTurn ? (g.dice == null ? "Your turn — tap your dice to roll 🎲" : "Tap a glowing token to move") : `Waiting for ${(players[g.turn]?.name || "player").split(" ")[0]}…`}
+            {g.last && g.last.captured ? "  💥 capture!" : g.last && g.last.passed ? "  — no moves, passed" : ""}
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+            {players.map((pl, i) => {
+              const active = g.turn === i;
+              const isMe = i === myIdx;
+              const val = (active && g.dice != null) ? g.dice : (lastDice[i] != null ? lastDice[i] : null);
+              const canRoll = active && isMe && g.dice == null && !rolling;
+              const showRollAnim = active && rolling;
+              return (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, opacity: active ? 1 : .72 }}>
+                  <div onClick={canRoll ? roll : undefined} style={{ width: 50, height: 50, borderRadius: 12, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: active ? `0 0 0 3px ${LUDO_COLORS[i]}, 0 5px 16px ${LUDO_COLORS[i]}66` : `0 0 0 2px ${LUDO_COLORS[i]}55`, cursor: canRoll ? "pointer" : "default", animation: canRoll ? "gwpulse 1s infinite" : "none" }}>
+                    {showRollAnim ? <div style={{ animation: "gwshake .18s infinite" }}><DiceFace n={rollFace} size={34} /></div> : val != null ? <DiceFace n={val} size={34} /> : <span style={{ fontSize: 22 }}>🎲</span>}
+                  </div>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: active ? "#fff" : "rgba(255,255,255,.6)", maxWidth: 66, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(pl.name || "P" + (i + 1)).split(" ")[0]}{isMe ? " (you)" : ""}</div>
+                  {canRoll ? <div style={{ fontSize: 9, fontWeight: 800, color: LUDO_COLORS[i], letterSpacing: .5 }}>TAP TO ROLL</div> : <div style={{ height: 12 }} />}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       {g.status === "done" && g.winner == null && (
@@ -10933,7 +10952,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludofull ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludodice ✅</div>
       </div>
     </div>
   );
