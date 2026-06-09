@@ -1523,12 +1523,17 @@ const PRIVACY = {
   title: "Privacy Policy",
   updated: "June 2026",
   sections: [
-    { p: "Glasswings Events (\"we\", \"us\") operates glass-wings.com and the Glasswings community app. This policy explains what information we collect, why, and your choices. By using the app you agree to this policy." },
-    { h: "Information we collect", p: "• Account details you provide: name, email, phone number, gender, age, city, profession, and profile photo.\n• Content you create: messages, photos and other posts in rooms and events.\n• Payment information: payments are processed by Razorpay. We do not see or store your full card / UPI details — only a record that a payment or subscription succeeded.\n• Notifications: if you enable them, a push token for your device so we can alert you.\n• Basic usage and device information needed to run the service securely." },
-    { h: "How we use it", p: "To run the community, events, tickets and subscriptions; to send you organiser messages and notifications you opt into; to process payments and renewals; and to keep the service safe and prevent misuse." },
-    { h: "Who we share it with", p: "We share only what's necessary with: Razorpay (to process payments and recurring subscriptions) and our hosting/database provider (Supabase) to store your data securely. We may disclose information if required by law. We do not sell your personal data." },
+    { p: "Glasswings Events Private Limited (we, us, our), which operates glass-wings.com and the Glasswings community app (also known as Glasswings Party Club), is based in India. This policy explains what information we collect, why, who we share it with, and your choices. You must be 18 or older to use the app. By using Glasswings you agree to this policy." },
+    { h: "Information we collect", p: "\u2022 Account details you provide: name, email, phone number, gender, age, city, profession and profile photo.\n\u2022 Content you create: chat and direct messages, photos, stories, poll responses and other posts in rooms and events.\n\u2022 Event activity: tickets purchased, check-ins, and guest, waitlist or VIP list entries.\n\u2022 Payment information: processed by Razorpay \u2014 we do not see or store your full card / UPI / bank details, only a record that a payment or subscription succeeded.\n\u2022 Notifications: if you enable them, a push token for your device.\n\u2022 Basic usage and device information needed to run the service securely." },
+    { h: "Camera, photos and AR lenses", p: "When you use the in-app camera, your camera feed is processed in your browser to show the live preview and any AR lens you pick. AR lenses are powered by Snap Camera Kit, which runs on your device \u2014 those camera frames are processed locally and are not sent to us in real time. Only the photos or stories you choose to capture and post are uploaded and shared with other members." },
+    { h: "How we use it", p: "To run the community, events, tickets and subscriptions; to enable chat and messaging under our community rules; to send organiser messages and notifications you opt into; to process payments and renewals; to analyse usage and prevent fraud or misuse; and to comply with the law." },
+    { h: "Who we share it with", p: "We share only what is necessary with our service providers: Razorpay (payments and recurring subscriptions), Supabase (database and storage hosting), Vercel (app hosting), Resend (email) and Snap Camera Kit (AR lenses). Your profile and the content you post are visible to other members as per the app rules. We may disclose information if required by law, or in connection with a business transfer. We do not sell your personal data." },
+    { h: "Direct marketing", p: "With your consent, we may send you communications about our events, parties, memberships and related lifestyle, music, food and travel offers, by email, SMS, in-app notification or similar. You can withdraw your consent at any time by emailing us." },
     { h: "Notifications", p: "If you turn on notifications, we store a device token to deliver them. You can turn notifications off any time from your Profile or your browser/device settings." },
-    { h: "Data retention and your rights", p: "You can ask us to access or delete your personal data, or delete your account, by contacting us. Deleting your account removes your profile and associated data, except records we must keep for legal or accounting reasons (for example, payment records)." },
+    { h: "Data retention and your rights", p: "You can ask us to access or delete your personal data, or delete your account, by contacting us. Deleting your account removes your profile and associated data, except records we must keep for legal or accounting reasons (for example, payment records). Depending on your location you may have additional rights under applicable law, including India's Digital Personal Data Protection Act, 2023." },
+    { h: "Children", p: "Glasswings is only for people aged 18 and over (or the age of majority in their region). We do not knowingly collect data from anyone under this age." },
+    { h: "International transfers", p: "Some of our service providers may store and process data outside India. Where this happens, we take steps intended to keep your data protected in line with this policy." },
+    { h: "Changes", p: "We may update this policy from time to time. We will revise the date above and, where appropriate, notify you in the app. Continued use means you accept the changes." },
     { h: "Contact", p: "Questions about privacy? Email us at hello@glass-wings.com." },
   ],
 };
@@ -10067,7 +10072,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • lenses4 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • privsync ✅</div>
       </div>
     </div>
   );
