@@ -782,12 +782,18 @@ function RideButtons({ e, compact }) {
   );
   const venueText = (e.venue || e.title || "").trim();
   const copyVenue = () => { try { navigator.clipboard.writeText(venueText); window.alert && window.alert("Venue copied — paste it as the drop in Rapido."); } catch {} };
+  const maps = hasGeo
+    ? `https://www.google.com/maps/dir/?api=1&destination=${e.venue_lat},${e.venue_lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${name}`;
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {a(uber, "#000", "#fff", "Uber", "🚕")}
       {a(ola, "#C6D62E", "#1b1b1b", "Ola", "🚖")}
       <a href={rapido} target="_blank" rel="noreferrer" onClick={() => { if (venueText) copyVenue(); }} style={{ ...btn("#FFD200", "#1b1b1b"), padding: compact ? "8px 13px" : "10px 16px", fontSize: compact ? 12.5 : 13.5, textDecoration: "none", flex: compact ? "0 0 auto" : 1, justifyContent: "center" }}>🛵 Rapido</a>
-      {hasGeo ? a(`https://www.google.com/maps/dir/?api=1&destination=${e.venue_lat},${e.venue_lng}`, "#fff", W.ink, "Directions", "🗺️") : null}
+      <a href={maps} target="_blank" rel="noreferrer" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: compact ? "8px 13px" : "10px 16px", fontSize: compact ? 12.5 : 13.5, textDecoration: "none", flex: compact ? "0 0 auto" : 1, justifyContent: "center", gap: 6, alignItems: "center" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden style={{ flexShrink: 0 }}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#EA4335" /><circle cx="12" cy="9" r="2.6" fill="#fff" /></svg>
+        Google Maps
+      </a>
     </div>
   );
 }
@@ -11083,7 +11089,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • rapido ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gmaps ✅</div>
       </div>
     </div>
   );
