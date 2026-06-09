@@ -3272,8 +3272,9 @@ function LockedRoomPreview({ room, count, free, planLabel, onJoin, onPlan, onBac
     </div>
   );
 }
-const LUDO_COLORS = ["#E53935", "#43A047", "#FDD835", "#1E88E5"];
-const LUDO_DARK = ["#9E1B1B", "#1F5E26", "#C99B07", "#0D47A1"];
+const LUDO_COLORS = ["#EF3E3E", "#2EAD5A", "#F5B400", "#2A7DE1"];
+const LUDO_DARK = ["#A11E1E", "#16793A", "#B07E06", "#15539C"];
+const LUDO_LIGHT = ["#FF9B9B", "#7BE0A4", "#FFD876", "#92BEF6"];
 const LUDO_EMOJIS = ["😀","😂","😍","😎","😜","🤣","😡","😭","👍","👎","🎉","🔥","❤️","💩","🤡","👋"];
 const LUDO_EMOJI_SET = new Set(LUDO_EMOJIS);
 function isQuickEmoji(t) { return LUDO_EMOJI_SET.has((t || "").trim()); }
@@ -3419,8 +3420,10 @@ function LudoGame({ gameId, meId, onClose }) {
       .then(({ data }) => setPavs(prev => { const m = { ...prev }; (data || []).forEach(x => { m[x.id] = x.avatar_url || ""; }); return m; }));
   }, [g ? (g.players || []).length : 0]);
   const load = async () => {
-    const { data } = await supabase.from("ludo_games").select("*").eq("id", gameId).maybeSingle();
-    if (data) setG(data);
+    try {
+      const { data } = await supabase.from("ludo_games").select("*").eq("id", gameId).maybeSingle();
+      if (data) setG(data);
+    } catch {}
   };
   useEffect(() => { load(); const iv = setInterval(load, 1400); return () => clearInterval(iv); }, [gameId]);
   useEffect(() => {
@@ -3482,8 +3485,8 @@ function LudoGame({ gameId, meId, onClose }) {
   const players = g.players || [];
   const myIdx = players.findIndex(pl => pl.uid === meId);
   const myTurn = g.status === "playing" && g.turn === myIdx;
-  const boardMax = Math.min(vw - 16, vh - 250);
-  const cell = Math.max(18, Math.min(46, Math.floor(boardMax / 15))), B = cell * 15;
+  const boardMax = Math.min(vw - 8, vh - 232);
+  const cell = Math.max(18, Math.min(60, Math.floor(boardMax / 15))), B = cell * 15;
   const start = async () => {
     setBusy(true);
     const { error } = await supabase.rpc("ludo_start", { p_game: g.id });
@@ -3494,19 +3497,23 @@ function LudoGame({ gameId, meId, onClose }) {
     if (busy || rolling) return;
     setRolling(true); playDiceSound();
     const iv = setInterval(() => setRollFace(1 + Math.floor(Math.random() * 6)), 80);
-    const { data, error } = await supabase.rpc("ludo_roll", { p_game: g.id });
+    let data, error;
+    try { ({ data, error } = await supabase.rpc("ludo_roll", { p_game: g.id })); }
+    catch { error = { message: "net" }; }
     await new Promise(r => setTimeout(r, 900));
     clearInterval(iv); setRolling(false);
-    if (error) return alert(error.message);
+    if (error) { if (error.message !== "net") alert(error.message); load(); return; }
     if (data?.game) setG(data.game);
     setLegal(data?.legal || []);
   };
   const move = async (tok) => {
     if (!myTurn || g.dice == null || !legal.includes(tok)) return;
     setBusy(true);
-    const { data, error } = await supabase.rpc("ludo_move", { p_game: g.id, p_token: tok });
+    let data, error;
+    try { ({ data, error } = await supabase.rpc("ludo_move", { p_game: g.id, p_token: tok })); }
+    catch { error = { message: "net" }; }
     setBusy(false);
-    if (error) return alert(error.message);
+    if (error) { if (error.message !== "net") alert(error.message); load(); return; }
     if (data?.game) { setG(data.game); if (data.game.last?.captured) playCaptureSound(); if (data.game.status === "done") playWinSound(); }
     setLegal([]);
   };
@@ -3626,7 +3633,7 @@ function LudoGame({ gameId, meId, onClose }) {
         })}
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 0" }}>
-        <div style={{ background: "linear-gradient(145deg,#14323C,#0E2228)", padding: 9, borderRadius: 18, boxShadow: "0 8px 26px rgba(0,0,0,.35)" }}>
+        <div style={{ background: "linear-gradient(145deg,#14323C,#0E2228)", padding: 6, borderRadius: 16, boxShadow: "0 10px 30px rgba(0,0,0,.45)" }}>
         <div style={{ position: "relative", width: B, height: B, background: "#fff", borderRadius: 8, overflow: "visible" }}>
           {Array.from({ length: 15 }).map((_, r) => Array.from({ length: 15 }).map((_, c) => {
             const inBase = (r < 6 && c < 6) || (r < 6 && c > 8) || (r > 8 && c > 8) || (r > 8 && c < 6);
@@ -3700,30 +3707,20 @@ function LudoGame({ gameId, meId, onClose }) {
             );
           })()}
           {tokenList.map(t => {
-            const sz = cell * 1.02, pinW = sz, pinH = sz * 1.34;
+            const sz = Math.round(cell * 0.82);
             const k = t.rc[0] + "_" + t.rc[1]; const n = stacks[k] || 1;
-            const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * 7 : 0;
+            const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * (cell * 0.26) : 0;
             const clickable = myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
-            const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx];
+            const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx], lt = LUDO_LIGHT[t.pidx];
             const flatIdx = t.pidx * 4 + t.j;
             const hopping = hop.idx === flatIdx;
             const leftPx = t.rc[1] * cell + cell / 2 + offs;
             const topPx = t.rc[0] * cell + cell / 2 - offs;
             return (
-              <div key={t.pidx + "_" + t.j} onClick={() => move(t.j)}
-                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-86%)", transformOrigin: "50% 86%", transition: hopping ? "none" : "left .14s linear, top .14s linear", zIndex: (clickable || hopping) ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 4px ${col})` : hopping ? "drop-shadow(0 4px 4px rgba(0,0,0,.35))" : "none" }}>
-                <div key={hopping ? hop.tick : "s"} style={{ animation: hopping ? "gwhop 175ms ease-out" : "none" }}>
-                <svg viewBox="0 0 24 31" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
-                  <ellipse cx="12" cy="29.6" rx="8" ry="2.7" fill={col} opacity="0.32" />
-                  <ellipse cx="12" cy="29.9" rx="5" ry="1.5" fill="rgba(0,0,0,.32)" />
-                  <path d="M12 1.3 C5.6 1.3 1.4 5.8 1.4 11 C1.4 17.6 12 28.7 12 28.7 C12 28.7 22.6 17.6 22.6 11 C22.6 5.8 18.4 1.3 12 1.3 Z" fill={col} stroke={dk} strokeWidth="1.2" />
-                  <path d="M12 1.3 C5.6 1.3 1.4 5.8 1.4 11 C1.4 14 3 16.6 5 18.7 C4 15 4.4 9 8 5.5 C9.6 4 11 3.2 12 2.9 Z" fill="rgba(255,255,255,.30)" />
-                  <circle cx="12" cy="11" r="5.7" fill="#ffffff" />
-                  <circle cx="12" cy="11" r="5.7" fill="none" stroke={dk} strokeWidth="0.5" opacity="0.4" />
-                  <circle cx="12" cy="11" r="3.2" fill={col} />
-                  <ellipse cx="10.1" cy="8.7" rx="1.25" ry="0.85" fill="rgba(255,255,255,.85)" />
-                  <ellipse cx="9.4" cy="6.7" rx="2.7" ry="1.7" fill="rgba(255,255,255,.6)" />
-                </svg>
+              <div key={t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
+                style={{ position: "absolute", left: leftPx, top: topPx, width: sz, height: sz, transform: "translate(-50%,-50%)", transition: hopping ? "none" : "left .14s linear, top .14s linear", zIndex: (clickable || hopping) ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none" }}>
+                <div key={hopping ? hop.tick : "s"} style={{ width: "100%", height: "100%", borderRadius: "50%", background: `radial-gradient(circle at 34% 28%, ${lt}, ${col} 52%, ${dk} 100%)`, border: `2px solid ${dk}`, boxShadow: "inset 0 -2px 3px rgba(0,0,0,.35), inset 0 2px 3px rgba(255,255,255,.5), 0 2px 5px rgba(0,0,0,.4)", boxSizing: "border-box", position: "relative", animation: hopping ? "gwhop 175ms ease-out" : "none" }}>
+                  <div style={{ position: "absolute", left: "26%", top: "20%", width: "30%", height: "24%", borderRadius: "50%", background: "rgba(255,255,255,.7)", filter: "blur(.5px)" }} />
                 </div>
               </div>
             );
@@ -10961,7 +10958,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludohop ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludofix ✅</div>
       </div>
     </div>
   );
