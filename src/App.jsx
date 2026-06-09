@@ -2245,6 +2245,32 @@ function Main({ user }) {
     setOpen({ id: e.id, type: "event" });
   };
 
+  const confirmPurchaseWithCredits = async (cart) => {
+    const { event: e } = buyTarget;
+    for (const c of cart) {
+      if (c.type) {
+        const st = ticketStatus(c.type, e, eventStats, typeSold);
+        if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? `"${c.type.name}" is sold out.` : "Men’s tickets aren’t open yet — they release as more women join."); }
+      }
+    }
+    const { data: phRow } = await supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle();
+    if (((phRow?.phone || "").replace(/\D/g, "")).length < 8) {
+      const entered = await window.gwPrompt("Please enter your phone number — your ticket and event updates are sent here. It stays private; only the organiser can see it.");
+      if (entered === null) return;
+      if ((entered.replace(/\D/g, "")).length < 8) { setBuyTarget(null); return setNotice("A valid phone number is required to buy tickets."); }
+      await supabase.from("member_phone").upsert({ user_id: user.id, phone: entered.trim() });
+    }
+    const items = cart.filter(c => c.type).map(c => ({ ticket_type_id: c.type.id, quantity: c.qty }));
+    if (!items.length) { setBuyTarget(null); return setNotice("Pick a ticket type to use credits."); }
+    const { data, error } = await supabase.rpc("buy_ticket_with_credits", { p_event: e.id, p_items: items });
+    if (error) { setBuyTarget(null); return setNotice(error.message); }
+    if (!data || !data.ok) { setBuyTarget(null); return setNotice((data && data.reason) || "Couldn’t complete with credits."); }
+    setBuyTarget(null);
+    await load();
+    emailTicket(e.id);
+    setOpen({ id: e.id, type: "event" });
+  };
+
   const createRoom = async (d) => { const { error } = await supabase.from("rooms").insert(d); if (error) return setNotice(error.message); await load(); };
   const updateRoom = async (id, p) => { const { error } = await supabase.from("rooms").update(p).eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.map(r => r.id === id ? { ...r, ...p } : r)); };
   const deleteRoom = async (id) => { const { error } = await supabase.from("rooms").delete().eq("id", id); if (error) return setNotice(error.message); setRooms(prev => prev.filter(r => r.id !== id)); setOpen(null); };
@@ -2438,7 +2464,7 @@ function Main({ user }) {
     return (
       <>
         {notice && <Notice text={notice} onClose={() => setNotice("")} />}
-        {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
+        {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onConfirmCredits={confirmPurchaseWithCredits} meId={user.id} onClose={() => setBuyTarget(null)} />}
         {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
         {eventPage && (() => {
@@ -2491,7 +2517,7 @@ function Main({ user }) {
   return (
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
-      {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onClose={() => setBuyTarget(null)} />}
+      {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onConfirmCredits={confirmPurchaseWithCredits} meId={user.id} onClose={() => setBuyTarget(null)} />}
       {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
         {eventPage && (() => {
@@ -7730,7 +7756,7 @@ function Sheet({ children, onClose }) {
     </div>
   );
 }
-function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose }) {
+function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmCredits, onClose, meId }) {
   const { event: e } = target;
   const [cart, setCart] = useState((target.cart || [{ type: target.type || null, qty: target.qty || 1 }]).map(c => ({ ...c })));
   const [agree, setAgree] = useState(false);
@@ -7746,6 +7772,9 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose })
   const total = ticketTotal + addonTotal;
   const live = cart.filter(c => c.qty > 0);
   const canConfirm = (!needAgree || agree) && live.length > 0;
+  const [bal, setBal] = useState(null);
+  useEffect(() => { if (!meId) return; supabase.from("profiles").select("game_credits").eq("id", meId).maybeSingle().then(({ data }) => setBal(Number(data?.game_credits) || 0)); }, [meId]);
+  const creditCost = (live.length > 0 && addonTotal === 0 && live.every(c => c.type && Number(c.type.credit_price) > 0)) ? live.reduce((a, c) => a + Number(c.type.credit_price) * c.qty, 0) : null;
   const setLine = (idx, q) => setCart(cs => cs.map((c, k) => k === idx ? { ...c, qty: Math.max(0, q) } : c));
   const miniBtn = { width: 30, height: 30, borderRadius: "50%", border: `1px solid ${W.line}`, background: "#fff", fontSize: 18, color: W.ink, cursor: "pointer", lineHeight: 1 };
   return (
@@ -7808,6 +7837,13 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onClose })
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
         <button disabled={!canConfirm} onClick={() => onConfirm(live, sel)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? `Pay ₹${total}` : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
       </div>
+      {creditCost != null && total > 0 && (
+        <>
+          <div style={{ textAlign: "center", color: W.soft, fontSize: 12, margin: "12px 0 8px" }}>— or pay with credits —</div>
+          <button disabled={!canConfirm || (bal != null && bal < creditCost)} onClick={() => onConfirmCredits && onConfirmCredits(live)} style={{ ...btn("#6D28D9", "#fff"), width: "100%", justifyContent: "center", opacity: (canConfirm && !(bal != null && bal < creditCost)) ? 1 : .5 }}>💳 Use {creditCost} credits</button>
+          <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, marginTop: 6 }}>{bal == null ? "Checking your wallet…" : bal < creditCost ? `Wallet: ${bal} credits — top up in Profile → Wallet` : `Wallet: ${bal} credits`}</div>
+        </>
+      )}
     </Sheet>
   );
 }
@@ -7940,13 +7976,14 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
   useEffect(() => { supabase.from("plans").select("id, name, emoji").eq("active", true).then(({ data }) => setPlansList(data || [])); }, []);
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [cap, setCap] = useState("");
   const [wf, setWf] = useState(""); const [wm, setWm] = useState("");
+  const [credit, setCredit] = useState("");
   const [dRoom, setDRoom] = useState(""); const [dKind, setDKind] = useState("percent"); const [dVal, setDVal] = useState("");
   const gl = { any: "Anyone", male: "Men", female: "Women" };
   const roomName = id => ((rooms || []).find(r => r.id === id) || {}).name || "room";
   const add = async () => {
     if (!name.trim()) return;
-    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0 });
-    setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setDRoom(""); setDKind("percent"); setDVal("");
+    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit) });
+    setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setCredit(""); setDRoom(""); setDKind("percent"); setDVal("");
   };
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
   const audBadge = (gr) => {
@@ -7963,6 +8000,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
             <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <b>{t.name}</b>
               <span style={{ color: W.soft }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
+              {t.credit_price ? <span style={{ color: "#6D28D9", fontWeight: 700 }}>· 💳 {t.credit_price}</span> : null}
               {audBadge(t.gender_restrict)}
               {t.capacity != null && <span style={{ color: W.soft }}>· cap {t.capacity}</span>}
               {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal }}>· {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
@@ -7975,6 +8013,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Men)" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
         <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 64 }} />
+        <input value={credit} onChange={e => setCredit(e.target.value.replace(/\D/g, ""))} placeholder="💳 cr" title="Credit price (blank = not sold for credits)" inputMode="numeric" style={{ ...ip, width: 78 }} />
         <input value={wf} onChange={e => setWf(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♀ % off" title="Optional discount for women, e.g. 20" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Optional discount for men" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
@@ -10508,7 +10547,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • wallet ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • ticketcredits ✅</div>
       </div>
     </div>
   );
