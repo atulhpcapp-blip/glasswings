@@ -3311,10 +3311,10 @@ const LUDO_HOME = [
   [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7]],
 ];
 const LUDO_BASE = [
-  [[2.4, 2.4], [2.4, 3.6], [3.6, 2.4], [3.6, 3.6]],
-  [[2.4, 11.4], [2.4, 12.6], [3.6, 11.4], [3.6, 12.6]],
-  [[11.4, 11.4], [11.4, 12.6], [12.6, 11.4], [12.6, 12.6]],
-  [[11.4, 2.4], [11.4, 3.6], [12.6, 2.4], [12.6, 3.6]],
+  [[2.3, 2.3], [2.3, 3.7], [3.7, 2.3], [3.7, 3.7]],
+  [[2.3, 11.3], [2.3, 12.7], [3.7, 11.3], [3.7, 12.7]],
+  [[11.3, 11.3], [11.3, 12.7], [12.7, 11.3], [12.7, 12.7]],
+  [[11.3, 2.3], [11.3, 3.7], [12.7, 2.3], [12.7, 3.7]],
 ];
 const LUDO_START = [0, 13, 26, 39];
 const LUDO_SAFE = new Set([0, 13, 26, 39, 8, 21, 34, 47]);
@@ -3708,19 +3708,18 @@ function LudoGame({ gameId, meId, onClose }) {
             const leftPx = t.rc[1] * cell + cell / 2 + offs;
             const topPx = t.rc[0] * cell + cell / 2 - offs;
             const atBase = t.sVal === -1 || t.sVal == null;
-            const yAnchor = atBase ? 86 : 65;
+            const yAnchor = atBase ? 80 : 65;
             return (
               <div key={(t.ghost ? "g" : "") + t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
                 style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: `translate(-50%,-${yAnchor}%)`, transformOrigin: `50% ${yAnchor}%`, transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
                 <svg viewBox="0 0 24 32" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
-                  <ellipse cx="12" cy="30.2" rx="7.7" ry="2.5" fill="rgba(0,0,0,.25)" />
-                  <ellipse cx="12" cy="29.1" rx="7.4" ry="2.8" fill={dk} />
-                  <ellipse cx="12" cy="28.7" rx="4.6" ry="1.7" fill="rgba(0,0,0,.18)" />
-                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill={col} stroke={dk} strokeWidth="1.4" />
-                  <path d="M7.6 4.6 C5 6.2 3.4 8.6 3.3 11.3 C3.3 13.2 4.4 15.6 6 18 C4.7 14.8 4.6 11 6 8 C6.4 6.8 6.9 5.6 7.6 4.6 Z" fill={lt} opacity="0.6" />
-                  <circle cx="12" cy="11.1" r="3.7" fill="#ffffff" />
-                  <circle cx="12" cy="11.1" r="3.7" fill="none" stroke={dk} strokeWidth="0.6" opacity="0.5" />
-                  <ellipse cx="10.6" cy="9.7" rx="1.3" ry="0.9" fill="rgba(255,255,255,.95)" />
+                  <ellipse cx="12" cy="30.2" rx="7.4" ry="2.4" fill="rgba(0,0,0,.28)" />
+                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill="#ffffff" stroke={dk} strokeWidth="1.3" />
+                  <path d="M12 27 C12 27 3.4 18.2 3 11.5 C5 14.5 8.5 19 12 24 Z" fill="rgba(0,0,0,.06)" />
+                  <ellipse cx="9" cy="6.4" rx="2.3" ry="1.5" fill="rgba(255,255,255,.9)" />
+                  <circle cx="12" cy="11.1" r="4.2" fill={col} />
+                  <circle cx="12" cy="11.1" r="4.2" fill="none" stroke={dk} strokeWidth="0.7" opacity="0.6" />
+                  <ellipse cx="10.6" cy="9.6" rx="1.3" ry="0.9" fill="rgba(255,255,255,.55)" />
                 </svg>
               </div>
             );
@@ -10958,7 +10957,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking3 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking4 ✅</div>
       </div>
     </div>
   );
