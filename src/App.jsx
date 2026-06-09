@@ -2443,8 +2443,9 @@ function Main({ user }) {
   const _pinTypes = new Set(["room", "room-locked", "dm"]);
   const _pvAt = (c) => (previews[c.type === "p2p" ? c.id : c.id]?.at) || 0;
   const orderedChats = [
+    ...myChats.filter(c => c.type === "event").sort((a, b) => _pvAt(b) - _pvAt(a)),
     ...myChats.filter(c => _pinTypes.has(c.type)),
-    ...myChats.filter(c => !_pinTypes.has(c.type)).sort((a, b) => _pvAt(b) - _pvAt(a)),
+    ...myChats.filter(c => c.type !== "event" && !_pinTypes.has(c.type)).sort((a, b) => _pvAt(b) - _pvAt(a)),
   ];
 
   const screen = (
@@ -5633,10 +5634,22 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
     </>
   );
 }
-function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, viewerId }) {
+function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, viewerId, canAdd = false }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState(null);
   const [coupleInfo, setCoupleInfo] = useState({});
+  const [reloadKey, setReloadKey] = useState(0);
+  const [aq, setAq] = useState(""); const [dir, setDir] = useState([]); const [addMsg, setAddMsg] = useState("");
+  const canAddHere = canAdd && groupType === "event";
+  useEffect(() => { if (!canAddHere) return; supabase.rpc("staff_directory").then(({ data }) => setDir(data || [])); }, [canAddHere]);
+  const addToGroup = async (m) => {
+    setAddMsg("");
+    const { error } = await supabase.rpc("add_event_group_member", { p_event: room.id, p_user: m.id });
+    if (error) return setAddMsg(error.message);
+    setAddMsg(`✓ ${m.full_name} added to the group.`);
+    setAq(""); setReloadKey(k => k + 1);
+  };
+  const addMatches = aq.trim().length < 2 ? [] : dir.filter(m => (m.full_name || "").toLowerCase().includes(aq.trim().toLowerCase()) && !(rows || []).some(r => r.user_id === m.id)).slice(0, 6);
   useEffect(() => {
     if (groupType !== "room") return;
     supabase.from("room_join_info").select("user_id, info").eq("room_id", room.id)
@@ -5651,7 +5664,7 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
     loadOnline();
     const iv = setInterval(loadOnline, 45000);
     return () => clearInterval(iv);
-  }, [room.id, groupType]);
+  }, [room.id, groupType, reloadKey]);
   const dot = <span style={{ position: "absolute", right: 0, bottom: 0, width: 13, height: 13, borderRadius: "50%", background: "#22C55E", border: "2.5px solid #fff" }} />;
   const [staffSet, setStaffSet] = useState(() => new Set());
   const [connSet, setConnSet] = useState(() => new Set());
@@ -5712,6 +5725,21 @@ function RoomMembersSheet({ room, groupType = "room", onClose, canDM, onOpenDM, 
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "4px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+        {canAddHere && (
+          <div style={{ marginTop: 12, padding: "12px 14px", background: W.bg, borderRadius: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: W.ink, marginBottom: 6 }}>➕ Add members to this group</div>
+            <input value={aq} onChange={e => setAq(e.target.value)} placeholder="Search member by name…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", color: W.ink, background: "#fff" }} />
+            {addMatches.map(m => (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: `1px solid ${W.line}` }}>
+                <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.full_name}</span>
+                <button onClick={() => addToGroup(m)} style={{ ...btn(W.teal, "#fff"), padding: "6px 11px", fontSize: 12.5 }}>Add</button>
+              </div>
+            ))}
+            {addMsg && <div style={{ fontSize: 12.5, color: addMsg.startsWith("✓") ? W.teal : "#C0392B", marginTop: 8 }}>{addMsg}</div>}
+            <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Adds them to the group chat only — no ticket is created.</div>
+          </div>
+        )}
         {err ? <div style={{ marginTop: 16, color: "#C0392B", fontSize: 13.5 }}>{err}</div>
           : rows === null ? <Center>loading members…</Center>
           : <>
@@ -6408,7 +6436,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   return (
     <div style={{ minHeight: "100dvh", background: "linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)", backgroundImage: `url("${WALL}"), linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)`, paddingBottom: 72 }}>
       <style>{`@keyframes gwmsgin { 0% { transform: translateY(10px) scale(.96); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }`}</style>
-      {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
+      {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} canAdd={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
       {tray && (
         <div onClick={() => setTray(null)} style={{ position: "fixed", inset: 0, zIndex: 95 }}>
           <div onClick={ev => ev.stopPropagation()} style={{ position: "fixed", bottom: 118, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 22, boxShadow: "0 10px 34px rgba(0,0,0,.28)", padding: "11px 15px", display: "flex", flexDirection: "column", gap: 9, alignItems: "center" }}>
@@ -11074,7 +11102,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • delAddon ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • grouppin ✅</div>
       </div>
     </div>
   );
