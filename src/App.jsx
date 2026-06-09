@@ -10564,9 +10564,383 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • addoncredits ✅</div>
+        <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • terms ✅</div>
       </div>
     </div>
+  );
+}
+
+/* ---------------- Terms & Conditions ---------------- */
+const GW_TERMS = `TERMS AND CONDITIONS OF MEMBERSHIP AND BUSINESS
+
+YOU MUST READ THESE TERMS CAREFULLY BEFORE TAKING OUT MEMBERSHIP WITH THE COMPANY. BY APPLYING FOR MEMBERSHIP OR FOR PARTICIPATION IN AN EVENT OR ACTIVITY YOU AGREE TO THESE TERMS AND CONDITIONS.
+
+1. DEFINITIONS
+
+"The Company" means GLASSWINGS EVENTS PRIVATE LIMITED, registered in INDIA by Ministry of Commerce.
+
+"GLASSWINGS EVENTS" mean(s) anything organised and hosted by the Company.
+
+"Member" means any Member of GLASSWINGS EVENTS PRIVATE LIMITED or any person or persons intending to or who have applied for Membership of GLASSWINGS EVENTS PRIVATE LIMITED.
+
+"You" means any person who is a member, prospective member or past member of GLASSWINGS EVENTS PRIVATE LIMITED or where the context permits a guest of a member.
+
+"ADMIN OR HOST" means a Member who acts as a host and point of contact for Events. A Host is not a legal or authorised representative of the Company and cannot enter into any contractual obligations or liabilities on its behalf. Only Directors of the Company can do so.
+
+"Activities" are events organised by Members or Preferred Suppliers, and as such are not regulated by the Company and will have no Host in attendance.
+
+"Supplier" means any third party supplier or organiser of a GLASSWINGS Event.
+
+"Preferred Suppliers" are 3rd party organisations advertising their events on the Company website.
+
+"Site" means all websites listed below in clause 2.1 and any official Glasswings Facebook Pages or Groups, together with all material on those websites or sent to you by e-mail or by any other means. Reference to the Site includes all intellectual property rights on the Site including but not limited to copyright, trade marks, database, member details and moral rights.
+
+"Terms" mean these terms and conditions and any subsequent amendments as may be notified to you.
+
+"Working day" is any day other than weekends and bank or other public holidays.
+
+2 FORMATION OF THE CONTRACT
+
+2.1 These terms apply to all services and any goods supplied by the Company through the Company's domains and sub domains or other means, together with any other Company domains and sub domains listed on any of the Sites and any terms relating to the use of the Site(s) shall also apply.
+
+2.2 Any quotation or information given by the Company is only an invitation to you to apply for membership with the Company or to take part in a GLASSWINGS Event. No contract exists between you and the Company until the Company or as the case may be the Supplier has received and accepted your application and sends you a confirmation of acceptance.
+
+2.3 Except where the GLASSWINGS Event description says otherwise the Company is acting as a disclosed agent for Third Party Suppliers and the GLASSWINGS Events are under the control of those third parties subject to their terms and conditions. Their Terms and Conditions will be available on the Site or the Company upon request will tell you where they can be found. The Company has no responsibility for the manner of delivery of the GLASSWINGS Event. As Agent the Company does not have contractual liability to you for the event or for the negligence or breach of contract by the Supplier.
+
+3 ACCESSING OUR SITE
+
+3.1 Access to our site is permitted on a temporary basis, and we reserve the right to withdraw or amend the service we provide on our site without notice (see below). We will not be liable if for any reason our site is unavailable at any time or for any period.
+
+3.2 From time to time, we may restrict access to some parts of our site, or our entire site, to users.
+
+3.3 We will determine, in our discretion, whether there has been a breach of these terms. Where a breach of these terms has occurred, we may take such action as we deem appropriate, which may result in our taking all or any of the following actions:
+
+Immediate, temporary or permanent withdrawal of your right to use our site.
+
+Immediate, temporary or permanent removal of any posting or material uploaded by you to our site.
+
+Issue of a warning to you.
+
+Legal proceedings against you for reimbursement of all costs on an indemnity basis (including, but not limited to, reasonable administrative and legal costs) resulting from the breach. Further legal action against you.
+
+Disclosure of such information to law enforcement authorities as we reasonably feel is necessary.
+
+3.4 We exclude liability for actions taken in response to breaches of these terms. The responses described in these terms are not limited, and we may take any other action we reasonably deem appropriate.
+
+3.5 If you choose, or you are provided with, a user identification code, password or any other piece of information as part of our security procedures, you must treat such information as confidential, and you must not disclose it to any third party. We have the right to disable any user identification code or password, whether chosen by you or allocated by us, at any time, if in our opinion you have failed to comply with any of the provisions of these terms of use.
+
+3.6 You are responsible for making all arrangements necessary for you to have access to our site. You are also responsible for ensuring that all persons who access our site through your internet connection are aware of these terms, and that they comply with them.
+
+4. RELIANCE ON INFORMATION POSTED
+
+4.1 Commentary and other materials posted on our site are not intended to amount to advice on which reliance should be placed. We therefore disclaim all liability and responsibility arising from any reliance placed on such materials by a user or member of our site, or by anyone who may be informed of any of its contents.
+
+4.2 You should not rely on any materials posted on our site for personal, medical, legal, financial or any other type of advice and we strongly recommend that you consult an appropriate qualified professional where necessary.
+
+5 INTELLECTUAL PROPERTY RIGHTS
+
+5.1 We are the owner or the licensee of all intellectual property rights in our site, and in the material published on it. These works are protected by copyright laws and treaties around the world. All such rights are reserved.
+
+5.2 You may print off one copy, and may download extracts, of any page(s) from our site for your personal reference and you may draw the attention of others to material posted on our site.
+
+5.3 You must not modify the paper or digital copies of any materials you have printed off or downloaded in any way, and you must not use any illustrations, photographs, video or audio sequences or any graphics separately from any accompanying text.
+
+5.4 Our status (and that of any identified contributors) as the authors of material on our site must always be acknowledged.
+
+5.5 You must not use any part of the materials on our site for commercial purposes without obtaining a licence to do so from us or our licensors.
+
+5.6 If you print off, copy or download any part of our site in breach of these terms of use, your right to use our site will cease immediately and you must, at our option, return or destroy any copies of the materials you have made.
+
+6 OUR SITE CHANGES REGULARLY
+
+6.1 We aim to update our site regularly, and may change the content, including but not limited to the charges associated with the use of our site at any time. If the need arises, we may suspend access to our site, or close it indefinitely. Any of the material on our site may be out of date at any given time, and we are under no obligation to update such material.
+
+7 MEMBERSHIP
+
+7.1 Membership subscriptions will be specified on the Company's Site and will be annual or monthly. All subscriptions and any other sums payable to the Company are payable in Indian rupees and by becoming a member you agree that the Company may issue you with invoices in electronic format by e-mail should it wish to do so.
+
+7.2 The Company may change its policy on subscriptions at any time and any change will be effective at the next renewal date and after the expiry of 1 month following the date of posting the change on the Site.
+
+7.3 The subscription is payable annually or monthly in accordance with the sums set out on the Site. Any membership card issued by the Company remains the property of the Company. For administrative purposes the card will show an annual expiration date. If the annual subscription is not paid within 7 days of the periodic renewal date the card shall thereupon be returned to the Company and membership shall immediately be cancelled or suspended at the option of the Company.
+
+7.4 Memberships are renewed automatically either monthly or annually based on the calendar date of your first payment. Renewal payments taken automatically from the debit card entered on our booking system.
+
+7.5 You have the right to cancel the application for membership at any time up to the end of seven working days after your application for Membership is submitted via the Site. In this case you must email - atulhpc@gmail.com.
+
+7.6 You can cancel the automatic renewal of your membership at any time by navigating to the Membership page of your account.
+
+7.7 The Company has the right in its absolute discretion to limit the number of members, to refuse membership or renewal for any reason or to expel a member or prevent any member or guest from taking part in or continuing at any Glasswings events.
+
+7.8 Members must adhere to all rules of membership both online and at Glasswings Events and Activities.
+
+7.9 Membership is not transferable.
+
+7.10 At all times you shall conduct yourself in your relations with other Members or their guests or the General Public or Third Parties in a responsible and careful manner. Members failing to behave correctly will have their membership cancelled and no refund will be offered. Suppliers or other Glasswings Event organisers can refuse admission if in their opinion you may be a risk to others or yourself or you are affecting the enjoyment of others or the running of the Event whether through unreasonable behaviour, drink, drugs or otherwise.
+
+7.11 The Company reserves the right to terminate your membership with immediate effect should you be found to breach these conditions.
+
+7.12 You must be over 18 years of age to become a member.
+
+8. GLASSWINGS EVENTS
+
+8.1 Members are to only book onto Glasswings Events for their own sole use, and cannot do so on behalf of others without permission from the Company.
+
+8.2 Payment for any Event may be made by transfer from your bank account or online by credit/debit card. Payment shall be made in INR. No payment for any Glasswings Event shall be deemed to have been received until the Company has received cleared funds.
+
+8.3 Every effort is made to ensure that prices for Glasswings Events shown on the Company's site are accurate. If a booking has been accepted and an error is found the Company will inform you as soon as possible and offer you the option of reconfirming for the Glasswings Event at the correct price or cancelling your booking for that Glasswings Event. If you cancel because of such error the Company will refund or re-credit you for any sum that has been paid by you except where the terms and conditions of the Supplier say otherwise.
+
+8.4 The Company shall not be responsible or liable in any way whatsoever for the cancellation of a Glasswings Event other than as provided by this clause and clause 8.3. Where cancellation arises and is the fault of the supplier of a Glasswings Event the terms and conditions of that supplier shall apply. The Company will use reasonable endeavours to recover payment of the monies paid by the member for the Glasswings Event but shall not be obliged to commence legal proceedings.
+
+8.5 The Company gives no warranty that the provider of a Glasswings Event will accept your booking or that such provider will not cancel or vary the Glasswings Event. If a Glasswings Event requires a minimum number of participants and that number has not been booked by the deadline date set out on the Site the Company or the Supplier may cancel the Glasswings Event and liability shall be limited to the return of the sum paid by you.
+
+8.6 Some variations to the published times or arrangements for a Glasswings Event may be made by the Supplier. There may be no right to cancel or obtain a refund for the changes such as timing or the precise nature of equipment used, or programme or content. Some Glasswings Events are dependent on weather or other factors outside the control of the Company or the Supplier and no right to cancellation or refund exists in these circumstances unless the Terms and Conditions of the Supplier says otherwise.
+
+8.7 Should you wish to cancel your participation in an Event after placing a booking you must notify the Company by email at the email address shown on the Site.
+
+8.8 To cover our expenses, the following cancellation policy applies:
+
+On trips/events where your place is reserved by paying a deposit:
+
+If you cancel your booking more than 6 weeks before the first day of your holiday, you will receive a refund of money paid, minus your non-refundable deposit in 7-10 working days.
+
+If you cancel your holiday less than 6 weeks before the first day of your holiday you will receive no refund on money paid in 7-10 working days.
+
+In the event that a deposit is paid but the full amount is not paid within 6 weeks of an activity, this will be taken as a cancellation and no refund will be made.
+
+In the event of a no-show or not arriving on time for an activity no refund will be made.
+
+On trips/events where your place is reserved by paying in full:
+
+If you cancel your booking more than 6 weeks before the event you will receive a 50% refund of monies paid.
+
+If you cancel your holiday less than 6 weeks before the event you will receive no refund on monies paid.
+
+In the event of a no-show or not arriving on time for an activity no refund will be made.
+
+If possible, Glasswings Events will endeavour to refund all or part of your payment if you are unable to attend but this is entirely at our discretion.
+
+For Holidays (anything abroad or over 4 nights in length) any deposits paid will always be non-refundable under any circumstances and will be subject to the Supplier's terms.
+
+8.9 When participating in a Glasswings Event which requires you to provide clothing, equipment, tools or appliances you must supply what is required suitable for use and shall cause no damage, nuisance or annoyance to any other member or third party. The Company shall not be responsible for the care, maintenance or repair of such clothing, equipment, tools or appliances.
+
+8.10 You must ensure that you are physically fit and capable of taking part in any Event for which you subscribe and in applying to take part in such Glasswings Event you warrant to the Company that you are physically suited to take part in such Event and will remain so throughout the Glasswings Event.
+
+8.11 In applying to take part in a Glasswings Event you acknowledge that the terms and conditions of the Supplier shall apply to the Glasswings Event and it is your responsibility to familiarise yourself with the terms and conditions of the Supplier and the rules, regulations and safety policy governing the Glasswings Event. If relevant equipment is supplied by the Supplier the Company shall not be liable for defects in or shortages of such equipment or parts thereof. You will at all times use equipment (whether supplied by you or other members or the Supplier) in accordance with the guidance and advice given by the relevant equipment supplier or the Supplier. You shall have no claim against the Company for any failure by the Supplier to supply adequate equipment, instruction, information or advice or to ensure that the Glasswings Event is suitably organised, managed or controlled.
+
+8.12 Unless otherwise stated it is your responsibility to arrange travel to the Glasswings Event and where applicable to comply with any passport, visa or inoculation requirements.
+
+8.13 The right to participate in a Glasswings Event is not transferable.
+
+8.14 You must provide proof of membership (e.g. membership card) at Glasswings Events when requested to do so. Failure to do so may lead to inability to participate in a Glasswings Event.
+
+8.15 Participation in all Glasswings Events is at your risk or is governed by the Suppliers' Terms & Conditions. Because of the risk attached to some events you may be required to sign a form of disclaimer of liability as a condition of taking part. When refusal to do so prevents your participation in the Glasswings Event the Company shall have no liability to provide compensation.
+
+9. ACTIVITIES
+
+9.1 The Company shall bear no responsibility for Activities added and organised by Members or Preferred Suppliers, nor for payments made by you for them. Members booking onto Activities organised by other Members or Preferred Suppliers do so entirely at their own risk and discretion.
+
+9.2 Members or Preferred Suppliers who add Activities and portray false information or fail to organise the Activity properly once other Members are booked onto it can be restricted from organising further Activities, at the discretion of the Company.
+
+10. CONTENT STANDARDS
+
+10.1 These content standards apply to any and all material which you contribute to the Site (contributions), and to any interactive services associated with it.
+
+10.2 You must comply with the spirit of the following standards as well as the letter. The standards apply to each part of any contribution as well as to its whole.
+
+10.3 You agree that your contributions will:
+
+Be accurate (where they state facts).
+
+Be genuinely held (where they state opinions).
+
+Comply with applicable law in India and in any country from which they are posted.
+
+10.4 You agree that your contributions will not:
+
+Contain any material which is defamatory of any person.
+
+Contain any material which is obscene, offensive, hateful or inflammatory.
+
+Infringe any copyright, database right or trade mark of any other person.
+
+Be likely to deceive any person.
+
+Promote sexually explicit material.
+
+Promote violence.
+
+Promote discrimination based on race, sex, religion, nationality, disability, sexual orientation or age.
+
+Be made in breach of any legal duty owed to a third party, such as a contractual duty or a duty of confidence.
+
+Promote any illegal activity.
+
+Be threatening, abuse or invade another's privacy, or cause annoyance, inconvenience or needless anxiety.
+
+Be likely to harass, upset, embarrass, alarm or annoy any other person.
+
+Be used to impersonate any person, or to misrepresent your identity or affiliation with any person.
+
+Give the impression that they emanate from us, if this is not the case.
+
+Advocate, promote or assist any unlawful act such as (by way of example only) copyright infringement or computer misuse.
+
+Upload files that contain software or other material protected by intellectual property laws (or by rights of privacy of publicity) unless you own or control the rights thereto or have received all necessary consents.
+
+Upload files that contain viruses, corrupted files, or any other similar software or programs that may damage the operation of another's computer.
+
+Advertise or offer to sell or buy any goods or services for any business purpose, unless our site specifically allows such messages.
+
+Conduct or forward surveys, contests, pyramid schemes or chain letters.
+
+Download any file posted by another user of our site that you know, or reasonably should know, cannot be legally distributed in such manner.
+
+Falsify or delete any author attributions, legal or other proper notices or proprietary designations or labels of the origin or source of software or other material contained in a file that is uploaded.
+
+Restrict or inhibit any other user from using and enjoying our site.
+
+Violate any code of conduct or other guidelines which may be applicable for our site.
+
+Harvest or otherwise collect information about others, including e-mail addresses, without their consent.
+
+10.5 We are under no obligation to monitor the contributions, however, we reserve the right to review the contributions and to remove them.
+
+10.6 We also reserve the right to terminate your access to any or all our Sites at any time without notice for any reason whatsoever.
+
+10.7 Always use caution when giving out information about yourself in any contribution. We do not control or endorse the content, messages or information found in any contribution and, therefore we disclaim all liability with regard to the contribution and any actions resulting from your participation in any contribution.
+
+10.8 Our Hosts are not our authorized spokespersons, and their views do not necessarily reflect our views.
+
+10.9 Contributions may be subject to posted limitations on usage, reproduction and/or dissemination. You are responsible for adhering to such limitations if you download the materials.
+
+10.10 Specifically on the Facebook and WhatsApp Group pages: you cannot post anything that is not related directly to our events, you cannot post anything that is not in the interests of the membership, you cannot promote your or anyone else's business or commercial projects without prior consent from Glasswings in writing. If you break these conditions you will be banned and no membership refund will be offered.
+
+11 DELAYED DELIVERY; FORCE MAJEURE ETC
+
+11.1 Delayed delivery or failure of the Company to comply with any obligation hereunder whether for an Event or otherwise due to war, civil commotion, strikes, lock-outs, machine breakdown, fire or force majeure or any cause whatsoever beyond the Company's control will not involve liability on the part of the Company and the Company shall be entitled at its option to cancel the order or any part thereof or to postpone the Glasswings Event.
+
+12 INSURANCE
+
+12.1 In view of the potentially dangerous nature of certain Glasswings Events or Activities you are recommended to obtain your own personal accident and third party liability insurance through companies of your own choice and to suit your personal circumstances. Members shall have full responsibility for arranging their own suitable insurance.
+
+12.2 Members and Preferred Suppliers should ensure that all events added where appropriate have adequate public liability insurance and abide by any applicable regulations.
+
+13. PHOTOGRAPHS
+
+13.1 Members agree to allow the Company to use any photographs or other images of them taken at Glasswings Events or activities for promotional purposes and are aware that they may be taken by other members and posted on social networking sites or elsewhere over which the Company has no control. Where the photograph is on the Company website and is deemed offensive by you then upon being informed the Company will use its discretion to remove it or otherwise but is under no obligation to do so.
+
+14 DATA PROTECTION
+
+14.1 The Company will take all reasonable precautions to keep the details of your applications and payment secure, but unless the Company is negligent, the Company will not be liable for unauthorised access to information supplied by you and in any event only to the value of the transaction conducted with the company.
+
+14.2 The Company shall have no responsibility for loss or damage sustained by you arising from the passage of any computer virus or other damaging electronic message.
+
+15 INDEMNITY
+
+You agree to indemnify and hold the Company harmless from any claim or demand, including reasonable legal fees, made by any third party due to or arising out of your breach of these Terms or arising from your negligence or breach of duty.
+
+16. LIMITATION OF LIABILITY
+
+16.1 Further to the provision of clause 9.1 Members are reminded that the Company has no control over Activities organised by Members and attendance at and transport to these Activities, nor control over those attending or the information supplied, and is not responsible for the acts or other actions by other Members or guests.
+
+16.2 Nothing in these conditions excludes or limits the liability of the Company:
+
+16.2.1 for death or personal injury caused by the negligence of the Company, its officers or employees;
+
+16.2.2 for any matter for which it would be illegal for the Company to exclude or attempt to exclude liability; or
+
+16.2.3 for fraud or fraudulent misrepresentation.
+
+16.3 Subject to clause 16.2:
+
+16.3.1 the Company's total liability in contract, tort (including negligence or breach of statutory duty), misrepresentation, restitution or otherwise, arising in connection with the performance or contemplated performance of its obligation shall be limited to the membership fee or the price of the Glasswings Event; and
+
+16.3.2 the Company shall not be liable to you for any pure economic loss, loss of profit, loss of business, or otherwise, whether direct, indirect or consequential, or any claims for consequential compensation whatsoever (howsoever caused) which arise out of or in connection with the Site, membership or a Glasswings Event.
+
+17. GENERAL
+
+17.1 The Company may amend these Terms at any time by giving you notice ("Notice") by either e-mail or by posting the amended Terms on the Site. Any amended Terms will govern new transactions from the date that it is posted on the Site. Existing members will be bound by the amended Terms after the expiry of 30 days following the date of a Notice.
+
+17.2 Each right or remedy of the Company under the Terms is without prejudice to any other right or remedy of the Company whether under the Terms or not.
+
+17.3 If any provision of the Terms is found by any court, tribunal or administrative body of competent jurisdiction to be wholly or partly illegal, invalid, void, voidable, unenforceable or unreasonable it shall to the extent of such illegality, invalidity, voidness, voidability, unenforceability or unreasonableness be deemed severable and the remaining provisions of the Terms and the remainder of such provision shall continue in full force and effect.
+
+17.4 Failure or delay by the Company in enforcing or partially enforcing any provision of the Terms will not be construed as a waiver of any of its rights under the Terms.
+
+17.5 These terms of sale and the supply of the goods will be subject to Indian law, and the Indian courts will have jurisdiction in respect of any dispute arising from the contract.
+
+17.6 Neither the Company nor you intend that any term of this Contract will be enforceable by any person that is not a party to it other than someone to whom the Company transfers its rights under this Contract.
+
+17.7 The Company may assign the benefit of any contract to any person, firm or company.
+
+18. NEWSLETTER
+
+18.1 By purchasing membership you are agreeing to be added to our newsletter. This is a benefit of the club as it keeps you updated on club events and activities. Should you wish to unsubscribe you can do so at any time using the links available in the footer of the email.
+
+19. Glasswings Organiser Dues or "GOD"
+
+19.1 G.O.D is collected by the Company for organising an event. This is in no way associated with the venue or the food and drinks shared among the members or the travel packages or cover charges of any club. G.O.D is the due which a member pays for organising a specific event, the price of which varies from time to time. In some special events, the Company may not add G.O.D.
+
+19.2 G.O.D charges will not be refunded for any cancellation of an event due to less member participation or any cancellation by venue or weather as these are the charges added by the Company towards the effort taken by the Company to organise the event for you.
+
+20. GROUP GUIDELINES
+
+To maintain a harmonious and enjoyable environment, all members are expected to follow these guidelines in our WhatsApp group and any groups formed by Glasswings Events Private Limited.
+
+20.1 Respect Personal Boundaries: Do not message anyone personally unless you have met them at an event and formed a connection.
+
+20.2 Financial Caution: Do not give money to members; Glasswings does not vouch for anyone's financial status.
+
+20.3 Face-to-Face Friendships: Attend Glasswings events to make friends. Introduce yourself and build connections in person.
+
+20.4 Responsible Partying: Glasswings is not responsible for drunk driving post-party. Hire a driver or take a cab.
+
+20.5 Bill Settlements: Ensure you clear food and drink bills at the event.
+
+20.6 No Promotions: No banners, advertisements, or marketing posts. Contact admins for promotions.
+
+20.7 Event Hosting: Members cannot host meetups or form groups without admin approval. Unauthorized group formations will result in removal and a rejoin fee of Rs 7999/-.
+
+20.8 Unauthorised Event attendance without taking a Glasswings pass will result in a penalty due of Rs 6999/- for attending the next party or meetup.
+
+20.9 Active Subscription: Keep your subscription active to remain a part of the group.
+
+20.10 Relevant Posts: Only post Glasswings party or Glasswings-approved party pictures. Irrelevant pictures will be removed.
+
+20.11 Zero tolerance for disruptive behavior. Help us maintain an inclusive, supportive, and fun-filled culture.`;
+
+function TermsPage({ onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#fff", zIndex: 9000, display: "flex", flexDirection: "column" }}>
+      <div style={{ background: W.teal, color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, flexShrink: 0 }}>
+        <ArrowLeft size={24} style={{ cursor: "pointer" }} onClick={onClose} />
+        <div style={{ fontSize: 18, fontWeight: 700 }}>Terms &amp; Conditions</div>
+      </div>
+      <div style={{ overflowY: "auto", padding: "18px 18px 60px", maxWidth: 760, margin: "0 auto", width: "100%" }}>
+        {GW_TERMS.split("\n").map((raw, i) => {
+          const line = raw.trim();
+          if (!line) return <div key={i} style={{ height: 8 }} />;
+          const isSub = /^\d{1,2}\.\d/.test(line);
+          const isHeading = !isSub && /^\d{1,2}\.?\s+\S/.test(line);
+          const isCaps = !isSub && line.length > 3 && line === line.toUpperCase() && /[A-Z]/.test(line);
+          if (i === 0) return <div key={i} style={{ fontWeight: 800, color: W.ink, fontSize: 17, marginBottom: 10 }}>{line}</div>;
+          if (isHeading || isCaps) return <div key={i} style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, margin: "18px 0 4px" }}>{line}</div>;
+          return <div key={i} style={{ color: W.ink, fontSize: 13.5, lineHeight: 1.65, marginBottom: 8 }}>{line}</div>;
+        })}
+        <div style={{ borderTop: `1px solid ${W.line}`, marginTop: 24, paddingTop: 14, color: W.soft, fontSize: 12 }}>GLASSWINGS EVENTS PRIVATE LIMITED · Registered in India</div>
+      </div>
+    </div>
+  );
+}
+
+function TermsLink() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <span onClick={() => setOpen(true)} style={{ color: W.teal, fontSize: 12, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>Terms &amp; Conditions</span>
+      {open && <TermsPage onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
