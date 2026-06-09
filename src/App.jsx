@@ -4529,6 +4529,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
     else if (initialGame === "banter") setPlayBanter(true);
     else if (initialGame === "riddles") setPlayRiddle(true);
     else if (initialGame === "housie") setPlayHousie(true);
+    else if (initialGame === "spark") { setSparkCode(null); setPlaySpark(true); }
     if (initialGame && onConsumedInitial) onConsumedInitial();
     if (autoSpark) { setSparkCode(autoSpark); setPlaySpark(true); if (onConsumedSpark) onConsumedSpark(); }
   }, []);
@@ -4582,7 +4583,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
           <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 600 }}>Play with credits</div>
         </div>
         <div style={{ fontSize: 12, color: W.soft, margin: "0 2px 11px", lineHeight: 1.45 }}>A few credits per play. Top up anytime in Profile → Wallet.</div>
-        <Card emoji="💞" title="Spark" tint="#FDE7F1" badge="💎 Premium" sub="36 questions for two · pair by code or invite · girls free, guys use credits" cta="Play" onClick={() => { setSparkCode(null); setPlaySpark(true); }} />
+        <Card emoji="💞" title="Spark" tint="#FDE7F1" badge="💎 Premium" shareId="spark" sub="36 questions for two · pair by code or invite · women & staff free, 2 free plays for all" cta="Play" onClick={() => { setSparkCode(null); setPlaySpark(true); }} />
         <Card emoji="💘" title="Vibe Check" tint="#FCE3EF" badge="💎 Premium" shareId="vibe" sub="How compatible are you two? 10 quick questions" cta="Play" onClick={() => setPlayVibe(true)} />
         <Card emoji="🎭" title="Blind Banter" tint="#E9E6FB" badge="💎 Premium" shareId="banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys use credits" cta="Play" onClick={() => setPlayBanter(true)} />
 
@@ -10897,7 +10898,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • sparkfree ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • sparkshare ✅</div>
       </div>
     </div>
   );
