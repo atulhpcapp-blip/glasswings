@@ -4713,22 +4713,22 @@ function RiddleSheet({ meId, alreadyScore, onClose }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 180, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 430, margin: "0 auto", borderRadius: "18px 18px 0 0", padding: "18px 16px calc(24px + env(safe-area-inset-bottom))", minHeight: 320, maxHeight: "88vh", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, flex: 1 }}>\U0001f3af Bollywood Riddles</div>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, flex: 1 }}>🎯 Bollywood Riddles</div>
           <X size={21} color={W.soft} onClick={onClose} style={{ cursor: "pointer" }} />
         </div>
-        {view === "quiz" && (qs === null ? <div style={{ color: W.soft, padding: 20, textAlign: "center" }}>Loading today's riddles\u2026</div>
-          : !qs.length ? <div style={{ color: W.soft, padding: 20, textAlign: "center" }}>Today's riddles aren't ready \u2014 try again in a minute.</div>
+        {view === "quiz" && (qs === null ? <div style={{ color: W.soft, padding: 20, textAlign: "center" }}>Loading today's riddles…</div>
+          : !qs.length ? <div style={{ color: W.soft, padding: 20, textAlign: "center" }}>Today's riddles aren't ready — try again in a minute.</div>
           : (
             <>
               <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
                 {qs.map((_, k) => <div key={k} style={{ flex: 1, height: 4, borderRadius: 2, background: k <= i ? W.teal : W.line }} />)}
               </div>
-              <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, textAlign: "center", marginBottom: 4 }}>Riddle {i + 1} of {qs.length} \u00b7 which film?</div>
+              <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, textAlign: "center", marginBottom: 4 }}>Riddle {i + 1} of {qs.length} · which film?</div>
               <div style={{ fontSize: 46, textAlign: "center", lineHeight: 1.25, margin: "8px 0 20px", letterSpacing: 3 }}>{q.emojis}</div>
               {(q.options || []).map((opt, idx) => (
                 <div key={idx} onClick={() => pick(idx)} style={{ padding: "13px 15px", borderRadius: 12, border: `1.5px solid ${picked === idx ? W.teal : W.line}`, background: picked === idx ? "#E7F6EF" : "#fff", fontWeight: 700, color: W.ink, fontSize: 14.5, marginBottom: 10, cursor: "pointer" }}>{opt}</div>
               ))}
-              <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center" }}>Answers are checked at the end \u2014 no pressure \U0001f609</div>
+              <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center" }}>Answers are checked at the end — no pressure 😉</div>
             </>
           ))}
         {view === "board" && (
@@ -4736,20 +4736,20 @@ function RiddleSheet({ meId, alreadyScore, onClose }) {
             {result && (
               <div style={{ background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", borderRadius: 14, padding: "16px 18px", textAlign: "center", marginBottom: 14 }}>
                 <div style={{ fontSize: 26, fontWeight: 800 }}>{result.score}/5</div>
-                <div style={{ fontSize: 12.5, opacity: .9 }}>{result.score === 5 ? "Filmy genius! \U0001f3c6" : result.score >= 3 ? "Solid! \U0001f3ac" : "Tomorrow's a new reel \U0001f604"} \u00b7 day streak: \U0001f525 {result.streak}</div>
+                <div style={{ fontSize: 12.5, opacity: .9 }}>{result.score === 5 ? "Filmy genius! 🏆" : result.score >= 3 ? "Solid! 🎬" : "Tomorrow's a new reel 😄"} · day streak: 🔥 {result.streak}</div>
               </div>
             )}
             {alreadyScore !== null && !result && <div style={{ fontSize: 13, color: W.soft, marginBottom: 10 }}>You scored <b style={{ color: W.ink }}>{alreadyScore}/5</b> today. New riddles at midnight!</div>}
             <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 6 }}>Today's leaderboard</div>
-            {board === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading\u2026</div>
-              : !board.length ? <div style={{ color: W.soft, fontSize: 13 }}>No players yet \u2014 you could be first!</div>
+            {board === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div>
+              : !board.length ? <div style={{ color: W.soft, fontSize: 13 }}>No players yet — you could be first!</div>
               : board.map((r, k) => (
                 <div key={r.user_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${W.line}` }}>
                   <div style={{ width: 20, textAlign: "center", fontWeight: 800, color: k < 3 ? "#E67E22" : W.soft, fontSize: 13 }}>{k + 1}</div>
                   {r.avatar_url ? <img src={r.avatar_url} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{(r.full_name || "?").slice(0, 1)}</div>}
                   <div style={{ flex: 1, fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{r.full_name || "Member"}</div>
                   <div style={{ fontWeight: 800, color: W.teal, fontSize: 13 }}>{r.score}/5</div>
-                  <div style={{ fontWeight: 700, color: "#E67E22", fontSize: 12 }}>\U0001f525{r.streak}</div>
+                  <div style={{ fontWeight: 700, color: "#E67E22", fontSize: 12 }}>🔥{r.streak}</div>
                 </div>
               ))}
           </>
@@ -4884,7 +4884,7 @@ function HousieHub({ meId, isStaff, events, onClose }) {
   const claim = async (key, label) => {
     const { data, error } = await supabase.rpc("housie_claim", { p_game: game.id, p_prize: key });
     if (error) { setFlash(error.message); return; }
-    if (data.ok) { setFlash("\uD83C\uDF89 " + label + " \u2014 you won!"); refreshGame(game.id); }
+    if (data.ok) { setFlash("🎉 " + label + " — you won!"); refreshGame(game.id); }
     else setFlash(data.reason || "Not yet!");
   };
   const endGame = async () => { await supabase.rpc("housie_end", { p_game: game.id }); refreshGame(game.id); };
@@ -4892,7 +4892,7 @@ function HousieHub({ meId, isStaff, events, onClose }) {
   const wrap = { position: "fixed", inset: 0, zIndex: 200, background: W.bg, display: "flex", flexDirection: "column", maxWidth: 480, margin: "0 auto" };
   const Header = ({ title, onBack }) => (
     <div style={{ background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", padding: "16px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-      {onBack && <span onClick={onBack} style={{ cursor: "pointer", fontSize: 20, fontWeight: 800 }}>{"\u2039"}</span>}
+      {onBack && <span onClick={onBack} style={{ cursor: "pointer", fontSize: 20, fontWeight: 800 }}>{"‹"}</span>}
       <div style={{ fontWeight: 800, fontSize: 17, flex: 1 }}>{title}</div>
       <X size={22} color="#fff" onClick={onClose} style={{ cursor: "pointer" }} />
     </div>
@@ -4901,12 +4901,12 @@ function HousieHub({ meId, isStaff, events, onClose }) {
   if (view === "menu") {
     return (
       <div style={wrap}>
-        <Header title="\uD83C\uDFB2 Tambola / Housie" />
+        <Header title="🎲 Tambola / Housie" />
         <div style={{ padding: 16, overflowY: "auto" }}>
           {isStaff && <div onClick={() => setView("host")} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "16px 16px", marginBottom: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 46, height: 46, borderRadius: 12, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{"\uD83C\uDFA4"}</div>
+            <div style={{ width: 46, height: 46, borderRadius: 12, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{"🎤"}</div>
             <div style={{ flex: 1 }}><div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>Host a live game</div><div style={{ fontSize: 12, color: W.soft }}>Draw numbers for everyone in the room</div></div>
-            <span style={{ fontSize: 20, color: W.soft }}>{"\u203A"}</span>
+            <span style={{ fontSize: 20, color: W.soft }}>{"›"}</span>
           </div>}
 
           <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "14px 15px", marginBottom: 16 }}>
@@ -4922,10 +4922,10 @@ function HousieHub({ meId, isStaff, events, onClose }) {
           {!openGames.length ? <div style={{ color: W.soft, fontSize: 13 }}>No event games running right now.</div>
             : openGames.map(g => (
               <div key={g.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "12px 14px", marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ fontSize: 22 }}>{evMap[g.event_id]?.emoji || "\uD83C\uDFAB"}</div>
+                <div style={{ fontSize: 22 }}>{evMap[g.event_id]?.emoji || "🎫"}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{evMap[g.event_id]?.title || "Event game"}</div>
-                  <div style={{ fontSize: 11.5, color: g.status === "live" ? W.teal : W.soft, fontWeight: 700 }}>{g.status === "live" ? "\uD83D\uDFE2 Live now" : "\u23F3 In lobby"}</div>
+                  <div style={{ fontSize: 11.5, color: g.status === "live" ? W.teal : W.soft, fontWeight: 700 }}>{g.status === "live" ? "🟢 Live now" : "⏳ In lobby"}</div>
                 </div>
                 <button onClick={() => enterGame(g)} disabled={busy} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px", fontSize: 12.5 }}>Join</button>
               </div>
@@ -4946,19 +4946,19 @@ function HousieHub({ meId, isStaff, events, onClose }) {
           <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 6 }}>Who can join?</div>
           <select value={hostEvent} onChange={e => setHostEvent(e.target.value)}
             style={{ width: "100%", padding: "12px 13px", borderRadius: 11, border: `1.5px solid ${W.line}`, fontSize: 14, color: W.ink, background: "#fff", outline: "none", marginBottom: 6 }}>
-            <option value="">{"\uD83D\uDD11 Open game \u2014 share a code"}</option>
-            {(events || []).map(e => <option key={e.id} value={e.id}>{"\uD83C\uDFAB " + (e.title || "Event")}</option>)}
+            <option value="">{"🔑 Open game — share a code"}</option>
+            {(events || []).map(e => <option key={e.id} value={e.id}>{"🎫 " + (e.title || "Event")}</option>)}
           </select>
           <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 18 }}>{hostEvent ? "Only this event's ticket-holders can join." : "Anyone you share the code with can join."}</div>
 
           <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 8 }}>Prizes in play</div>
           {HOUSIE_PRIZES.map(([k, label, sub]) => (
             <div key={k} onClick={() => togglePrize(k)} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 12, border: `1.5px solid ${hostPrizes.includes(k) ? W.teal : W.line}`, background: hostPrizes.includes(k) ? "#E7F6EF" : "#fff", marginBottom: 9, cursor: "pointer" }}>
-              <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${hostPrizes.includes(k) ? W.teal : W.line}`, background: hostPrizes.includes(k) ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>{hostPrizes.includes(k) ? "\u2713" : ""}</div>
+              <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${hostPrizes.includes(k) ? W.teal : W.line}`, background: hostPrizes.includes(k) ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800 }}>{hostPrizes.includes(k) ? "✓" : ""}</div>
               <div style={{ flex: 1 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{label}</div><div style={{ fontSize: 11.5, color: W.soft }}>{sub}</div></div>
             </div>
           ))}
-          <button onClick={createGame} disabled={busy || !hostPrizes.length} style={{ ...btn(hostPrizes.length ? W.teal : "#EBEEF0", hostPrizes.length ? "#fff" : W.soft), width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 8 }}>{busy ? "Creating\u2026" : "Start game"}</button>
+          <button onClick={createGame} disabled={busy || !hostPrizes.length} style={{ ...btn(hostPrizes.length ? W.teal : "#EBEEF0", hostPrizes.length ? "#fff" : W.soft), width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 8 }}>{busy ? "Creating…" : "Start game"}</button>
         </div>
         {flash && <Flash text={flash} />}
       </div>
@@ -4974,23 +4974,23 @@ function HousieHub({ meId, isStaff, events, onClose }) {
   const won = g.won || {};
   return (
     <div style={wrap}>
-      <Header title="\uD83C\uDFB2 Housie" onBack={() => { setView("menu"); setGame(null); setTicket(null); }} />
+      <Header title="🎲 Housie" onBack={() => { setView("menu"); setGame(null); setTicket(null); }} />
       <div style={{ padding: "12px 14px 90px", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: ended ? W.soft : W.teal }}>{ended ? "Game over" : g.status === "live" ? "\uD83D\uDFE2 Live" : "\u23F3 Lobby"}</div>
-          <div style={{ fontSize: 12.5, color: W.soft }}>{"\u00b7 \uD83D\uDC65 " + players}</div>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: ended ? W.soft : W.teal }}>{ended ? "Game over" : g.status === "live" ? "🟢 Live" : "⏳ Lobby"}</div>
+          <div style={{ fontSize: 12.5, color: W.soft }}>{"· 👥 " + players}</div>
           {g.join_code && <div style={{ marginLeft: "auto", background: "#E7F6EF", color: W.teal, fontWeight: 800, fontSize: 13, letterSpacing: 2, padding: "5px 12px", borderRadius: 9 }}>{"CODE " + g.join_code}</div>}
         </div>
 
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: "16px", textAlign: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{called.length ? "Latest number" : "Waiting for the first number\u2026"}</div>
-          <div style={{ width: 78, height: 78, borderRadius: "50%", background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", fontSize: 34, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", margin: "10px auto 6px" }}>{lastBall || (called.length ? called[called.length - 1] : "\u2013")}</div>
+          <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{called.length ? "Latest number" : "Waiting for the first number…"}</div>
+          <div style={{ width: 78, height: 78, borderRadius: "50%", background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", fontSize: 34, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", margin: "10px auto 6px" }}>{lastBall || (called.length ? called[called.length - 1] : "–")}</div>
           <div style={{ fontSize: 12, color: W.soft }}>{called.length}/90 drawn</div>
         </div>
 
         {isHost && !ended && (
           <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-            <button onClick={draw} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "14px", fontSize: 15 }}>{busy ? "\u2026" : "\uD83C\uDFB1 Draw next"}</button>
+            <button onClick={draw} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "14px", fontSize: 15 }}>{busy ? "…" : "🎱 Draw next"}</button>
             <button onClick={() => window.gwConfirm("End this game for everyone?", endGame)} style={{ ...btn("#fff", "#B00020"), border: "1px solid #F1C7CD", padding: "14px 16px", fontSize: 14 }}>End</button>
           </div>
         )}
@@ -5005,7 +5005,7 @@ function HousieHub({ meId, isStaff, events, onClose }) {
         {/* my ticket */}
         {ticket && (
           <>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 8 }}>Your ticket <span style={{ fontWeight: 600, color: W.soft, fontSize: 12 }}>\u00b7 tap to daub</span></div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 8 }}>Your ticket <span style={{ fontWeight: 600, color: W.soft, fontSize: 12 }}>· tap to daub</span></div>
             <div style={{ background: "#7A1F1F", borderRadius: 12, padding: 6, marginBottom: 14 }}>
               {(ticket.grid || []).map((row, ri) => (
                 <div key={ri} style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 4, marginBottom: ri < 2 ? 4 : 0 }}>
@@ -5015,7 +5015,7 @@ function HousieHub({ meId, isStaff, events, onClose }) {
                     return <div key={ci} onClick={() => cell != null && setDaub(d => ({ ...d, [cell]: !d[cell] }))}
                       style={{ aspectRatio: "1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, position: "relative", cursor: cell != null ? "pointer" : "default", background: cell == null ? "#601717" : hit ? "#04B08F" : "#FFF7EC", color: cell == null ? "transparent" : hit ? "#fff" : "#7A1F1F" }}>
                       {cell || ""}
-                      {stamped && <span style={{ position: "absolute", inset: 0, borderRadius: 6, background: "rgba(216,27,122,.55)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 16 }}>{"\u25CF"}</span>}
+                      {stamped && <span style={{ position: "absolute", inset: 0, borderRadius: 6, background: "rgba(216,27,122,.55)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 16 }}>{"●"}</span>}
                     </div>;
                   })}
                 </div>
@@ -5033,13 +5033,13 @@ function HousieHub({ meId, isStaff, events, onClose }) {
             <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 9 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{meta ? meta[1] : k}</div>
-                <div style={{ fontSize: 11.5, color: w ? "#B0529C" : W.soft, fontWeight: w ? 700 : 400 }}>{w ? ("\uD83C\uDFC6 " + (w.name || "Won")) : (meta ? meta[2] : "")}</div>
+                <div style={{ fontSize: 11.5, color: w ? "#B0529C" : W.soft, fontWeight: w ? 700 : 400 }}>{w ? ("🏆 " + (w.name || "Won")) : (meta ? meta[2] : "")}</div>
               </div>
               {!w && ticket && !ended && <button onClick={() => claim(k, meta ? meta[1] : k)} style={{ ...btn(W.teal, "#fff"), padding: "8px 15px", fontSize: 12.5 }}>Claim</button>}
             </div>
           );
         })}
-        {ended && <div style={{ textAlign: "center", color: W.soft, fontSize: 13, marginTop: 14 }}>Thanks for playing! \uD83C\uDF89</div>}
+        {ended && <div style={{ textAlign: "center", color: W.soft, fontSize: 13, marginTop: 14 }}>Thanks for playing! 🎉</div>}
       </div>
       {flash && <Flash text={flash} />}
     </div>
@@ -10461,7 +10461,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • housie ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gamesfix ✅</div>
       </div>
     </div>
   );
