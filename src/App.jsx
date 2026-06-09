@@ -3666,8 +3666,8 @@ function LudoGame({ gameId, meId, onClose }) {
             return (
               <div key={"court" + pidx}>
                 <div style={{ position: "absolute", left: qc * cell + cell * .9, top: qr * cell + cell * .9, width: cell * 4.2, height: cell * 4.2, background: "#fff", borderRadius: 14, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
-                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = Math.round(cell * 0.9); const scx = (bc + 0.5) * cell, scy = (br + 0.5) * cell; return (
-                  <div key={k} style={{ position: "absolute", left: scx - ps / 2, top: scy - ps / 2, width: ps, height: ps, borderRadius: "50%", background: `radial-gradient(circle at 50% 38%, ${LUDO_LIGHT[pidx]} 0%, ${LUDO_COLORS[pidx]} 56%, ${LUDO_DARK[pidx]} 100%)`, boxShadow: `inset 0 0 0 1.5px ${LUDO_DARK[pidx]}, inset 0 -2px 4px ${LUDO_DARK[pidx]}, inset 0 2px 3px rgba(255,255,255,.4), 0 2px 5px rgba(0,0,0,.3)`, boxSizing: "border-box" }} />
+                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = Math.round(cell * 0.92); const scx = (bc + 0.5) * cell, scy = (br + 0.5) * cell; return (
+                  <div key={k} style={{ position: "absolute", left: scx - ps / 2, top: scy - ps / 2, width: ps, height: ps, borderRadius: "50%", background: LUDO_COLORS[pidx], boxShadow: `inset 0 0 0 1.5px ${LUDO_DARK[pidx]}, inset 0 0 ${Math.round(ps * 0.28)}px ${Math.round(ps * 0.1)}px ${LUDO_DARK[pidx]}, 0 2px 4px rgba(0,0,0,.3)`, boxSizing: "border-box" }} />
                 ); })}
               </div>
             );
@@ -3713,13 +3713,12 @@ function LudoGame({ gameId, meId, onClose }) {
               <div key={(t.ghost ? "g" : "") + t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
                 style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: `translate(-50%,-${yAnchor}%)`, transformOrigin: `50% ${yAnchor}%`, transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
                 <svg viewBox="0 0 24 32" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
-                  <ellipse cx="12" cy="30.2" rx="7.4" ry="2.4" fill="rgba(0,0,0,.28)" />
-                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill="#ffffff" stroke={dk} strokeWidth="1.3" />
-                  <path d="M12 27 C12 27 3.4 18.2 3 11.5 C5 14.5 8.5 19 12 24 Z" fill="rgba(0,0,0,.06)" />
-                  <ellipse cx="9" cy="6.4" rx="2.3" ry="1.5" fill="rgba(255,255,255,.9)" />
-                  <circle cx="12" cy="11.1" r="4.2" fill={col} />
-                  <circle cx="12" cy="11.1" r="4.2" fill="none" stroke={dk} strokeWidth="0.7" opacity="0.6" />
-                  <ellipse cx="10.6" cy="9.6" rx="1.3" ry="0.9" fill="rgba(255,255,255,.55)" />
+                  <ellipse cx="12" cy="30.2" rx="7" ry="2.3" fill="rgba(0,0,0,.3)" />
+                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill={col} stroke={dk} strokeWidth="1.3" />
+                  <ellipse cx="9.8" cy="9" rx="4.3" ry="6.2" fill={lt} opacity="0.5" />
+                  <circle cx="12" cy="11" r="3.4" fill={dk} opacity="0.45" />
+                  <circle cx="12" cy="11" r="3.4" fill="none" stroke={dk} strokeWidth="0.6" opacity="0.7" />
+                  <ellipse cx="10.2" cy="6.6" rx="2.2" ry="1.5" fill="#ffffff" opacity="0.8" />
                 </svg>
               </div>
             );
@@ -10957,7 +10956,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking4 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking5 ✅</div>
       </div>
     </div>
   );
