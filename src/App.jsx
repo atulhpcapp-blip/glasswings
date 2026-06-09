@@ -2374,7 +2374,7 @@ function Main({ user }) {
   const addPerk = async (kind, label) => { const n = (label || "").trim(); if (!n) return; const { error } = await supabase.from("event_perks").insert({ kind, label: n }); if (error && !String(error.message).includes("duplicate")) return; await load(); };
   const delPerk = async (id) => { await supabase.from("event_perks").delete().eq("id", id); await load(); };
   const addAddon = async (eventId, d) => { const n = (d.name || "").trim(); if (!n) return; const { error } = await supabase.from("event_addons").insert({ event_id: eventId, name: n, price: Number(d.price) || 0, credit_price: (d.credit_price === "" || d.credit_price == null) ? null : Number(d.credit_price) }); if (error) return setNotice(error.message); await load(); };
-  const delAddon = async (id) => { await supabase.from("event_addons").delete().eq("id", id); await load(); };
+  const delAddon = async (id) => { const { error } = await supabase.rpc("del_event_addon", { p_id: id }); if (error) return setNotice(error.message); await load(); };
   const addTicketType = async (eventId, d) => { const { error } = await supabase.from("event_ticket_types").insert({ event_id: eventId, ...d }); if (error) return setNotice(error.message); await load(); };
   const delTicketType = async (id) => { const { error } = await supabase.from("event_ticket_types").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
 
@@ -11074,7 +11074,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • freeclaim ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • delAddon ✅</div>
       </div>
     </div>
   );
