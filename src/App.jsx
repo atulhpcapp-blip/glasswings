@@ -3666,8 +3666,8 @@ function LudoGame({ gameId, meId, onClose }) {
             return (
               <div key={"court" + pidx}>
                 <div style={{ position: "absolute", left: qc * cell + cell * .9, top: qr * cell + cell * .9, width: cell * 4.2, height: cell * 4.2, background: "#fff", borderRadius: 14, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
-                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = cell * 1.18; return (
-                  <div key={k} style={{ position: "absolute", left: (bc + 0.5) * cell - ps / 2, top: (br + 0.5) * cell - ps / 2, width: ps, height: ps, borderRadius: "50%", background: "#FFFFFF", boxShadow: `inset 0 0 0 3.5px ${LUDO_COLORS[pidx]}, inset 0 2px 5px rgba(0,0,0,.18)` }} />
+                {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = Math.round(cell * 1.04); const ringT = Math.max(3, Math.round(cell * 0.16)); const scx = (bc + 0.5) * cell, scy = (br + 0.5) * cell + cell * 0.30; return (
+                  <div key={k} style={{ position: "absolute", left: scx - ps / 2, top: scy - ps / 2, width: ps, height: ps, borderRadius: "50%", background: "rgba(255,255,255,.45)", boxShadow: `inset 0 0 0 ${ringT}px ${LUDO_COLORS[pidx]}, inset 0 0 0 ${ringT + 1.5}px ${LUDO_DARK[pidx]}66, 0 1px 3px rgba(0,0,0,.22)`, boxSizing: "border-box" }} />
                 ); })}
               </div>
             );
@@ -3709,7 +3709,7 @@ function LudoGame({ gameId, meId, onClose }) {
             const topPx = t.rc[0] * cell + cell / 2 - offs;
             return (
               <div key={(t.ghost ? "g" : "") + t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
-                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-58%)", transformOrigin: "50% 58%", transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
+                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-65%)", transformOrigin: "50% 65%", transition: "left .3s ease-in-out, top .3s ease-in-out", zIndex: clickable ? 26 : hopping ? 25 : t.ghost ? 6 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none", opacity: t.ghost ? 0.92 : 1, pointerEvents: clickable ? "auto" : "none" }}>
                 <svg viewBox="0 0 24 32" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
                   <ellipse cx="12" cy="30.2" rx="7.7" ry="2.5" fill="rgba(0,0,0,.25)" />
                   <ellipse cx="12" cy="29.1" rx="7.4" ry="2.8" fill={dk} />
@@ -10956,7 +10956,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoring ✅</div>
       </div>
     </div>
   );
