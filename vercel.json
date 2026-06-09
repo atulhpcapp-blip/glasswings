@@ -21,11 +21,11 @@
       "has": [
         {
           "type": "host",
-          "value": "(.*)\\.vercel\\.app"
+          "value": "(?!glasswings-git-ar-camera-).*\\.vercel\\.app"
         }
       ],
       "destination": "https://glass-wings.com/:path*",
-      "permanent": true
+      "permanent": false
     }
   ]
 }
