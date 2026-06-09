@@ -1127,17 +1127,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         <button onClick={share} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(255,255,255,.4)", color: "#fff", borderRadius: 9, padding: "7px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}><Share2 size={14} />{copied ? "Copied ✓" : "Share"}</button>
       </div>
       {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>⏳ UNPUBLISHED — members and the public can't see this event yet. Approve it from Admin → Events.</div>}
-      {e.portrait_video_url ? (
-        <div style={{ position: "relative", height: wide ? 460 : 300, background: "#0b1f1c", overflow: "hidden" }}>
-          {(e.portrait_banner_url || (e.banner_type !== "video" && e.banner_url) || e.poster_url) && <img src={e.portrait_banner_url || (e.banner_type !== "video" && e.banner_url) || e.poster_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />}
-          <video src={e.portrait_video_url} autoPlay loop playsInline controls ref={el => { if (el) { el.muted = false; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(() => {}); } }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
-        </div>
-      ) : e.portrait_banner_url ? (
-        <div style={{ position: "relative", height: wide ? 460 : 300, background: "#0b1f1c", overflow: "hidden" }}>
-          <img src={e.portrait_banner_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(28px) brightness(.5)", transform: "scale(1.15)" }} />
-          <img src={e.portrait_banner_url} alt={e.title} decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
-        </div>
-      ) : e.landscape_video_url ? (
+      {e.landscape_video_url ? (
         <div style={{ background: "#0b1f1c" }}><video src={e.landscape_video_url} autoPlay loop playsInline controls ref={el => { if (el) { el.muted = false; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(() => {}); } }} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
       ) : (e.banner_url || e.poster_url) ? (e.banner_type === "video" && e.banner_url ? (
         <div style={{ background: "#0b1f1c" }}><BannerMedia url={e.banner_url} type={e.banner_type} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
@@ -2331,7 +2321,7 @@ function Main({ user }) {
   };
   const broadcastEvent = async (e) => {
     const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-    await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}`, "event", { media_url: e.banner_url || null, file_name: e.banner_type || "image", event_ref: e.id });
+    await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}`, "event", { media_url: e.landscape_video_url || e.banner_url || null, file_name: e.landscape_video_url ? "video" : (e.banner_type || "image"), event_ref: e.id });
     setNotice("Event sent to all group chats.");
   };
   const sendDM = async (ids, text) => {
@@ -2348,7 +2338,7 @@ function Main({ user }) {
     if (!target.length) return setNotice("No members to send to.");
     const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
     const body = `${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}`;
-    const rows = target.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body, media_type: "event", media_url: e.banner_url || null, file_name: e.banner_type || "image", event_ref: e.id }));
+    const rows = target.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body, media_type: "event", media_url: e.landscape_video_url || e.banner_url || null, file_name: e.landscape_video_url ? "video" : (e.banner_type || "image"), event_ref: e.id }));
     const { error } = await supabase.from("messages").insert(rows);
     if (error) return setNotice(error.message);
     setNotice(`Event sent privately to ${target.length} member${target.length === 1 ? "" : "s"}.`);
@@ -8718,16 +8708,21 @@ function EventVideos({ ev, onUpdate }) {
   const [busy, setBusy] = useState("");
   const [saved, setSaved] = useState(false);
   const flashSaved = () => { setSaved(true); setTimeout(() => setSaved(false), 2200); };
-  const vR = useRef(null), pR = useRef(null), lR = useRef(null), vbR = useRef(null), pbR = useRef(null);
+  const vR = useRef(null), vbR = useRef(null), lR = useRef(null), lbR = useRef(null);
   const up = async (file, field, kind) => {
     if (!file) return;
     if (kind === "video" && !file.type.startsWith("video")) { alert("Please choose a video file."); return; }
     if (kind === "image" && !file.type.startsWith("image")) { alert("Please choose an image file."); return; }
     setBusy(field);
-    try { const url = await uploadChatFile("banners", file); await onUpdate(ev.id, { [field]: url }); flashSaved(); }
-    catch (x) { alert("Upload failed: " + (x.message || x)); }
+    try {
+      const url = await uploadChatFile("banners", file);
+      const patch = field === "banner_url" ? { banner_url: url, banner_type: "image" } : { [field]: url };
+      await onUpdate(ev.id, patch);
+      flashSaved();
+    } catch (x) { alert("Upload failed: " + (x.message || x)); }
     setBusy("");
   };
+  const clear = (field) => { const patch = field === "banner_url" ? { banner_url: null } : { [field]: null }; onUpdate(ev.id, patch); flashSaved(); };
   const row = (field, val, ratio, w, emoji, title, hint, inpRef, kind) => (
     <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
       <input ref={inpRef} type="file" accept={kind === "image" ? "image/*" : "video/*"} onChange={e => { up(e.target.files?.[0], field, kind); e.target.value = ""; }} style={{ display: "none" }} />
@@ -8739,25 +8734,26 @@ function EventVideos({ ev, onUpdate }) {
         <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>{hint}</div>
         <div style={{ display: "flex", gap: 14, marginTop: 4 }}>
           <span onClick={() => inpRef.current?.click()} style={{ fontSize: 12, color: W.teal, fontWeight: 700, cursor: "pointer" }}>{val ? "Replace" : "Upload"}</span>
-          {val && <span onClick={() => { onUpdate(ev.id, { [field]: null }); flashSaved(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
+          {val && <span onClick={() => clear(field)} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
         </div>
       </div>
     </div>
   );
+  const landscapeBanner = (ev.banner_type !== "video" && ev.banner_url) ? ev.banner_url : "";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>🎬 Event card media <span style={{ fontWeight: 600 }}>— shown on the events list</span></label>
-      {row("vertical_video_url", ev.vertical_video_url, "9/16", 80, "🎬", "Vertical video (9:16)", "Plays on the event card. Highest priority.", vR, "video")}
-      {row("vertical_banner_url", ev.vertical_banner_url, "9/16", 80, "🖼️", "Vertical banner (9:16)", "Image used on the card if there's no vertical video.", vbR, "image")}
-      <label style={{ fontSize: 13, fontWeight: 600, color: W.soft, marginTop: 6 }}>📲 Event page media <span style={{ fontWeight: 600 }}>— shown when the card is opened</span></label>
-      {row("portrait_video_url", ev.portrait_video_url, "3/4", 80, "🎞️", "Portrait video (3:4)", "Plays on the event page with sound on. Highest priority.", pR, "video")}
-      {row("portrait_banner_url", ev.portrait_banner_url, "3/4", 80, "🖼️", "Portrait banner (3:4)", "Image used on the event page if there's no portrait video.", pbR, "image")}
-      {row("landscape_video_url", ev.landscape_video_url, "16/9", 110, "🎥", "Landscape video (16:9)", "Wide fallback on the event page (plays with sound) if there's no portrait video/banner.", lR, "video")}
-      <div style={{ fontSize: 11.5, color: W.soft }}>Card: vertical video → vertical banner. Event page: portrait video → portrait banner → landscape video → banner.</div>
+      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>📱 On the events list (vertical)</label>
+      <div style={{ fontSize: 11.5, color: W.soft, marginTop: -6 }}>Shown on the event card. Video is used if present, otherwise the banner.</div>
+      {row("vertical_video_url", ev.vertical_video_url, "9/16", 80, "🎬", "Vertical video (9:16)", "Plays on the card. Used first.", vR, "video")}
+      {row("vertical_banner_url", ev.vertical_banner_url, "9/16", 80, "🖼️", "Vertical banner (9:16)", "Image shown on the card if there's no vertical video.", vbR, "image")}
+      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink, marginTop: 8 }}>🖥️ On the event page & when shared (landscape)</label>
+      <div style={{ fontSize: 11.5, color: W.soft, marginTop: -6 }}>Shown on the opened event page (video plays with sound, on loop) and used when sharing to groups / WhatsApp. Video is used if present, otherwise the banner.</div>
+      {row("landscape_video_url", ev.landscape_video_url, "16/9", 120, "🎥", "Landscape video (16:9)", "Plays on the event page (with sound) and is shared to groups. Used first.", lR, "video")}
+      {row("banner_url", landscapeBanner, "16/9", 120, "🖼️", "Landscape banner (16:9)", "Image used on the event page / when shared if there's no landscape video.", lbR, "image")}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
         <button onClick={flashSaved} style={{ ...btn(W.teal, "#fff"), opacity: busy ? 0.6 : 1 }} disabled={!!busy}>{busy ? "Uploading…" : "Save"}</button>
         {saved && <span style={{ fontSize: 13, fontWeight: 800, color: W.teal }}>Saved ✓</span>}
-        <span style={{ fontSize: 11.5, color: W.soft }}>Each upload is saved automatically.</span>
+        <span style={{ fontSize: 11.5, color: W.soft }}>Each upload saves automatically.</span>
       </div>
     </div>
   );
@@ -9479,28 +9475,6 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               {f.vbanner && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, vbanner: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
             </div>
           </div>
-          <input ref={pvRef} type="file" accept="video/*" onChange={pickPVideo} style={{ display: "none" }} />
-          <div onClick={() => pvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
-            <div style={{ width: 80, aspectRatio: "3/4", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.pvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-              {f.pvideo ? <video src={f.pvideo} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🎞️")}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.pvideo ? "Portrait video added ✓" : "+ Portrait video (optional)"}</div>
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Portrait clip (3:4). Plays full — no cropping — on the event page.</div>
-              {f.pvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, pvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
-            </div>
-          </div>
-          <input ref={pbRef} type="file" accept="image/*" onChange={pickPBanner} style={{ display: "none" }} />
-          <div onClick={() => pbRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
-            <div style={{ width: 80, aspectRatio: "3/4", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.pbanner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-              {f.pbanner ? <img src={f.pbanner} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🖼️")}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.pbanner ? "Portrait banner added ✓" : "+ Portrait banner (3:4)"}</div>
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Shown on the event page when there's no portrait video.</div>
-              {f.pbanner && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, pbanner: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
-            </div>
-          </div>
           <input ref={lvRef} type="file" accept="video/*" onChange={pickLVideo} style={{ display: "none" }} />
           <div onClick={() => lvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
             <div style={{ width: 110, aspectRatio: "16/9", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.lvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
@@ -9719,7 +9693,6 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             </div>
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
-                <EventBanner ev={e} onUpdate={onUpdate} />
                 <EventVideos ev={e} onUpdate={onUpdate} />
                 <EventShare event={e} />
                 <GuestTickets event={e} />
@@ -9755,12 +9728,15 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 </div>
                 <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
                 <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
+                <PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
                 <GenderBalance ev={e} onUpdate={onUpdate} />
                 <EventTerms ev={e} onUpdate={onUpdate} />
                 <EntryBadgeEditor ev={e} onUpdate={onUpdate} optsAll={optsAll} onAddOption={onAddOption} />
                 <ArtistEditor ev={e} onUpdate={onUpdate} />
                 <EventFAQ ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
+                <button onClick={() => setManage(null)} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", padding: "12px", fontSize: 15 }}>✓ Save &amp; close</button>
+                <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center", marginTop: -8 }}>Every change here saves on its own — tap above when you're done.</div>
                 {onDuplicate && <button onClick={() => onDuplicate(e)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", justifyContent: "center", marginBottom: 8 }}>📋 Duplicate event</button>}
                 <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
               </div>
@@ -11102,7 +11078,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • grouppin ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • media4 ✅</div>
       </div>
     </div>
   );
