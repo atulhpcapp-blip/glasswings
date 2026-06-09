@@ -8471,19 +8471,26 @@ function GenderBalance({ ev, onUpdate }) {
   );
 }
 const ENTRY_BADGES = ["", "18+", "21+", "Couples only", "Stag allowed", "Ladies special", "Members only"];
+function badgeArr(s) { return (s || "").split(",").map(x => x.trim()).filter(Boolean); }
+function entryBadgeOpts(optsAll) { return [...ENTRY_BADGES.filter(Boolean), ...(optsAll || []).filter(o => o.kind === "entry_badge").map(o => o.name)].filter((b, i, a) => a.indexOf(b) === i); }
 const ARTIST_ROLES = ["DJ", "Host", "Performer", "Singer", "Comedian", "Special Guest", "Artist"];
-function EntryBadgeEditor({ ev, onUpdate }) {
-  const [v, setV] = useState(ev.entry_badge || ""); const [saved, setSaved] = useState(false);
-  const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" };
+function EntryBadgeEditor({ ev, onUpdate, optsAll, onAddOption }) {
+  const [sel, setSel] = useState(badgeArr(ev.entry_badge)); const [nb, setNb] = useState(""); const [saved, setSaved] = useState(false);
+  const opts = entryBadgeOpts(optsAll);
+  const ch = (active) => ({ padding: "7px 13px", borderRadius: 18, border: `1.5px solid ${active ? W.teal : W.line}`, background: active ? W.teal : "#fff", color: active ? "#fff" : W.ink, fontWeight: 700, fontSize: 13, cursor: "pointer" });
+  const toggle = b => { setSaved(false); setSel(s => s.includes(b) ? s.filter(x => x !== b) : [...s, b]); };
+  const addCustom = async () => { const n = nb.trim(); if (!n) return; if (onAddOption) await onAddOption("entry_badge", n); setSel(s => s.includes(n) ? s : [...s, n]); setNb(""); setSaved(false); };
   return (
     <div style={{ marginTop: 14 }}>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Entry / age badge</label>
-      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-        <select value={v} onChange={e => { setV(e.target.value); setSaved(false); }} style={{ ...sel, flex: 1 }}>
-          {ENTRY_BADGES.map(b => <option key={b} value={b}>{b === "" ? "No badge" : b}</option>)}
-        </select>
-        <button onClick={async () => { await onUpdate(ev.id, { entry_badge: v || null }); setSaved(true); }} style={{ ...btn(W.teal, "#fff") }}>{saved ? "Saved ✓" : "Save"}</button>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 7 }}>
+        {opts.map(b => <button key={b} onClick={() => toggle(b)} style={ch(sel.includes(b))}>{b}</button>)}
       </div>
+      <div style={{ display: "flex", gap: 7, marginTop: 8 }}>
+        <input value={nb} onChange={e => setNb(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustom(); }} placeholder="Add your own… e.g. Stag with cover" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
+        <button onClick={addCustom} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}` }}>+ Add</button>
+      </div>
+      <button onClick={async () => { await onUpdate(ev.id, { entry_badge: sel.length ? sel.join(", ") : null }); setSaved(true); }} style={{ ...btn(W.teal, "#fff"), marginTop: 8 }}>{saved ? "Saved ✓" : "Save badges"}</button>
     </div>
   );
 }
@@ -9281,9 +9288,10 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fOrg === "all" || e.host_id === fOrg)
     && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole))
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: "", repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
+  const [newBadge, setNewBadge] = useState("");
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
   const [members, setMembers] = useState([]); const [sendFor, setSendFor] = useState(null); const [checkIn, setCheckIn] = useState(null);
@@ -9328,7 +9336,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: f.entryBadge || null }, dates, f.addons);
+    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -9488,10 +9496,14 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               ))}
             </div>
           </div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 6 }}>Entry / age badge</div>
-          <select value={f.entryBadge} onChange={e => setF({ ...f, entryBadge: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10, background: "#fff", color: W.ink, boxSizing: "border-box" }}>
-            {ENTRY_BADGES.map(b => <option key={b} value={b}>{b === "" ? "No entry badge" : b}</option>)}
-          </select>
+          <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 6 }}>Entry / age badge <span style={{ fontWeight: 600 }}>(pick any)</span></div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 }}>
+            {entryBadgeOpts(optsAll).map(b => chip(b, (f.entryBadge || []).includes(b), () => { const cur = f.entryBadge || []; setF({ ...f, entryBadge: cur.includes(b) ? cur.filter(x => x !== b) : [...cur, b] }); }))}
+          </div>
+          <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
+            <input value={newBadge} onChange={e => setNewBadge(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const n = newBadge.trim(); if (!n) return; if (onAddOption) onAddOption("entry_badge", n); const cur = f.entryBadge || []; if (!cur.includes(n)) setF({ ...f, entryBadge: [...cur, n] }); setNewBadge(""); } }} placeholder="Add your own… e.g. Stag with cover" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, outline: "none" }} />
+            <button onClick={async () => { const n = newBadge.trim(); if (!n) return; if (onAddOption) await onAddOption("entry_badge", n); const cur = f.entryBadge || []; if (!cur.includes(n)) setF({ ...f, entryBadge: [...cur, n] }); setNewBadge(""); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}` }}>+ Add</button>
+          </div>
           <ArtistDraft value={f.artists} onChange={v => setF({ ...f, artists: v })} />
           <FaqDraft value={f.faqs} onChange={v => setF({ ...f, faqs: v })} />
           <CannedTerms value={f.terms} onApply={(b) => setF({ ...f, terms: b })} />
@@ -9623,7 +9635,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                 <GenderBalance ev={e} onUpdate={onUpdate} />
                 <EventTerms ev={e} onUpdate={onUpdate} />
-                <EntryBadgeEditor ev={e} onUpdate={onUpdate} />
+                <EntryBadgeEditor ev={e} onUpdate={onUpdate} optsAll={optsAll} onAddOption={onAddOption} />
                 <ArtistEditor ev={e} onUpdate={onUpdate} />
                 <EventFAQ ev={e} onUpdate={onUpdate} />
                 <PinEditor room={e} onUpdate={onUpdate} />
@@ -10959,7 +10971,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking8 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • entrybadges ✅</div>
       </div>
     </div>
   );
