@@ -175,11 +175,20 @@ export default async function handler(req, res) {
       amount = planPrice * 100;
       Object.assign(notes, { room_id, plan_months: pm });
     } else if (purpose === "credits") {
-      const { data: pack } = await sb.from("credit_packs").select("id, credits, price, active").eq("id", body.pack_id).single();
-      if (!pack || !pack.active) return res.status(400).json({ error: "Credit pack not found." });
-      amount = pack.price * 100;
-      creditsGrant = pack.credits;
-      Object.assign(notes, { pack_id: pack.id, credits: pack.credits });
+      if (body.pack_id) {
+        const { data: pack } = await sb.from("credit_packs").select("id, credits, price, active").eq("id", body.pack_id).single();
+        if (!pack || !pack.active) return res.status(400).json({ error: "Credit pack not found." });
+        amount = pack.price * 100;
+        creditsGrant = pack.credits;
+        Object.assign(notes, { pack_id: pack.id, credits: pack.credits });
+      } else {
+        // custom amount: 1 credit = ₹1
+        const n = Math.floor(Number(body.credits) || 0);
+        if (!Number.isFinite(n) || n < 1 || n > 100000) return res.status(400).json({ error: "Enter a valid number of credits (1–100000)." });
+        amount = n * 100;
+        creditsGrant = n;
+        Object.assign(notes, { credits: n });
+      }
     } else {
       return res.status(400).json({ error: "Unknown purpose." });
     }
