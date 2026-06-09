@@ -3456,11 +3456,11 @@ function LudoGame({ gameId, meId, onClose }) {
         const f = (dispRef.current || cur).slice();
         for (let i = 0; i < target.length; i++) { if (i !== idx) f[i] = target[i]; }
         dispRef.current = f; setDisp(f);
-        setTimeout(() => setHop({ idx: -1, tick: tick + 1 }), 230);
+        setTimeout(() => setHop({ idx: -1, tick: tick + 1 }), 620);
         if (g.last && g.last.captured) playCaptureSound();
         return;
       }
-      setTimeout(stepOnce, 240);
+      setTimeout(stepOnce, 680);
     };
     setTimeout(stepOnce, 70);
   }, [g ? JSON.stringify(g.tokens) : ""]);
@@ -3707,20 +3707,30 @@ function LudoGame({ gameId, meId, onClose }) {
             );
           })()}
           {tokenList.map(t => {
-            const sz = Math.round(cell * 0.82);
+            const pinW = Math.round(cell * 0.9), pinH = Math.round(cell * 1.18);
             const k = t.rc[0] + "_" + t.rc[1]; const n = stacks[k] || 1;
-            const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * (cell * 0.26) : 0;
+            const offs = n > 1 ? (t.stackIdx - (n - 1) / 2) * (cell * 0.24) : 0;
             const clickable = myTurn && t.pidx === myIdx && g.dice != null && legal.includes(t.j);
-            const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx], lt = LUDO_LIGHT[t.pidx];
+            const col = LUDO_COLORS[t.pidx], dk = LUDO_DARK[t.pidx];
             const flatIdx = t.pidx * 4 + t.j;
             const hopping = hop.idx === flatIdx;
             const leftPx = t.rc[1] * cell + cell / 2 + offs;
             const topPx = t.rc[0] * cell + cell / 2 - offs;
             return (
               <div key={t.pidx + "_" + t.j} onClick={clickable ? () => move(t.j) : undefined}
-                style={{ position: "absolute", left: leftPx, top: topPx, width: sz, height: sz, transform: "translate(-50%,-50%)", transition: hopping ? "none" : "left .14s linear, top .14s linear", zIndex: (clickable || hopping) ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none" }}>
-                <div key={hopping ? hop.tick : "s"} style={{ width: "100%", height: "100%", borderRadius: "50%", background: `radial-gradient(circle at 34% 28%, ${lt}, ${col} 52%, ${dk} 100%)`, border: `2px solid ${dk}`, boxShadow: "inset 0 -2px 3px rgba(0,0,0,.35), inset 0 2px 3px rgba(255,255,255,.5), 0 2px 5px rgba(0,0,0,.4)", boxSizing: "border-box", position: "relative", animation: hopping ? "gwhop 230ms ease-in-out" : "none" }}>
-                  <div style={{ position: "absolute", left: "26%", top: "20%", width: "30%", height: "24%", borderRadius: "50%", background: "rgba(255,255,255,.7)", filter: "blur(.5px)" }} />
+                style={{ position: "absolute", left: leftPx, top: topPx, width: pinW, height: pinH, transform: "translate(-50%,-58%)", transformOrigin: "50% 58%", transition: hopping ? "none" : "left .14s linear, top .14s linear", zIndex: (clickable || hopping) ? 25 : 8 + t.stackIdx, cursor: clickable ? "pointer" : "default", animation: clickable ? "gwpulse 1s infinite" : "none", filter: clickable ? `drop-shadow(0 0 5px ${col})` : "none" }}>
+                <div key={hopping ? hop.tick : "s"} style={{ width: "100%", height: "100%", animation: hopping ? "gwhop 600ms ease-in-out" : "none" }}>
+                <svg viewBox="0 0 24 32" width={pinW} height={pinH} style={{ display: "block", overflow: "visible" }}>
+                  <ellipse cx="12" cy="30.2" rx="7.7" ry="2.5" fill="rgba(0,0,0,.25)" />
+                  <ellipse cx="12" cy="29.2" rx="7.4" ry="2.8" fill={col} />
+                  <ellipse cx="12" cy="29.2" rx="7.4" ry="2.8" fill="none" stroke={dk} strokeWidth="0.7" />
+                  <ellipse cx="12" cy="28.7" rx="3.5" ry="1.2" fill={dk} opacity="0.55" />
+                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill="#ffffff" stroke={col} strokeWidth="1.7" />
+                  <path d="M12 1.6 C6 1.6 1.7 6 1.7 11.3 C1.7 17.9 12 28 12 28 C12 28 22.3 17.9 22.3 11.3 C22.3 6 18 1.6 12 1.6 Z" fill="none" stroke={dk} strokeWidth="0.5" opacity="0.4" />
+                  <circle cx="12" cy="11.1" r="3.1" fill={col} />
+                  <circle cx="12" cy="11.1" r="3.1" fill="none" stroke={dk} strokeWidth="0.5" opacity="0.5" />
+                  <ellipse cx="9.4" cy="6.6" rx="2.1" ry="1.4" fill="rgba(255,255,255,.85)" />
+                </svg>
                 </div>
               </div>
             );
@@ -3728,7 +3738,7 @@ function LudoGame({ gameId, meId, onClose }) {
           {floats.map(fl => { const q = [[0, 0], [0, 9], [9, 9], [9, 0]][fl.pidx] || [0, 0]; return (
             <div key={fl.id} style={{ position: "absolute", left: (q[1] + 3) * cell, top: (q[0] + 3) * cell, fontSize: 27, zIndex: 30, pointerEvents: "none", animation: "gwfloat 2.2s ease-out forwards", filter: "drop-shadow(0 2px 3px rgba(0,0,0,.45))" }}>{fl.emoji}</div>
           ); })}
-          <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } } @keyframes gwhop { 0% { transform: translateY(0); } 50% { transform: translateY(-9px); } 100% { transform: translateY(0); } } @keyframes gwshake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes gwroll { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-200deg) scale(1.14); } 50% { transform: rotate(-360deg) scale(.92); } 75% { transform: rotate(-540deg) scale(1.12); } 100% { transform: rotate(-720deg) scale(1); } } @keyframes gwfloat { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); } 16% { opacity: 1; transform: translate(-50%,-95%) scale(1.35); } 70% { opacity: 1; transform: translate(-50%,-150%) scale(1.1); } 100% { opacity: 0; transform: translate(-50%,-195%) scale(.95); } }`}</style>
+          <style>{`@keyframes gwpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } } @keyframes gwhop { 0% { transform: translateY(0); } 50% { transform: translateY(-13px); } 100% { transform: translateY(0); } } @keyframes gwshake { 0%,100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } } @keyframes gwroll { 0% { transform: rotate(0) scale(1); } 25% { transform: rotate(-200deg) scale(1.14); } 50% { transform: rotate(-360deg) scale(.92); } 75% { transform: rotate(-540deg) scale(1.12); } 100% { transform: rotate(-720deg) scale(1); } } @keyframes gwfloat { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4); } 16% { opacity: 1; transform: translate(-50%,-95%) scale(1.35); } 70% { opacity: 1; transform: translate(-50%,-150%) scale(1.1); } 100% { opacity: 0; transform: translate(-50%,-195%) scale(.95); } }`}</style>
         </div>
         </div>
       </div>
@@ -10958,7 +10968,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludohop2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoslow ✅</div>
       </div>
     </div>
   );
