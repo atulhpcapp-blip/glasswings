@@ -213,13 +213,16 @@ export default async function handler(req, res) {
       commission_amount = Math.round(ticketRev * (Number(ref.commission_pct) || 0));  // paise = rupees*pct
     }
 
-    await sb.from("payments").insert({
+    const { error: payErr } = await sb.from("payments").insert({
       user_id: uid, purpose, event_id: event_id || null,
       ticket_type_id: (purpose === "ticket" ? (items[0]?.ticket_type_id || null) : null),
       room_id: room_id || null, plan_id: (purpose === "plan" ? plan_id : null), plan_months: (purpose === "room" || purpose === "plan" ? (Number(plan_months) || 1) : null), quantity: (purpose === "ticket" ? totalQty : purpose === "credits" ? creditsGrant : qty), amount, status: "created", razorpay_order_id: order.id,
       addons: addonRows, referrer_id, commission_amount,
       items: (purpose === "ticket" ? items : null),
     });
+    // If we can't record the order, abort NOW so the customer is never charged
+    // for something we can't later confirm or fulfil.
+    if (payErr) return res.status(500).json({ error: "Could not save the order (" + payErr.message + "). You were not charged." });
 
     return res.status(200).json({ order_id: order.id, amount, currency: "INR", key_id: KEY });
   } catch (e) {
