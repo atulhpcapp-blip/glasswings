@@ -1030,6 +1030,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const link = `${window.location.origin}/e/${e.id}`;
   const share = async () => { try { if (navigator.share) await navigator.share({ title: e.title, url: link }); else { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } } catch {} };
   const visTypes = types;
+  const realAddons = (addons || []).filter(a => (a.name || "").trim());
   const prices = visTypes.length ? visTypes.map(t => t.price || 0) : [e.ticket_price || 0];
   const minPrice = Math.min(...prices);
   const MAX_TIX = 10;
@@ -1096,7 +1097,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               {Number(t.disc_female_pct) > 0 && <span style={{ background: "#FCE7F1", color: "#D6618F", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_female_pct}% off for women</span>}
               {Number(t.disc_male_pct) > 0 && <span style={{ background: "#E8F2FB", color: "#1B6FB8", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_male_pct}% off for men</span>}
             </div>
-            <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? "Free" : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
+            <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
           </div>
           {!st.ok
@@ -1232,9 +1233,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             </Sec>
           )}
-          {addons.length > 0 && (
+          {realAddons.length > 0 && (
             <Sec title="Optional add-ons">
-              {addons.map(a => (
+              {realAddons.map(a => (
                 <div key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: `1px solid ${W.line}`, fontSize: 14.5 }}>
                   <span style={{ color: W.ink, fontWeight: 600 }}>{a.name}</span>
                   <span style={{ color: W.teal, fontWeight: 800 }}>{(a.price || 0) === 0 ? "Free" : `+₹${a.price}`}</span>
@@ -8165,7 +8166,8 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
   const [addQ, setAddQ] = useState({});
   const MAX_TIX = 10;
   const needAgree = !!(e.terms && e.terms.trim());
-  const sel = addons.map(a => ({ ...a, qty: addQ[a.id] || 0 }));
+  const realAddons = addons.filter(a => (a.name || "").trim());
+  const sel = realAddons.map(a => ({ ...a, qty: addQ[a.id] || 0 }));
   const addonTotal = sel.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
   const unitOf = c => c.type ? genderNet(c.type, subs, profile) : (e.ticket_price || 0);
   const grossOf = c => c.type ? (c.type.price || 0) : (e.ticket_price || 0);
@@ -8203,10 +8205,10 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
           </div>
         );
       })}
-      {addons.length > 0 && (
+      {realAddons.length > 0 && (
         <div style={{ margin: "14px 0 2px" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 8 }}>Add-ons</div>
-          {addons.map(a => {
+          {realAddons.map(a => {
             const q = addQ[a.id] || 0;
             return (
               <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderTop: `1px solid ${W.line}` }}>
@@ -11009,7 +11011,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • eventvideos ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ticketfix ✅</div>
       </div>
     </div>
   );
