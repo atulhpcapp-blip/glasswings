@@ -1418,7 +1418,7 @@ function PublicLanding() {
   const closeDetail = () => { setDetail(null); try { history.replaceState(null, "", "/"); } catch {} };
   const buyNow = (ev, cart) => {
     try {
-      localStorage.setItem("gw_buy", ev.id); localStorage.setItem("gw_event", ev.id);
+      localStorage.setItem("gw_buy", ev.id); localStorage.setItem("gw_event", ev.id); localStorage.setItem("gw_lite", "1");
       if (cart && cart.length) { const m = {}; cart.forEach(c => { m[c.type ? c.type.id : "__base"] = c.qty || 1; }); localStorage.setItem("gw_buy_cart", JSON.stringify(m)); }
       else localStorage.removeItem("gw_buy_cart");
     } catch {}
@@ -1620,7 +1620,7 @@ function ProfileGate({ user, profile, reload }) {
     setUploading(false);
   };
   const [tried, setTried] = useState(false);
-  const buyLite = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
+  const buyLite = (() => { try { return !!(localStorage.getItem("gw_buy") || localStorage.getItem("gw_lite")); } catch { return false; } })();
   const save = async () => {
     setErr(""); setTried(true);
     const fields = buyLite
@@ -1688,6 +1688,7 @@ function PhotoGate({ user, profile, reload, onBack }) {
       const url = await uploadPhoto(user.id, f);
       const { error } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id);
       if (error) throw error;
+      try { localStorage.removeItem("gw_lite"); } catch {}
       reload();
     } catch (x) { setErr("Photo upload failed: " + (x.message || x)); setBusy(false); }
   };
@@ -1721,6 +1722,7 @@ function Main({ user }) {
   const [tickets, setTickets] = useState([]);
   const [mods, setMods] = useState([]);
   const [eventMods, setEventMods] = useState([]);
+  const [eventGroups, setEventGroups] = useState([]);
   const [payBusy, setPayBusy] = useState(false);
   const [eventPage, setEventPage] = useState(null);
   const [roomPage, setRoomPage] = useState(null);
@@ -1955,7 +1957,7 @@ function Main({ user }) {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }, { data: ad }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }, { data: ad }, { data: egm }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -1974,12 +1976,13 @@ function Main({ user }) {
       supabase.from("role_perms").select("*"),
       supabase.from("event_perks").select("*").order("label", { ascending: true }),
       supabase.from("event_addons").select("*"),
+      supabase.from("event_group_members").select("event_id").eq("user_id", user.id),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     const sbLive = (sb || []).filter(x => !x.expires_at || new Date(x.expires_at).getTime() > Date.now());
     setSubs(sbLive.map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
     const mt = {}; (tk || []).forEach(r => { if (!mt[r.event_id]) mt[r.event_id] = []; mt[r.event_id].push(r); }); setMyTickets(mt);
-    setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id));
+    setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id)); setEventGroups((egm || []).map(x => x.event_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
     const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
     const es = {}; (estat || []).forEach(x => { es[x.event_id] = { male: Number(x.male_sold), female: Number(x.female_sold) }; }); setEventStats(es);
@@ -2006,7 +2009,7 @@ function Main({ user }) {
   const isStaff = isSuper || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
   const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics"), editMembers: capOf("can_edit_members"), stamps: capOf("can_stamps") };
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id) || planRoomIds.includes(r.id);
-  const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id);
+  const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id) || eventGroups.includes(e.id);
   const freeForUser = (r) => {
     const cp = coveringPlanId(r.id);
     if (cp) {
@@ -2353,8 +2356,8 @@ function Main({ user }) {
     if (error) return setNotice(error.message);
     const { data: tts } = await supabase.from("event_ticket_types").select("*").eq("event_id", id);
     for (const t of (tts || [])) { const { id: _i, created_at: _c, ...tr } = t; tr.event_id = ne.id; await supabase.from("event_ticket_types").insert(tr); }
-    const { data: ads } = await supabase.from("event_addons").select("*").eq("event_id", id);
-    for (const ad of (ads || [])) { const { id: _i2, created_at: _c2, ...ar } = ad; ar.event_id = ne.id; await supabase.from("event_addons").insert(ar); }
+    // Add-ons are intentionally NOT copied — a duplicated event starts with no add-ons,
+    // so checkout never shows an add-on the host didn't deliberately add. Re-add any in the editor.
     await load();
     setNotice("📋 Event duplicated as a draft — edit it and approve when ready.");
   };
@@ -2383,7 +2386,8 @@ function Main({ user }) {
   const pendingBuy = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   if (profile && !profile.profile_completed && !pendingBuy) return <ProfileGate user={user} profile={profile} reload={load} />;
   const needPhoto = !!profile && profile.profile_completed && !((profile.avatar_url || "").trim()) && !pendingBuy;
-  if (needPhoto) return <PhotoGate user={user} profile={profile} reload={load} />;
+  // Photo is no longer required to browse or buy — it is only requested when the
+  // member opens community chats or event groups (see the chats tab / chat-open gates).
 
   const listW = 340;
   const twoPane = wide && (tab === "chats" || !!open);
@@ -9738,6 +9742,7 @@ function GuestTickets({ event }) {
   const [q, setQ] = useState("");
   const [list, setList] = useState([]);
   const [given, setGiven] = useState({});
+  const [added, setAdded] = useState({});
   const [msg, setMsg] = useState("");
   useEffect(() => { supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, []);
   const matches = q.trim().length < 2 ? [] : list.filter(m => (m.full_name || "").toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6);
@@ -9752,15 +9757,23 @@ function GuestTickets({ event }) {
       fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, event_id: event.id, for_user: m.id }) });
     } catch {}
   };
+  const addGroup = async (m) => {
+    setMsg("");
+    const { error } = await supabase.rpc("add_event_group_member", { p_event: event.id, p_user: m.id });
+    if (error) return setMsg(error.message);
+    setAdded(a => ({ ...a, [m.id]: true }));
+    setMsg(`✓ ${m.full_name} added to the event group — no ticket created. They can now see and chat in the group.`);
+  };
   return (
     <div style={{ marginTop: 16 }}>
       <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Guest list — free tickets</label>
-      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Quietly give free tickets to friends and special guests. Nothing is shown or sold on the portal — the guest just receives the ticket. (They need a free account first.)</div>
+      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Quietly give free tickets to friends and special guests. Nothing is shown or sold on the portal — the guest just receives the ticket. (They need a free account first.) Or add someone to the event group chat only, with no ticket.</div>
       <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member by name…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", color: W.ink }} />
       {matches.map(m => (
-        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: `1px solid ${W.line}` }}>
+        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: `1px solid ${W.line}`, flexWrap: "wrap" }}>
           <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.full_name}</span>
+          <span style={{ flex: 1, minWidth: 90, fontSize: 13.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.full_name}</span>
+          <button onClick={() => addGroup(m)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "6px 11px", fontSize: 12.5 }}>{added[m.id] ? "In group ✓" : "Add to group"}</button>
           <button onClick={() => give(m)} style={{ ...btn(W.teal, "#fff"), padding: "6px 11px", fontSize: 12.5 }}>{given[m.id] ? `Give again (${given[m.id]})` : "Give ticket"}</button>
         </div>
       ))}
@@ -11055,7 +11068,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • vmedia2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • grouplite2 ✅</div>
       </div>
     </div>
   );
