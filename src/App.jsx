@@ -906,6 +906,7 @@ function dateBucketSet() {
 const DATE_LABELS = ["Today", "Tomorrow", "This weekend"];
 const SORT_OPTS = [["relevance", "Relevance", "Best picks first"], ["price_lo", "Price: low to high", "Lowest price first"], ["price_hi", "Price: high to low", "Highest price first"], ["date", "Date", "Earliest event first"], ["newest", "Newest added", "Recently added first"]];
 function emptyFlt() { return { date: [], category: [], city: [], price: [], venue: [], tags: {} }; }
+function tagVals(tagsObj, dim) { const v = (tagsObj || {})[dim]; return Array.isArray(v) ? v : (v != null && v !== "" ? [v] : []); }
 function fltCount(f) { return f.date.length + f.category.length + f.city.length + f.price.length + f.venue.length + Object.values(f.tags || {}).reduce((a, v) => a + v.length, 0); }
 function eventMatches(e, f, getMin) {
   const b = dateBucketSet();
@@ -914,7 +915,7 @@ function eventMatches(e, f, getMin) {
   if (f.city.length && !f.city.includes(e.city)) return false;
   if (f.venue.length && !f.venue.includes(e.venue)) return false;
   if (f.price.length && !f.price.includes(priceBand(getMin(e)))) return false;
-  for (const dim in (f.tags || {})) { const arr = f.tags[dim]; if (arr && arr.length && !arr.includes((e.tags || {})[dim])) return false; }
+  for (const dim in (f.tags || {})) { const arr = f.tags[dim]; if (arr && arr.length) { const ev = tagVals(e.tags, dim); if (!ev.some(x => arr.includes(x))) return false; } }
   return true;
 }
 function sortEvents(list, sortBy, getMin) {
@@ -960,7 +961,7 @@ function FilterSheet({ events, dims, opts, getMin, value, onApply, onClose }) {
   const [sel, setSel] = useState(() => ({ date: [...value.date], category: [...value.category], city: [...value.city], price: [...value.price], venue: [...value.venue], tags: JSON.parse(JSON.stringify(value.tags || {})) }));
   const [active, setActive] = useState(0);
   const distinct = key => { const m = {}; events.forEach(e => { const v = e[key]; if (v) m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
-  const tagDistinct = name => { const m = {}; (opts || []).filter(o => o.kind === name).forEach(o => { m[o.name] = 0; }); events.forEach(e => { const v = (e.tags || {})[name]; if (v) m[v] = (m[v] || 0) + 1; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const tagDistinct = name => { const m = {}; (opts || []).filter(o => o.kind === name).forEach(o => { m[o.name] = 0; }); events.forEach(e => { tagVals(e.tags, name).forEach(v => { m[v] = (m[v] || 0) + 1; }); }); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
   const dateOpts = (() => { const b = dateBucketSet(); return DATE_LABELS.map(l => [l, events.filter(e => b[l].has(e.event_at)).length]).filter(([, n]) => n > 0); })();
   const priceOpts = PRICE_BANDS.map(bnd => [bnd, events.filter(e => priceBand(getMin(e)) === bnd).length]).filter(([, n]) => n > 0);
   const toggleArr = (key, v) => setSel(s => ({ ...s, [key]: s[key].includes(v) ? s[key].filter(x => x !== v) : [...s[key], v] }));
@@ -9396,7 +9397,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               <div key={d.id}>
                 <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>{d.name}</div>
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
-                  {dopts.map(o => chip(o.name, f.tags[d.name] === o.name, () => setF({ ...f, tags: { ...f.tags, [d.name]: f.tags[d.name] === o.name ? undefined : o.name } })))}
+                  {dopts.map(o => { const vals = tagVals(f.tags, d.name); return chip(o.name, vals.includes(o.name), () => { const cur = vals.includes(o.name) ? vals.filter(x => x !== o.name) : [...vals, o.name]; setF({ ...f, tags: { ...f.tags, [d.name]: cur.length ? cur : undefined } }); }); })}
                 </div>
               </div>
             );
@@ -9605,11 +9606,14 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   {(dims || []).map(d => {
                     const dopts = (optsAll || []).filter(o => o.kind === d.name);
                     if (!dopts.length) return null;
+                    const vals = tagVals(e.tags, d.name);
                     return (
-                      <select key={d.id} value={(e.tags || {})[d.name] || ""} onChange={ev => { const t = { ...(e.tags || {}) }; if (ev.target.value) t[d.name] = ev.target.value; else delete t[d.name]; onUpdate(e.id, { tags: t }); }} style={{ width: "100%", marginTop: 8, padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" }}>
-                        <option value="">{d.name}: any</option>
-                        {dopts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                      </select>
+                      <div key={d.id} style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700, marginBottom: 5 }}>{d.name}</div>
+                        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                          {dopts.map(o => chip(o.name, vals.includes(o.name), () => { const cur = vals.includes(o.name) ? vals.filter(x => x !== o.name) : [...vals, o.name]; const t = { ...(e.tags || {}) }; if (cur.length) t[d.name] = cur; else delete t[d.name]; onUpdate(e.id, { tags: t }); }))}
+                        </div>
+                      </div>
                     );
                   })}
                   <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Changes save instantly — works on already-posted events.</div>
@@ -10954,7 +10958,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoking7 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • multidim ✅</div>
       </div>
     </div>
   );
