@@ -789,15 +789,20 @@ function RideButtons({ e, compact }) {
 }
 let _gwDialogSet = null;
 function GwDialogHost() {
-  const [d, setD] = useState(null); // {msg, onOk?}
+  const [d, setD] = useState(null); // {msg, onOk?} | {msg, input:true, resolve}
+  const [val, setVal] = useState("");
   useEffect(() => {
     _gwDialogSet = setD;
     const native = window.alert;
     window.alert = (msg) => { try { setD({ msg: String(msg) }); } catch { native(msg); } };
     window.gwConfirm = (msg, onOk) => setD({ msg: String(msg), onOk });
+    window.gwPrompt = (msg, dflt = "") => new Promise((resolve) => { setVal(dflt == null ? "" : String(dflt)); setD({ msg: String(msg), input: true, resolve }); });
     return () => { window.alert = native; _gwDialogSet = null; };
   }, []);
   if (!d) return null;
+  const dismiss = () => { setD(null); setVal(""); };
+  const onCancel = () => { const r = d.resolve; dismiss(); if (r) r(null); };
+  const onOkClick = () => { const r = d.resolve, f = d.onOk, v = val; dismiss(); if (r) r(v); else if (f) f(); };
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(8,20,18,.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 26 }}>
       <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 330, overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,.4)", animation: "gwdlg .22s ease" }}>
@@ -807,9 +812,12 @@ function GwDialogHost() {
           <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: 2.5 }}>GLASSWINGS</div>
         </div>
         <div style={{ padding: "18px 18px 6px", fontSize: 14, color: "#111B21", lineHeight: 1.5, textAlign: "center", fontWeight: 600, whiteSpace: "pre-wrap" }}>{d.msg}</div>
+        {d.input && <div style={{ padding: "4px 18px 2px" }}>
+          <input autoFocus value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onOkClick(); }} style={{ width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 11, border: "1.5px solid #E9EDEF", fontSize: 15, color: "#111B21", outline: "none", background: "#F7F9FA" }} />
+        </div>}
         <div style={{ display: "flex", gap: 9, padding: "14px 16px 16px" }}>
-          {d.onOk && <button onClick={() => setD(null)} style={{ flex: 1, padding: "11px", borderRadius: 11, border: "1px solid #E9EDEF", background: "#fff", color: "#667781", fontWeight: 800, cursor: "pointer" }}>Cancel</button>}
-          <button onClick={() => { const f = d.onOk; setD(null); if (f) f(); }} style={{ flex: 1, padding: "11px", borderRadius: 11, border: "none", background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 12px rgba(0,128,105,.3)" }}>{d.onOk ? "Yes" : "OK"}</button>
+          {(d.onOk || d.input) && <button onClick={onCancel} style={{ flex: 1, padding: "11px", borderRadius: 11, border: "1px solid #E9EDEF", background: "#fff", color: "#667781", fontWeight: 800, cursor: "pointer" }}>Cancel</button>}
+          <button onClick={onOkClick} style={{ flex: 1, padding: "11px", borderRadius: 11, border: "none", background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 12px rgba(0,128,105,.3)" }}>{d.input ? "OK" : (d.onOk ? "Yes" : "OK")}</button>
         </div>
       </div>
     </div>
@@ -2199,7 +2207,7 @@ function Main({ user }) {
     const { event: e } = buyTarget;
     const { data: phRow } = await supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle();
     if (((phRow?.phone || "").replace(/\D/g, "")).length < 8) {
-      const entered = window.prompt("Please enter your phone number — your ticket and event updates are sent here. It stays private; only the organiser can see it.");
+      const entered = await window.gwPrompt("Please enter your phone number — your ticket and event updates are sent here. It stays private; only the organiser can see it.");
       if (entered === null) return;
       if ((entered.replace(/\D/g, "")).length < 8) { setBuyTarget(null); return setNotice("A valid phone number is required to buy tickets."); }
       await supabase.from("member_phone").upsert({ user_id: user.id, phone: entered.trim() });
@@ -6549,7 +6557,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const uploadQr = async (file) => {
     if (!file) return;
     if (qrs.length >= 5) { alert("You can save up to 5 payment QRs."); return; }
-    const label = window.prompt("Label for this QR (e.g. GPay / PhonePe / Account 2):", "") || "";
+    const label = (await window.gwPrompt("Label for this QR (e.g. GPay / PhonePe / Account 2):", "")) || "";
     try {
       const url = await uploadPhoto(meId, file);
       const { data, error } = await supabase.rpc("add_payment_qr", { p_event: ev.id, p_label: label, p_url: url });
@@ -7661,7 +7669,7 @@ function EventFAQ({ ev, onUpdate }) {
           <option value="">📋 Apply saved FAQ set…</option>
           {tpls.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
         </select>
-        <button onClick={async () => { const title = window.prompt("Name this FAQ set (e.g. 'Standard party FAQs'):"); if (!title || !title.trim()) return; if (!list.length) return alert("Add some FAQs first."); const { error } = await supabase.from("canned_faqs").insert({ title: title.trim(), faqs: list.filter(f => (f.q || "").trim()) }); if (error) return alert(error.message); alert("💾 Saved!"); loadT(); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 11px", fontSize: 12 }}>💾 Save set</button>
+        <button onClick={async () => { const title = await window.gwPrompt("Name this FAQ set (e.g. 'Standard party FAQs'):"); if (!title || !title.trim()) return; if (!list.length) return alert("Add some FAQs first."); const { error } = await supabase.from("canned_faqs").insert({ title: title.trim(), faqs: list.filter(f => (f.q || "").trim()) }); if (error) return alert(error.message); alert("💾 Saved!"); loadT(); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 11px", fontSize: 12 }}>💾 Save set</button>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 8 }}>
         {list.map((f, i) => (
@@ -7696,7 +7704,7 @@ function FaqDraft({ value = [], onChange }) {
           <option value="">📋 Apply saved FAQ set…</option>
           {tpls.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
         </select>
-        <button onClick={async () => { const title = window.prompt("Name this FAQ set (e.g. 'Standard party FAQs'):"); if (!title || !title.trim()) return; if (!value.length) return alert("Add some FAQs first."); const { error } = await supabase.from("canned_faqs").insert({ title: title.trim(), faqs: value.filter(f => (f.q || "").trim()) }); if (error) return alert(error.message); alert("💾 Saved!"); loadT(); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 11px", fontSize: 12 }}>💾 Save set</button>
+        <button onClick={async () => { const title = await window.gwPrompt("Name this FAQ set (e.g. 'Standard party FAQs'):"); if (!title || !title.trim()) return; if (!value.length) return alert("Add some FAQs first."); const { error } = await supabase.from("canned_faqs").insert({ title: title.trim(), faqs: value.filter(f => (f.q || "").trim()) }); if (error) return alert(error.message); alert("💾 Saved!"); loadT(); }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 11px", fontSize: 12 }}>💾 Save set</button>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 8 }}>
         {value.map((f, i) => (
@@ -7759,7 +7767,7 @@ function CannedTerms({ value, onApply }) {
         {list.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
       </select>
       <button onClick={async () => {
-        const title = window.prompt("Name this T&C template (e.g. 'Standard party rules'):");
+        const title = await window.gwPrompt("Name this T&C template (e.g. 'Standard party rules'):");
         if (!title || !title.trim()) return;
         if (!value || !value.trim()) return alert("Type some terms first, then save them as a template.");
         const { error } = await supabase.from("canned_terms").insert({ title: title.trim(), body: value });
@@ -9237,7 +9245,7 @@ function PendingSignups({ isSuper }) {
     load();
   };
   const setPass = async (u) => {
-    const pw = window.prompt(`Set a temporary password for ${u.email}:\n(min 6 characters — share it with them on WhatsApp; they can change it later in Profile)`);
+    const pw = await window.gwPrompt(`Set a temporary password for ${u.email}:\n(min 6 characters — share it with them on WhatsApp; they can change it later in Profile)`);
     if (!pw) return;
     if (pw.length < 6) return alert("Minimum 6 characters.");
     setBusy(u.id);
@@ -9622,7 +9630,7 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
     if (q.trim()) { const s = q.trim().toLowerCase(); if (!((m.full_name || "").toLowerCase().includes(s) || (m.phone || "").toLowerCase().includes(s))) return false; }
     return true;
   });
-  const messageAll = () => { if (!filtered.length) return; const text = window.prompt(`Send an in-app message to ${filtered.length} member${filtered.length === 1 ? "" : "s"}:`); if (text && text.trim()) onSendDM(filtered.map(m => m.id), text); };
+  const messageAll = async () => { if (!filtered.length) return; const text = await window.gwPrompt(`Send an in-app message to ${filtered.length} member${filtered.length === 1 ? "" : "s"}:`); if (text && text.trim()) onSendDM(filtered.map(m => m.id), text); };
   const sel = { padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13, color: W.ink, outline: "none" };
   const chip = (v, label) => <button key={v} onClick={() => setG(v)} style={{ padding: "7px 13px", borderRadius: 18, border: `1px solid ${g === v ? W.teal : W.line}`, background: g === v ? W.teal : "#fff", color: g === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{label}</button>;
   const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
@@ -9677,7 +9685,7 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
               {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "7px 12px", fontSize: 12.5, textDecoration: "none" }}><MessageCircle size={14} />WhatsApp</a>}
               {canEdit && <button onClick={() => setEditing(m)} title="Edit profile" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 10px", fontSize: 12.5 }}><Settings size={14} /></button>}
               {isSuper && !(m.roles || []).includes("superadmin") && <button onClick={() => setRolesFor(m)} title="Roles & promotion" style={{ ...btn("#fff", "#7C3AED"), border: "1px solid #E4D5FB", padding: "7px 10px", fontSize: 12.5 }}><Crown size={14} /></button>}
-              <button onClick={() => { const text = window.prompt(`Send an in-app message to ${m.full_name || "this member"}:`); if (text && text.trim()) onSendDM([m.id], text); }} style={{ ...btn(W.teal, "#fff"), padding: "7px 10px", fontSize: 12.5 }}><Send size={14} /></button>
+              <button onClick={async () => { const text = await window.gwPrompt(`Send an in-app message to ${m.full_name || "this member"}:`); if (text && text.trim()) onSendDM([m.id], text); }} style={{ ...btn(W.teal, "#fff"), padding: "7px 10px", fontSize: 12.5 }}><Send size={14} /></button>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 10, fontSize: 13, color: W.soft }}>
               <span>Sex: {{ male: "M", female: "F", other: "—" }[m.gender] || "—"}</span>
@@ -9697,7 +9705,7 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
                 <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={() => award(m.id, -1, "manual")} title="Remove a stamp" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "5px 11px", fontSize: 16, lineHeight: 1 }}>−</button>
                   <button onClick={() => award(m.id, 1, "manual")} title="Give a stamp" style={{ ...btn("#fff", "#B45309"), border: "1px solid #F0D9A8", padding: "5px 10px", fontSize: 12.5 }}>★ +1</button>
-                  <button onClick={() => { const a = window.prompt("Give how many stamps? (use a negative number to deduct)"); const n = parseInt(a); if (!n) return; const note = window.prompt("Note (optional, e.g. great host energy):") || "manual"; award(m.id, n, note); }} title="Award a custom amount" style={{ ...btn(W.ink, "#fff"), padding: "5px 10px", fontSize: 12.5 }}>Award…</button>
+                  <button onClick={async () => { const a = await window.gwPrompt("Give how many stamps? (use a negative number to deduct)"); const n = parseInt(a); if (!n) return; const note = (await window.gwPrompt("Note (optional, e.g. great host energy):")) || "manual"; award(m.id, n, note); }} title="Award a custom amount" style={{ ...btn(W.ink, "#fff"), padding: "5px 10px", fontSize: 12.5 }}>Award…</button>
                 </div>
               )}
             </div>
@@ -9816,7 +9824,7 @@ function Gallery({ isAdmin, myAlbum = null }) {
     setAlbums(al || []); setPhotos(m);
   };
   useEffect(() => { load(); }, []);
-  const newAlbum = async () => { const title = prompt("Album name (e.g. Pub Social — May 2026)"); if (!title || !title.trim()) return; await supabase.from("gallery_albums").insert({ title: title.trim() }); load(); };
+  const newAlbum = async () => { const title = await window.gwPrompt("Album name (e.g. Pub Social — May 2026)"); if (!title || !title.trim()) return; await supabase.from("gallery_albums").insert({ title: title.trim() }); load(); };
   const addPhotos = async (e) => {
     const files = Array.from(e.target.files || []); if (!files.length || !open) return;
     setBusy(true);
@@ -10072,7 +10080,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • privsync ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 14 }}>Glasswings build • gwprompt ✅</div>
       </div>
     </div>
   );
