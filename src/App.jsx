@@ -4636,6 +4636,166 @@ function StreakBoardCard() {
     </>
   );
 }
+function ClashGame({ meId, isStaff, onClose }) {
+  const [rounds, setRounds] = useState(null);
+  const [selId, setSelId] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [me, setMe] = useState(null);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(Date.now());
+  const [showCreate, setShowCreate] = useState(false);
+  const nextFriday = () => { const d = new Date(); let add = (5 - d.getDay() + 7) % 7; if (add === 0 && d.getHours() >= 21) add = 7; const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() + add, 21, 0, 0); return x; };
+  const toLocal = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const [cPrompt, setCPrompt] = useState("");
+  const [cDir, setCDir] = useState("m");
+  const [cClose, setCClose] = useState(() => toLocal(nextFriday()));
+  const [cCost, setCCost] = useState(20);
+  const loadRounds = async () => {
+    const { data } = await supabase.from("clash_rounds").select("*").order("closes_at", { ascending: false }).limit(8);
+    setRounds(data || []);
+    setSelId(prev => prev && (data || []).some(r => r.id === prev) ? prev : ((data || []).find(r => r.status === "open")?.id || (data || [])[0]?.id || null));
+  };
+  const loadEntries = async (rid) => { if (!rid) return setEntries([]); const { data } = await supabase.rpc("clash_list", { p_round: rid }); setEntries(data || []); };
+  useEffect(() => { loadRounds(); supabase.from("profiles").select("gender, game_credits, full_name").eq("id", meId).maybeSingle().then(({ data }) => setMe(data || {})); }, [meId]);
+  useEffect(() => { loadEntries(selId); }, [selId]);
+  useEffect(() => { const iv = setInterval(() => { setTick(Date.now()); }, 1000); const pv = setInterval(() => { loadRounds(); loadEntries(selId); }, 10000); return () => { clearInterval(iv); clearInterval(pv); }; }, [selId]);
+  const r = (rounds || []).find(x => x.id === selId) || null;
+  const now = tick;
+  const phase = !r ? "none" : r.status === "done" ? "done" : now < new Date(r.opens_at).getTime() ? "upcoming" : now < new Date(r.closes_at).getTime() ? "live" : "closing";
+  const cd = (toMs) => { const s = Math.max(0, Math.floor((toMs - now) / 1000)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + "h " : "") + m + "m " + String(x).padStart(2, "0") + "s"; };
+  const iSubmit = isStaff || (me?.gender === (r?.direction === "m" ? "male" : "female"));
+  const iVote = isStaff || (me?.gender === (r?.direction === "m" ? "female" : "male"));
+  const entered = entries.some(e => e.is_mine);
+  const heartsLeft = 5 - entries.filter(e => e.mine_heart).length;
+  const isFree = isStaff || me?.gender === "female";
+  const submit = async () => {
+    if (!body.trim()) return;
+    setBusy(true);
+    const { error } = await supabase.rpc("clash_submit", { p_round: r.id, p_body: body.trim() });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setBody(""); loadEntries(r.id); loadRounds();
+    if (me) setMe(m => ({ ...m, game_credits: isFree ? m.game_credits : Math.max(0, (m.game_credits || 0) - (r.entry_cost || 0)) }));
+  };
+  const heart = async (eid) => { const { error } = await supabase.rpc("clash_heart", { p_entry: eid }); if (error) return alert(error.message); loadEntries(r.id); };
+  const reveal = async () => { setBusy(true); const { error } = await supabase.rpc("clash_close", { p_round: r.id }); setBusy(false); if (error) return alert(error.message); loadRounds(); loadEntries(r.id); };
+  const createRound = async () => {
+    if (!cPrompt.trim()) return alert("Write the prompt first.");
+    const closes = new Date(cClose);
+    const { error } = await supabase.rpc("clash_create", { p_prompt: cPrompt.trim(), p_direction: cDir, p_opens: new Date().toISOString(), p_closes: closes.toISOString(), p_cost: Number(cCost) || 0 });
+    if (error) return alert(error.message);
+    setCPrompt(""); setShowCreate(false); loadRounds();
+  };
+  const pool = r ? (r.pot > 0 ? Math.floor(r.pot / 2) : 100) : 0;
+  const podium = r?.results?.podium || [];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: "linear-gradient(160deg,#2A0E1E,#3D1230 55%,#1B0A14)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#E91E63,#9C27B0)", color: "#fff", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 5 }}>
+        <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer", flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>💘 Friday Clash</div>
+          <div style={{ fontSize: 11, opacity: .9 }}>{me?.gender === "female" || isStaff ? "You play free 💚" : `Wallet: ${me?.game_credits ?? "…"} credits`}</div>
+        </div>
+        {isStaff && <button onClick={() => setShowCreate(v => !v)} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>＋ Round</button>}
+      </div>
+      <div style={{ maxWidth: 560, width: "100%", margin: "0 auto", padding: "14px 14px 40px", boxSizing: "border-box" }}>
+        {isStaff && showCreate && (
+          <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, color: W.ink, marginBottom: 8 }}>New round</div>
+            <textarea value={cPrompt} onChange={e => setCPrompt(e.target.value)} placeholder='Prompt — e.g. "Your best opening line at a Glasswings party"' rows={2} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: 10, fontSize: 14, boxSizing: "border-box", resize: "vertical" }} />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+              <select value={cDir} onChange={e => setCDir(e.target.value)} style={{ padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13 }}>
+                <option value="m">Guys write · Girls vote</option>
+                <option value="f">Girls write · Guys vote</option>
+              </select>
+              <input type="datetime-local" value={cClose} onChange={e => setCClose(e.target.value)} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13 }} />
+              <input type="number" value={cCost} onChange={e => setCCost(e.target.value)} min={0} style={{ width: 70, padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13 }} /> <span style={{ color: W.soft, fontSize: 12 }}>credits entry (men)</span>
+            </div>
+            <button onClick={createRound} style={{ ...btn("#E91E63", "#fff"), marginTop: 10, justifyContent: "center", width: "100%" }}>Open the round 🎉</button>
+          </div>
+        )}
+        {rounds && rounds.length > 1 && (
+          <select value={selId || ""} onChange={e => setSelId(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 10, border: "none", fontSize: 13, marginBottom: 12 }}>
+            {rounds.map(x => <option key={x.id} value={x.id}>{x.status === "open" ? "🟢 LIVE — " : "🏁 "} {x.prompt.slice(0, 50)}</option>)}
+          </select>
+        )}
+        {!r && rounds !== null && (
+          <div style={{ background: "rgba(255,255,255,.08)", borderRadius: 16, padding: 28, textAlign: "center", color: "rgba(255,255,255,.85)" }}>
+            <div style={{ fontSize: 40 }}>💘</div>
+            <div style={{ fontWeight: 800, fontSize: 17, marginTop: 8 }}>No round yet</div>
+            <div style={{ fontSize: 13.5, marginTop: 6, opacity: .8 }}>The first Friday Clash is coming soon — watch the chats!</div>
+          </div>
+        )}
+        {r && (
+          <>
+            <div style={{ background: "#fff", borderRadius: 16, padding: "18px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 1, color: "#E91E63" }}>{r.direction === "m" ? "GUYS WRITE · GIRLS VOTE" : "GIRLS WRITE · GUYS VOTE"}</div>
+              <div style={{ fontWeight: 800, fontSize: 19, color: W.ink, marginTop: 8, lineHeight: 1.3 }}>“{r.prompt}”</div>
+              <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 12, fontSize: 12.5, color: W.soft, flexWrap: "wrap" }}>
+                <span>🏆 Pool: <b style={{ color: W.ink }}>{pool} credits</b></span>
+                <span>✍️ Entries: <b style={{ color: W.ink }}>{entries.length}</b></span>
+                {phase === "live" && <span>⏳ Closes in <b style={{ color: "#E91E63" }}>{cd(new Date(r.closes_at).getTime())}</b></span>}
+                {phase === "upcoming" && <span>🚀 Opens in <b style={{ color: "#E91E63" }}>{cd(new Date(r.opens_at).getTime())}</b></span>}
+              </div>
+            </div>
+            {phase === "live" && iSubmit && !entered && (
+              <div style={{ background: "#fff", borderRadius: 16, padding: 14, marginTop: 12 }}>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>Your one-liner</div>
+                <textarea value={body} onChange={e => setBody(e.target.value.slice(0, 200))} rows={2} placeholder="Make it count — 200 characters max" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: 10, fontSize: 14.5, boxSizing: "border-box", marginTop: 8, resize: "vertical" }} />
+                <button onClick={submit} disabled={busy || !body.trim()} style={{ ...btn("#E91E63", "#fff"), marginTop: 10, width: "100%", justifyContent: "center", opacity: busy || !body.trim() ? .6 : 1 }}>
+                  {isFree ? "Submit — free for you 💚" : `Submit — ${r.entry_cost} credits`}
+                </button>
+              </div>
+            )}
+            {phase === "live" && iSubmit && entered && <div style={{ textAlign: "center", color: "#7BE0A0", fontWeight: 800, fontSize: 13.5, marginTop: 12 }}>✓ You're in! Now wait for the hearts…</div>}
+            {phase === "live" && iVote && !iSubmit && <div style={{ textAlign: "center", color: "rgba(255,255,255,.85)", fontWeight: 700, fontSize: 13, marginTop: 12 }}>You're voting — {heartsLeft} of 5 hearts left 💗</div>}
+            {phase === "closing" && (
+              <button onClick={reveal} disabled={busy} style={{ ...btn("#FFC107", "#1b1b1b"), marginTop: 14, width: "100%", justifyContent: "center", padding: 14, fontSize: 15.5, fontWeight: 800 }}>🥁 Voting closed — reveal the results!</button>
+            )}
+            {phase === "done" && podium.length > 0 && (
+              <div style={{ background: "#fff", borderRadius: 16, padding: 16, marginTop: 12 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, textAlign: "center" }}>🏆 Results</div>
+                {podium.map(p => (
+                  <div key={p.rank} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 4px", borderBottom: `1px solid ${W.line}` }}>
+                    <span style={{ fontSize: 22 }}>{["🥇", "🥈", "🥉"][p.rank - 1]}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: W.ink }}>{p.name}</div>
+                      <div style={{ fontSize: 12.5, color: W.soft }}>“{p.body}”</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontWeight: 800, color: "#E91E63", fontSize: 13 }}>{p.hearts} 💗</div>
+                      {p.prize > 0 && <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 800 }}>+{p.prize} cr</div>}
+                    </div>
+                  </div>
+                ))}
+                {r.results?.lucky_voter && <div style={{ fontSize: 12, color: W.soft, marginTop: 9, textAlign: "center" }}>🎁 One lucky voter won 20 bonus credits!</div>}
+              </div>
+            )}
+            {(phase === "live" || phase === "closing" || phase === "done") && entries.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                {entries.map((e, i) => (
+                  <div key={e.entry_id} style={{ background: e.is_mine ? "#FFF0F5" : "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 9, display: "flex", gap: 10, alignItems: "center" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: "#E91E63" }}>{phase === "done" && e.author_name ? e.author_name : `Entry #${i + 1}`}{e.is_mine ? " (you)" : ""}</div>
+                      <div style={{ fontSize: 14.5, color: W.ink, marginTop: 3, lineHeight: 1.4 }}>{e.body}</div>
+                    </div>
+                    <div style={{ flexShrink: 0, textAlign: "center" }}>
+                      {phase === "live" && iVote && !e.is_mine
+                        ? <button onClick={() => heart(e.entry_id)} style={{ background: e.mine_heart ? "#E91E63" : "#fff", color: e.mine_heart ? "#fff" : "#E91E63", border: "2px solid #E91E63", borderRadius: 20, padding: "6px 13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{e.mine_heart ? "💗" : "♡"} {e.hearts}</button>
+                        : <span style={{ fontWeight: 800, color: "#E91E63", fontSize: 14 }}>💗 {e.hearts}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {phase === "upcoming" && <div style={{ textAlign: "center", color: "rgba(255,255,255,.8)", fontSize: 13.5, marginTop: 16 }}>Get your line ready — the round opens soon! ✨</div>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onConsumedInitial, autoSpark = null, onConsumedSpark }) {
   const [playTrivia, setPlayTrivia] = useState(false);
   const [triviaDone, setTriviaDone] = useState(null);
@@ -4649,6 +4809,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
   const [playRiddle, setPlayRiddle] = useState(false);
   const [playHousie, setPlayHousie] = useState(false);
   const [playSpark, setPlaySpark] = useState(false);
+  const [playClash, setPlayClash] = useState(false);
   const [sparkCode, setSparkCode] = useState(null);
   const [riddleDone, setRiddleDone] = useState(null);
   useEffect(() => {
@@ -4714,6 +4875,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
         </div>
         <div style={{ fontSize: 12, color: W.soft, margin: "0 2px 11px", lineHeight: 1.45 }}>A few credits per play. Top up anytime in Profile → Wallet.</div>
         <Card emoji="💞" title="Spark" tint="#FDE7F1" badge="💎 Premium" shareId="spark" sub="36 questions for two · pair by code or invite · free for women" cta="Play" onClick={() => { setSparkCode(null); setPlaySpark(true); }} />
+        <Card emoji="💘" title="Friday Clash" tint="#FFE8EC" badge="🏆 Live" shareId="clash" sub="Guys vs girls · best line wins the pot · girls play free" cta="Play" onClick={() => setPlayClash(true)} />
         <Card emoji="💘" title="Vibe Check" tint="#FCE3EF" badge="💎 Premium" shareId="vibe" sub="How compatible are you two? 10 quick questions" cta="Play" onClick={() => setPlayVibe(true)} />
         <Card emoji="🎭" title="Blind Banter" tint="#E9E6FB" badge="💎 Premium" shareId="banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys use credits" cta="Play" onClick={() => setPlayBanter(true)} />
 
@@ -4757,6 +4919,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
       {playBanter && <BlindBanter meId={meId} onUpgrade={onUpgrade} onClose={() => setPlayBanter(false)} />}
       {playRiddle && <RiddleSheet meId={meId} alreadyScore={riddleDone} onClose={() => setPlayRiddle(false)} />}
       {playHousie && <HousieHub meId={meId} isStaff={isStaff} events={events} onClose={() => setPlayHousie(false)} />}
+      {playClash && <ClashGame meId={meId} isStaff={isStaff} onClose={() => setPlayClash(false)} />}
       {playSpark && <SparkHub meId={meId} isStaff={isStaff} autoCode={sparkCode} onClose={() => { setPlaySpark(false); setSparkCode(null); }} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
@@ -11286,7 +11449,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • pendsign ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • clash ✅</div>
       </div>
     </div>
   );
