@@ -6387,6 +6387,26 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   const REACTS = ["🦋", "🌹", "🧿", "🌙", "💃", "🔥", "😂", "❤️"];
   const [reacts, setReacts] = useState({});
   const [tray, setTray] = useState(null);
+  const [reads, setReads] = useState({});
+  const [infoMsg, setInfoMsg] = useState(null);
+  const [readerNames, setReaderNames] = useState({});
+  const isGroupChat = groupType === "room" || groupType === "event";
+  useEffect(() => {
+    if (!isGroupChat) return;
+    const mark = () => { supabase.from("chat_reads").upsert({ group_type: groupType, group_id: room.id, user_id: user.id, last_read_at: new Date().toISOString() }, { onConflict: "group_type,group_id,user_id" }).then(() => {}); };
+    const loadR = () => supabase.from("chat_reads").select("user_id, last_read_at").eq("group_type", groupType).eq("group_id", room.id)
+      .then(({ data }) => { const m = {}; (data || []).forEach(r2 => { m[r2.user_id] = r2.last_read_at; }); setReads(m); });
+    mark(); loadR();
+    const iv = setInterval(() => { if (document.visibilityState !== "hidden") { mark(); loadR(); } }, 20000);
+    return () => clearInterval(iv);
+  }, [room.id, groupType]);
+  const openInfo = async (mid) => {
+    setInfoMsg(mid); setTray(null);
+    const ids = Object.keys(reads).filter(id => !readerNames[id]);
+    if (!ids.length) return;
+    const { data } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids);
+    setReaderNames(n => { const m = { ...n }; (data || []).forEach(p => { m[p.id] = p; }); return m; });
+  };
   const [snapViews, setSnapViews] = useState({});
   const [snapOpen, setSnapOpen] = useState(null);
   useEffect(() => {
@@ -6503,6 +6523,41 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
     <div style={{ minHeight: "100dvh", background: "linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)", backgroundImage: `url("${WALL}"), linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)`, paddingBottom: 72 }}>
       <style>{`@keyframes gwmsgin { 0% { transform: translateY(10px) scale(.96); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }`}</style>
       {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} canAdd={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
+      {infoMsg && (() => {
+        const m = (msgs || []).find(x => x.id === infoMsg); if (!m) return null;
+        const readers = Object.entries(reads)
+          .filter(([uid, t]) => uid !== m.sender_id && new Date(t) >= new Date(m.created_at))
+          .sort((a, b) => new Date(b[1]) - new Date(a[1]));
+        const snippet = m.body || (m.media_type === "image" ? "📷 Photo" : m.media_type === "poll" ? "📊 Poll" : "📎 Attachment");
+        return (
+          <div onClick={() => setInfoMsg(null)} style={{ position: "fixed", inset: 0, zIndex: 160, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, background: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, maxHeight: "75vh", display: "flex", flexDirection: "column" }}>
+              <div style={{ padding: "14px 18px 10px", borderBottom: `1px solid ${W.line}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>ℹ️ Message info</div>
+                  <div style={{ fontSize: 12.5, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 300 }}>{snippet}</div>
+                  <div style={{ fontSize: 11.5, color: W.soft, marginTop: 2 }}>Sent {fmtTime(m.created_at)}</div>
+                </div>
+                <X size={22} onClick={() => setInfoMsg(null)} style={{ cursor: "pointer", color: W.soft, flexShrink: 0 }} />
+              </div>
+              <div style={{ overflowY: "auto", padding: "10px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+                <div style={{ fontWeight: 800, fontSize: 13.5, color: W.ink, display: "flex", justifyContent: "space-between" }}><span>👁️ Read by</span><span style={{ color: W.soft }}>{readers.length}</span></div>
+                {readers.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 6 }}>No one has read this yet.</div>}
+                {readers.map(([uid, t]) => { const p = readerNames[uid] || senders[uid]; const nm = p?.full_name || p?.name || "Member"; const av = p?.avatar_url || p?.avatar; return (
+                  <div key={uid} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0" }}>
+                    <PersonAvatar url={av} name={nm} size={30} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, color: W.ink, fontWeight: 600 }}>{uid === user.id ? "You" : nm}</div>
+                      <div style={{ fontSize: 11, color: W.soft }}>read · {fmtTime(t)}</div>
+                    </div>
+                  </div>
+                ); })}
+                <div style={{ fontSize: 11, color: W.soft, marginTop: 10 }}>Read status updates while members have the chat open.</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {voterSheet && (() => {
         const m = (msgs || []).find(x => x.id === voterSheet); if (!m) return null;
         let opts = []; try { opts = JSON.parse(m.file_name || "[]"); } catch {}
@@ -6540,6 +6595,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             </div>
             <div onClick={() => { const mm = (msgs || []).find(x => x.id === tray); if (mm) setReplyTo(mm); setTray(null); }}
               style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "4px 14px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>↩️ Reply</div>
+            {isGroupChat && <div onClick={() => openInfo(tray)} style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>ℹ️ Info — read by</div>}
             {tray?.media_type === "image" && tray?.media_url && <div onClick={async () => { await supabase.from("my_album").insert({ user_id: user.id, url: tray.media_url, source: "saved" }); setTray(null); alert("💾 Saved to My Album!"); }} style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>💾 Save to My Album</div>}
             {canMod && <div onClick={() => deleteMsg(tray)} style={{ fontSize: 13.5, fontWeight: 800, color: "#C0392B", cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>🗑️ Delete (staff)</div>}
           </div>
@@ -11185,7 +11241,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • deskchat ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • msginfo ✅</div>
       </div>
     </div>
   );
