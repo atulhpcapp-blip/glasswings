@@ -292,7 +292,30 @@ function GuestTicketPage({ code }) {
     </div>
   );
 }
+class GwErrorBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err, info) { try { console.error("App crash:", err, info); } catch {} }
+  render() {
+    if (this.state.err) {
+      return (
+        <div style={{ minHeight: "100vh", background: "#F0F2F5", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "system-ui, sans-serif" }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: "28px 24px", maxWidth: 360, textAlign: "center", boxShadow: "0 8px 30px rgba(0,0,0,.12)" }}>
+            <div style={{ fontSize: 40 }}>😕</div>
+            <div style={{ fontWeight: 800, fontSize: 17, color: "#111B21", marginTop: 10 }}>Something went wrong</div>
+            <div style={{ fontSize: 13.5, color: "#667781", marginTop: 8, lineHeight: 1.5 }}>A small glitch stopped this screen. Your data is safe — just reload.</div>
+            <button onClick={() => { try { window.location.href = "/"; } catch {} }} style={{ marginTop: 18, background: "#008069", color: "#fff", border: "none", borderRadius: 10, padding: "12px 22px", fontWeight: 800, fontSize: 14.5, cursor: "pointer" }}>↻ Reload app</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 export default function App() {
+  return <GwErrorBoundary><AppRoot /></GwErrorBoundary>;
+}
+function AppRoot() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
   const [recovery, setRecovery] = useState(false);
@@ -6315,10 +6338,11 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   useEffect(() => {
     let channel;
     (async () => {
-      const { data, error: loadErr } = await supabase.from("messages")
+      const { data: dataDesc, error: loadErr } = await supabase.from("messages")
         .select("id, body, media_url, media_type, file_name, event_ref, reply_to, sender_id, created_at")
         .eq("group_type", groupType).eq("group_id", room.id)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false }).limit(300);
+      const data = (dataDesc || []).slice().reverse();
       if (loadErr) console.error("message load", loadErr);
       const sm = {};
       const sids = [...new Set((data || []).map(m => m.sender_id))];
@@ -11241,7 +11265,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • msginfo ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • smooth ✅</div>
       </div>
     </div>
   );
