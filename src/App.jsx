@@ -8278,7 +8278,28 @@ function CreditsAdmin() {
       if (error) throw error;
       setSel(x => ({ ...x, credits: typeof data === "number" ? data : x.credits }));
       setAmt("");
-      window.alert((n > 0 ? "Added " : "Removed ") + Math.abs(n) + " credit" + (Math.abs(n) === 1 ? "" : "s") + " ✓");
+      let extras = "";
+      if (n > 0) {
+        // Warm in-app message from the team
+        try {
+          const { data: tid } = await supabase.rpc("get_dm_thread", { p_other: sel.id });
+          if (tid) {
+            const meUid = (await supabase.auth.getUser()).data?.user?.id;
+            await supabase.from("messages").insert({
+              group_type: "dm", group_id: tid, sender_id: meUid,
+              body: `🎁 A little gift from Glasswings!\n\nWe've just added ✨ ${n} credits ✨ to your wallet — gifted with love by the Glasswings team 💚\n\nUse them on games like Friday Clash and Blind Date Night, or on add-ons at our events. Your balance is in Profile → Wallet.\n\nSee you at the next party! ✨`,
+            });
+            extras += " · message sent 💬";
+          }
+        } catch {}
+        // Warm email
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const r = await fetch("/api/email/credits-gift", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, for_user: sel.id, amount: n }) });
+          if (r.ok) extras += " · email sent ✉️";
+        } catch {}
+      }
+      window.alert((n > 0 ? "Added " : "Removed ") + Math.abs(n) + " credit" + (Math.abs(n) === 1 ? "" : "s") + " ✓" + extras);
     } catch (e) { window.alert(e.message || "Couldn't update credits."); }
     setTbusy(false);
   };
@@ -11818,7 +11839,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • segments ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • giftmsg ✅</div>
       </div>
     </div>
   );
