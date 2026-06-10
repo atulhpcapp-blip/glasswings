@@ -8784,29 +8784,35 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
               <input value={segName} onChange={e => setSegName(e.target.value)} placeholder="New segment name (e.g. VIP Founders)" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
               <button onClick={addSeg} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px" }}>Add</button>
             </div>
+            {segs.some(s => s.rule) && <button onClick={async () => { const { error } = await supabase.rpc("segments_refresh_all"); if (error) return alert(error.message); alert("🤖 All auto-segments recomputed ✓"); loadSegs(); if (segManage) loadSegMembers(segManage); }} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", marginTop: 10, width: "100%", justifyContent: "center", fontSize: 12.5 }}>🤖 Refresh all auto-segments now</button>}
             {segs.map(s => (
               <div key={s.id} style={{ borderTop: `1px solid ${W.line}`, marginTop: 10, paddingTop: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: W.ink }}>🎯 {s.name}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ flex: 1, minWidth: 120, fontWeight: 700, fontSize: 14, color: W.ink }}>🎯 {s.name} {s.rule && <span style={{ background: "#F3EBFF", color: "#6D28D9", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10, verticalAlign: "middle" }}>🤖 AUTO</span>}</span>
+                  {s.rule && <button onClick={async () => { const { data, error } = await supabase.rpc("segment_refresh", { p_segment: s.id }); if (error) return alert(error.message); alert(`🤖 Recomputed — ${data} member${data === 1 ? "" : "s"} ✓`); loadSegs(); if (segManage === s.id) loadSegMembers(s.id); }} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", padding: "5px 10px", fontSize: 12 }}>↻ Refresh</button>}
                   <button onClick={() => { if (segManage === s.id) { setSegManage(null); } else { setSegManage(s.id); loadSegMembers(s.id); } }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "5px 10px", fontSize: 12 }}>{segManage === s.id ? "Close" : "Members"}</button>
                   <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => delSeg(s.id)} />
                 </div>
+                {s.rule && s.auto_updated_at && <div style={{ fontSize: 11, color: W.soft, marginTop: 3 }}>auto-computed · last refreshed {new Date(s.auto_updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</div>}
                 {segManage === s.id && (
                   <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
-                    <input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search member to add…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 11px", fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fff" }} />
-                    {sMatches.map(m => (
-                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
-                        <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
-                        <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
-                        <button onClick={() => addSegMember(m)} style={{ ...btn(W.teal, "#fff"), padding: "5px 10px", fontSize: 12 }}>Add</button>
-                      </div>
-                    ))}
+                    {!s.rule && <>
+                      <input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search member to add…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 11px", fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fff" }} />
+                      {sMatches.map(m => (
+                        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
+                          <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
+                          <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
+                          <button onClick={() => addSegMember(m)} style={{ ...btn(W.teal, "#fff"), padding: "5px 10px", fontSize: 12 }}>Add</button>
+                        </div>
+                      ))}
+                    </>}
+                    {s.rule && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700 }}>🤖 Membership is computed automatically from the rule — tap ↻ Refresh to update it. Manual adds aren't needed (they'd be overwritten).</div>}
                     <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft, marginTop: 8 }}>In this segment ({segMembers.length})</div>
                     {segMembers.map(m => (
                       <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
                         <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
                         <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
-                        <span onClick={() => delSegMember(m.id)} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>
+                        {!s.rule && <span onClick={() => delSegMember(m.id)} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
                       </div>
                     ))}
                     {segMembers.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No members yet.</div>}
@@ -11899,7 +11905,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • bulkcred ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • autoseg ✅</div>
       </div>
     </div>
   );
