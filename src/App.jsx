@@ -6355,13 +6355,13 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
     const vv = window.visualViewport;
     if (!vv) return;
     const onVV = () => {
-      if (headRef.current) headRef.current.style.transform = `translateX(-50%) translateY(${Math.max(0, vv.offsetTop)}px)`;
+      if (headRef.current) headRef.current.style.transform = wide ? `translateY(${Math.max(0, vv.offsetTop)}px)` : `translateX(-50%) translateY(${Math.max(0, vv.offsetTop)}px)`;
       const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      if (composerRef.current) composerRef.current.style.bottom = (kb > 40 ? kb : 63) + "px";
+      if (composerRef.current) composerRef.current.style.bottom = (kb > 40 ? kb : (wide ? 0 : 63)) + "px";
     };
     vv.addEventListener("resize", onVV); vv.addEventListener("scroll", onVV); onVV();
     return () => { vv.removeEventListener("resize", onVV); vv.removeEventListener("scroll", onVV); };
-  }, []);
+  }, [wide]);
   useEffect(() => { supabase.from("quick_replies").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).then(({ data }) => setQrs(data || [])); }, [user.id]);
 
   const send = async () => {
@@ -6698,7 +6698,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
         <div ref={endRef} />
       </div>
       {showQR && (
-        <div ref={composerRef} style={{ position: "fixed", bottom: 63, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 25, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -4px 16px rgba(0,0,0,.08)", maxHeight: "45vh", overflowY: "auto", padding: 12, ...bar }}>
+        <div ref={composerRef} style={{ position: "fixed", bottom: wide ? 0 : 63, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 25, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -4px 16px rgba(0,0,0,.08)", maxHeight: "45vh", overflowY: "auto", padding: 12, ...bar }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>Quick replies</span>
             <X size={18} style={{ cursor: "pointer" }} onClick={() => setShowQR(false)} />
@@ -11185,7 +11185,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludobase ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • deskchat ✅</div>
       </div>
     </div>
   );
