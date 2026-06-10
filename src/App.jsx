@@ -8229,9 +8229,43 @@ function CreditsAdmin() {
   const [sel, setSel] = useState(null);
   const [amt, setAmt] = useState("");
   const [tbusy, setTbusy] = useState(false);
+  const [welcome, setWelcome] = useState({ male: "", female: "" });
+  const [wBusy, setWBusy] = useState(false);
+  const [bulkAmt, setBulkAmt] = useState("");
+  const [bulkAud, setBulkAud] = useState("all");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [segList, setSegList] = useState([]);
   const load = () => {
     supabase.from("credit_packs").select("*").order("sort").then(({ data }) => setPacks(data || []));
     supabase.from("game_costs").select("*").order("sort").then(({ data }) => setGames(data || []));
+    supabase.from("welcome_credits").select("*").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.gender] = String(r.amount); }); setWelcome({ male: m.male ?? "", female: m.female ?? "" }); });
+    supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegList(data || []));
+  };
+  const saveWelcome = async () => {
+    setWBusy(true);
+    try {
+      for (const g of ["male", "female"]) {
+        const { error } = await supabase.from("welcome_credits").upsert({ gender: g, amount: Math.max(0, Math.trunc(Number(welcome[g]) || 0)) });
+        if (error) throw error;
+      }
+      window.alert("Welcome credits saved ✓ New joiners will receive them automatically.");
+    } catch (e) { window.alert(e.message || "Couldn't save."); }
+    setWBusy(false);
+  };
+  const runBulk = async () => {
+    const n = Math.trunc(Number(bulkAmt));
+    if (!n) return;
+    const audLabel = bulkAud === "all" ? "ALL members" : bulkAud === "male" ? "all MEN" : bulkAud === "female" ? "all WOMEN" : ("segment: " + (segList.find(s => s.id === bulkAud)?.name || ""));
+    if (!window.confirm(`${n > 0 ? "Add" : "Remove"} ${Math.abs(n)} credits ${n > 0 ? "to" : "from"} ${audLabel}? This cannot be undone in one click.`)) return;
+    setBulkBusy(true);
+    try {
+      const isSeg = !["all", "male", "female"].includes(bulkAud);
+      const { data, error } = await supabase.rpc("admin_bulk_credits", { p_n: n, p_gender: isSeg ? null : (bulkAud === "all" ? null : bulkAud), p_segment: isSeg ? bulkAud : null });
+      if (error) throw error;
+      setBulkAmt("");
+      window.alert(`✓ ${n > 0 ? "Added" : "Removed"} ${Math.abs(n)} credits ${n > 0 ? "to" : "from"} ${data} member${data === 1 ? "" : "s"} 🎉 Announce it with a 📢 broadcast so they know!`);
+    } catch (e) { window.alert(e.message || "Bulk grant failed."); }
+    setBulkBusy(false);
   };
   useEffect(() => { load(); }, []);
   const upPack = (i, k, v) => setPacks(p => p.map((x, j) => j === i ? { ...x, [k]: v } : x));
@@ -8334,6 +8368,32 @@ function CreditsAdmin() {
       <button onClick={addPack} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", padding: "10px", marginBottom: 8 }}>+ Add a pack</button>
       <button onClick={savePacks} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "11px", opacity: busy ? .6 : 1 }}>{busy ? "…" : "Save credit packs"}</button>
       <div style={{ height: 1, background: W.line, margin: "24px 0 18px" }} />
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>👋 Welcome credits for new joiners</div>
+        <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Given automatically, once, the moment a new member completes signup. Set 0 to turn off.</div>
+        <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>🧑 New men:</span>
+          <input value={welcome.male} onChange={e => setWelcome(w => ({ ...w, male: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="0" style={{ width: 80, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14 }} />
+          <span style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>👩 New women:</span>
+          <input value={welcome.female} onChange={e => setWelcome(w => ({ ...w, female: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="0" style={{ width: 80, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14 }} />
+          <button onClick={saveWelcome} disabled={wBusy} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>{wBusy ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📦 Bulk credits</div>
+        <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Add credits to many wallets in one go. Goes in silently — announce it with a 📢 broadcast for the wow moment. Use a minus amount to remove.</div>
+        <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={bulkAmt} onChange={e => setBulkAmt(e.target.value.replace(/[^\d-]/g, ""))} inputMode="numeric" placeholder="e.g. 100" style={{ width: 90, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14 }} />
+          <span style={{ fontSize: 13, color: W.soft }}>credits to</span>
+          <select value={bulkAud} onChange={e => setBulkAud(e.target.value)} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13.5, background: "#fff" }}>
+            <option value="all">Everyone</option>
+            <option value="male">All men</option>
+            <option value="female">All women</option>
+            {segList.map(s => <option key={s.id} value={s.id}>🎯 Segment: {s.name}</option>)}
+          </select>
+          <button onClick={runBulk} disabled={bulkBusy || !bulkAmt} style={{ ...btn("#6D28D9", "#fff"), padding: "8px 16px", opacity: bulkBusy || !bulkAmt ? .6 : 1 }}>{bulkBusy ? "Granting…" : "Grant 🎁"}</button>
+        </div>
+      </div>
       <div style={{ fontWeight: 800, color: W.ink, fontSize: 16, marginBottom: 4 }}>🎁 Top up a member</div>
       <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Add credits for promos or refunds. Use a negative number to deduct.</div>
       {!sel ? (
@@ -11839,7 +11899,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • giftmsg ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • bulkcred ✅</div>
       </div>
     </div>
   );
