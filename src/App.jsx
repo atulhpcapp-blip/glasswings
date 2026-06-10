@@ -8428,6 +8428,163 @@ function CreditsAdmin() {
     </div>
   );
 }
+function SegmentsAdmin() {
+  const [segs, setSegs] = useState(null);
+  const [counts, setCounts] = useState({});
+  const [segName, setSegName] = useState("");
+  const [openSeg, setOpenSeg] = useState(null);   // segment id with panel open
+  const [panel, setPanel] = useState("members");   // members | credits | message | email
+  const [members, setMembers] = useState([]);
+  const [dir, setDir] = useState([]);
+  const [sq, setSq] = useState("");
+  const [credAmt, setCredAmt] = useState("");
+  const [msgBody, setMsgBody] = useState("");
+  const [emSub, setEmSub] = useState("");
+  const [emBody, setEmBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    supabase.from("segments").select("*").order("created_at").then(({ data }) => setSegs(data || []));
+    supabase.from("segment_members").select("segment_id").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.segment_id] = (m[r.segment_id] || 0) + 1; }); setCounts(m); });
+  };
+  useEffect(() => { load(); supabase.rpc("staff_directory").then(({ data }) => setDir(data || [])); }, []);
+  const loadMembers = async (sid) => {
+    const { data } = await supabase.from("segment_members").select("user_id").eq("segment_id", sid);
+    const ids = (data || []).map(x => x.user_id);
+    if (!ids.length) return setMembers([]);
+    const { data: profs } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids);
+    setMembers(profs || []);
+  };
+  const openPanel = (sid, p) => { setOpenSeg(sid); setPanel(p); if (p === "members") loadMembers(sid); };
+  const addSeg = async () => {
+    if (!segName.trim()) return;
+    const { error } = await supabase.from("segments").insert({ name: segName.trim() });
+    if (error) return alert(error.message);
+    setSegName(""); load();
+  };
+  const delSeg = async (s) => {
+    if (!window.confirm(`Delete "${s.name}"? Rooms restricted to it become visible to everyone.`)) return;
+    const { error } = await supabase.from("segments").delete().eq("id", s.id);
+    if (error) return alert(error.message);
+    if (openSeg === s.id) setOpenSeg(null);
+    load();
+  };
+  const refreshSeg = async (s) => {
+    const { data, error } = await supabase.rpc("segment_refresh", { p_segment: s.id });
+    if (error) return alert(error.message);
+    alert(`🤖 Recomputed — ${data} member${data === 1 ? "" : "s"} ✓`);
+    load(); if (openSeg === s.id && panel === "members") loadMembers(s.id);
+  };
+  const grantCredits = async (s) => {
+    const n = Math.trunc(Number(credAmt));
+    if (!n) return;
+    if (!window.confirm(`${n > 0 ? "Add" : "Remove"} ${Math.abs(n)} credits ${n > 0 ? "to" : "from"} everyone in "${s.name}" (${counts[s.id] || 0} members)?`)) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc("admin_bulk_credits", { p_n: n, p_gender: null, p_segment: s.id });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setCredAmt("");
+    alert(`✓ ${Math.abs(n)} credits ${n > 0 ? "added to" : "removed from"} ${data} member${data === 1 ? "" : "s"} 🎉`);
+  };
+  const sendMsg = async (s) => {
+    if (!msgBody.trim()) return;
+    if (!window.confirm(`Send this in-app message to everyone in "${s.name}" (${counts[s.id] || 0} members)? It lands in each member's personal chat with you.`)) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc("segment_broadcast", { p_segment: s.id, p_body: msgBody.trim() });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setMsgBody("");
+    alert(`💬 Message sent to ${data} member${data === 1 ? "" : "s"} ✓`);
+  };
+  const sendEmail = async (s) => {
+    if (!emSub.trim() || !emBody.trim()) return alert("Write a subject and a message first.");
+    if (!window.confirm(`Email everyone in "${s.name}" (${counts[s.id] || 0} members)?`)) return;
+    setBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch("/api/email/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, segment_id: s.id, subject: emSub.trim(), message: emBody.trim() }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Send failed");
+      setEmSub(""); setEmBody("");
+      alert(`✉️ Email sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓`);
+    } catch (e) { alert(e.message); }
+    setBusy(false);
+  };
+  const sMatches = sq.trim().length < 2 ? [] : dir.filter(m => (m.full_name || "").toLowerCase().includes(sq.trim().toLowerCase()) && !members.some(x => x.id === m.id)).slice(0, 6);
+  const inp = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" };
+  const tabBtn = (s, key, label) => <button onClick={() => openPanel(s.id, key)} style={{ ...btn(openSeg === s.id && panel === key ? W.teal : "#fff", openSeg === s.id && panel === key ? "#fff" : W.teal), border: `1px solid ${W.teal}`, padding: "5px 10px", fontSize: 12 }}>{label}</button>;
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12, lineHeight: 1.5 }}>Segments are member groups. 🤖 AUTO segments compute themselves from live data; manual ones you curate. For each segment you can grant credits, send an in-app message, or run an email campaign — and restrict rooms to it in Admin → Rooms.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <input value={segName} onChange={e => setSegName(e.target.value)} placeholder="New segment name (e.g. VIP Founders)" style={{ ...inp, flex: 1 }} />
+        <button onClick={addSeg} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px" }}>Add</button>
+      </div>
+      {(segs || []).some(s => s.rule) && <button onClick={async () => { const { error } = await supabase.rpc("segments_refresh_all"); if (error) return alert(error.message); alert("🤖 All auto-segments recomputed ✓"); load(); if (openSeg && panel === "members") loadMembers(openSeg); }} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", width: "100%", justifyContent: "center", fontSize: 12.5, marginBottom: 12 }}>🤖 Refresh all auto-segments now</button>}
+      {(segs || []).map(s => (
+        <div key={s.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 13, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ flex: 1, minWidth: 130, fontWeight: 800, fontSize: 14.5, color: W.ink }}>🎯 {s.name} {s.rule && <span style={{ background: "#F3EBFF", color: "#6D28D9", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10, verticalAlign: "middle" }}>🤖 AUTO</span>}</span>
+            <span style={{ fontSize: 12.5, color: W.soft, fontWeight: 700 }}>{counts[s.id] || 0} 👥</span>
+            {s.rule && <button onClick={() => refreshSeg(s)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", padding: "5px 9px", fontSize: 12 }}>↻</button>}
+            <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => delSeg(s)} />
+          </div>
+          {s.rule && s.auto_updated_at && <div style={{ fontSize: 11, color: W.soft, marginTop: 3 }}>last refreshed {new Date(s.auto_updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</div>}
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 9 }}>
+            {tabBtn(s, "members", "👥 Members")}
+            {tabBtn(s, "credits", "🎁 Credits")}
+            {tabBtn(s, "message", "💬 In-app")}
+            {tabBtn(s, "email", "✉️ Email")}
+          </div>
+          {openSeg === s.id && (
+            <div style={{ marginTop: 10, background: W.bg, borderRadius: 10, padding: 11 }}>
+              {panel === "members" && (<>
+                {!s.rule && <>
+                  <input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search member to add…" style={inp} />
+                  {sMatches.map(m => (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
+                      <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
+                      <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
+                      <button onClick={async () => { const { error } = await supabase.from("segment_members").insert({ segment_id: s.id, user_id: m.id }); if (error && error.code !== "23505") return alert(error.message); setSq(""); loadMembers(s.id); load(); }} style={{ ...btn(W.teal, "#fff"), padding: "5px 10px", fontSize: 12 }}>Add</button>
+                    </div>
+                  ))}
+                </>}
+                {s.rule && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700 }}>🤖 Computed automatically — tap ↻ to recompute. Manual adds would be overwritten.</div>}
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft, marginTop: 8 }}>In this segment ({members.length})</div>
+                {members.map(m => (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
+                    <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
+                    <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
+                    {!s.rule && <span onClick={async () => { const { error } = await supabase.from("segment_members").delete().eq("segment_id", s.id).eq("user_id", m.id); if (error) return alert(error.message); loadMembers(s.id); load(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
+                  </div>
+                ))}
+                {members.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No members yet.</div>}
+              </>)}
+              {panel === "credits" && (<>
+                <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8 }}>Adds credits silently to every wallet in this segment. Use a minus amount to remove. Announce it with 💬 In-app for the wow moment.</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input value={credAmt} onChange={e => setCredAmt(e.target.value.replace(/[^\d-]/g, ""))} inputMode="numeric" placeholder="e.g. 50" style={{ ...inp, width: 100 }} />
+                  <button onClick={() => grantCredits(s)} disabled={busy || !credAmt} style={{ ...btn("#6D28D9", "#fff"), padding: "9px 16px", opacity: busy || !credAmt ? .6 : 1 }}>{busy ? "Working…" : "Grant 🎁"}</button>
+                </div>
+              </>)}
+              {panel === "message" && (<>
+                <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8 }}>Lands in each member's personal chat with you, styled as an official announcement.</div>
+                <textarea value={msgBody} onChange={e => setMsgBody(e.target.value)} rows={4} placeholder={"e.g. 🎉 Surprise! We've added 50 credits to your wallet — see you at Friday Clash!"} style={{ ...inp, resize: "vertical" }} />
+                <button onClick={() => sendMsg(s)} disabled={busy || !msgBody.trim()} style={{ ...btn(W.teal, "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: busy || !msgBody.trim() ? .6 : 1 }}>{busy ? "Sending…" : `💬 Send to ${counts[s.id] || 0} members`}</button>
+              </>)}
+              {panel === "email" && (<>
+                <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8 }}>A branded Glasswings email, personalised with each member's first name.</div>
+                <input value={emSub} onChange={e => setEmSub(e.target.value)} placeholder="Subject — e.g. 🎭 Blind Date Night is back this Friday!" style={inp} />
+                <textarea value={emBody} onChange={e => setEmBody(e.target.value)} rows={5} placeholder="Your message… (line breaks are kept)" style={{ ...inp, marginTop: 8, resize: "vertical" }} />
+                <button onClick={() => sendEmail(s)} disabled={busy || !emSub.trim() || !emBody.trim()} style={{ ...btn(W.teal, "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: busy || !emSub.trim() || !emBody.trim() ? .6 : 1 }}>{busy ? "Sending…" : `✉️ Email ${counts[s.id] || 0} members`}</button>
+              </>)}
+            </div>
+          )}
+        </div>
+      ))}
+      {segs !== null && segs.length === 0 && <div style={{ fontSize: 13, color: W.soft, textAlign: "center", marginTop: 20 }}>No segments yet — create one above.</div>}
+    </div>
+  );
+}
 function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
@@ -8438,6 +8595,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
+    ...(isSuper ? [["segments", "🎯 Segments"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["door", "Door"]] : []),
     ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
@@ -8457,6 +8615,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         ))}
       </div>
       {seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
+        : seg === "segments" ? <SegmentsAdmin />
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
@@ -8732,98 +8891,10 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
   const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "", segment: "" });
   const create = async () => { if (!f.name) return; await onCreate({ name: f.name, emoji: f.emoji || "💬", price_monthly: Number(f.price) || 0, description: f.desc, gender_restrict: f.gender || "any", city: lockCity || f.city || null, segment_id: f.segment || null }); reset(); setCreating(false); };
   const [segs, setSegs] = useState([]);
-  const [segOpen, setSegOpen] = useState(false);
-  const [segName, setSegName] = useState("");
-  const [segManage, setSegManage] = useState(null);
-  const [segMembers, setSegMembers] = useState([]);
-  const [dir, setDir] = useState([]);
-  const [sq, setSq] = useState("");
-  const loadSegs = () => supabase.from("segments").select("*").order("created_at").then(({ data }) => setSegs(data || []));
-  useEffect(() => { loadSegs(); supabase.rpc("staff_directory").then(({ data }) => setDir(data || [])); }, []);
-  const loadSegMembers = async (sid) => {
-    const { data } = await supabase.from("segment_members").select("user_id").eq("segment_id", sid);
-    const ids = (data || []).map(x => x.user_id);
-    if (!ids.length) return setSegMembers([]);
-    const { data: profs } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids);
-    setSegMembers(profs || []);
-  };
-  const addSeg = async () => {
-    if (!segName.trim()) return;
-    const { error } = await supabase.from("segments").insert({ name: segName.trim() });
-    if (error) return alert(error.message);
-    setSegName(""); loadSegs();
-  };
-  const delSeg = async (sid) => {
-    if (!window.confirm("Delete this segment? Rooms restricted to it become visible to everyone, and its member list is removed.")) return;
-    const { error } = await supabase.from("segments").delete().eq("id", sid);
-    if (error) return alert(error.message);
-    if (segManage === sid) setSegManage(null);
-    loadSegs();
-  };
-  const addSegMember = async (m) => {
-    const { error } = await supabase.from("segment_members").insert({ segment_id: segManage, user_id: m.id });
-    if (error && error.code !== "23505") return alert(error.message);
-    setSq(""); loadSegMembers(segManage);
-  };
-  const delSegMember = async (uid) => {
-    const { error } = await supabase.from("segment_members").delete().eq("segment_id", segManage).eq("user_id", uid);
-    if (error) return alert(error.message);
-    loadSegMembers(segManage);
-  };
-  const sMatches = sq.trim().length < 2 ? [] : dir.filter(m => (m.full_name || "").toLowerCase().includes(sq.trim().toLowerCase()) && !segMembers.some(x => x.id === m.id)).slice(0, 6);
+  useEffect(() => { supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegs(data || [])); }, []);
   return (
     <div style={{ padding: 14 }}>
-      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
-        <div onClick={() => setSegOpen(v => !v)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
-          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>🎯 Segments <span style={{ color: W.soft, fontWeight: 600, fontSize: 12.5 }}>— member groups for room visibility</span></div>
-          <span style={{ color: W.teal, fontWeight: 800, fontSize: 12.5 }}>{segOpen ? "Hide ▴" : `${segs.length} ▾`}</span>
-        </div>
-        {segOpen && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={segName} onChange={e => setSegName(e.target.value)} placeholder="New segment name (e.g. VIP Founders)" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
-              <button onClick={addSeg} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px" }}>Add</button>
-            </div>
-            {segs.some(s => s.rule) && <button onClick={async () => { const { error } = await supabase.rpc("segments_refresh_all"); if (error) return alert(error.message); alert("🤖 All auto-segments recomputed ✓"); loadSegs(); if (segManage) loadSegMembers(segManage); }} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", marginTop: 10, width: "100%", justifyContent: "center", fontSize: 12.5 }}>🤖 Refresh all auto-segments now</button>}
-            {segs.map(s => (
-              <div key={s.id} style={{ borderTop: `1px solid ${W.line}`, marginTop: 10, paddingTop: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ flex: 1, minWidth: 120, fontWeight: 700, fontSize: 14, color: W.ink }}>🎯 {s.name} {s.rule && <span style={{ background: "#F3EBFF", color: "#6D28D9", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10, verticalAlign: "middle" }}>🤖 AUTO</span>}</span>
-                  {s.rule && <button onClick={async () => { const { data, error } = await supabase.rpc("segment_refresh", { p_segment: s.id }); if (error) return alert(error.message); alert(`🤖 Recomputed — ${data} member${data === 1 ? "" : "s"} ✓`); loadSegs(); if (segManage === s.id) loadSegMembers(s.id); }} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", padding: "5px 10px", fontSize: 12 }}>↻ Refresh</button>}
-                  <button onClick={() => { if (segManage === s.id) { setSegManage(null); } else { setSegManage(s.id); loadSegMembers(s.id); } }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "5px 10px", fontSize: 12 }}>{segManage === s.id ? "Close" : "Members"}</button>
-                  <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => delSeg(s.id)} />
-                </div>
-                {s.rule && s.auto_updated_at && <div style={{ fontSize: 11, color: W.soft, marginTop: 3 }}>auto-computed · last refreshed {new Date(s.auto_updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</div>}
-                {segManage === s.id && (
-                  <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
-                    {!s.rule && <>
-                      <input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search member to add…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 11px", fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fff" }} />
-                      {sMatches.map(m => (
-                        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
-                          <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
-                          <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
-                          <button onClick={() => addSegMember(m)} style={{ ...btn(W.teal, "#fff"), padding: "5px 10px", fontSize: 12 }}>Add</button>
-                        </div>
-                      ))}
-                    </>}
-                    {s.rule && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700 }}>🤖 Membership is computed automatically from the rule — tap ↻ Refresh to update it. Manual adds aren't needed (they'd be overwritten).</div>}
-                    <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft, marginTop: 8 }}>In this segment ({segMembers.length})</div>
-                    {segMembers.map(m => (
-                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
-                        <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
-                        <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
-                        {!s.rule && <span onClick={() => delSegMember(m.id)} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
-                      </div>
-                    ))}
-                    {segMembers.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No members yet.</div>}
-                  </div>
-                )}
-              </div>
-            ))}
-            {segs.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 10 }}>No segments yet — create one above, add members, then pick it in a room's "Visible to" setting.</div>}
-          </div>
-        )}
-      </div>
+      <div style={{ fontSize: 12, color: W.soft, margin: "0 2px 12px" }}>🎯 Manage segments (members, credits, messages, email) in the <b>Admin → 🎯 Segments</b> tab. Pick which segment can see a room below via "👁️ Visible to".</div>
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New subscription room</div>
@@ -11905,7 +11976,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • autoseg ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • segtab ✅</div>
       </div>
     </div>
   );
