@@ -3146,7 +3146,8 @@ function StoryViewer({ list, event, owner, meId, isStaff, onClose, onDeleted }) 
       .then(({ data }) => { const m = {}; (data || []).forEach(pr => { m[pr.id] = pr; }); setNames(m); });
   }, [list]);
   useEffect(() => {
-    const t = setTimeout(() => { if (i < list.length - 1) setI(i + 1); else onClose(); }, 5000);
+    const vid = /\.(mp4|mov|webm|m4v|3gp)(\?|$)/i.test(((list[i] || {}).media_url) || "");
+    const t = setTimeout(() => { if (i < list.length - 1) setI(i + 1); else onClose(); }, vid ? 31000 : 5000);
     return () => clearTimeout(t);
   }, [i, list.length]);
   if (!cur) return null;
@@ -3174,9 +3175,16 @@ function StoryViewer({ list, event, owner, meId, isStaff, onClose, onDeleted }) 
         <X size={24} onClick={onClose} style={{ cursor: "pointer" }} />
       </div>
       <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-        <img src={cur.media_url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-        <div onClick={() => (i > 0 ? setI(i - 1) : onClose())} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "35%" }} />
-        <div onClick={() => (i < list.length - 1 ? setI(i + 1) : onClose())} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "65%" }} />
+        {(() => {
+          const curIsVid = /\.(mp4|mov|webm|m4v|3gp)(\?|$)/i.test(cur.media_url || "");
+          return curIsVid
+            ? <video key={cur.id} src={cur.media_url} autoPlay playsInline controls onEnded={() => (i < list.length - 1 ? setI(i + 1) : onClose())} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+            : <img src={cur.media_url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />;
+        })()}
+        {!/\.(mp4|mov|webm|m4v|3gp)(\?|$)/i.test(cur.media_url || "") && (<>
+          <div onClick={() => (i > 0 ? setI(i - 1) : onClose())} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "35%" }} />
+          <div onClick={() => (i < list.length - 1 ? setI(i + 1) : onClose())} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "65%" }} />
+        </>)}
       </div>
     </div>
   );
@@ -5580,9 +5588,22 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
   const eligible = events.filter(e => e.event_at && Math.abs(now - new Date(e.event_at).getTime()) < 36 * 3600000);
   const post = async (eventId, file) => {
     if (!file) return;
+    const isVideo = (file.type || "").startsWith("video");
+    if (isVideo) {
+      let dur = 0;
+      try {
+        dur = await new Promise((res, rej) => {
+          const v = document.createElement("video"); v.preload = "metadata";
+          v.onloadedmetadata = () => { try { URL.revokeObjectURL(v.src); } catch {} res(v.duration || 0); };
+          v.onerror = () => rej(new Error("read"));
+          v.src = URL.createObjectURL(file);
+        });
+      } catch { alert("Couldn't read this video. Please try another file."); setPickFile(null); return; }
+      if (dur > 31) { alert("Story videos must be 30 seconds or less. Please trim it and try again."); setPickFile(null); return; }
+    }
     setBusy(true);
     try {
-      const url = await uploadPhoto(meId, file);
+      const url = isVideo ? await uploadChatFile("stories", file) : await uploadPhoto(meId, file);
       const { error } = await supabase.from("stories").insert({ event_id: eventId, user_id: meId, media_url: url });
       if (error) throw error;
       onRefresh();
@@ -5609,7 +5630,7 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
         </div>}
         {sTab === "me" && <label style={{ display: "block" }}>
           <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add story" />
-          <input type="file" accept="image/*" style={{ display: "none" }} disabled={busy}
+          <input type="file" accept="image/*,video/*" style={{ display: "none" }} disabled={busy}
             onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; if (!eligible.length) post(null, f); else setPickFile(f); }} />
         </label>}
         {sTab === "me" && meIds.map(uid => {
@@ -5620,7 +5641,7 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
         })}
         {sTab === "event" && (isStaff || eligible.length > 0) && <label style={{ display: "block" }}>
           <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add event story" />
-          <input type="file" accept="image/*" style={{ display: "none" }} disabled={busy}
+          <input type="file" accept="image/*,video/*" style={{ display: "none" }} disabled={busy}
             onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (!f) return; if (!eligible.length) { alert("Event stories can be added only around an event happening within 36 hours."); return; } setPickFile(f); }} />
         </label>}
         {sTab === "event" && evIds.map(id => {
@@ -11111,7 +11132,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • evtags ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • storyvid ✅</div>
       </div>
     </div>
   );
