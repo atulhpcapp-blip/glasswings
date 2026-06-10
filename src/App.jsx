@@ -136,6 +136,9 @@ async function compressImage(file, maxW = 2048, quality = 0.92) {
   } catch { return file; }
 }
 async function uploadPhoto(userId, file) {
+  if (file && (file.type || "").startsWith("video/") && file.size > 20 * 1024 * 1024) {
+    throw new Error(`This video is ${(file.size / (1024 * 1024)).toFixed(1)} MB — videos must be under 20 MB. Please trim or compress it and try again.`);
+  }
   file = await compressImage(file);
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const path = `${userId}/${Date.now()}.${ext}`;
@@ -145,6 +148,9 @@ async function uploadPhoto(userId, file) {
 }
 
 async function uploadChatFile(roomId, file) {
+  if (file && (file.type || "").startsWith("video/") && file.size > 20 * 1024 * 1024) {
+    throw new Error(`This video is ${(file.size / (1024 * 1024)).toFixed(1)} MB — videos must be under 20 MB. Please trim or compress it and try again.`);
+  }
   file = await compressImage(file);
   const ext = (file.name.split(".").pop() || "bin").toLowerCase();
   const path = `${roomId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
@@ -11265,7 +11271,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • smooth ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • vid20 ✅</div>
       </div>
     </div>
   );
