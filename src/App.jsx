@@ -4636,6 +4636,249 @@ function StreakBoardCard() {
     </>
   );
 }
+const BDATE_QS = [
+  "What's your idea of a perfect Sunday?",
+  "Beach holiday or mountain trip — and why?",
+  "What's the best meal you've had in Hyderabad?",
+  "One song you can play on repeat forever?",
+  "Early bird or night owl?",
+  "What's a small thing that instantly makes your day?",
+  "Chai or coffee — defend your answer 😄",
+  "What's something you're weirdly good at?",
+  "Your go-to dance move when your song comes on?",
+  "If we were at a Glasswings party right now, where would we be standing?",
+  "What's one place you want to travel to next?",
+  "Movies at home or a night out?",
+];
+function BlindDateNight({ meId, isStaff, onClose }) {
+  const [nights, setNights] = useState(null);
+  const [selId, setSelId] = useState(null);
+  const [lobby, setLobby] = useState(null);
+  const [pair, setPair] = useState(null);
+  const [msgs, setMsgs] = useState([]);
+  const [me, setMe] = useState(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [tick, setTick] = useState(Date.now());
+  const [showCreate, setShowCreate] = useState(false);
+  const [sList, setSList] = useState([]);
+  const [pickM, setPickM] = useState(null);
+  const [pickF, setPickF] = useState(null);
+  const endRef = useRef(null);
+  const toLocal = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const tonight9 = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 21, 0, 0); };
+  const [cTitle, setCTitle] = useState("Blind Date Night");
+  const [cStart, setCStart] = useState(() => toLocal(tonight9()));
+  const [cEnd, setCEnd] = useState(() => toLocal(new Date(tonight9().getTime() + 45 * 60000)));
+  const [cPairing, setCPairing] = useState("random");
+  const [cCost, setCCost] = useState(30);
+  const loadNights = async () => {
+    const { data } = await supabase.from("bdate_nights").select("*").order("starts_at", { ascending: false }).limit(6);
+    setNights(data || []);
+    setSelId(prev => prev && (data || []).some(x => x.id === prev) ? prev : ((data || []).find(x => x.status !== "done")?.id || (data || [])[0]?.id || null));
+  };
+  const n = (nights || []).find(x => x.id === selId) || null;
+  const loadLobby = async (nid) => { if (!nid) return; const { data } = await supabase.rpc("bdate_lobby", { p_night: nid }); setLobby((data && data[0]) || null); };
+  const loadPair = async (nid) => { if (!nid) return; const { data } = await supabase.rpc("bdate_my_pair", { p_night: nid }); setPair((data && data[0]) || null); };
+  const loadMsgs = async (pid) => { if (!pid) return; const { data } = await supabase.from("messages").select("id, body, sender_id, created_at").eq("group_type", "bdate").eq("group_id", pid).order("created_at", { ascending: true }).limit(300); setMsgs(data || []); };
+  const loadStaff = async (nid) => { if (!nid || !isStaff) return; const { data } = await supabase.rpc("bdate_signup_list", { p_night: nid }); setSList(data || []); };
+  useEffect(() => { loadNights(); supabase.from("profiles").select("gender, game_credits").eq("id", meId).maybeSingle().then(({ data }) => setMe(data || {})); }, [meId]);
+  useEffect(() => { loadLobby(selId); loadPair(selId); loadStaff(selId); }, [selId]);
+  useEffect(() => { if (pair?.pair_id) loadMsgs(pair.pair_id); }, [pair?.pair_id]);
+  useEffect(() => {
+    const iv = setInterval(() => setTick(Date.now()), 1000);
+    const pv = setInterval(() => { loadNights(); loadLobby(selId); loadPair(selId); if (pair?.pair_id) loadMsgs(pair.pair_id); if (isStaff) loadStaff(selId); }, 5000);
+    return () => { clearInterval(iv); clearInterval(pv); };
+  }, [selId, pair?.pair_id]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length]);
+  const now = tick;
+  const live = n && n.status === "live";
+  const chatOpen = live && (pair?.revealed || now < new Date(n.ends_at).getTime());
+  const join = async () => { setBusy(true); const { error } = await supabase.rpc("bdate_join", { p_night: n.id }); setBusy(false); if (error) return alert(error.message); loadLobby(n.id); };
+  const leave = async () => { setBusy(true); const { error } = await supabase.rpc("bdate_leave", { p_night: n.id }); setBusy(false); if (error) return alert(error.message); loadLobby(n.id); };
+  const send = async () => {
+    const b = text.trim(); if (!b || !pair) return; setText("");
+    const { error } = await supabase.from("messages").insert({ group_type: "bdate", group_id: pair.pair_id, sender_id: meId, body: b });
+    if (error) return alert(error.message);
+    loadMsgs(pair.pair_id);
+  };
+  const dropQ = async () => {
+    if (!pair) return;
+    const q = BDATE_QS[Math.floor(Math.random() * BDATE_QS.length)];
+    await supabase.from("messages").insert({ group_type: "bdate", group_id: pair.pair_id, sender_id: meId, body: "💡 " + q });
+    loadMsgs(pair.pair_id);
+  };
+  const choose = async (c) => {
+    if (!pair) return;
+    if (!window.confirm(c === "reveal" ? "Reveal your identity if they also choose Reveal?" : "Pass on this date? They'll never know who you were.")) return;
+    const { error } = await supabase.rpc("bdate_choose", { p_pair: pair.pair_id, p_choice: c });
+    if (error) return alert(error.message);
+    loadPair(n.id);
+  };
+  const createNight = async () => {
+    const { error } = await supabase.rpc("bdate_create", { p_title: cTitle, p_starts: new Date(cStart).toISOString(), p_ends: new Date(cEnd).toISOString(), p_pairing: cPairing, p_cost: Number(cCost) || 0 });
+    if (error) return alert(error.message);
+    setShowCreate(false); loadNights();
+  };
+  const goLive = async () => {
+    if (!window.confirm(n.pairing === "random" ? "Pair everyone randomly and start the chats?" : "Start the chats with the pairs you've made? Unpaired guys get refunded.")) return;
+    setBusy(true); const { error } = await supabase.rpc("bdate_go_live", { p_night: n.id }); setBusy(false);
+    if (error) return alert(error.message);
+    loadNights(); loadPair(n.id);
+  };
+  const pairManual = async () => {
+    if (!pickM || !pickF) return alert("Pick one guy and one girl first.");
+    const { error } = await supabase.rpc("bdate_pair_manual", { p_night: n.id, p_male: pickM, p_female: pickF });
+    if (error) return alert(error.message);
+    setPickM(null); setPickF(null); loadStaff(n.id);
+  };
+  const announce = async () => {
+    if (!n) return;
+    const when = new Date(n.starts_at).toLocaleString("en-IN", { weekday: "short", hour: "numeric", minute: "2-digit" });
+    const text2 = `🎭 ${n.title.toUpperCase()}\n\nGet paired with a mystery date for a private anonymous chat. Hit it off? Both choose Reveal 💚 and meet for real. Pass quietly 🙏 and nobody ever knows.\n\n🕘 ${when} · Girls join FREE · Guys: ${n.entry_cost} credits\n\nJoin now 👉 https://glass-wings.com/?game=bdate`;
+    if (!window.confirm("Broadcast this to all room chats?")) return;
+    const { data: rms } = await supabase.from("rooms").select("id");
+    if (rms && rms.length) {
+      const rows = rms.map(rm => ({ group_type: "room", group_id: rm.id, sender_id: meId, body: text2, media_type: "broadcast" }));
+      const { error } = await supabase.from("messages").insert(rows);
+      if (error) return alert(error.message);
+      alert("📢 Broadcast sent!");
+    }
+  };
+  const cd = (toMs) => { const s = Math.max(0, Math.floor((toMs - now) / 1000)); const h = Math.floor(s / 3600), m2 = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + "h " : "") + m2 + "m " + String(x).padStart(2, "0") + "s"; };
+  const isFree = isStaff || me?.gender === "female";
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 190, background: "linear-gradient(160deg,#120B2E,#2A1450 55%,#0D0820)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#7C3AED,#EC4899)", color: "#fff", padding: "13px 16px", display: "flex", alignItems: "center", gap: 10, position: "sticky", top: 0, zIndex: 5 }}>
+        <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer", flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>🎭 Blind Date Night</div>
+          <div style={{ fontSize: 11, opacity: .9 }}>{isFree ? "You join free 💚" : `Wallet: ${me?.game_credits ?? "…"} credits`}</div>
+        </div>
+        {isStaff && n && <button onClick={announce} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>📢</button>}
+        {isStaff && <button onClick={() => setShowCreate(v => !v)} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>＋ Night</button>}
+      </div>
+      <div style={{ maxWidth: 560, width: "100%", margin: "0 auto", padding: "14px 14px 40px", boxSizing: "border-box", flex: 1, display: "flex", flexDirection: "column" }}>
+        {isStaff && showCreate && (
+          <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, color: W.ink, marginBottom: 8 }}>New night</div>
+            <input value={cTitle} onChange={e => setCTitle(e.target.value)} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: 10, fontSize: 14, boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: W.soft }}>Starts</span><input type="datetime-local" value={cStart} onChange={e => setCStart(e.target.value)} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13 }} />
+              <span style={{ fontSize: 12, color: W.soft }}>Chat ends</span><input type="datetime-local" value={cEnd} onChange={e => setCEnd(e.target.value)} style={{ padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13 }} />
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+              <select value={cPairing} onChange={e => setCPairing(e.target.value)} style={{ padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13 }}>
+                <option value="random">🎲 Random pairing</option>
+                <option value="staff">✋ Staff handpick pairs</option>
+              </select>
+              <input type="number" value={cCost} onChange={e => setCCost(e.target.value)} min={0} style={{ width: 70, padding: "8px 10px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13 }} /> <span style={{ color: W.soft, fontSize: 12 }}>credits entry (guys)</span>
+            </div>
+            <button onClick={createNight} style={{ ...btn("#7C3AED", "#fff"), marginTop: 10, justifyContent: "center", width: "100%" }}>Open signups 🎭</button>
+          </div>
+        )}
+        {nights && nights.length > 1 && (
+          <select value={selId || ""} onChange={e => setSelId(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 10, border: "none", fontSize: 13, marginBottom: 12 }}>
+            {nights.map(x => <option key={x.id} value={x.id}>{x.status === "open" ? "🟣 Signups — " : x.status === "live" ? "💬 LIVE — " : "🏁 "}{x.title} · {new Date(x.starts_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</option>)}
+          </select>
+        )}
+        {!n && nights !== null && (
+          <div style={{ background: "rgba(255,255,255,.08)", borderRadius: 16, padding: 28, textAlign: "center", color: "rgba(255,255,255,.85)" }}>
+            <div style={{ fontSize: 40 }}>🎭</div>
+            <div style={{ fontWeight: 800, fontSize: 17, marginTop: 8 }}>No night planned yet</div>
+            <div style={{ fontSize: 13.5, marginTop: 6, opacity: .8 }}>The first Blind Date Night is coming soon — watch the chats!</div>
+          </div>
+        )}
+        {n && n.status === "open" && (
+          <div style={{ background: "#fff", borderRadius: 16, padding: "20px 16px", textAlign: "center" }}>
+            <div style={{ fontSize: 36 }}>🎭</div>
+            <div style={{ fontWeight: 800, fontSize: 19, color: W.ink, marginTop: 6 }}>{n.title}</div>
+            <div style={{ fontSize: 13, color: W.soft, marginTop: 6, lineHeight: 1.55 }}>Get paired with a mystery date for a private anonymous chat.<br />Both choose <b>Reveal 💚</b> at the end? Names unlock and the chat stays open forever.<br />Anyone passes 🙏 — identities stay secret, no awkwardness, ever.</div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 12, fontSize: 12.5, color: W.soft, flexWrap: "wrap" }}>
+              <span>🕘 {new Date(n.starts_at).toLocaleString("en-IN", { weekday: "short", hour: "numeric", minute: "2-digit" })}</span>
+              <span>🧑 {lobby?.m_count ?? "…"} guys</span><span>👩 {lobby?.f_count ?? "…"} girls</span>
+              {now < new Date(n.starts_at).getTime() && <span>⏳ starts in <b style={{ color: "#7C3AED" }}>{cd(new Date(n.starts_at).getTime())}</b></span>}
+            </div>
+            {lobby?.joined
+              ? <><div style={{ color: W.teal, fontWeight: 800, marginTop: 14 }}>✓ You're in! Pairing happens at start time.</div><button onClick={leave} disabled={busy} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", marginTop: 8, justifyContent: "center" }}>Leave (full refund)</button></>
+              : <button onClick={join} disabled={busy} style={{ ...btn("#7C3AED", "#fff"), marginTop: 14, width: "100%", justifyContent: "center", padding: 13, fontSize: 15 }}>{isFree ? "Join the night — free for you 💚" : `Join the night — ${n.entry_cost} credits`}</button>}
+            <div style={{ fontSize: 11, color: W.soft, marginTop: 10 }}>Unpaired guys are refunded automatically. You can leave anytime before pairing.</div>
+          </div>
+        )}
+        {n && isStaff && n.status === "open" && (
+          <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginTop: 12 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>🛠️ Staff — {n.pairing === "staff" ? "handpick pairs" : "random pairing"}</div>
+            {n.pairing === "staff" && (
+              <>
+                <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>Tap one guy + one girl, then Pair them. Repeat. Go live when done.</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  {sList.map(s => (
+                    <span key={s.user_id} onClick={() => { if (s.paired) return; s.gender === "male" ? setPickM(pickM === s.user_id ? null : s.user_id) : setPickF(pickF === s.user_id ? null : s.user_id); }}
+                      style={{ padding: "6px 11px", borderRadius: 16, fontSize: 12.5, fontWeight: 700, cursor: s.paired ? "default" : "pointer", opacity: s.paired ? .45 : 1, background: (pickM === s.user_id || pickF === s.user_id) ? "#7C3AED" : (s.gender === "male" ? "#E8F0FE" : "#FDE7F1"), color: (pickM === s.user_id || pickF === s.user_id) ? "#fff" : W.ink }}>
+                      {s.gender === "male" ? "🧑" : "👩"} {s.full_name}{s.paired ? " ✓" : ""}
+                    </span>
+                  ))}
+                  {sList.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No signups yet.</span>}
+                </div>
+                <button onClick={pairManual} disabled={!pickM || !pickF} style={{ ...btn("#7C3AED", "#fff"), marginTop: 10, justifyContent: "center", width: "100%", opacity: (!pickM || !pickF) ? .55 : 1 }}>💞 Pair them</button>
+              </>
+            )}
+            <button onClick={goLive} disabled={busy} style={{ ...btn("#E91E63", "#fff"), marginTop: 10, justifyContent: "center", width: "100%", padding: 12, fontSize: 14.5 }}>🎬 Go live — start the chats</button>
+          </div>
+        )}
+        {n && n.status !== "open" && !pair && lobby?.joined && (
+          <div style={{ background: "rgba(255,255,255,.08)", borderRadius: 16, padding: 24, textAlign: "center", color: "rgba(255,255,255,.85)", marginTop: 8 }}>
+            <div style={{ fontSize: 34 }}>🙈</div>
+            <div style={{ fontWeight: 800, marginTop: 8 }}>No pair this time</div>
+            <div style={{ fontSize: 13, marginTop: 6, opacity: .8 }}>The numbers didn't balance tonight — your credits were refunded automatically. Join the next one!</div>
+          </div>
+        )}
+        {n && n.status !== "open" && pair && (
+          <div style={{ background: "#fff", borderRadius: 16, marginTop: 4, flex: 1, display: "flex", flexDirection: "column", minHeight: 380, overflow: "hidden" }}>
+            <div style={{ padding: "11px 14px", borderBottom: `1px solid ${W.line}`, display: "flex", alignItems: "center", gap: 10 }}>
+              {pair.revealed
+                ? <><PersonAvatar url={pair.partner_avatar} name={pair.partner_name} size={34} /><div style={{ flex: 1 }}><div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{pair.partner_name} 💚</div><div style={{ fontSize: 11, color: W.teal, fontWeight: 700 }}>Mutual reveal — this chat is yours forever</div></div></>
+                : <><div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#7C3AED,#EC4899)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🎭</div><div style={{ flex: 1 }}><div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>Your mystery date</div><div style={{ fontSize: 11, color: W.soft }}>{live && now < new Date(n.ends_at).getTime() ? `chat closes in ${cd(new Date(n.ends_at).getTime())}` : "chat closed — make your choice below"}</div></div></>}
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: 12, background: "#F7F5FB" }}>
+              {msgs.map(m => {
+                const mine = m.sender_id === meId;
+                const isQ = (m.body || "").startsWith("💡 ");
+                if (isQ) return <div key={m.id} style={{ textAlign: "center", margin: "10px 0" }}><span style={{ background: "#EDE7FB", color: "#5B21B6", fontSize: 12.5, fontWeight: 700, padding: "6px 13px", borderRadius: 14 }}>{m.body}</span></div>;
+                return (
+                  <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", margin: "3px 0" }}>
+                    <div style={{ maxWidth: "78%", background: mine ? "#E5DBFA" : "#fff", border: `1px solid ${mine ? "#D4C5F5" : W.line}`, borderRadius: 13, borderTopRightRadius: mine ? 4 : 13, borderTopLeftRadius: mine ? 13 : 4, padding: "7px 11px", fontSize: 14, color: W.ink }}>{m.body}</div>
+                  </div>
+                );
+              })}
+              {msgs.length === 0 && <div style={{ textAlign: "center", color: W.soft, fontSize: 13, marginTop: 30 }}>Say hi — or tap 💡 for an icebreaker!</div>}
+              <div ref={endRef} />
+            </div>
+            {chatOpen && (
+              <div style={{ display: "flex", gap: 8, padding: 10, borderTop: `1px solid ${W.line}` }}>
+                <button onClick={dropQ} style={{ background: "#EDE7FB", border: "none", borderRadius: 10, padding: "0 12px", fontSize: 17, cursor: "pointer" }}>💡</button>
+                <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") send(); }} placeholder="Type a message…" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none" }} />
+                <button onClick={send} style={{ ...btn("#7C3AED", "#fff"), padding: "0 16px" }}>➤</button>
+              </div>
+            )}
+            {!pair.revealed && (
+              <div style={{ padding: "10px 12px 12px", borderTop: `1px solid ${W.line}` }}>
+                {pair.my_choice
+                  ? <div style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: pair.my_choice === "reveal" ? W.teal : W.soft }}>{pair.my_choice === "reveal" ? "💚 You chose Reveal" : "🙏 You passed"} · {pair.partner_decided ? "they've decided too…" : "waiting for their choice"}</div>
+                  : <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => choose("reveal")} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: 11 }}>Reveal 💚</button>
+                      <button onClick={() => choose("pass")} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: 11 }}>Pass 🙏</button>
+                    </div>}
+                <div style={{ fontSize: 10.5, color: W.soft, textAlign: "center", marginTop: 6 }}>Names show only if you BOTH choose Reveal. A pass is never announced.</div>
+              </div>
+            )}
+            {isStaff && n.status === "live" && <button onClick={async () => { if (window.confirm("Finish this night for everyone?")) { await supabase.rpc("bdate_finish", { p_night: n.id }); loadNights(); } }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", margin: 10, justifyContent: "center" }}>🛑 Finish night (staff)</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 function ClashGame({ meId, isStaff, onClose }) {
   const [rounds, setRounds] = useState(null);
   const [selId, setSelId] = useState(null);
@@ -4832,6 +5075,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
   const [playHousie, setPlayHousie] = useState(false);
   const [playSpark, setPlaySpark] = useState(false);
   const [playClash, setPlayClash] = useState(false);
+  const [playBdate, setPlayBdate] = useState(false);
   const [sparkCode, setSparkCode] = useState(null);
   const [riddleDone, setRiddleDone] = useState(null);
   useEffect(() => {
@@ -4842,6 +5086,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
     else if (initialGame === "banter") setPlayBanter(true);
     else if (initialGame === "riddles") setPlayRiddle(true);
     else if (initialGame === "clash") setPlayClash(true);
+    else if (initialGame === "bdate") setPlayBdate(true);
     else if (initialGame === "housie") setPlayHousie(true);
     else if (initialGame === "spark") { setSparkCode(null); setPlaySpark(true); }
     if (initialGame && onConsumedInitial) onConsumedInitial();
@@ -4899,6 +5144,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
         <div style={{ fontSize: 12, color: W.soft, margin: "0 2px 11px", lineHeight: 1.45 }}>A few credits per play. Top up anytime in Profile → Wallet.</div>
         <Card emoji="💞" title="Spark" tint="#FDE7F1" badge="💎 Premium" shareId="spark" sub="36 questions for two · pair by code or invite · free for women" cta="Play" onClick={() => { setSparkCode(null); setPlaySpark(true); }} />
         <Card emoji="💘" title="Friday Clash" tint="#FFE8EC" badge="🏆 Live" shareId="clash" sub="Guys vs girls · best line wins the pot · girls play free" cta="Play" onClick={() => setPlayClash(true)} />
+        <Card emoji="🎭" title="Blind Date Night" tint="#EFE6FB" badge="🆕 Live" shareId="bdate" sub="Anonymous mystery date · mutual Reveal 💚 unlocks names · girls free" cta="Join" onClick={() => setPlayBdate(true)} />
         <Card emoji="💘" title="Vibe Check" tint="#FCE3EF" badge="💎 Premium" shareId="vibe" sub="How compatible are you two? 10 quick questions" cta="Play" onClick={() => setPlayVibe(true)} />
         <Card emoji="🎭" title="Blind Banter" tint="#E9E6FB" badge="💎 Premium" shareId="banter" sub="24h anonymous chat · reveal only if you both vibe · girls free, guys use credits" cta="Play" onClick={() => setPlayBanter(true)} />
 
@@ -4943,6 +5189,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
       {playRiddle && <RiddleSheet meId={meId} alreadyScore={riddleDone} onClose={() => setPlayRiddle(false)} />}
       {playHousie && <HousieHub meId={meId} isStaff={isStaff} events={events} onClose={() => setPlayHousie(false)} />}
       {playClash && <ClashGame meId={meId} isStaff={isStaff} onClose={() => setPlayClash(false)} />}
+      {playBdate && <BlindDateNight meId={meId} isStaff={isStaff} onClose={() => setPlayBdate(false)} />}
       {playSpark && <SparkHub meId={meId} isStaff={isStaff} autoCode={sparkCode} onClose={() => { setPlaySpark(false); setSparkCode(null); }} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
@@ -11472,7 +11719,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • clashcast ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • bdate ✅</div>
       </div>
     </div>
   );
