@@ -4682,7 +4682,7 @@ function BlindDateNight({ meId, isStaff, onClose }) {
   const loadPair = async (nid) => { if (!nid) return; const { data } = await supabase.rpc("bdate_my_pair", { p_night: nid }); setPair((data && data[0]) || null); };
   const loadMsgs = async (pid) => { if (!pid) return; const { data } = await supabase.from("messages").select("id, body, sender_id, created_at").eq("group_type", "bdate").eq("group_id", pid).order("created_at", { ascending: true }).limit(300); setMsgs(data || []); };
   const loadStaff = async (nid) => { if (!nid || !isStaff) return; const { data } = await supabase.rpc("bdate_signup_list", { p_night: nid }); setSList(data || []); };
-  useEffect(() => { loadNights(); supabase.from("profiles").select("gender, game_credits").eq("id", meId).maybeSingle().then(({ data }) => setMe(data || {})); }, [meId]);
+  useEffect(() => { loadNights(); supabase.from("profiles").select("gender, game_credits").eq("id", meId).maybeSingle().then(({ data }) => setMe(data || {})); supabase.from("game_costs").select("paid, credits").eq("key", "bdate").maybeSingle().then(({ data }) => { if (data) setCCost(data.paid ? (data.credits || 0) : 0); }); }, [meId]);
   useEffect(() => { loadLobby(selId); loadPair(selId); loadStaff(selId); }, [selId]);
   useEffect(() => { if (pair?.pair_id) loadMsgs(pair.pair_id); }, [pair?.pair_id]);
   useEffect(() => {
@@ -4900,7 +4900,7 @@ function ClashGame({ meId, isStaff, onClose }) {
     setSelId(prev => prev && (data || []).some(r => r.id === prev) ? prev : ((data || []).find(r => r.status === "open")?.id || (data || [])[0]?.id || null));
   };
   const loadEntries = async (rid) => { if (!rid) return setEntries([]); const { data } = await supabase.rpc("clash_list", { p_round: rid }); setEntries(data || []); };
-  useEffect(() => { loadRounds(); supabase.from("profiles").select("gender, game_credits, full_name").eq("id", meId).maybeSingle().then(({ data }) => setMe(data || {})); }, [meId]);
+  useEffect(() => { loadRounds(); supabase.from("profiles").select("gender, game_credits, full_name").eq("id", meId).maybeSingle().then(({ data }) => setMe(data || {})); supabase.from("game_costs").select("paid, credits").eq("key", "clash").maybeSingle().then(({ data }) => { if (data) setCCost(data.paid ? (data.credits || 0) : 0); }); }, [meId]);
   useEffect(() => { loadEntries(selId); }, [selId]);
   useEffect(() => { const iv = setInterval(() => { setTick(Date.now()); }, 1000); const pv = setInterval(() => { loadRounds(); loadEntries(selId); }, 10000); return () => { clearInterval(iv); clearInterval(pv); }; }, [selId]);
   const r = (rounds || []).find(x => x.id === selId) || null;
@@ -11719,7 +11719,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • bdate ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gamecosts ✅</div>
       </div>
     </div>
   );
