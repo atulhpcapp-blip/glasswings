@@ -1765,6 +1765,7 @@ function Main({ user }) {
   const [mods, setMods] = useState([]);
   const [eventMods, setEventMods] = useState([]);
   const [eventGroups, setEventGroups] = useState([]);
+  const [mySegs, setMySegs] = useState([]);
   const [payBusy, setPayBusy] = useState(false);
   const [eventPage, setEventPage] = useState(null);
   const [roomPage, setRoomPage] = useState(null);
@@ -1999,7 +2000,7 @@ function Main({ user }) {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }, { data: ad }, { data: egm }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }, { data: ad }, { data: egm }, { data: sgm }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -2019,12 +2020,13 @@ function Main({ user }) {
       supabase.from("event_perks").select("*").order("label", { ascending: true }),
       supabase.from("event_addons").select("*"),
       supabase.from("event_group_members").select("event_id").eq("user_id", user.id),
+      supabase.from("segment_members").select("segment_id").eq("user_id", user.id),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     const sbLive = (sb || []).filter(x => !x.expires_at || new Date(x.expires_at).getTime() > Date.now());
     setSubs(sbLive.map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
     const mt = {}; (tk || []).forEach(r => { if (!mt[r.event_id]) mt[r.event_id] = []; mt[r.event_id].push(r); }); setMyTickets(mt);
-    setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id)); setEventGroups((egm || []).map(x => x.event_id));
+    setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id)); setEventGroups((egm || []).map(x => x.event_id)); setMySegs((sgm || []).map(x => x.segment_id)); setMySegs((sgm || []).map(x => x.segment_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
     const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
     const es = {}; (estat || []).forEach(x => { es[x.event_id] = { male: Number(x.male_sold), female: Number(x.female_sold) }; }); setEventStats(es);
@@ -2470,7 +2472,7 @@ function Main({ user }) {
 
   const myChats = [
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
-    ...rooms.filter(r => !canAccess(r) && (coveringPlanId(r.id) || (r.price_monthly || 0) > 0) && !(["male", "female"].includes(r.gender_restrict) && r.gender_restrict !== profile?.gender))
+    ...rooms.filter(r => !canAccess(r) && (!r.segment_id || isStaff || mySegs.includes(r.segment_id)) && (coveringPlanId(r.id) || (r.price_monthly || 0) > 0) && !(["male", "female"].includes(r.gender_restrict) && r.gender_restrict !== profile?.gender))
       .map(r => { const cp = coveringPlanId(r.id); const pl = cp ? allPlans.find(p => p.id === cp) : null;
         return { id: r.id, type: "room-locked", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: `🔒 ${(counts[r.id] || 0)} members · ${freeForUser(r) ? "free for you" : pl ? `${pl.emoji || "💎"} ${pl.name}` : "₹" + r.price_monthly + "/mo"}` }; }),
     [{ id: user.id, type: "dm", name: "Glasswings", emoji: "📣", logo_url: null, sub: "Message the Glasswings team 💚" }][0],
@@ -2508,7 +2510,7 @@ function Main({ user }) {
         </div>
       )}
       {tab === "chats" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>)}
-      {tab === "explore" && <Explore rooms={rooms} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
+      {tab === "explore" && <Explore rooms={rooms.filter(r => !r.segment_id || isStaff || mySegs.includes(r.segment_id))} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
@@ -8645,11 +8647,96 @@ function RoomPriceEditor({ room, onUpdate }) {
 }
 function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isSuper }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
-  const [f, setF] = useState({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "" });
-  const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "" });
-  const create = async () => { if (!f.name) return; await onCreate({ name: f.name, emoji: f.emoji || "💬", price_monthly: Number(f.price) || 0, description: f.desc, gender_restrict: f.gender || "any", city: lockCity || f.city || null }); reset(); setCreating(false); };
+  const [f, setF] = useState({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "", segment: "" });
+  const reset = () => setF({ emoji: "💬", name: "", price: "", desc: "", gender: "any", city: lockCity || "", segment: "" });
+  const create = async () => { if (!f.name) return; await onCreate({ name: f.name, emoji: f.emoji || "💬", price_monthly: Number(f.price) || 0, description: f.desc, gender_restrict: f.gender || "any", city: lockCity || f.city || null, segment_id: f.segment || null }); reset(); setCreating(false); };
+  const [segs, setSegs] = useState([]);
+  const [segOpen, setSegOpen] = useState(false);
+  const [segName, setSegName] = useState("");
+  const [segManage, setSegManage] = useState(null);
+  const [segMembers, setSegMembers] = useState([]);
+  const [dir, setDir] = useState([]);
+  const [sq, setSq] = useState("");
+  const loadSegs = () => supabase.from("segments").select("*").order("created_at").then(({ data }) => setSegs(data || []));
+  useEffect(() => { loadSegs(); supabase.rpc("staff_directory").then(({ data }) => setDir(data || [])); }, []);
+  const loadSegMembers = async (sid) => {
+    const { data } = await supabase.from("segment_members").select("user_id").eq("segment_id", sid);
+    const ids = (data || []).map(x => x.user_id);
+    if (!ids.length) return setSegMembers([]);
+    const { data: profs } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids);
+    setSegMembers(profs || []);
+  };
+  const addSeg = async () => {
+    if (!segName.trim()) return;
+    const { error } = await supabase.from("segments").insert({ name: segName.trim() });
+    if (error) return alert(error.message);
+    setSegName(""); loadSegs();
+  };
+  const delSeg = async (sid) => {
+    if (!window.confirm("Delete this segment? Rooms restricted to it become visible to everyone, and its member list is removed.")) return;
+    const { error } = await supabase.from("segments").delete().eq("id", sid);
+    if (error) return alert(error.message);
+    if (segManage === sid) setSegManage(null);
+    loadSegs();
+  };
+  const addSegMember = async (m) => {
+    const { error } = await supabase.from("segment_members").insert({ segment_id: segManage, user_id: m.id });
+    if (error && error.code !== "23505") return alert(error.message);
+    setSq(""); loadSegMembers(segManage);
+  };
+  const delSegMember = async (uid) => {
+    const { error } = await supabase.from("segment_members").delete().eq("segment_id", segManage).eq("user_id", uid);
+    if (error) return alert(error.message);
+    loadSegMembers(segManage);
+  };
+  const sMatches = sq.trim().length < 2 ? [] : dir.filter(m => (m.full_name || "").toLowerCase().includes(sq.trim().toLowerCase()) && !segMembers.some(x => x.id === m.id)).slice(0, 6);
   return (
     <div style={{ padding: 14 }}>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
+        <div onClick={() => setSegOpen(v => !v)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>🎯 Segments <span style={{ color: W.soft, fontWeight: 600, fontSize: 12.5 }}>— member groups for room visibility</span></div>
+          <span style={{ color: W.teal, fontWeight: 800, fontSize: 12.5 }}>{segOpen ? "Hide ▴" : `${segs.length} ▾`}</span>
+        </div>
+        {segOpen && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={segName} onChange={e => setSegName(e.target.value)} placeholder="New segment name (e.g. VIP Founders)" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
+              <button onClick={addSeg} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px" }}>Add</button>
+            </div>
+            {segs.map(s => (
+              <div key={s.id} style={{ borderTop: `1px solid ${W.line}`, marginTop: 10, paddingTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ flex: 1, fontWeight: 700, fontSize: 14, color: W.ink }}>🎯 {s.name}</span>
+                  <button onClick={() => { if (segManage === s.id) { setSegManage(null); } else { setSegManage(s.id); loadSegMembers(s.id); } }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "5px 10px", fontSize: 12 }}>{segManage === s.id ? "Close" : "Members"}</button>
+                  <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => delSeg(s.id)} />
+                </div>
+                {segManage === s.id && (
+                  <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
+                    <input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search member to add…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 11px", fontSize: 13, outline: "none", boxSizing: "border-box", background: "#fff" }} />
+                    {sMatches.map(m => (
+                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
+                        <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
+                        <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
+                        <button onClick={() => addSegMember(m)} style={{ ...btn(W.teal, "#fff"), padding: "5px 10px", fontSize: 12 }}>Add</button>
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft, marginTop: 8 }}>In this segment ({segMembers.length})</div>
+                    {segMembers.map(m => (
+                      <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
+                        <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
+                        <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
+                        <span onClick={() => delSegMember(m.id)} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>
+                      </div>
+                    ))}
+                    {segMembers.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No members yet.</div>}
+                  </div>
+                )}
+              </div>
+            ))}
+            {segs.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 10 }}>No segments yet — create one above, add members, then pick it in a room's "Visible to" setting.</div>}
+          </div>
+        )}
+      </div>
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New subscription room</div>
@@ -8675,6 +8762,10 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
               {(cities || []).map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
             </select>
           )}
+          <select value={f.segment} onChange={e => setF({ ...f, segment: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", background: "#fff", color: W.ink, marginBottom: 14 }}>
+            <option value="">👁️ Visible to everyone</option>
+            {segs.map(s => <option key={s.id} value={s.id}>🎯 Visible only to: {s.name}</option>)}
+          </select>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
             <button onClick={create} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Create</button>
@@ -8708,6 +8799,14 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
                     <option value="">All cities (no city)</option>
                     {(cities || []).map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
                   </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>👁️ Visible to</label>
+                  <select value={r.segment_id || ""} onChange={e => onUpdate(r.id, { segment_id: e.target.value || null })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff", color: W.ink, marginTop: 6 }}>
+                    <option value="">Everyone</option>
+                    {segs.map(s => <option key={s.id} value={s.id}>🎯 Only segment: {s.name}</option>)}
+                  </select>
+                  <div style={{ fontSize: 11.5, color: W.soft, marginTop: 4 }}>Members outside the segment won't see this room anywhere. Existing subscribers keep access.</div>
                 </div>
                 <div>
                   <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Who can join</label>
@@ -11719,7 +11818,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gamecosts ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • segments ✅</div>
       </div>
     </div>
   );
