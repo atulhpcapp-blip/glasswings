@@ -1153,6 +1153,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             {popular && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 12, fontWeight: 800, padding: "4px 11px", borderRadius: 14 }}>🔥 Popular</span>}
             {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.category}</span>}
             {e.city && <span style={{ background: W.bg, color: W.soft, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.city}</span>}
+            {Object.keys(e.tags || {}).flatMap(dim => tagVals(e.tags, dim).map(v => (
+              <span key={dim + ":" + v} style={{ background: W.bg, color: W.soft, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{v}</span>
+            )))}
           </div>
           <h1 style={{ fontSize: wide ? 34 : 24, fontWeight: 800, color: W.ink, margin: 0, lineHeight: 1.18 }}>{e.emoji} {e.title}</h1>
           {e.entry_badge && <span style={{ display: "inline-block", marginTop: 9, background: "#FEF3C7", color: "#B45309", fontSize: 12.5, fontWeight: 800, padding: "4px 12px", borderRadius: 20 }}>🔞 {e.entry_badge}</span>}
@@ -1176,6 +1179,16 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             )}
           </div>
+          {profile?.gender === "male" && !isPlanMember && (
+            <div onClick={() => onViewPlans && onViewPlans()} style={{ cursor: onViewPlans ? "pointer" : "default", margin: "2px 0 4px", borderRadius: 14, padding: "13px 15px", background: "linear-gradient(135deg,#0f3d34,#008069)", color: "#fff", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 6px 18px rgba(0,128,105,.22)" }}>
+              <div style={{ fontSize: 26, flexShrink: 0 }}>💎</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 14.5 }}>Members save up to 100% on tickets</div>
+                <div style={{ fontSize: 12.5, opacity: .92, marginTop: 2, lineHeight: 1.4 }}>Subscribe to a membership and pay less — up to nothing — on this event and every event.</div>
+              </div>
+              <span style={{ background: "#fff", color: W.teal, fontWeight: 800, fontSize: 12.5, padding: "8px 12px", borderRadius: 9, whiteSpace: "nowrap", flexShrink: 0 }}>View plans</span>
+            </div>
+          )}
           {!wide && <Sec title="Tickets"><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
           {Array.isArray(e.about_media) && e.about_media.length > 0 && (
@@ -6304,6 +6317,15 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [room.id]);
   useEffect(() => { endRef.current?.scrollIntoView(); }, [msgs]);
+  const msgRefs = useRef({});
+  const [flashMsg, setFlashMsg] = useState(null);
+  const jumpToMsg = (id) => {
+    const el = msgRefs.current[id];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashMsg(id);
+    setTimeout(() => setFlashMsg(f => (f === id ? null : f)), 1400);
+  };
   useEffect(() => { if (headRef.current) setHeadPad(headRef.current.offsetHeight); }, [room.pinned, isAdmin, editPin, msgs === null]);
   useEffect(() => {
     const vv = window.visualViewport;
@@ -6519,12 +6541,12 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
               );
             }
             return (
-              <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
+              <div key={m.id} ref={el => { if (el) msgRefs.current[m.id] = el; }} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
-                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ animation: `gwmsgin .28s ease`, transformOrigin: mine ? "bottom right" : "bottom left", maxWidth: "78%", background: mine ? "linear-gradient(135deg,#D9FDD3,#C2F2E4)" : W.recv, padding: "7px 10px 6px", borderRadius: 14, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4, boxShadow: mine ? "0 2px 6px rgba(0,128,105,.16)" : "0 2px 6px rgba(17,27,33,.08)", border: mine ? "1px solid #BBEBD9" : `1px solid ${W.line}`, userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
+                <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ animation: `gwmsgin .28s ease`, transformOrigin: mine ? "bottom right" : "bottom left", maxWidth: "78%", background: flashMsg === m.id ? "#FFF3C4" : (mine ? "linear-gradient(135deg,#D9FDD3,#C2F2E4)" : W.recv), transition: "background .5s ease", padding: "7px 10px 6px", borderRadius: 14, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4, boxShadow: mine ? "0 2px 6px rgba(0,128,105,.16)" : "0 2px 6px rgba(17,27,33,.08)", border: mine ? "1px solid #BBEBD9" : `1px solid ${W.line}`, userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
                   {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 800, color: gwNameColor(m.sender_id), marginBottom: 1 }}>{s.name || "Member"}</div>}
                   {m.reply_to && (() => { const rm = (msgs || []).find(x => x.id === m.reply_to); return (
-                    <div style={{ background: "rgba(0,128,105,.07)", borderLeft: `3px solid ${W.teal}`, borderRadius: 7, padding: "4px 8px", marginBottom: 4 }}>
+                    <div onClick={() => jumpToMsg(m.reply_to)} style={{ background: "rgba(0,128,105,.07)", borderLeft: `3px solid ${W.teal}`, borderRadius: 7, padding: "4px 8px", marginBottom: 4, cursor: rm ? "pointer" : "default" }}>
                       <div style={{ fontSize: 11.5, fontWeight: 800, color: rm ? gwNameColor(rm.sender_id) : W.teal }}>{rm ? (senders[rm.sender_id]?.name || "Member") : "Message"}</div>
                       <div style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{rm ? (rm.body || (rm.media_type === "image" ? "📷 Photo" : "📎 Attachment")) : "Original message unavailable"}</div>
                     </div>
@@ -11089,7 +11111,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gmaps ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • evtags ✅</div>
       </div>
     </div>
   );
