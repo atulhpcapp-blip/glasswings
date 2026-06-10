@@ -4689,6 +4689,27 @@ function ClashGame({ meId, isStaff, onClose }) {
   };
   const pool = r ? (r.pot > 0 ? Math.floor(r.pot / 2) : 100) : 0;
   const podium = r?.results?.podium || [];
+  const announce = async () => {
+    if (!r) return;
+    const link = "https://glass-wings.com/?game=clash";
+    let text;
+    if (r.status === "done" && podium.length) {
+      text = `🏆 FRIDAY CLASH — RESULTS!\n“${r.prompt}”\n\n` + podium.map(p => `${["🥇", "🥈", "🥉"][p.rank - 1]} ${p.name} — ${p.hearts} 💗${p.prize ? ` (+${p.prize} cr)` : ""}`).join("\n") + `\n\nCome see the winning lines 👉 ${link}`;
+    } else {
+      const closeStr = new Date(r.closes_at).toLocaleString("en-IN", { weekday: "short", hour: "numeric", minute: "2-digit" });
+      text = `💘 FRIDAY CLASH IS LIVE!\n“${r.prompt}”\n\n${r.direction === "m" ? "Guys — drop your best line. Girls — you've got 5 hearts to judge 👑" : "Girls — your turn to write. Guys — 5 hearts each to vote 👑"}\n${r.direction === "m" ? `Entry: ${r.entry_cost} credits · girls play FREE` : "Girls write free · guys vote free"}\n⏳ Closes ${closeStr} · 🏆 Pool: ${pool} credits\n\nPlay now 👉 ${link}`;
+    }
+    if (!window.confirm("Broadcast this to all room chats?")) return;
+    setBusy(true);
+    const { data: rms } = await supabase.from("rooms").select("id");
+    if (rms && rms.length) {
+      const rows = rms.map(rm => ({ group_type: "room", group_id: rm.id, sender_id: meId, body: text, media_type: "broadcast" }));
+      const { error } = await supabase.from("messages").insert(rows);
+      setBusy(false);
+      if (error) return alert(error.message);
+      alert("📢 Broadcast sent to all rooms!");
+    } else { setBusy(false); alert("No rooms found to broadcast to."); }
+  };
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 190, background: "linear-gradient(160deg,#2A0E1E,#3D1230 55%,#1B0A14)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
       <div style={{ background: "linear-gradient(135deg,#E91E63,#9C27B0)", color: "#fff", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 5 }}>
@@ -4697,6 +4718,7 @@ function ClashGame({ meId, isStaff, onClose }) {
           <div style={{ fontWeight: 800, fontSize: 16 }}>💘 Friday Clash</div>
           <div style={{ fontSize: 11, opacity: .9 }}>{me?.gender === "female" || isStaff ? "You play free 💚" : `Wallet: ${me?.game_credits ?? "…"} credits`}</div>
         </div>
+        {isStaff && r && <button onClick={announce} disabled={busy} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>📢 Announce</button>}
         {isStaff && <button onClick={() => setShowCreate(v => !v)} style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.5)", color: "#fff", borderRadius: 9, padding: "6px 11px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>＋ Round</button>}
       </div>
       <div style={{ maxWidth: 560, width: "100%", margin: "0 auto", padding: "14px 14px 40px", boxSizing: "border-box" }}>
@@ -4819,6 +4841,7 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
     else if (initialGame === "vibe") setPlayVibe(true);
     else if (initialGame === "banter") setPlayBanter(true);
     else if (initialGame === "riddles") setPlayRiddle(true);
+    else if (initialGame === "clash") setPlayClash(true);
     else if (initialGame === "housie") setPlayHousie(true);
     else if (initialGame === "spark") { setSparkCode(null); setPlaySpark(true); }
     if (initialGame && onConsumedInitial) onConsumedInitial();
@@ -11449,7 +11472,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • clash ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • clashcast ✅</div>
       </div>
     </div>
   );
