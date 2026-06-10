@@ -6394,7 +6394,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
     const loadR = () => supabase.from("message_reactions").select("message_id, user_id, emoji").in("message_id", ids)
       .then(({ data }) => { const g = {}; (data || []).forEach(r2 => { (g[r2.message_id] = g[r2.message_id] || []).push(r2); }); setReacts(g); });
     const loadP = () => supabase.from("poll_votes").select("message_id, user_id, option_idx").in("message_id", ids)
-      .then(({ data }) => { const g = {}; (data || []).forEach(v => { const e = g[v.message_id] = g[v.message_id] || { counts: {}, total: 0, mine: null }; e.counts[v.option_idx] = (e.counts[v.option_idx] || 0) + 1; e.total++; if (v.user_id === user.id) e.mine = v.option_idx; }); setPollVotes(g); });
+      .then(({ data }) => { const g = {}; (data || []).forEach(v => { const e = g[v.message_id] = g[v.message_id] || { counts: {}, total: 0, mine: null, voters: {} }; e.counts[v.option_idx] = (e.counts[v.option_idx] || 0) + 1; e.total++; (e.voters[v.option_idx] = e.voters[v.option_idx] || []).push(v.user_id); if (v.user_id === user.id) e.mine = v.option_idx; }); setPollVotes(g); });
     loadR(); loadP();
     const iv = setInterval(() => { loadR(); loadP(); }, 12000);
     return () => clearInterval(iv);
@@ -6424,6 +6424,16 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
   const [pollOpen, setPollOpen] = useState(false);
   const [gamesOpen, setGamesOpen] = useState(false);
   const [pollVotes, setPollVotes] = useState({});
+  const [voterSheet, setVoterSheet] = useState(null);
+  const [voterNames, setVoterNames] = useState({});
+  const openVoters = async (mid) => {
+    setVoterSheet(mid);
+    const pv = pollVotes[mid]; if (!pv) return;
+    const ids = [...new Set(Object.values(pv.voters || {}).flat())].filter(id => !voterNames[id]);
+    if (!ids.length) return;
+    const { data } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids);
+    setVoterNames(n => { const m = { ...n }; (data || []).forEach(p => { m[p.id] = p; }); return m; });
+  };
   const [bigPhoto, setBigPhoto] = useState(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [roomPick, setRoomPick] = useState(false);
@@ -6435,7 +6445,15 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
     setMsgs(prev => prev.some(x => x.id === data.id) ? prev : [...prev, data]);
   };
   const vote = async (mid, idx) => {
-    setPollVotes(p => { const e = { counts: { ...(p[mid]?.counts || {}) }, total: p[mid]?.total || 0, mine: p[mid]?.mine ?? null }; if (e.mine != null) e.counts[e.mine] = Math.max(0, (e.counts[e.mine] || 0) - 1); e.counts[idx] = (e.counts[idx] || 0) + 1; e.total = Object.values(e.counts).reduce((a, b) => a + b, 0); e.mine = idx; return { ...p, [mid]: e }; });
+    setPollVotes(p => {
+      const prev = p[mid] || { counts: {}, total: 0, mine: null, voters: {} };
+      const e = { counts: { ...(prev.counts || {}) }, total: prev.total || 0, mine: prev.mine ?? null, voters: {} };
+      Object.keys(prev.voters || {}).forEach(k => { e.voters[k] = [...prev.voters[k]]; });
+      if (e.mine != null) { e.counts[e.mine] = Math.max(0, (e.counts[e.mine] || 0) - 1); e.voters[e.mine] = (e.voters[e.mine] || []).filter(id => id !== user.id); }
+      e.counts[idx] = (e.counts[idx] || 0) + 1; (e.voters[idx] = e.voters[idx] || []).push(user.id);
+      e.total = Object.values(e.counts).reduce((a, b) => a + b, 0); e.mine = idx;
+      return { ...p, [mid]: e };
+    });
     const { error: voteErr } = await supabase.from("poll_votes").upsert({ message_id: mid, user_id: user.id, option_idx: idx }, { onConflict: "message_id,user_id" });
     if (voteErr) { console.error("poll vote failed", voteErr); alert("Couldn't save your vote: " + voteErr.message); }
   };
@@ -6482,6 +6500,35 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
     <div style={{ minHeight: "100dvh", background: "linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)", backgroundImage: `url("${WALL}"), linear-gradient(160deg,#E8F4EF 0%,#EDEAF6 48%,#FBEEF3 100%)`, paddingBottom: 72 }}>
       <style>{`@keyframes gwmsgin { 0% { transform: translateY(10px) scale(.96); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }`}</style>
       {showMembers && <RoomMembersSheet room={room} groupType={groupType} onClose={() => setShowMembers(false)} canDM={isAdmin} canAdd={isAdmin} onOpenDM={onOpenDM} viewerId={user.id} />}
+      {voterSheet && (() => {
+        const m = (msgs || []).find(x => x.id === voterSheet); if (!m) return null;
+        let opts = []; try { opts = JSON.parse(m.file_name || "[]"); } catch {}
+        const pv = pollVotes[voterSheet] || { voters: {}, total: 0 };
+        return (
+          <div onClick={() => setVoterSheet(null)} style={{ position: "fixed", inset: 0, zIndex: 160, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, background: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, maxHeight: "75vh", display: "flex", flexDirection: "column" }}>
+              <div style={{ padding: "14px 18px 10px", borderBottom: `1px solid ${W.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ minWidth: 0 }}><div style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>📊 {m.body}</div><div style={{ fontSize: 12, color: W.soft }}>{pv.total} vote{pv.total === 1 ? "" : "s"}</div></div>
+                <X size={22} onClick={() => setVoterSheet(null)} style={{ cursor: "pointer", color: W.soft }} />
+              </div>
+              <div style={{ overflowY: "auto", padding: "8px 18px calc(20px + env(safe-area-inset-bottom))" }}>
+                {opts.map((opt, i2) => { const vs = (pv.voters && pv.voters[i2]) || []; return (
+                  <div key={i2} style={{ marginTop: 12 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13.5, color: W.ink, display: "flex", justifyContent: "space-between" }}><span>{opt}</span><span style={{ color: W.soft }}>{vs.length}</span></div>
+                    {vs.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No votes yet</div>}
+                    {vs.map(uid => { const p = voterNames[uid]; return (
+                      <div key={uid} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 0" }}>
+                        <PersonAvatar url={p?.avatar_url} name={p?.full_name} size={28} />
+                        <span style={{ fontSize: 13.5, color: W.ink }}>{uid === user.id ? "You" : (p?.full_name || "Member")}</span>
+                      </div>
+                    ); })}
+                  </div>
+                ); })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {tray && (
         <div onClick={() => setTray(null)} style={{ position: "fixed", inset: 0, zIndex: 95 }}>
           <div onClick={ev => ev.stopPropagation()} style={{ position: "fixed", bottom: 118, left: "50%", transform: "translateX(-50%)", background: "#fff", borderRadius: 22, boxShadow: "0 10px 34px rgba(0,0,0,.28)", padding: "11px 15px", display: "flex", flexDirection: "column", gap: 9, alignItems: "center" }}>
@@ -6585,7 +6632,10 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
                             <div style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, fontWeight: mine ? 800 : 600, color: W.ink }}><span>{mine ? "✓ " : ""}{opt}</span><span style={{ color: W.soft }}>{pct}%</span></div>
                           </div>
                         ); })}
-                        <div style={{ fontSize: 11, color: W.soft, marginTop: 2 }}>{pv.total} vote{pv.total === 1 ? "" : "s"} · tap to vote / change</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2, gap: 8 }}>
+                          <span style={{ fontSize: 11, color: W.soft }}>{pv.total} vote{pv.total === 1 ? "" : "s"} · tap to vote / change</span>
+                          {pv.total > 0 && <span onClick={(ev) => { ev.stopPropagation(); openVoters(m.id); }} style={{ fontSize: 11.5, color: W.teal, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>View votes</span>}
+                        </div>
                       </div>
                     );
                   })()}
@@ -11132,7 +11182,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • storyvid ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • pollvoters ✅</div>
       </div>
     </div>
   );
