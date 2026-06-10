@@ -10837,6 +10837,21 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
               <div key={r.user_id} style={{ borderTop: "1px solid #F2E2C4", marginTop: 9, paddingTop: 9 }}>
                 <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{r.full_name || "No name yet"}</div>
                 <div style={{ fontSize: 12.5, color: W.soft, wordBreak: "break-all" }}>{r.email}{r.phone ? ` · ${r.phone}` : ""} · signed up {r.created_at ? new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""}</div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 7 }}>
+                  <button onClick={async () => {
+                    const { error } = await supabase.rpc("complete_pending_signup", { p_user: r.user_id });
+                    if (error) return alert(error.message);
+                    alert(`✅ ${r.full_name || r.email} is now an active member. They can log in and fill the rest of their profile themselves.`);
+                    reload();
+                  }} style={{ ...btn(W.teal, "#fff"), padding: "7px 11px", fontSize: 12 }}>✅ Complete signup</button>
+                  <a href={(r.phone ? waLink(r.phone) : "https://wa.me/") + "?text=" + encodeURIComponent(`Hi ${(r.full_name || "").split(" ")[0] || "there"}! 🎉 Your Glasswings account is ready.\n\nLogin email: ${r.email}\nApp: https://glass-wings.com\n\nIf you don't have your password handy, tap "Forgot password" on the login screen and set a new one in seconds. See you inside! 💚`)}
+                    target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "7px 11px", fontSize: 12, textDecoration: "none" }}>📲 WhatsApp{r.phone ? "" : " (pick contact)"}</a>
+                  <button onClick={async () => {
+                    const { error } = await supabase.auth.resetPasswordForEmail(r.email, { redirectTo: "https://glass-wings.com" });
+                    if (error) return alert(error.message);
+                    alert(`✉️ Password set-up link emailed to ${r.email}.`);
+                  }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "7px 11px", fontSize: 12 }}>✉️ Email login link</button>
+                </div>
               </div>
             ))}
             {pendOpen && <div style={{ fontSize: 11.5, color: "#7a5a1e", marginTop: 9 }}>These people created an account but haven't finished their profile yet — a quick WhatsApp or email nudge usually gets them in.</div>}
@@ -11271,7 +11286,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • vid20 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • pendsign ✅</div>
       </div>
     </div>
   );
