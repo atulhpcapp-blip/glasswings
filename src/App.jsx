@@ -3682,21 +3682,31 @@ function LudoGame({ gameId, meId, onClose }) {
           {Array.from({ length: 15 }).map((_, r) => Array.from({ length: 15 }).map((_, c) => {
             const inBase = (r < 6 && c < 6) || (r < 6 && c > 8) || (r > 8 && c > 8) || (r > 8 && c < 6);
             const baseIdx = r < 6 && c < 6 ? 0 : r < 6 && c > 8 ? 1 : r > 8 && c > 8 ? 2 : r > 8 && c < 6 ? 3 : -1;
+            const ENTRY = { "7_0": 0, "0_7": 1, "7_14": 2, "14_7": 3 };
+            const entryIdx = ENTRY[r + "_" + c];
             let bg = "transparent", border = "none", inner = null;
             if (inBase) { bg = LUDO_COLORS[baseIdx]; }
             else {
               let homeIdx = -1;
               for (let pp = 0; pp < 4; pp++) if (LUDO_HOME[pp].some(([hr, hc]) => hr === r && hc === c)) homeIdx = pp;
               const ti = LUDO_PATH.findIndex(([tr, tc]) => tr === r && tc === c);
-              if (homeIdx >= 0) { bg = LUDO_COLORS[homeIdx]; border = `1px solid ${LUDO_DARK[homeIdx]}55`; }
+              if (homeIdx >= 0) { bg = LUDO_COLORS[homeIdx]; border = "1px solid rgba(255,255,255,.6)"; }
+              else if (entryIdx != null) {
+                bg = LUDO_COLORS[entryIdx]; border = "1px solid rgba(255,255,255,.6)";
+                inner = <span style={{ color: "#fff", fontSize: 13, fontWeight: 800, transform: `rotate(${[0, 90, 180, 270][entryIdx]}deg)`, textShadow: "0 1px 1px rgba(0,0,0,.3)" }}>➤</span>;
+              }
               else if (ti >= 0) {
                 const sIdx = LUDO_START.indexOf(ti);
                 if (sIdx >= 0) {
-                  bg = LUDO_COLORS[sIdx]; border = `1px solid ${LUDO_DARK[sIdx]}66`;
-                  inner = <span style={{ color: "#ffffffcc", fontSize: 12, fontWeight: 800, transform: `rotate(${[0, 90, 180, 270][sIdx]}deg)` }}>➤</span>;
+                  bg = LUDO_COLORS[sIdx]; border = "1px solid rgba(255,255,255,.6)";
+                  inner = <span style={{ color: "#fff", fontSize: 12, fontWeight: 800, transform: `rotate(${[0, 90, 180, 270][sIdx]}deg)`, textShadow: "0 1px 1px rgba(0,0,0,.3)" }}>➤</span>;
                 } else {
-                  bg = "#FDFEFE"; border = "1px solid #D8E0DC";
-                  if (LUDO_SAFE.has(ti)) inner = <span style={{ color: "#9AA7A3", fontSize: 13 }}>✦</span>;
+                  bg = "#FDFEFE"; border = "1px solid #C9D2CE";
+                  if (LUDO_SAFE.has(ti)) inner = (
+                    <svg width="80%" height="80%" viewBox="0 0 24 24" style={{ display: "block" }}>
+                      <path d="M12 2.6l2.6 5.8 6.3.6-4.7 4.2 1.4 6.2L12 16.2l-5.6 3.2 1.4-6.2L3.1 9l6.3-.6z" fill="#EDF1EF" stroke="#9FB0AA" strokeWidth="1.4" strokeLinejoin="round" />
+                    </svg>
+                  );
                 }
               } else if (r >= 6 && r <= 8 && c >= 6 && c <= 8) { bg = "#fff"; }
             }
@@ -3706,6 +3716,7 @@ function LudoGame({ gameId, meId, onClose }) {
             const [qr, qc] = [[0, 0], [0, 9], [9, 9], [9, 0]][pidx];
             return (
               <div key={"court" + pidx}>
+                <div style={{ position: "absolute", left: qc * cell, top: qr * cell, width: cell * 6, height: cell * 6, background: "linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,0) 42%, rgba(0,0,0,.10))", pointerEvents: "none" }} />
                 <div style={{ position: "absolute", left: qc * cell + cell * .6, top: qr * cell + cell * .6, width: cell * 4.8, height: cell * 4.8, background: "#fff", borderRadius: 16, boxShadow: `inset 0 0 0 3px ${LUDO_DARK[pidx]}33, 0 1px 4px rgba(0,0,0,.18)` }} />
                 {LUDO_BASE[pidx].map(([br, bc], k) => { const ps = Math.round(cell * 1.12); const scx = (bc + 0.5) * cell, scy = (br + 0.5) * cell; return (
                   <div key={k} style={{ position: "absolute", left: scx - ps / 2, top: scy - ps / 2, width: ps, height: ps, borderRadius: "50%", background: LUDO_COLORS[pidx], boxShadow: `inset 0 0 0 1.5px ${LUDO_DARK[pidx]}, inset 0 0 ${Math.round(ps * 0.28)}px ${Math.round(ps * 0.1)}px ${LUDO_DARK[pidx]}, 0 2px 4px rgba(0,0,0,.3)`, boxSizing: "border-box" }} />
@@ -3718,22 +3729,14 @@ function LudoGame({ gameId, meId, onClose }) {
           })}
           {(() => {
             const cx = 6 * cell, sz = 3 * cell;
-            const tri = (deg, color) => {
-              const half = sz / 2;
-              const styles = {
-                0: { borderLeft: `${half}px solid ${color}`, borderTop: `${half}px solid transparent`, borderBottom: `${half}px solid transparent`, left: cx, top: cx + 0 },
-                1: { borderTop: `${half}px solid ${color}`, borderLeft: `${half}px solid transparent`, borderRight: `${half}px solid transparent`, left: cx, top: cx },
-                2: { borderRight: `${half}px solid ${color}`, borderTop: `${half}px solid transparent`, borderBottom: `${half}px solid transparent`, left: cx + half, top: cx },
-                3: { borderBottom: `${half}px solid ${color}`, borderLeft: `${half}px solid transparent`, borderRight: `${half}px solid transparent`, left: cx, top: cx + half },
-              }[deg];
-              return styles;
-            };
             return (
               <div style={{ position: "absolute", left: cx, top: cx, width: sz, height: sz }}>
-                <div style={{ position: "absolute", width: 0, height: 0, left: 0, top: sz / 4 * 0, borderTop: `${sz / 2}px solid transparent`, borderBottom: `${sz / 2}px solid transparent`, borderLeft: `${sz / 2}px solid ${LUDO_COLORS[0]}` }} />
-                <div style={{ position: "absolute", width: 0, height: 0, left: 0, top: 0, borderLeft: `${sz / 2}px solid transparent`, borderRight: `${sz / 2}px solid transparent`, borderTop: `${sz / 2}px solid ${LUDO_COLORS[1]}` }} />
-                <div style={{ position: "absolute", width: 0, height: 0, right: 0, top: 0, borderTop: `${sz / 2}px solid transparent`, borderBottom: `${sz / 2}px solid transparent`, borderRight: `${sz / 2}px solid ${LUDO_COLORS[2]}` }} />
-                <div style={{ position: "absolute", width: 0, height: 0, left: 0, bottom: 0, borderLeft: `${sz / 2}px solid transparent`, borderRight: `${sz / 2}px solid transparent`, borderBottom: `${sz / 2}px solid ${LUDO_COLORS[3]}` }} />
+                <svg width={sz} height={sz} viewBox="0 0 90 90" style={{ display: "block" }}>
+                  <polygon points="0,0 45,45 0,90" fill={LUDO_COLORS[0]} stroke="#fff" strokeWidth="2.4" strokeLinejoin="round" />
+                  <polygon points="0,0 90,0 45,45" fill={LUDO_COLORS[1]} stroke="#fff" strokeWidth="2.4" strokeLinejoin="round" />
+                  <polygon points="90,0 90,90 45,45" fill={LUDO_COLORS[2]} stroke="#fff" strokeWidth="2.4" strokeLinejoin="round" />
+                  <polygon points="0,90 45,45 90,90" fill={LUDO_COLORS[3]} stroke="#fff" strokeWidth="2.4" strokeLinejoin="round" />
+                </svg>
                 <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", fontSize: 15, textShadow: "0 1px 2px rgba(0,0,0,.4)" }}>🏆</div>
               </div>
             );
@@ -11182,7 +11185,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • pollvoters ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludoboard ✅</div>
       </div>
     </div>
   );
