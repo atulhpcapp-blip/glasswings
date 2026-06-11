@@ -1,20 +1,8 @@
-// Glasswings — WhatsApp campaign to a SEGMENT via AiSensy (Vercel function).
-// Place this file in your repo at:  api/whatsapp/segment-blast.js
-//
-// SETUP (one time):
-// 1) AiSensy dashboard → create a TEMPLATE (gets Meta approval), then create
-//    an "API Campaign" linked to that template. Note the exact Campaign Name.
-// 2) AiSensy dashboard → Manage → API Key → copy the key.
-// 3) Vercel → your project → Settings → Environment Variables → add:
-//       AISENSY_API_KEY = <the key>     → then Redeploy.
-//
-// The app sends: { access_token, segment_id, campaign, params }
-//  - campaign: the exact AiSensy API Campaign name
-//  - params: optional template variable values, comma-separated, in order
-//    ({{name}} is filled automatically per member as userName)
+// Glasswings — email marketing to a SEGMENT (Vercel serverless function).
+// Place this file in your repo at:  api/email/segment-blast.js
+// Required env vars (already set): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY
+// Optional: RESEND_FROM — e.g.  Glasswings <hello@glass-wings.com>
 import { createClient } from "@supabase/supabase-js";
-
-export const config = { maxDuration: 60 };
 
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -29,28 +17,17 @@ function readBody(req) {
 }
 
 const STAFF = ["admin", "superadmin", "subadmin"];
-
-// Normalise Indian numbers to 91XXXXXXXXXX
-function normPhone(p) {
-  const d = String(p || "").replace(/\D/g, "");
-  if (d.length === 10) return "91" + d;
-  if (d.length === 12 && d.startsWith("91")) return d;
-  if (d.length === 11 && d.startsWith("0")) return "91" + d.slice(1);
-  return d.length >= 11 ? d : null;
-}
+const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "method" });
-  if (!process.env.AISENSY_API_KEY) {
-    return res.status(500).json({ error: "WhatsApp is not configured yet — add AISENSY_API_KEY in Vercel → Settings → Environment Variables, then redeploy." });
-  }
+  if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: "Email is not configured." });
 
   const body = (typeof req.body === "object" && req.body) ? req.body : await readBody(req);
   const { access_token, segment_id } = body;
-  const campaign = String(body.campaign || "").trim();
-  const params = String(body.params || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const testPhone = String(body.test_phone || "").trim();
-  if ((!segment_id && !testPhone) || !campaign) return res.status(400).json({ error: "Missing campaign name." });
+  const subject = String(body.subject || "").trim();
+  const message = String(body.message || "").trim();
+  if (!segment_id || !subject || !message) return res.status(400).json({ error: "Missing details." });
 
   try {
     // caller must be staff
@@ -61,51 +38,49 @@ export default async function handler(req, res) {
     const isStaff = STAFF.includes(me?.role) || (me?.roles || []).some((r) => STAFF.includes(r));
     if (!isStaff) return res.status(403).json({ error: "Not authorised." });
 
-    // recipients: one test number, or the whole segment
-    let recipients;
-    if (testPhone) {
-      const p = normPhone(testPhone);
-      if (!p) return res.status(400).json({ error: "That test number doesn't look valid — use 10 digits." });
-      recipients = [{ phone: p, name: "Test" }];
-    } else {
-      const { data: list, error: lerr } = await sb.rpc("segment_phones", { p_segment: segment_id });
-      if (lerr) return res.status(500).json({ error: lerr.message });
-      recipients = (list || [])
-        .map((r) => ({ phone: normPhone(r.phone), name: (r.full_name || "there").split(" ")[0] }))
-        .filter((r) => r.phone);
-      if (!recipients.length) return res.status(400).json({ error: "This segment has no members with a valid phone number." });
-    }
+    // segment recipients
+    const { data: list, error: lerr } = await sb.rpc("segment_emails", { p_segment: segment_id });
+    if (lerr) return res.status(500).json({ error: lerr.message });
+    const recipients = (list || []).filter((r) => r.email);
+    if (!recipients.length) return res.status(400).json({ error: "This segment has no members with an email." });
 
-    // send via AiSensy — in parallel chunks of 20
-    let sent = 0, failed = 0, detail = "";
-    const sendOne = async (r) => {
-      try {
-        const resp = await fetch("https://backend.aisensy.com/campaign/t1/api/v2", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            apiKey: process.env.AISENSY_API_KEY,
-            campaignName: campaign,
-            destination: r.phone,
-            userName: r.name,
-            templateParams: params,
-            source: "glasswings-segments",
-          }),
-        });
-        if (resp.ok) sent++;
-        else {
-          failed++;
-          if (!detail) {
-            let t = ""; try { t = await resp.text(); } catch {}
-            detail = `HTTP ${resp.status}: ${(t || "(empty response)").slice(0, 300)}`;
-          }
-        }
-      } catch (e) { failed++; if (!detail) detail = String(e.message || e).slice(0, 300); }
-    };
-    for (let i = 0; i < recipients.length; i += 20) {
-      await Promise.all(recipients.slice(i, i + 20).map(sendOne));
+    const from = process.env.RESEND_FROM || "Glasswings <hello@glass-wings.com>";
+    const wrap = (first) => `
+<div style="margin:0;padding:0;background:#F0F2F5;padding:26px 12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+  <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.08);">
+    <div style="background:linear-gradient(135deg,#008069,#0aa07e);padding:22px 24px;color:#ffffff;">
+      <div style="font-size:18px;font-weight:800;">Glasswings ✨</div>
+    </div>
+    <div style="padding:26px;color:#111B21;">
+      <p style="font-size:15px;line-height:1.6;margin:0 0 12px;">Hi ${esc(first)},</p>
+      <div style="font-size:15px;line-height:1.7;">${esc(message).replace(/\n/g, "<br/>")}</div>
+      <div style="text-align:center;margin:26px 0 4px;">
+        <a href="https://glass-wings.com" style="display:inline-block;background:#008069;color:#ffffff;text-decoration:none;font-weight:800;font-size:14.5px;padding:12px 30px;border-radius:12px;">Open Glasswings</a>
+      </div>
+    </div>
+    <div style="padding:14px 26px 24px;text-align:center;color:#98A5A1;font-size:12px;">— Team Glasswings</div>
+  </div>
+</div>`;
+
+    // send in batches of 50 via Resend's batch endpoint
+    let sent = 0;
+    for (let i = 0; i < recipients.length; i += 50) {
+      const chunk = recipients.slice(i, i + 50).map((r) => ({
+        from, to: [r.email], subject,
+        html: wrap((r.full_name || "there").split(" ")[0]),
+      }));
+      const resp = await fetch("https://api.resend.com/emails/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+        body: JSON.stringify(chunk),
+      });
+      if (resp.ok) sent += chunk.length;
+      else {
+        const t = await resp.text();
+        return res.status(500).json({ error: `Sent ${sent}, then failed: ` + t.slice(0, 200), sent });
+      }
     }
-    return res.status(200).json({ ok: true, sent, failed, total: recipients.length, detail });
+    return res.status(200).json({ ok: true, sent });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Something went wrong." });
   }
