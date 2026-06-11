@@ -87,7 +87,10 @@ export default async function handler(req, res) {
         if (resp.ok) sent++;
         else {
           failed++;
-          if (!detail) { try { detail = (await resp.text()).slice(0, 300); } catch {} }
+          if (!detail) {
+            let t = ""; try { t = await resp.text(); } catch {}
+            detail = `HTTP ${resp.status}: ${(t || "(empty response)").slice(0, 300)}`;
+          }
         }
       } catch (e) { failed++; if (!detail) detail = String(e.message || e).slice(0, 300); }
     };
