@@ -843,7 +843,7 @@ function GwDialogHost() {
   const onCancel = () => { const r = d.resolve; dismiss(); if (r) r(null); };
   const onOkClick = () => { const r = d.resolve, f = d.onOk, v = val; dismiss(); if (r) r(v); else if (f) f(); };
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(8,20,18,.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 26 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(8,20,18,.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 26 }}>
       <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 330, overflow: "hidden", boxShadow: "0 12px 40px rgba(0,0,0,.4)", animation: "gwdlg .22s ease" }}>
         <style>{`@keyframes gwdlg { 0% { transform: scale(.93); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }`}</style>
         <div style={{ background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", padding: "13px 16px", textAlign: "center" }}>
@@ -2534,7 +2534,7 @@ function Main({ user }) {
       <>
         {notice && <Notice text={notice} onClose={() => setNotice("")} />}
         {payBusy && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(17,27,33,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 1500, background: "rgba(17,27,33,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ background: "#fff", borderRadius: 16, padding: "22px 26px", textAlign: "center", boxShadow: "0 10px 36px rgba(0,0,0,.25)" }}>
               <div style={{ width: 34, height: 34, border: "4px solid #E9EDEF", borderTopColor: "#008069", borderRadius: "50%", margin: "0 auto", animation: "gwspin .8s linear infinite" }} />
               <div style={{ fontWeight: 800, color: "#111B21", fontSize: 14.5, marginTop: 12 }}>Opening secure payment…</div>
@@ -2596,7 +2596,7 @@ function Main({ user }) {
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
         {payBusy && (
-          <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(17,27,33,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 1500, background: "rgba(17,27,33,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ background: "#fff", borderRadius: 16, padding: "22px 26px", textAlign: "center", boxShadow: "0 10px 36px rgba(0,0,0,.25)" }}>
               <div style={{ width: 34, height: 34, border: "4px solid #E9EDEF", borderTopColor: "#008069", borderRadius: "50%", margin: "0 auto", animation: "gwspin .8s linear infinite" }} />
               <div style={{ fontWeight: 800, color: "#111B21", fontSize: 14.5, marginTop: 12 }}>Opening secure payment…</div>
@@ -9154,7 +9154,22 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
   const ticketTotal = cart.reduce((a, c) => a + unitOf(c) * c.qty, 0);
   const total = ticketTotal + addonTotal;
   const live = cart.filter(c => c.qty > 0);
-  const canConfirm = (!needAgree || agree) && live.length > 0;
+  const canConfirm0 = (!needAgree || agree) && live.length > 0;
+  const [phoneRow, setPhoneRow] = useState(undefined); // undefined = loading, null = none, string = has
+  const [phoneVal, setPhoneVal] = useState("");
+  useEffect(() => { if (!meId) return; supabase.from("member_phone").select("phone").eq("user_id", meId).maybeSingle().then(({ data }) => setPhoneRow(data?.phone || null)); }, [meId]);
+  const needPhone = phoneRow === null;
+  const phoneOk = phoneVal.replace(/\D/g, "").length >= 10;
+  const canConfirm = canConfirm0 && (!needPhone || phoneOk) && phoneRow !== undefined;
+  const savePhoneIfNeeded = async () => {
+    if (!needPhone) return true;
+    const digits = phoneVal.replace(/\D/g, "");
+    if (digits.length < 10) return false;
+    const { error } = await supabase.from("member_phone").upsert({ user_id: meId, phone: digits.length === 10 ? "+91" + digits : "+" + digits });
+    if (error) { alert(error.message); return false; }
+    setPhoneRow(digits);
+    return true;
+  };
   const [bal, setBal] = useState(null);
   useEffect(() => { if (!meId) return; (async () => { try { await supabase.rpc("gw_sweep_credits", { p_user: meId }); } catch {} const { data } = await supabase.from("profiles").select("game_credits").eq("id", meId).maybeSingle(); setBal(Number(data?.game_credits) || 0); })(); }, [meId]);
   const selAdd = sel.filter(a => a.qty > 0);
@@ -9215,6 +9230,14 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
           </label>
         </div>
       )}
+      {needPhone && (
+        <div style={{ margin: "14px 0 2px", background: "#FFF8E7", border: "1px solid #F2E2C4", borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 800, fontSize: 13.5, color: "#7a5a14" }}>📱 One last thing — your WhatsApp number</div>
+          <div style={{ fontSize: 12, color: "#8a6d2a", marginTop: 3, lineHeight: 1.45 }}>Your ticket and event updates are sent here. It stays private — only the organiser can see it.</div>
+          <input value={phoneVal} onChange={ev => setPhoneVal(ev.target.value.replace(/[^\d+ ]/g, ""))} inputMode="tel" placeholder="10-digit mobile number" style={{ width: "100%", border: `1px solid ${phoneOk ? W.teal : "#E5D3A8"}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", boxSizing: "border-box", marginTop: 9, background: "#fff" }} />
+          {!phoneOk && phoneVal.length > 0 && <div style={{ fontSize: 11.5, color: "#C0392B", marginTop: 4 }}>Please enter a valid 10-digit number.</div>}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0" }}>
         <span style={{ color: W.soft, fontSize: 14 }}>Total · {totalQty} ticket{totalQty !== 1 ? "s" : ""}</span>
         <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : `₹${total}`}</span>
@@ -9222,12 +9245,12 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
       {total > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your tickets are issued the moment payment succeeds.</div>}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-        <button disabled={!canConfirm} onClick={() => onConfirm(live, sel)} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? `Pay ₹${total}` : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
+        <button disabled={!canConfirm} onClick={async () => { if (await savePhoneIfNeeded()) onConfirm(live, sel); }} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? `Pay ₹${total}` : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
       </div>
       {creditCost != null && total > 0 && (
         <>
           <div style={{ textAlign: "center", color: W.soft, fontSize: 12, margin: "12px 0 8px" }}>— or pay with credits —</div>
-          <button disabled={!canConfirm || (bal != null && bal < creditCost)} onClick={() => onConfirmCredits && onConfirmCredits(live, selAdd)} style={{ ...btn("#6D28D9", "#fff"), width: "100%", justifyContent: "center", opacity: (canConfirm && !(bal != null && bal < creditCost)) ? 1 : .5 }}>💳 Use {creditCost} credits</button>
+          <button disabled={!canConfirm || (bal != null && bal < creditCost)} onClick={async () => { if (await savePhoneIfNeeded()) onConfirmCredits && onConfirmCredits(live, selAdd); }} style={{ ...btn("#6D28D9", "#fff"), width: "100%", justifyContent: "center", opacity: (canConfirm && !(bal != null && bal < creditCost)) ? 1 : .5 }}>💳 Use {creditCost} credits</button>
           <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, marginTop: 6 }}>{bal == null ? "Checking your wallet…" : bal < creditCost ? `Wallet: ${bal} credits — top up in Profile → Wallet` : `Wallet: ${bal} credits`}</div>
         </>
       )}
@@ -12036,7 +12059,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • payfeel ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • phoneflow ✅</div>
       </div>
     </div>
   );
