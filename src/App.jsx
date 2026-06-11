@@ -8453,7 +8453,7 @@ function SegmentsAdmin() {
       const r = await fetch("/api/whatsapp/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, segment_id: s.id, campaign: waCamp.trim(), params: waParams }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Send failed");
-      alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? ` (${j.failed} failed — check numbers/campaign in AiSensy)` : ""}`);
+      alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? `\n\n${j.failed} failed.${j.detail ? "\nAiSensy says: " + j.detail : ""}` : ""}`);
     } catch (e) { alert(e.message); }
     setBusy(false);
   };
@@ -11999,7 +11999,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • waseg ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • waseg2 ✅</div>
       </div>
     </div>
   );
