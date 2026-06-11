@@ -8441,7 +8441,22 @@ function SegmentsAdmin() {
   const [msgBody, setMsgBody] = useState("");
   const [emSub, setEmSub] = useState("");
   const [emBody, setEmBody] = useState("");
+  const [waCamp, setWaCamp] = useState("");
+  const [waParams, setWaParams] = useState("");
   const [busy, setBusy] = useState(false);
+  const sendWa = async (s) => {
+    if (!waCamp.trim()) return alert("Enter your AiSensy campaign name first.");
+    if (!window.confirm(`Send the WhatsApp campaign "${waCamp.trim()}" to everyone in "${s.name}" (${counts[s.id] || 0} members)? AiSensy charges apply per message.`)) return;
+    setBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch("/api/whatsapp/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, segment_id: s.id, campaign: waCamp.trim(), params: waParams }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Send failed");
+      alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? ` (${j.failed} failed — check numbers/campaign in AiSensy)` : ""}`);
+    } catch (e) { alert(e.message); }
+    setBusy(false);
+  };
   const load = () => {
     supabase.from("segments").select("*").order("created_at").then(({ data }) => setSegs(data || []));
     supabase.from("segment_members").select("segment_id").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.segment_id] = (m[r.segment_id] || 0) + 1; }); setCounts(m); });
@@ -8534,6 +8549,7 @@ function SegmentsAdmin() {
             {tabBtn(s, "credits", "🎁 Credits")}
             {tabBtn(s, "message", "💬 In-app")}
             {tabBtn(s, "email", "✉️ Email")}
+            {tabBtn(s, "whatsapp", "📱 WhatsApp")}
           </div>
           {openSeg === s.id && (
             <div style={{ marginTop: 10, background: W.bg, borderRadius: 10, padding: 11 }}>
@@ -8576,6 +8592,13 @@ function SegmentsAdmin() {
                 <input value={emSub} onChange={e => setEmSub(e.target.value)} placeholder="Subject — e.g. 🎭 Blind Date Night is back this Friday!" style={inp} />
                 <textarea value={emBody} onChange={e => setEmBody(e.target.value)} rows={5} placeholder="Your message… (line breaks are kept)" style={{ ...inp, marginTop: 8, resize: "vertical" }} />
                 <button onClick={() => sendEmail(s)} disabled={busy || !emSub.trim() || !emBody.trim()} style={{ ...btn(W.teal, "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: busy || !emSub.trim() || !emBody.trim() ? .6 : 1 }}>{busy ? "Sending…" : `✉️ Email ${counts[s.id] || 0} members`}</button>
+              </>)}
+              {panel === "whatsapp" && (<>
+                <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8 }}>Sends your <b>AiSensy API Campaign</b> (a Meta-approved template) to every member's WhatsApp, personalised with their first name. Per-message charges apply in AiSensy.</div>
+                <input value={waCamp} onChange={e => setWaCamp(e.target.value)} placeholder="AiSensy campaign name (exactly as in AiSensy)" style={inp} />
+                <input value={waParams} onChange={e => setWaParams(e.target.value)} placeholder="Template variables, comma-separated (optional)" style={{ ...inp, marginTop: 8 }} />
+                <button onClick={() => sendWa(s)} disabled={busy || !waCamp.trim()} style={{ ...btn("#25D366", "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: busy || !waCamp.trim() ? .6 : 1 }}>{busy ? "Sending…" : `📱 WhatsApp ${counts[s.id] || 0} members`}</button>
+                <div style={{ fontSize: 11, color: W.soft, marginTop: 6 }}>Setup once: AiSensy → create template + API Campaign · copy API key into Vercel as AISENSY_API_KEY.</div>
               </>)}
             </div>
           )}
@@ -11976,7 +11999,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • segtab ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • waseg ✅</div>
       </div>
     </div>
   );
