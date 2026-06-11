@@ -49,7 +49,8 @@ export default async function handler(req, res) {
   const { access_token, segment_id } = body;
   const campaign = String(body.campaign || "").trim();
   const params = String(body.params || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (!segment_id || !campaign) return res.status(400).json({ error: "Missing campaign name." });
+  const testPhone = String(body.test_phone || "").trim();
+  if ((!segment_id && !testPhone) || !campaign) return res.status(400).json({ error: "Missing campaign name." });
 
   try {
     // caller must be staff
@@ -60,16 +61,23 @@ export default async function handler(req, res) {
     const isStaff = STAFF.includes(me?.role) || (me?.roles || []).some((r) => STAFF.includes(r));
     if (!isStaff) return res.status(403).json({ error: "Not authorised." });
 
-    // segment phone list
-    const { data: list, error: lerr } = await sb.rpc("segment_phones", { p_segment: segment_id });
-    if (lerr) return res.status(500).json({ error: lerr.message });
-    const recipients = (list || [])
-      .map((r) => ({ phone: normPhone(r.phone), name: (r.full_name || "there").split(" ")[0] }))
-      .filter((r) => r.phone);
-    if (!recipients.length) return res.status(400).json({ error: "This segment has no members with a valid phone number." });
+    // recipients: one test number, or the whole segment
+    let recipients;
+    if (testPhone) {
+      const p = normPhone(testPhone);
+      if (!p) return res.status(400).json({ error: "That test number doesn't look valid — use 10 digits." });
+      recipients = [{ phone: p, name: "Test" }];
+    } else {
+      const { data: list, error: lerr } = await sb.rpc("segment_phones", { p_segment: segment_id });
+      if (lerr) return res.status(500).json({ error: lerr.message });
+      recipients = (list || [])
+        .map((r) => ({ phone: normPhone(r.phone), name: (r.full_name || "there").split(" ")[0] }))
+        .filter((r) => r.phone);
+      if (!recipients.length) return res.status(400).json({ error: "This segment has no members with a valid phone number." });
+    }
 
     // send via AiSensy — in parallel chunks of 20
-    let sent = 0, failed = 0;
+    let sent = 0, failed = 0, detail = "";
     const sendOne = async (r) => {
       try {
         const resp = await fetch("https://backend.aisensy.com/campaign/t1/api/v2", {
@@ -84,13 +92,20 @@ export default async function handler(req, res) {
             source: "glasswings-segments",
           }),
         });
-        if (resp.ok) sent++; else failed++;
-      } catch { failed++; }
+        if (resp.ok) sent++;
+        else {
+          failed++;
+          if (!detail) {
+            let t = ""; try { t = await resp.text(); } catch {}
+            detail = `HTTP ${resp.status}: ${(t || "(empty response)").slice(0, 300)}`;
+          }
+        }
+      } catch (e) { failed++; if (!detail) detail = String(e.message || e).slice(0, 300); }
     };
     for (let i = 0; i < recipients.length; i += 20) {
       await Promise.all(recipients.slice(i, i + 20).map(sendOne));
     }
-    return res.status(200).json({ ok: true, sent, failed, total: recipients.length });
+    return res.status(200).json({ ok: true, sent, failed, total: recipients.length, detail });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Something went wrong." });
   }
