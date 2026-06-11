@@ -1354,6 +1354,14 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             </div>
           </Sec>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, border: `1px solid ${W.line}`, borderRadius: 14, padding: "13px 14px", marginTop: 12, background: "#F4FBF8" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>Questions about this event?</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>Tickets, entry, timings — we reply fast.</div>
+            </div>
+            <a href={"https://wa.me/919777777491?text=" + encodeURIComponent(`Hi GW Support! I have a question about "${e.title}" 🎟️`)} target="_blank" rel="noreferrer"
+              style={{ ...btn(W.teal, "#fff"), padding: "10px 15px", fontSize: 13.5, textDecoration: "none", flexShrink: 0 }}>💬 GW Support</a>
+          </div>
           {e.terms && (
             <div style={{ marginTop: 24 }}>
               <button onClick={() => setShowTerms(v => !v)} style={{ background: "none", border: "none", color: W.soft, fontWeight: 700, fontSize: 13.5, cursor: "pointer", padding: 0 }}>Terms &amp; conditions {showTerms ? "▴" : "▾"}</button>
@@ -12109,7 +12117,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • hosttypes ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gwsupport ✅</div>
       </div>
     </div>
   );
