@@ -10192,6 +10192,68 @@ function parseTimeStr(t) {
   if (ap === "PM" && h < 12) h += 12; if (ap === "AM" && h === 12) h = 0;
   return String(h).padStart(2, "0") + ":" + String(mn).padStart(2, "0");
 }
+function EventWaBlast({ event }) {
+  const [open, setOpen] = useState(false);
+  const [segs, setSegs] = useState([]);
+  const [aud, setAud] = useState("all");
+  const [camp, setCamp] = useState("");
+  const [params, setParams] = useState("");
+  const [test, setTest] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open && !segs.length) supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegs(data || [])); }, [open]);
+  const call = async (extra) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const r = await fetch("/api/whatsapp/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, campaign: camp.trim(), params, ...(aud === "all" ? { audience: "all" } : { segment_id: aud }), ...extra }) });
+    return { ok: r.ok, j: await r.json() };
+  };
+  const doTest = async () => {
+    if (!camp.trim() || !test.trim()) return alert("Enter the campaign name and your test number first.");
+    setBusy(true);
+    try {
+      const { ok, j } = await call({ test_phone: test.trim() });
+      if (!ok) throw new Error(j.error || "Test failed");
+      alert(j.sent ? "🧪 Test sent ✓ — check your WhatsApp!" : `🧪 Test failed.\n\nAiSensy says: ${j.detail || ""}`);
+    } catch (e2) { alert(e2.message); }
+    setBusy(false);
+  };
+  const doSend = async () => {
+    if (!camp.trim()) return alert("Enter your AiSensy campaign name first.");
+    const audLbl = aud === "all" ? "ALL members" : `segment: ${segs.find(s => s.id === aud)?.name || ""}`;
+    if (!window.confirm(`Send WhatsApp campaign "${camp.trim()}" about "${event.title}" to ${audLbl}? AiSensy charges apply per message.`)) return;
+    setBusy(true);
+    try {
+      const { ok, j } = await call({});
+      if (!ok) throw new Error(j.error || "Send failed");
+      alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? `\n\n${j.failed} failed.${j.detail ? "\nAiSensy says: " + j.detail : ""}` : ""}`);
+    } catch (e2) { alert(e2.message); }
+    setBusy(false);
+  };
+  const inp = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" };
+  return (
+    <div style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 12 }}>
+      <div onClick={() => setOpen(v => !v)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>📱 WhatsApp blast <span style={{ color: W.soft, fontWeight: 600, fontSize: 12 }}>via AiSensy</span></div>
+        <span style={{ color: W.teal, fontWeight: 800, fontSize: 12.5 }}>{open ? "Hide ▴" : "Open ▾"}</span>
+      </div>
+      {open && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Sends your AiSensy API Campaign about this event. Tip: if your template has variables, you can pass the event name/date — e.g. <i>{event.title}, {event.event_date || "Sat 9pm"}</i>.</div>
+          <select value={aud} onChange={e2 => setAud(e2.target.value)} style={{ ...inp, marginBottom: 8 }}>
+            <option value="all">👥 Everyone (all members)</option>
+            {segs.map(s => <option key={s.id} value={s.id}>🎯 {s.name}</option>)}
+          </select>
+          <input value={camp} onChange={e2 => setCamp(e2.target.value)} placeholder="AiSensy campaign name (exactly as in AiSensy)" style={inp} />
+          <input value={params} onChange={e2 => setParams(e2.target.value)} placeholder="Template variables, comma-separated (optional)" style={{ ...inp, marginTop: 8 }} />
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <input value={test} onChange={e2 => setTest(e2.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="Your number (test)" style={{ ...inp, flex: 1 }} />
+            <button onClick={doTest} disabled={busy} style={{ ...btn("#fff", "#25D366"), border: "2px solid #25D366", padding: "9px 13px", fontWeight: 800, opacity: busy ? .55 : 1 }}>🧪 Test</button>
+          </div>
+          <button onClick={doSend} disabled={busy || !camp.trim()} style={{ ...btn("#25D366", "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: busy || !camp.trim() ? .6 : 1 }}>{busy ? "Sending…" : "📱 Send WhatsApp blast"}</button>
+        </div>
+      )}
+    </div>
+  );
+}
 function EventDetailsEditor({ event, onUpdate }) {
   const [open, setOpen] = useState(false);
   const [d, setD] = useState(null);
@@ -10720,6 +10782,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <EventVideos ev={e} onUpdate={onUpdate} />
                 <EventShare event={e} />
+                <EventWaBlast event={e} />
                 <GuestTickets event={e} />
                 <EventDetailsEditor event={e} onUpdate={onUpdate} />
                 <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
@@ -12117,7 +12180,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gwsupport ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • evwa ✅</div>
       </div>
     </div>
   );
