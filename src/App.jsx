@@ -906,6 +906,11 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished }) {
   return (
     <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
       <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
+        {(e.host_type === "partner" || e.host_type === "meetup") && (
+          <span style={{ position: "absolute", top: 8, left: 8, zIndex: 2, background: e.host_type === "partner" ? "rgba(30,64,175,.92)" : "rgba(146,98,28,.92)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 10, letterSpacing: .3 }}>
+            {e.host_type === "partner" ? "🤝 PARTNER" : "☕ GET-TOGETHER"}
+          </span>
+        )}
         {e.vertical_video_url
           ? <video src={e.vertical_video_url} autoPlay loop muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : (e.vertical_banner_url || e.poster_url || (e.banner_url && e.banner_type !== "video"))
@@ -1340,10 +1345,12 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           )}
           <Sec title="Hosted by">
             <div style={{ display: "flex", alignItems: "center", gap: 13, border: `1px solid ${W.line}`, borderRadius: 14, padding: 14 }}>
-              <div style={{ width: 46, height: 46, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 17, flexShrink: 0 }}>GE</div>
+              {e.host_type === "partner" && e.host_logo
+                ? <img src={e.host_logo} alt="" style={{ width: 46, height: 46, borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: `1px solid ${W.line}` }} />
+                : <div style={{ width: 46, height: 46, borderRadius: "50%", background: e.host_type === "meetup" ? "#B07A2A" : W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: e.host_type === "meetup" ? 21 : 17, flexShrink: 0 }}>{e.host_type === "partner" ? ((e.host_name || "P").trim()[0] || "P").toUpperCase() : e.host_type === "meetup" ? "☕" : "GE"}</div>}
               <div>
-                <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>Glasswings Events</div>
-                <div style={{ fontSize: 12.5, color: W.soft }}>Community events, socials &amp; meetups</div>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{e.host_type === "partner" ? (e.host_name || "Partner organiser") : e.host_type === "meetup" ? "Glasswings community" : "Glasswings Events"}</div>
+                <div style={{ fontSize: 12.5, color: W.soft }}>{e.host_type === "partner" ? "Partner event · Ticketing by Glasswings" : e.host_type === "meetup" ? "A casual get-together — come hang out with the community ☕" : "Community events, socials & meetups"}</div>
               </div>
             </div>
           </Sec>
@@ -2758,12 +2765,13 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const [ssheet, setSsheet] = useState(false);
   const [citySheet, setCitySheet] = useState(false);
   const [custom, setCustom] = useState([]);
+  const [hostFlt, setHostFlt] = useState("all");
   useEffect(() => { supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || [])); }, []);
   useEffect(() => { if (focus) { onOpenDetail && onOpenDetail(focus); onFocusDone && onFocusDone(); } }, [focus]);
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
   const getMin = e => { const ts = ticketTypes[e.id] || []; const prices = ts.length ? ts.map(t => genderNet(t, null, profile)) : [e.ticket_price || 0]; return Math.min(...prices); };
-  const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin)), sortBy, getMin);
+  const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin) && (hostFlt === "all" || (e.host_type || "glasswings") === hostFlt)), sortBy, getMin);
   const priceFrom = (e) => {
     const ts = ticketTypes[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -2799,6 +2807,9 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
       <div style={{ display: "flex", gap: 10, padding: "10px 14px", overflowX: "auto", borderBottom: `1px solid ${W.line}`, background: "#fff", position: "sticky", top: 0, zIndex: 5 }}>
         <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
         <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
+        {[["all", "All"], ["glasswings", "🏠 Glasswings"], ["partner", "🤝 Partner"], ["meetup", "☕ Meetups"]].map(([k, lbl]) => (
+          <button key={k} onClick={() => setHostFlt(k)} style={filterPill(hostFlt === k && k !== "all")}>{lbl}</button>
+        ))}
       </div>
       {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
@@ -10191,6 +10202,7 @@ function EventDetailsEditor({ event, onUpdate }) {
       location_type: event.location_type || "physical",
       online_url: event.online_url || "",
       member_discount_pct: event.member_discount_pct ? String(event.member_discount_pct) : "",
+      host_type: event.host_type || "glasswings", host_name: event.host_name || "", host_logo: event.host_logo || "",
       about_media: Array.isArray(event.about_media) ? event.about_media : []
     });
     setOpen(true);
@@ -10204,6 +10216,7 @@ function EventDetailsEditor({ event, onUpdate }) {
       date_mode: d.date_mode, location_type: d.location_type,
       online_url: d.location_type === "online" ? d.online_url.trim() : "",
       member_discount_pct: d.member_discount_pct ? Math.min(100, Math.max(0, Number(d.member_discount_pct) || 0)) : 0,
+      host_type: d.host_type || "glasswings", host_name: d.host_type === "partner" ? (d.host_name || null) : null, host_logo: d.host_type === "partner" ? (d.host_logo || null) : null,
       about_media: d.about_media
     };
     if (d.date_mode !== "tbd" && !d.end_time && !d.end_date && !event.end_at) {
@@ -10250,6 +10263,24 @@ function EventDetailsEditor({ event, onUpdate }) {
         <input value={d.emoji} onChange={e => setD({ ...d, emoji: e.target.value })} maxLength={2} style={{ width: 50, textAlign: "center", fontSize: 20, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
         <input value={d.title} onChange={e => setD({ ...d, title: e.target.value })} placeholder="Event title" style={{ ...ip, marginBottom: 0, flex: 1 }} />
       </div>
+      <select value={d.host_type} onChange={e => setD({ ...d, host_type: e.target.value })} style={{ ...ip, marginBottom: 9, background: "#fff" }}>
+        <option value="glasswings">🏠 Glasswings Original</option>
+        <option value="partner">🤝 Partner event</option>
+        <option value="meetup">☕ Get-together</option>
+      </select>
+      {d.host_type === "partner" && (
+        <div style={{ background: "#EFF4FF", border: "1px solid #D5E1FA", borderRadius: 10, padding: 10, marginBottom: 9 }}>
+          <input value={d.host_name} onChange={e => setD({ ...d, host_name: e.target.value })} placeholder="Organiser / partner name" style={{ ...ip, marginBottom: 0, background: "#fff" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+            {d.host_logo ? <img src={d.host_logo} alt="" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", border: `1px solid ${W.line}` }} /> : <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#D5E1FA", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>🤝</div>}
+            <label style={{ ...btn("#fff", "#1E40AF"), border: "1px solid #B9CCF5", padding: "6px 11px", fontSize: 12, cursor: "pointer" }}>
+              {d.host_logo ? "Change logo" : "Upload logo"}
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={async ev => { const file = ev.target.files?.[0]; ev.target.value = ""; if (!file) return; try { const url = await uploadChatFile("hostlogo", file); setD(x => ({ ...x, host_logo: url })); } catch (er) { alert(er.message); } }} />
+            </label>
+            {d.host_logo && <span onClick={() => setD(x => ({ ...x, host_logo: "" }))} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
+          </div>
+        </div>
+      )}
       <input value={d.description} onChange={e => setD({ ...d, description: e.target.value })} placeholder="Short description" style={ip} />
       <textarea value={d.schedule} onChange={e => setD({ ...d, schedule: e.target.value })} rows={3} placeholder={"Schedule — one item per line"} style={ta} />
       <textarea value={d.food_dining} onChange={e => setD({ ...d, food_dining: e.target.value })} rows={2} placeholder={"Food & dining — one item per line"} style={ta} />
@@ -10346,7 +10377,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fOrg === "all" || e.host_id === fOrg)
     && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole))
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "" };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", hostType: "glasswings", hostName: "", hostLogo: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const [newBadge, setNewBadge] = useState("");
@@ -10398,7 +10429,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null }, dates, f.addons);
+    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
     reset(); setCreating(false);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -10457,6 +10488,25 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
             <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Event title" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
           </div>
+          <select value={f.hostType} onChange={e => setF({ ...f, hostType: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", background: "#fff", color: W.ink, marginBottom: 12 }}>
+            <option value="glasswings">🏠 Glasswings Original — hosted by us</option>
+            <option value="partner">🤝 Partner event — external organiser</option>
+            <option value="meetup">☕ Get-together — community meetup</option>
+          </select>
+          {f.hostType === "partner" && (
+            <div style={{ background: "#EFF4FF", border: "1px solid #D5E1FA", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+              <input value={f.hostName} onChange={e => setF({ ...f, hostName: e.target.value })} placeholder="Organiser / partner name (shown on the event)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", background: "#fff" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 9 }}>
+                {f.hostLogo ? <img src={f.hostLogo} alt="" style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover", border: `1px solid ${W.line}` }} /> : <div style={{ width: 38, height: 38, borderRadius: "50%", background: "#D5E1FA", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🤝</div>}
+                <label style={{ ...btn("#fff", "#1E40AF"), border: "1px solid #B9CCF5", padding: "7px 12px", fontSize: 12.5, cursor: "pointer" }}>
+                  {f.hostLogo ? "Change logo" : "Upload logo (optional)"}
+                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={async ev => { const file = ev.target.files?.[0]; ev.target.value = ""; if (!file) return; try { const url = await uploadChatFile("hostlogo", file); setF(x => ({ ...x, hostLogo: url })); } catch (er) { alert(er.message); } }} />
+                </label>
+                {f.hostLogo && <span onClick={() => setF(x => ({ ...x, hostLogo: "" }))} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
+              </div>
+            </div>
+          )}
+          {f.hostType === "meetup" && <div style={{ fontSize: 12, color: "#92621C", background: "#FFF8E7", border: "1px solid #F2E2C4", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>☕ Get-together: set the ticket price as your G.O.D charge — women's 100% off and subscriber discounts apply exactly as usual.</div>}
           <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Category</div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
             {categories.length === 0 ? <span style={{ fontSize: 12.5, color: W.soft }}>Add categories with "Manage" above first.</span> : categories.map(c => chip(c.name, f.category === c.name, () => setF({ ...f, category: f.category === c.name ? "" : c.name })))}
@@ -12059,7 +12109,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • phoneflow ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • hosttypes ✅</div>
       </div>
     </div>
   );
