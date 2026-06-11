@@ -50,7 +50,7 @@ export default async function handler(req, res) {
   const campaign = String(body.campaign || "").trim();
   const params = String(body.params || "").split(",").map((s) => s.trim()).filter(Boolean);
   const testPhone = String(body.test_phone || "").trim();
-  if ((!segment_id && !testPhone) || !campaign) return res.status(400).json({ error: "Missing campaign name." });
+  if ((!segment_id && !testPhone && body.audience !== "all") || !campaign) return res.status(400).json({ error: "Missing campaign name." });
 
   try {
     // caller must be staff
@@ -61,12 +61,19 @@ export default async function handler(req, res) {
     const isStaff = STAFF.includes(me?.role) || (me?.roles || []).some((r) => STAFF.includes(r));
     if (!isStaff) return res.status(403).json({ error: "Not authorised." });
 
-    // recipients: one test number, or the whole segment
+    // recipients: one test number, the whole segment, or everyone
     let recipients;
     if (testPhone) {
       const p = normPhone(testPhone);
       if (!p) return res.status(400).json({ error: "That test number doesn't look valid — use 10 digits." });
       recipients = [{ phone: p, name: "Test" }];
+    } else if (body.audience === "all") {
+      const { data: list, error: lerr } = await sb.rpc("all_member_phones");
+      if (lerr) return res.status(500).json({ error: lerr.message });
+      recipients = (list || [])
+        .map((r) => ({ phone: normPhone(r.phone), name: (r.full_name || "there").split(" ")[0] }))
+        .filter((r) => r.phone);
+      if (!recipients.length) return res.status(400).json({ error: "No members with a valid phone number found." });
     } else {
       const { data: list, error: lerr } = await sb.rpc("segment_phones", { p_segment: segment_id });
       if (lerr) return res.status(500).json({ error: lerr.message });
