@@ -2278,7 +2278,7 @@ function Main({ user }) {
     if (open && open.type === "room" && open.id === roomId) setOpen(null);
     await load();
   };
-  const confirmPurchase = async (cart, sel = []) => {
+  const confirmPurchase = async (cart, sel = [], couponCode = null) => {
     const { event: e } = buyTarget;
     const { data: phRow } = await supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle();
     if (((phRow?.phone || "").replace(/\D/g, "")).length < 8) {
@@ -2301,6 +2301,7 @@ function Main({ user }) {
       setBuyTarget(null);
       return startPayment("ticket", {
         event_id: e.id,
+        coupon_code: couponCode || undefined,
         items: cart.map(c => ({ ticket_type_id: c.type ? c.type.id : null, quantity: c.qty })),
         ticket_type_id: cart[0].type ? cart[0].type.id : null,
         quantity: cart.reduce((a, c) => a + c.qty, 0),
@@ -8465,6 +8466,115 @@ function CreditsAdmin() {
     </div>
   );
 }
+function CouponsAdmin({ events }) {
+  const [list, setList] = useState(null);
+  const [uses, setUses] = useState({});
+  const [f, setF] = useState({ code: "", kind: "percent", value: "", scope: "all", min: "", expiry: "", maxUses: "", once: true });
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    supabase.from("event_coupons").select("*").order("created_at", { ascending: false }).then(({ data }) => setList(data || []));
+    supabase.from("coupon_uses").select("coupon_id").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.coupon_id] = (m[r.coupon_id] || 0) + 1; }); setUses(m); });
+  };
+  useEffect(load, []);
+  const liveEvents = (events || []).filter(e => e.approved !== false);
+  const create = async () => {
+    const code = f.code.trim().toUpperCase().replace(/\s+/g, "");
+    const value = Math.trunc(Number(f.value));
+    if (!code) return alert("Give the coupon a code, e.g. FRIDAY20.");
+    if (!value || value <= 0) return alert("Enter the discount value.");
+    if (f.kind === "percent" && value > 100) return alert("Percent discount can't be more than 100.");
+    setBusy(true);
+    const { error } = await supabase.from("event_coupons").insert({
+      code, kind: f.kind, value,
+      scope_event: f.scope === "all" ? null : f.scope,
+      min_amount: Math.max(0, Math.trunc(Number(f.min)) || 0),
+      expires_at: f.expiry ? new Date(f.expiry + "T23:59:59").toISOString() : null,
+      max_uses: f.maxUses ? Math.max(1, Math.trunc(Number(f.maxUses))) : null,
+      once_per_user: !!f.once,
+    });
+    setBusy(false);
+    if (error) return alert(error.code === "23505" ? "A coupon with that code already exists." : error.message);
+    setF({ code: "", kind: "percent", value: "", scope: "all", min: "", expiry: "", maxUses: "", once: true });
+    load();
+  };
+  const inp = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" };
+  const lbl = { fontSize: 11.5, fontWeight: 800, color: W.soft, margin: "10px 0 4px" };
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12, lineHeight: 1.5 }}>Discount coupons for event tickets. Members type the code at checkout; the discount is verified and applied on the server, on top of any women's / subscriber discounts. Coupons work on ₹ payments (not credit payments).</div>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, marginBottom: 4 }}>➕ New coupon</div>
+        <div style={lbl}>CODE</div>
+        <input value={f.code} onChange={e => setF({ ...f, code: e.target.value.toUpperCase() })} placeholder="e.g. FRIDAY20" style={{ ...inp, fontWeight: 800, letterSpacing: 1 }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={lbl}>TYPE</div>
+            <select value={f.kind} onChange={e => setF({ ...f, kind: e.target.value })} style={inp}>
+              <option value="percent">% percent off</option>
+              <option value="flat">₹ flat amount off</option>
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={lbl}>{f.kind === "percent" ? "PERCENT (1–100)" : "AMOUNT ₹"}</div>
+            <input value={f.value} onChange={e => setF({ ...f, value: e.target.value.replace(/\D/g, "") })} inputMode="numeric" placeholder={f.kind === "percent" ? "20" : "100"} style={inp} />
+          </div>
+        </div>
+        <div style={lbl}>WORKS ON</div>
+        <select value={f.scope} onChange={e => setF({ ...f, scope: e.target.value })} style={inp}>
+          <option value="all">🎟️ All events</option>
+          {liveEvents.map(e => <option key={e.id} value={e.id}>{e.emoji || "🎟️"} {e.title}</option>)}
+        </select>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={lbl}>MIN ORDER ₹ (optional)</div>
+            <input value={f.min} onChange={e => setF({ ...f, min: e.target.value.replace(/\D/g, "") })} inputMode="numeric" placeholder="0" style={inp} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={lbl}>EXPIRES (optional)</div>
+            <input type="date" value={f.expiry} onChange={e => setF({ ...f, expiry: e.target.value })} style={inp} />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <div style={{ flex: 1 }}>
+            <div style={lbl}>TOTAL USE LIMIT (optional)</div>
+            <input value={f.maxUses} onChange={e => setF({ ...f, maxUses: e.target.value.replace(/\D/g, "") })} inputMode="numeric" placeholder="e.g. 50 — blank = unlimited" style={inp} />
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 7, paddingBottom: 9, cursor: "pointer", whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={f.once} onChange={e => setF({ ...f, once: e.target.checked })} />
+            <span style={{ fontSize: 12.5, color: W.ink, fontWeight: 700 }}>Once per member</span>
+          </label>
+        </div>
+        <button onClick={create} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 12, opacity: busy ? .6 : 1 }}>{busy ? "Creating…" : "Create coupon 🏷️"}</button>
+      </div>
+      {(list || []).map(c => {
+        const evName = c.scope_event ? ((events || []).find(e => e.id === c.scope_event)?.title || "one event") : "All events";
+        const expired = c.expires_at && new Date(c.expires_at).getTime() < Date.now();
+        const used = uses[c.id] || 0;
+        const full = c.max_uses != null && used >= c.max_uses;
+        return (
+          <div key={c.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 13, marginBottom: 10, opacity: c.active && !expired ? 1 : .65 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 800, fontSize: 15, color: W.ink, letterSpacing: 1 }}>🏷️ {c.code}</span>
+              <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 10 }}>{c.kind === "percent" ? `${c.value}% off` : `₹${c.value} off`}</span>
+              {expired && <span style={{ background: "#FDECEA", color: "#C0392B", fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>EXPIRED</span>}
+              {full && <span style={{ background: "#FDECEA", color: "#C0392B", fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>USED UP</span>}
+              {!c.active && <span style={{ background: "#F0F2F5", color: W.soft, fontSize: 10.5, fontWeight: 800, padding: "2px 7px", borderRadius: 10 }}>OFF</span>}
+              <span style={{ flex: 1 }} />
+              <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={async () => { if (!window.confirm(`Delete coupon ${c.code}?`)) return; const { error } = await supabase.from("event_coupons").delete().eq("id", c.id); if (error) return alert(error.message); load(); }} />
+            </div>
+            <div style={{ fontSize: 12, color: W.soft, marginTop: 5, lineHeight: 1.5 }}>
+              {evName} · used {used}{c.max_uses != null ? ` / ${c.max_uses}` : ""} · {c.once_per_user ? "once per member" : "multi-use per member"}
+              {c.min_amount > 0 ? ` · min ₹${c.min_amount}` : ""}
+              {c.expires_at ? ` · till ${new Date(c.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}
+            </div>
+            <button onClick={async () => { const { error } = await supabase.from("event_coupons").update({ active: !c.active }).eq("id", c.id); if (error) return alert(error.message); load(); }} style={{ ...btn(c.active ? "#fff" : W.teal, c.active ? "#B45309" : "#fff"), border: c.active ? "1px solid #F0D9A8" : "none", padding: "6px 12px", fontSize: 12, marginTop: 9 }}>{c.active ? "Pause coupon" : "▶ Activate"}</button>
+          </div>
+        );
+      })}
+      {list !== null && list.length === 0 && <div style={{ fontSize: 13, color: W.soft, textAlign: "center", marginTop: 18 }}>No coupons yet — create your first one above.</div>}
+    </div>
+  );
+}
 function SegmentsAdmin() {
   const [segs, setSegs] = useState(null);
   const [counts, setCounts] = useState({});
@@ -8675,6 +8785,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["segments", "🎯 Segments"]] : []),
+    ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["door", "Door"]] : []),
     ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
@@ -8695,6 +8806,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
       </div>
       {seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
         : seg === "segments" ? <SegmentsAdmin />
+        : seg === "coupons" ? <CouponsAdmin events={events} />
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
@@ -9189,6 +9301,11 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
     setPhoneRow(digits);
     return true;
   };
+  const [cCode, setCCode] = useState("");
+  const [cApplied, setCApplied] = useState(null);   // {code, off, label}
+  const [cBusy, setCBusy] = useState(false);
+  useEffect(() => { setCApplied(null); }, [total]);  // cart changed → re-validate
+  const payTotal = cApplied ? Math.max(0, total - Math.min(cApplied.off, total)) : total;
   const [bal, setBal] = useState(null);
   useEffect(() => { if (!meId) return; (async () => { try { await supabase.rpc("gw_sweep_credits", { p_user: meId }); } catch {} const { data } = await supabase.from("profiles").select("game_credits").eq("id", meId).maybeSingle(); setBal(Number(data?.game_credits) || 0); })(); }, [meId]);
   const selAdd = sel.filter(a => a.qty > 0);
@@ -9257,14 +9374,38 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
           {!phoneOk && phoneVal.length > 0 && <div style={{ fontSize: 11.5, color: "#C0392B", marginTop: 4 }}>Please enter a valid 10-digit number.</div>}
         </div>
       )}
+      {total > 0 && (
+        <div style={{ margin: "12px 0 2px" }}>
+          {!cApplied ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <input value={cCode} onChange={ev => setCCode(ev.target.value.toUpperCase())} placeholder="Have a coupon code?" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", minWidth: 0, letterSpacing: .5 }} />
+              <button disabled={!cCode.trim() || cBusy} onClick={async () => {
+                setCBusy(true);
+                try {
+                  const { data, error } = await supabase.rpc("check_coupon", { p_code: cCode.trim(), p_event: e.id, p_total: total });
+                  if (error) throw error;
+                  if (!data?.ok) { alert(data?.message || "That coupon code isn't valid."); }
+                  else setCApplied({ code: data.code, off: Number(data.off) || 0, label: data.label });
+                } catch (er) { alert(er.message); }
+                setCBusy(false);
+              }} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "10px 14px", fontWeight: 800, opacity: !cCode.trim() || cBusy ? .55 : 1 }}>{cBusy ? "…" : "Apply"}</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#E7F6EF", border: "1px solid #BFE6D6", borderRadius: 10, padding: "9px 12px" }}>
+              <span style={{ flex: 1, fontSize: 13.5, color: "#0E5247", fontWeight: 700 }}>🏷️ {cApplied.code} applied — {cApplied.label} (−₹{Math.min(cApplied.off, total)})</span>
+              <span onClick={() => { setCApplied(null); setCCode(""); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 800, cursor: "pointer" }}>Remove</span>
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0" }}>
         <span style={{ color: W.soft, fontSize: 14 }}>Total · {totalQty} ticket{totalQty !== 1 ? "s" : ""}</span>
-        <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : `₹${total}`}</span>
+        <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : cApplied ? <><s style={{ color: W.soft, fontWeight: 600, fontSize: 14, marginRight: 7 }}>₹{total}</s>{payTotal === 0 ? "Free 🎉" : `₹${payTotal}`}</> : `₹${total}`}</span>
       </div>
       {total > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your tickets are issued the moment payment succeeds.</div>}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-        <button disabled={!canConfirm} onClick={async () => { if (await savePhoneIfNeeded()) onConfirm(live, sel); }} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? `Pay ₹${total}` : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
+        <button disabled={!canConfirm} onClick={async () => { if (await savePhoneIfNeeded()) onConfirm(live, sel, cApplied?.code || null); }} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? (payTotal === 0 ? "Get tickets 🎉" : `Pay ₹${payTotal}`) : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
       </div>
       {creditCost != null && total > 0 && (
         <>
@@ -12180,7 +12321,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • evwa ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • coupons ✅</div>
       </div>
     </div>
   );
