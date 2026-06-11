@@ -43,6 +43,8 @@ export default async function handler(req, res) {
     let creditsGrant = 0;    // credits to grant when purpose==="credits"
     let addonRows = [];      // resolved [{id,name,price,qty}]
     let ticketRev = 0;       // rupees (for commission)
+    let couponRow = null, couponOff = 0;   // 🏷️ discount coupon (rupees)
+    const coupon_code = String(body.coupon_code || "").trim().toUpperCase();
     const notes = { purpose, uid };
 
     // resolve add-ons from the DB (never trust client prices)
@@ -135,7 +137,28 @@ export default async function handler(req, res) {
         }
       }
 
-      const grand = subtotal + addonSum;
+      // 🏷️ discount coupon — validated and applied HERE, the price authority
+      if (coupon_code) {
+        const cartTotal = subtotal + addonSum;
+        const { data: cp } = await sb.from("event_coupons").select("*").eq("code", coupon_code).maybeSingle();
+        if (!cp || !cp.active) return res.status(400).json({ error: "That coupon code isn't valid." });
+        if (cp.expires_at && new Date(cp.expires_at).getTime() < Date.now()) return res.status(400).json({ error: "That coupon has expired." });
+        if (cp.scope_event && cp.scope_event !== event_id) return res.status(400).json({ error: "That coupon is for a different event." });
+        if (cp.min_amount > 0 && cartTotal < cp.min_amount) return res.status(400).json({ error: `This coupon needs a minimum order of ₹${cp.min_amount}.` });
+        if (cp.once_per_user) {
+          const { count } = await sb.from("coupon_uses").select("*", { count: "exact", head: true }).eq("coupon_id", cp.id).eq("user_id", uid);
+          if ((count || 0) > 0) return res.status(400).json({ error: "You've already used this coupon." });
+        }
+        if (cp.max_uses != null) {
+          const { count } = await sb.from("coupon_uses").select("*", { count: "exact", head: true }).eq("coupon_id", cp.id);
+          if ((count || 0) >= cp.max_uses) return res.status(400).json({ error: "That coupon has been fully used up." });
+        }
+        couponOff = cp.kind === "percent" ? Math.round(cartTotal * Math.min(100, cp.value) / 100) : Math.min(cp.value, cartTotal);
+        couponRow = cp;
+        Object.assign(notes, { coupon: cp.code, coupon_off: couponOff });
+      }
+
+      const grand = Math.max(0, subtotal + addonSum - couponOff);
       if (grand <= 0) {
         // 💎 100% member discount (or fully free cart): issue tickets directly, no Razorpay
         const freeOrderId = "free_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
@@ -152,6 +175,7 @@ export default async function handler(req, res) {
           quantity: totalQty, amount: 0, status: "paid", razorpay_order_id: freeOrderId,
           addons: addonRows, items: lineItems,
         });
+        if (couponRow) await sb.from("coupon_uses").insert({ coupon_id: couponRow.id, user_id: uid, order_id: freeOrderId });
         return res.status(200).json({ free: true });
       }
       ticketRev = subtotal;
@@ -223,6 +247,8 @@ export default async function handler(req, res) {
     // If we can't record the order, abort NOW so the customer is never charged
     // for something we can't later confirm or fulfil.
     if (payErr) return res.status(500).json({ error: "Could not save the order (" + payErr.message + "). You were not charged." });
+
+    if (couponRow) await sb.from("coupon_uses").insert({ coupon_id: couponRow.id, user_id: uid, order_id: order.id });
 
     return res.status(200).json({ order_id: order.id, amount, currency: "INR", key_id: KEY });
   } catch (e) {
