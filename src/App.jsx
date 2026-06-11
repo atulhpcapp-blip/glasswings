@@ -349,7 +349,7 @@ function Shell({ children }) {
   const wide = useWide(900);
   return (
     <div style={{ fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", display: "flex", justifyContent: "center", minHeight: "100vh", width: "100%", overflowX: "hidden", position: "relative", background: wide ? W.bg : "#d9d9d9" }}>
-      <style>{`html,body,#root{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}.chatscreen{height:100vh;height:100dvh;}`}</style>
+      <style>{`html,body,#root{margin:0;padding:0;width:100%;max-width:100%;overflow-x:hidden;}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}input,button{font-family:inherit;}::-webkit-scrollbar{width:0;}.chatscreen{height:100vh;height:100dvh;}button{transition:transform .08s ease, opacity .12s ease;}button:active{transform:scale(.96);}@keyframes gwspin{to{transform:rotate(360deg)}}`}</style>
       <div style={{ width: "100%", maxWidth: wide ? "none" : 430, minHeight: "100vh", background: W.bg, boxShadow: wide ? "none" : "0 0 60px rgba(0,0,0,.15)", position: "relative", zIndex: 2, overflowX: "hidden" }}>{children}</div>
     </div>
   );
@@ -2533,6 +2533,15 @@ function Main({ user }) {
     return (
       <>
         {notice && <Notice text={notice} onClose={() => setNotice("")} />}
+        {payBusy && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(17,27,33,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: 16, padding: "22px 26px", textAlign: "center", boxShadow: "0 10px 36px rgba(0,0,0,.25)" }}>
+              <div style={{ width: 34, height: 34, border: "4px solid #E9EDEF", borderTopColor: "#008069", borderRadius: "50%", margin: "0 auto", animation: "gwspin .8s linear infinite" }} />
+              <div style={{ fontWeight: 800, color: "#111B21", fontSize: 14.5, marginTop: 12 }}>Opening secure payment…</div>
+              <div style={{ fontSize: 12, color: "#667781", marginTop: 4 }}>Razorpay will appear in a moment</div>
+            </div>
+          </div>
+        )}
         {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onConfirmCredits={confirmPurchaseWithCredits} meId={user.id} onClose={() => setBuyTarget(null)} />}
         {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
@@ -2586,6 +2595,15 @@ function Main({ user }) {
   return (
     <>
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
+        {payBusy && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(17,27,33,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: 16, padding: "22px 26px", textAlign: "center", boxShadow: "0 10px 36px rgba(0,0,0,.25)" }}>
+              <div style={{ width: 34, height: 34, border: "4px solid #E9EDEF", borderTopColor: "#008069", borderRadius: "50%", margin: "0 auto", animation: "gwspin .8s linear infinite" }} />
+              <div style={{ fontWeight: 800, color: "#111B21", fontSize: 14.5, marginTop: 12 }}>Opening secure payment…</div>
+              <div style={{ fontSize: 12, color: "#667781", marginTop: 4 }}>Razorpay will appear in a moment</div>
+            </div>
+          </div>
+        )}
       {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onConfirmCredits={confirmPurchaseWithCredits} meId={user.id} onClose={() => setBuyTarget(null)} />}
       {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
@@ -12018,7 +12036,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • waseg3 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • payfeel ✅</div>
       </div>
     </div>
   );
