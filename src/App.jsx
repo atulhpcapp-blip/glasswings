@@ -8443,6 +8443,20 @@ function SegmentsAdmin() {
   const [emBody, setEmBody] = useState("");
   const [waCamp, setWaCamp] = useState("");
   const [waParams, setWaParams] = useState("");
+  const [waTest, setWaTest] = useState("");
+  const testWa = async (s) => {
+    if (!waCamp.trim()) return alert("Enter your AiSensy campaign name first.");
+    if (!waTest.trim()) return alert("Enter your own 10-digit number for the test.");
+    setBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch("/api/whatsapp/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, segment_id: s.id, campaign: waCamp.trim(), params: waParams, test_phone: waTest.trim() }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Test failed");
+      alert(j.sent ? "🧪 Test sent ✓ — check your WhatsApp now!" : `🧪 Test failed.\n\nAiSensy says: ${j.detail || "(no detail — the api file on GitHub may be the old version)"}`);
+    } catch (e) { alert(e.message); }
+    setBusy(false);
+  };
   const [busy, setBusy] = useState(false);
   const sendWa = async (s) => {
     if (!waCamp.trim()) return alert("Enter your AiSensy campaign name first.");
@@ -8597,6 +8611,11 @@ function SegmentsAdmin() {
                 <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8 }}>Sends your <b>AiSensy API Campaign</b> (a Meta-approved template) to every member's WhatsApp, personalised with their first name. Per-message charges apply in AiSensy.</div>
                 <input value={waCamp} onChange={e => setWaCamp(e.target.value)} placeholder="AiSensy campaign name (exactly as in AiSensy)" style={inp} />
                 <input value={waParams} onChange={e => setWaParams(e.target.value)} placeholder="Template variables, comma-separated (optional)" style={{ ...inp, marginTop: 8 }} />
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <input value={waTest} onChange={e => setWaTest(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="Your number (test)" style={{ ...inp, flex: 1 }} />
+                  <button onClick={() => testWa(s)} disabled={busy || !waCamp.trim() || !waTest.trim()} style={{ ...btn("#fff", "#25D366"), border: "2px solid #25D366", padding: "9px 13px", fontWeight: 800, opacity: busy || !waCamp.trim() || !waTest.trim() ? .55 : 1 }}>🧪 Test</button>
+                </div>
+                <div style={{ fontSize: 11, color: W.soft, marginTop: 5 }}>Always 🧪 Test to your own number first — it shows AiSensy's exact reply. Blast only after the test lands on your WhatsApp.</div>
                 <button onClick={() => sendWa(s)} disabled={busy || !waCamp.trim()} style={{ ...btn("#25D366", "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: busy || !waCamp.trim() ? .6 : 1 }}>{busy ? "Sending…" : `📱 WhatsApp ${counts[s.id] || 0} members`}</button>
                 <div style={{ fontSize: 11, color: W.soft, marginTop: 6 }}>Setup once: AiSensy → create template + API Campaign · copy API key into Vercel as AISENSY_API_KEY.</div>
               </>)}
@@ -11999,7 +12018,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • waseg2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • waseg3 ✅</div>
       </div>
     </div>
   );
