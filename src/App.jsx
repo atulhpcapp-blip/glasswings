@@ -9252,12 +9252,8 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
             <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Room name" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
           </div>
-          <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
-            <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
-            <span style={{ color: W.soft, fontSize: 14 }}>per month</span>
-          </div>
+          <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 14 }} />
+          <div style={{ fontSize: 11.5, color: "#6D28D9", background: "#F8F5FF", border: "1px solid #E9D5FF", borderRadius: 10, padding: "9px 12px", marginBottom: 14 }}>💎 Rooms are free to join by default. To make a room paid, include it in a membership plan via Admin → 💎 Subs after creating it.</div>
           <select value={f.gender} onChange={e => setF({ ...f, gender: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", background: "#fff", color: W.ink, marginBottom: 14 }}>
             <option value="any">Open to everyone</option>
             <option value="female">Women only</option>
@@ -11480,27 +11476,22 @@ function SubscribersAdmin() {
   if (rows === null) return <div style={{ padding: 24, textAlign: "center", color: W.soft }}>Loading subscribers…</div>;
   const active = rows.filter(r => r.days_left === null || r.days_left > 0);
   const view = active.filter(r => {
-    if (flt === "plan" && r.kind !== "plan") return false;
-    if (flt === "room" && r.kind !== "room") return false;
     if (flt === "expiring" && !(r.days_left !== null && r.days_left <= 7)) return false;
     if (q.trim()) { const s = q.trim().toLowerCase(); if (!((r.member || "").toLowerCase().includes(s) || (r.item || "").toLowerCase().includes(s))) return false; }
     return true;
   });
-  const planN = active.filter(r => r.kind === "plan").length;
-  const roomN = active.filter(r => r.kind === "room").length;
   const expN = active.filter(r => r.days_left !== null && r.days_left <= 7).length;
   const stat = (label, n, c) => <div style={{ flex: 1, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 12px", textAlign: "center" }}><div style={{ fontSize: 21, fontWeight: 800, color: c }}>{n}</div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700, letterSpacing: .3 }}>{label}</div></div>;
   const pill = (k, label) => <button onClick={() => setFlt(k)} style={{ ...btn(flt === k ? W.teal : "#fff", flt === k ? "#fff" : W.ink), border: `1px solid ${flt === k ? W.teal : W.line}`, padding: "7px 13px", fontSize: 12.5 }}>{label}</button>;
   return (
     <div style={{ padding: 14 }}>
       <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
-        {stat("💎 PLAN SUBS", planN, "#6D28D9")}
-        {stat("💬 ROOM SUBS", roomN, W.teal)}
+        {stat("💎 ACTIVE SUBSCRIBERS", active.length, "#6D28D9")}
         {stat("⏳ EXPIRING ≤7D", expN, "#C2185B")}
       </div>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member or plan/room…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member or plan…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        {pill("all", "All")}{pill("plan", "💎 Plans")}{pill("room", "💬 Rooms")}{pill("expiring", "⏳ Expiring soon")}
+        {pill("all", "All")}{pill("expiring", "⏳ Expiring soon")}
       </div>
       {view.length === 0 && <div style={{ fontSize: 13, color: W.soft, textAlign: "center", marginTop: 18 }}>No subscribers in this view.</div>}
       {view.map((r, i) => {
@@ -12622,7 +12613,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • renewremind ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • planonly ✅</div>
       </div>
     </div>
   );
