@@ -1529,6 +1529,7 @@ function PublicLanding() {
       <div style={{ position: "sticky", top: 0, zIndex: 20, background: W.teal, display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "13px 7%" : "12px 15px" }}>
         <img src="/logo-white.png" alt="Glasswings Events" style={{ height: wide ? 32 : 27, objectFit: "contain" }} />
         <div style={{ display: "flex", gap: 9 }}>
+          <button onClick={() => window.open("/about.html", "_blank")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.6)", borderRadius: 9, padding: "9px 14px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>About us</button>
           <button onClick={() => setAuthMode("login")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.6)", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Log in</button>
           <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ background: "#fff", color: W.teal, border: "none", borderRadius: 9, padding: "9px 17px", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Sign up</button>
         </div>
@@ -12329,7 +12330,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • aboutus ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • aboutus2 ✅</div>
       </div>
     </div>
   );
