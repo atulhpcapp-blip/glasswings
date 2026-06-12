@@ -6910,6 +6910,7 @@ function PollCreator({ onCreate, onClose }) {
 }
 function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAdmin, memberCount, onBack, onUpdatePinned, onOpenEvent, onOpenDM, onDeleteThread, allRooms = [], readOnly = false, wide = false, sidebar = 0 }) {
   const [showMembers, setShowMembers] = useState(false);
+  const [chatCheckIn, setChatCheckIn] = useState(null);
   const bar = wide ? { left: sidebar, right: 0, width: "auto", maxWidth: "none", transform: "none" } : { left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430 };
   const [msgs, setMsgs] = useState(null);
   const [senders, setSenders] = useState({});
@@ -7251,10 +7252,12 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
         {groupType === "event" && (["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))) && (
           <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "7px 14px", display: "flex", alignItems: "center", gap: 9 }}>
             <span style={{ fontSize: 12, color: W.soft, flex: 1 }}>🛡️ Team tools</span>
+            <button onClick={() => setChatCheckIn((gwEvents || []).find(x => x.id === room.id) || room)} style={{ ...btn(W.teal, "#fff"), padding: "6px 12px", fontSize: 12, fontWeight: 800 }}>✅ Check-in</button>
             <button onClick={() => exportGuestListPdf((gwEvents || []).find(x => x.id === room.id) || room)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "6px 12px", fontSize: 12, fontWeight: 800 }}>📄 Guest list (PDF)</button>
           </div>
         )}
       </div>
+      {chatCheckIn && <CheckInSheet event={chatCheckIn} onClose={() => setChatCheckIn(null)} />}
       <div style={{ paddingTop: headPad + 8, paddingLeft: 8, paddingRight: 8, paddingBottom: 8 }}>
         <div style={{ textAlign: "center", margin: "0 0 16px" }}><span style={{ background: "#FBF1C7", color: "#54656F", fontSize: 12, padding: "5px 12px", borderRadius: 8 }}>🔒 Only members can see these messages</span></div>
         {msgs === null ? <Center>loading…</Center> : msgs.length === 0 ? <Center>No messages yet — say hello 👋</Center> :
@@ -12536,7 +12539,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestproof ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • chatcheckin ✅</div>
       </div>
     </div>
   );
