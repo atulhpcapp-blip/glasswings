@@ -7146,7 +7146,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
         const readers = Object.entries(reads)
           .filter(([uid, t]) => uid !== m.sender_id && new Date(t) >= new Date(m.created_at))
           .sort((a, b) => new Date(b[1]) - new Date(a[1]));
-        const snippet = m.body || (m.media_type === "image" ? "📷 Photo" : m.media_type === "poll" ? "📊 Poll" : "📎 Attachment");
+        const snippet = m.body || (m.media_type === "image" ? "📷 Photo" : m.media_type === "poll" ? "📊 Poll" : m.media_type === "guestproof" ? "✨ Who's going this week" : "📎 Attachment");
         return (
           <div onClick={() => setInfoMsg(null)} style={{ position: "fixed", inset: 0, zIndex: 160, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
             <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, background: "#fff", borderTopLeftRadius: 18, borderTopRightRadius: 18, maxHeight: "75vh", display: "flex", flexDirection: "column" }}>
@@ -7262,6 +7262,27 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             const mine = m.sender_id === user.id;
             const first = (i === 0 || msgs[i - 1].sender_id !== m.sender_id);
             const s = senders[m.sender_id] || {};
+            if (m.media_type === "guestproof") {
+              const parseInline = t => t.split(/(\*[^*]+\*|_[^_]+_)/g).map((p, i) => p.startsWith("*") && p.endsWith("*") ? <b key={i}>{p.slice(1, -1)}</b> : p.startsWith("_") && p.endsWith("_") ? <i key={i}>{p.slice(1, -1)}</i> : p);
+              return (
+                <div key={m.id} style={{ display: "flex", justifyContent: "center", margin: "14px 0" }}>
+                  <div style={{ width: "92%", maxWidth: 460, borderRadius: 20, overflow: "hidden", boxShadow: "0 6px 22px rgba(0,0,0,.12)", border: "1px solid #BFE6D6" }}>
+                    <div style={{ background: "linear-gradient(120deg,#04231d,#008069 60%,#04B08F)", padding: "16px 18px", color: "#fff" }}>
+                      <div style={{ fontSize: 11, letterSpacing: 3, fontWeight: 800, color: "#E8C77B" }}>GLASSWINGS · THIS WEEK</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, marginTop: 3 }}>Who's going 👀</div>
+                    </div>
+                    <div style={{ background: "linear-gradient(180deg,#FFFFFF,#F4FBF8)", padding: "14px 18px 16px", fontSize: 14, color: W.ink, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                      {(m.body || "").split("\n").map((ln, i) => {
+                        if (ln.includes("━")) return <div key={i} style={{ borderTop: "1px dashed #CFE6DC", margin: "10px 0" }} />;
+                        if (!ln.trim()) return <div key={i} style={{ height: 4 }} />;
+                        const big = ln.includes("going");
+                        return <div key={i} style={{ fontSize: big ? 15.5 : 14, fontWeight: big ? 800 : 400, color: big ? W.teal : W.ink }}>{parseInline(ln)}</div>;
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
             if (m.media_type === "welcome") {
               return (
                 <div key={m.id} style={{ display: "flex", justifyContent: "center", margin: "14px 0" }}>
@@ -9207,6 +9228,12 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
   return (
     <div style={{ padding: 14 }}>
       <div style={{ fontSize: 12, color: W.soft, margin: "0 2px 12px" }}>🎯 Manage segments (members, credits, messages, email) in the <b>Admin → 🎯 Segments</b> tab. Pick which segment can see a room below via "👁️ Visible to".</div>
+      <button onClick={async () => {
+        if (!window.confirm("Post this week's guest list now into every room marked '📣 Post daily guest list here'? (Events in the next 7 days with 3+ going.)")) return;
+        const { data, error } = await supabase.rpc("post_daily_guest_proof");
+        if (error) return alert(error.message);
+        alert(data > 0 ? `📣 Posted to ${data} room${data === 1 ? "" : "s"} ✓` : "Nothing to post yet — no events in the next 7 days have 3+ people going.");
+      }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, width: "100%", justifyContent: "center", fontSize: 13, marginBottom: 12, fontWeight: 800 }}>📣 Post today's guest list now</button>
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New subscription room</div>
@@ -9287,6 +9314,10 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
                     <option value="couple">Couples</option>
                   </select>
                 </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", padding: "8px 2px", gridColumn: "1 / -1" }}>
+                  <input type="checkbox" checked={!!r.show_guest_proof} onChange={e => onUpdate(r.id, { show_guest_proof: e.target.checked })} />
+                  <span style={{ fontSize: 13, color: W.ink, fontWeight: 600 }}>📣 Post daily guest list here <span style={{ color: W.soft, fontWeight: 400 }}>— who's going this week, every morning</span></span>
+                </label>
                 <div>
                   <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Free Room</label>
                   <button onClick={() => onUpdate(r.id, { auto_join: !r.auto_join })} style={{ ...btn(r.auto_join ? W.teal : "#fff", r.auto_join ? "#fff" : W.ink), border: r.auto_join ? "none" : `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 6 }}>
@@ -12505,7 +12536,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • memwa2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestproof ✅</div>
       </div>
     </div>
   );
