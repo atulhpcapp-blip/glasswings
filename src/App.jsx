@@ -1586,6 +1586,16 @@ function PublicLanding() {
       {fsheet && <FilterSheet events={events} dims={dimsL} opts={optsAllL} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
       {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
       {citySheet && <CitySheet cities={cityList} value={flt.city.length === 1 ? flt.city[0] : "All cities"} onPick={c => { setFlt(f => ({ ...f, city: c === "All cities" ? [] : [c] })); setCitySheet(false); }} onClose={() => setCitySheet(false)} />}
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "6px 16px 4px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, border: `1px solid ${W.line}`, borderRadius: 14, padding: "13px 14px", background: "#F4FBF8" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>New here? Questions?</div>
+            <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>Events, entry, how it works — we reply fast.</div>
+          </div>
+          <a href={"https://wa.me/919777777491?text=" + encodeURIComponent("Hi GW Support! I'm new to Glasswings and have a question ✨")} target="_blank" rel="noreferrer"
+            style={{ ...btn(W.teal, "#fff"), padding: "10px 15px", fontSize: 13.5, textDecoration: "none", flexShrink: 0 }}>💬 GW Support</a>
+        </div>
+      </div>
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
@@ -12330,7 +12340,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • aboutus2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • mainsupport ✅</div>
       </div>
     </div>
   );
