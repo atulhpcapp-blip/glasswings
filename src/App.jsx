@@ -11507,13 +11507,34 @@ function SubscribersAdmin() {
         const dl = r.days_left;
         const tone = dl === null ? { bg: "#EFF6F3", c: "#0E5247", t: "Ongoing" } : dl <= 3 ? { bg: "#FDECEA", c: "#C0392B", t: `${dl}d left` } : dl <= 7 ? { bg: "#FEF3E2", c: "#B45309", t: `${dl}d left` } : { bg: "#E7F6EF", c: "#0E5247", t: `${dl}d left` };
         return (
-          <div key={i} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: W.ink }}>{r.member || "Member"}</div>
-              <div style={{ fontSize: 12.5, color: W.soft, marginTop: 1 }}>{r.kind === "plan" ? "💎" : "💬"} {r.item}{r.auto ? " · 🔄 auto-renew" : ""}</div>
-              {r.expires_at && <div style={{ fontSize: 11.5, color: W.soft, marginTop: 1 }}>expires {new Date(r.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>}
+          <div key={i} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: W.ink }}>{r.member || "Member"}</div>
+                <div style={{ fontSize: 12.5, color: W.soft, marginTop: 1 }}>{r.kind === "plan" ? "💎" : "💬"} {r.item}{r.auto ? " · 🔄 auto-renew" : ""}</div>
+                {r.expires_at && <div style={{ fontSize: 11.5, color: W.soft, marginTop: 1 }}>expires {new Date(r.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>}
+              </div>
+              <span style={{ background: tone.bg, color: tone.c, fontSize: 11.5, fontWeight: 800, padding: "5px 11px", borderRadius: 10, whiteSpace: "nowrap" }}>{tone.t}</span>
             </div>
-            <span style={{ background: tone.bg, color: tone.c, fontSize: 11.5, fontWeight: 800, padding: "5px 11px", borderRadius: 10, whiteSpace: "nowrap" }}>{tone.t}</span>
+            {!r.auto && dl !== null && dl <= 14 && (
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button onClick={async () => {
+                  const { data } = await supabase.from("member_phone").select("phone").eq("user_id", r.user_id).maybeSingle();
+                  if (!data?.phone) return alert("No phone number on file for this member.");
+                  const ph = data.phone.replace(/[^\d]/g, "").replace(/^0+/, "");
+                  const msg = `Hi ${(r.member || "").split(" ")[0]}! 👋 Your ${r.item} on Glasswings ${dl <= 0 ? "has expired" : `expires in ${dl} day${dl === 1 ? "" : "s"}`}. Renew in the app to keep your access 💚 glass-wings.com`;
+                  window.open("https://wa.me/" + ph + "?text=" + encodeURIComponent(msg), "_blank");
+                }} style={{ ...btn("#25D366", "#fff"), flex: 1, justifyContent: "center", padding: "8px 6px", fontSize: 12.5 }}><MessageCircle size={14} />WhatsApp nudge</button>
+                <button onClick={async () => {
+                  const msg = `🔔 Hi ${(r.member || "").split(" ")[0]}! Your ${r.item} ${dl <= 0 ? "has expired" : `expires in ${dl} day${dl === 1 ? "" : "s"}`}. Tap Profile → renew to keep your access. See you inside 💚`;
+                  const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: r.user_id });
+                  if (error) return alert(error.message);
+                  const { error: e2 } = await supabase.from("messages").insert({ group_type: "dm", group_id: tid, sender_id: (await supabase.auth.getUser()).data.user.id, body: msg, media_type: "broadcast" });
+                  if (e2) return alert(e2.message);
+                  alert("🔔 In-app reminder sent ✓");
+                }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, flex: 1, justifyContent: "center", padding: "8px 6px", fontSize: 12.5 }}><Send size={14} />In-app reminder</button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -12601,7 +12622,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • subscribers ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • renewremind ✅</div>
       </div>
     </div>
   );
