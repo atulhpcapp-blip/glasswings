@@ -2190,7 +2190,7 @@ function Main({ user }) {
       const pl = allPlans.find(p => p.id === cp);
       return (!!pl?.women_free && profile?.gender !== "male") || !!profile?.founding_member;
     }
-    return r.price_monthly === 0 || profile?.gender !== "male" || profile?.founding_member;
+    return r.price_monthly === 0 || (r.women_free !== false && profile?.gender !== "male") || profile?.founding_member;
   };
 
   const emailTicket = async (eventId) => {
@@ -3021,7 +3021,7 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
   const roomEvents = events.filter(e => !r.city || !e.city || e.city === r.city);
   const upcoming = roomEvents.filter(e => !e.event_at || e.event_at >= today);
   const past = roomEvents.filter(e => e.event_at && e.event_at < today).slice(0, 12);
-  const womenFree = r.price_monthly > 0 && profile?.gender !== "male";
+  const womenFree = r.price_monthly > 0 && r.women_free !== false && profile?.gender !== "male";
   const wave = async (node) => {
     try {
       const first = (node.name || "").split(" ")[0];
@@ -3270,7 +3270,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
         {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No rooms here yet.</Center></div>}
         {list.map(r => {
           const has = canAccess(r);
-          const womenFree = r.price_monthly > 0 && profile?.gender !== "male";
+          const womenFree = r.price_monthly > 0 && r.women_free !== false && profile?.gender !== "male";
           return (
             <div key={r.id} onClick={() => onOpenRoom ? onOpenRoom(r.id) : onJoin(r)} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", boxShadow: "0 3px 12px rgba(0,0,0,.07)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "relative", height: 130, background: "linear-gradient(135deg,#008069,#04B08F)", overflow: "hidden" }}>
@@ -9327,6 +9327,12 @@ function AdminRooms({ rooms, cities, lockCity, onCreate, onUpdate, onDelete, isS
                     {r.auto_join ? "✓ New members auto-join this room" : "Make this the Free Room (auto-join on signup)"}
                   </button>
                 </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Free for girls 👧</label>
+                  <button onClick={() => onUpdate(r.id, { women_free: r.women_free === false })} style={{ ...btn(r.women_free !== false ? "#C2185B" : "#fff", r.women_free !== false ? "#fff" : W.ink), border: r.women_free !== false ? "none" : `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 6 }}>
+                    {r.women_free !== false ? "✓ Girls join this room free" : "Charge girls the room price too"}
+                  </button>
+                </div>
                 <button onClick={() => { if (confirm("Delete this room and all its messages?")) onDelete(r.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete room</button>
               </div>
             )}
@@ -12539,7 +12545,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • chatcheckin ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • roomgirlsfree ✅</div>
       </div>
     </div>
   );
