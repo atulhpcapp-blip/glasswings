@@ -8935,6 +8935,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
+    ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
     ...(isSuper ? [["segments", "🎯 Segments"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
@@ -8955,7 +8956,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
+      {seg === "subscribers" ? <SubscribersAdmin />
+        : seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
         : seg === "segments" ? <SegmentsAdmin />
         : seg === "coupons" ? <CouponsAdmin events={events} />
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
@@ -11470,6 +11472,54 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
     </div>
   );
 }
+function SubscribersAdmin() {
+  const [rows, setRows] = useState(null);
+  const [flt, setFlt] = useState("all"); // all | plan | room | expiring
+  const [q, setQ] = useState("");
+  useEffect(() => { supabase.rpc("subscribers_list").then(({ data, error }) => setRows(error ? [] : (data || []))); }, []);
+  if (rows === null) return <div style={{ padding: 24, textAlign: "center", color: W.soft }}>Loading subscribers…</div>;
+  const active = rows.filter(r => r.days_left === null || r.days_left > 0);
+  const view = active.filter(r => {
+    if (flt === "plan" && r.kind !== "plan") return false;
+    if (flt === "room" && r.kind !== "room") return false;
+    if (flt === "expiring" && !(r.days_left !== null && r.days_left <= 7)) return false;
+    if (q.trim()) { const s = q.trim().toLowerCase(); if (!((r.member || "").toLowerCase().includes(s) || (r.item || "").toLowerCase().includes(s))) return false; }
+    return true;
+  });
+  const planN = active.filter(r => r.kind === "plan").length;
+  const roomN = active.filter(r => r.kind === "room").length;
+  const expN = active.filter(r => r.days_left !== null && r.days_left <= 7).length;
+  const stat = (label, n, c) => <div style={{ flex: 1, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 12px", textAlign: "center" }}><div style={{ fontSize: 21, fontWeight: 800, color: c }}>{n}</div><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700, letterSpacing: .3 }}>{label}</div></div>;
+  const pill = (k, label) => <button onClick={() => setFlt(k)} style={{ ...btn(flt === k ? W.teal : "#fff", flt === k ? "#fff" : W.ink), border: `1px solid ${flt === k ? W.teal : W.line}`, padding: "7px 13px", fontSize: 12.5 }}>{label}</button>;
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
+        {stat("💎 PLAN SUBS", planN, "#6D28D9")}
+        {stat("💬 ROOM SUBS", roomN, W.teal)}
+        {stat("⏳ EXPIRING ≤7D", expN, "#C2185B")}
+      </div>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member or plan/room…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 10 }} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        {pill("all", "All")}{pill("plan", "💎 Plans")}{pill("room", "💬 Rooms")}{pill("expiring", "⏳ Expiring soon")}
+      </div>
+      {view.length === 0 && <div style={{ fontSize: 13, color: W.soft, textAlign: "center", marginTop: 18 }}>No subscribers in this view.</div>}
+      {view.map((r, i) => {
+        const dl = r.days_left;
+        const tone = dl === null ? { bg: "#EFF6F3", c: "#0E5247", t: "Ongoing" } : dl <= 3 ? { bg: "#FDECEA", c: "#C0392B", t: `${dl}d left` } : dl <= 7 ? { bg: "#FEF3E2", c: "#B45309", t: `${dl}d left` } : { bg: "#E7F6EF", c: "#0E5247", t: `${dl}d left` };
+        return (
+          <div key={i} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: W.ink }}>{r.member || "Member"}</div>
+              <div style={{ fontSize: 12.5, color: W.soft, marginTop: 1 }}>{r.kind === "plan" ? "💎" : "💬"} {r.item}{r.auto ? " · 🔄 auto-renew" : ""}</div>
+              {r.expires_at && <div style={{ fontSize: 11.5, color: W.soft, marginTop: 1 }}>expires {new Date(r.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>}
+            </div>
+            <span style={{ background: tone.bg, color: tone.c, fontSize: 11.5, fontWeight: 800, padding: "5px 11px", borderRadius: 10, whiteSpace: "nowrap" }}>{tone.t}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function PlansAdmin({ rooms }) {
   const [plans, setPlans] = useState(null);
   const [planRooms, setPlanRooms] = useState([]);
@@ -12551,7 +12601,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • roomshare ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • subscribers ✅</div>
       </div>
     </div>
   );
