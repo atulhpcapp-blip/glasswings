@@ -963,10 +963,10 @@ async function exportGuestListPdf(ev) {
       .panel.m .ph{background:linear-gradient(120deg,#1B6FB8,#3D9BE9)}
       .panel.o .ph{background:linear-gradient(120deg,#B45309,#E8A23D)}
       .ph .cnt{margin-left:auto;background:rgba(255,255,255,.22);border-radius:999px;padding:3px 12px;font-size:13.5px}
-      table{width:100%;border-collapse:collapse;font-size:15.5px}
-      th{text-align:left;font-size:10.5px;letter-spacing:1.4px;color:#8a9b95;padding:9px 13px;border-bottom:2px solid #eee}
-      td{padding:9px 13px;border-bottom:1px solid #F1EFE8}
-      td.n{font-weight:700;font-size:16px}.c{text-align:center;font-weight:700}
+      table{width:100%;border-collapse:collapse;font-size:18px}
+      th{text-align:left;font-size:11px;letter-spacing:1.4px;color:#8a9b95;padding:10px 14px;border-bottom:2px solid #eee}
+      td{padding:11px 14px;border-bottom:1px solid #F1EFE8}
+      td.n{font-weight:700;font-size:19px}.c{text-align:center;font-weight:800;font-size:18px}
       .panel.w tbody tr:nth-child(odd){background:#FDF2F7}
       .panel.m tbody tr:nth-child(odd){background:#F0F7FD}
       .panel.o tbody tr:nth-child(odd){background:#FDF6EA}
@@ -12451,7 +12451,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestpdf3 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestpdf4 ✅</div>
       </div>
     </div>
   );
