@@ -11563,8 +11563,8 @@ function PlansAdmin({ rooms }) {
                   ))}
                 </div>
                 <input value={e.tag !== undefined ? e.tag : (pl.tagline || "")} onChange={ev => setE(pl.id, "tag", ev.target.value)} placeholder="Tagline (shown on the plan card)" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 12.5, outline: "none", margin: "9px 0 6px" }} />
-                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", margin: "4px 0 9px" }}>
-                  <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={e.wf !== undefined ? e.wf : !!pl.women_free} onChange={ev => setE(pl.id, "wf", ev.target.checked)} />Women free</label>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", margin: "4px 0 9px", alignItems: "center" }}>
+                  <button onClick={() => setE(pl.id, "wf", !(e.wf !== undefined ? e.wf : !!pl.women_free))} style={{ ...btn((e.wf !== undefined ? e.wf : !!pl.women_free) ? "#C2185B" : "#fff", (e.wf !== undefined ? e.wf : !!pl.women_free) ? "#fff" : W.ink), border: (e.wf !== undefined ? e.wf : !!pl.women_free) ? "none" : `1px solid ${W.line}`, padding: "8px 14px", fontSize: 12.5, fontWeight: 800 }}>{(e.wf !== undefined ? e.wf : !!pl.women_free) ? "✓ Free for girls 👧" : "Free for girls 👧"}</button>
                   <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={e.ar !== undefined ? e.ar : !!pl.auto_renew} onChange={ev => setE(pl.id, "ar", ev.target.checked)} />Auto-renew billing</label>
                   <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={e.act !== undefined ? e.act : !!pl.active} onChange={ev => setE(pl.id, "act", ev.target.checked)} />Active</label>
                 </div>
@@ -12545,7 +12545,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • roomgirlsfree ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • plangirlsfree ✅</div>
       </div>
     </div>
   );
