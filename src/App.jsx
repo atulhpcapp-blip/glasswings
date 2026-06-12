@@ -11643,6 +11643,36 @@ function MembersOverview({ isSuper }) {
     return () => window.removeEventListener("resize", onR);
   }, []);
   const [planBadge, setPlanBadge] = useState({});
+  const [waOpen, setWaOpen] = useState(false);
+  const [waSegs, setWaSegs] = useState([]);
+  const [waRooms, setWaRooms] = useState([]);
+  const [waAud, setWaAud] = useState("all");
+  const [waCamp, setWaCamp] = useState("");
+  const [waParams, setWaParams] = useState("");
+  const [waTest, setWaTest] = useState("");
+  const [waBusy, setWaBusy] = useState(false);
+  useEffect(() => { if (waOpen && !waSegs.length && !waRooms.length) { supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setWaSegs(data || [])); supabase.from("rooms").select("id, name").order("name").then(({ data }) => setWaRooms(data || [])); } }, [waOpen]);
+  const waCall = async (extra) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const b = { access_token: session?.access_token, campaign: waCamp.trim(), params: waParams, ...extra };
+    if (!extra.test_phone) { if (waAud === "all") b.audience = "all"; else if (waAud.startsWith("seg:")) b.segment_id = waAud.slice(4); else if (waAud.startsWith("room:")) b.room_id = waAud.slice(5); }
+    const r = await fetch("/api/whatsapp/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+    return { ok: r.ok, j: await r.json() };
+  };
+  const waDoTest = async () => {
+    if (!waCamp.trim() || !waTest.trim()) return alert("Enter the campaign name and your test number first.");
+    setWaBusy(true);
+    try { const { ok, j } = await waCall({ test_phone: waTest.trim() }); if (!ok) throw new Error(j.error || "Test failed"); alert(j.sent ? "🧪 Test sent ✓ — check your WhatsApp!" : `🧪 Test failed.\n\nAiSensy says: ${j.detail || ""}`); } catch (e) { alert(e.message); }
+    setWaBusy(false);
+  };
+  const waDoSend = async () => {
+    if (!waCamp.trim()) return alert("Enter your AiSensy campaign name first.");
+    const lbl = waAud === "all" ? "ALL members" : waAud.startsWith("seg:") ? `segment: ${waSegs.find(s => "seg:" + s.id === waAud)?.name || ""}` : `room: ${waRooms.find(r => "room:" + r.id === waAud)?.name || ""}`;
+    if (!window.confirm(`Send WhatsApp campaign "${waCamp.trim()}" to ${lbl}? AiSensy charges apply per message.`)) return;
+    setWaBusy(true);
+    try { const { ok, j } = await waCall({}); if (!ok) throw new Error(j.error || "Send failed"); alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? `\n\n${j.failed} failed.${j.detail ? "\nAiSensy says: " + j.detail : ""}` : ""}`); } catch (e) { alert(e.message); }
+    setWaBusy(false);
+  };
   useEffect(() => {
     supabase.rpc("admin_member_overview").then(({ data, error }) => {
       if (error) { console.error(error); setRows([]); return; }
@@ -11728,6 +11758,29 @@ function MembersOverview({ isSuper }) {
   const ip4 = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 9 };
   return (
     <div style={{ marginBottom: 18 }}>
+      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #BFE6D6", padding: 12, marginBottom: 12 }}>
+        <div onClick={() => setWaOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>📱 WhatsApp broadcast <span style={{ color: W.soft, fontWeight: 600, fontSize: 12 }}>via AiSensy</span></div>
+          <span style={{ color: "#25D366", fontWeight: 800, fontSize: 12.5 }}>{waOpen ? "Hide ▴" : "Open ▾"}</span>
+        </div>
+        {waOpen && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Send your AiSensy API Campaign to everyone, a segment, or a room — personalised with each member's first name. Per-message charges apply.</div>
+            <select value={waAud} onChange={e => setWaAud(e.target.value)} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff", marginBottom: 8 }}>
+              <option value="all">👥 Everyone (all members)</option>
+              {waSegs.length > 0 && <optgroup label="🎯 Segments">{waSegs.map(s => <option key={s.id} value={"seg:" + s.id}>{s.name}</option>)}</optgroup>}
+              {waRooms.length > 0 && <optgroup label="💬 Rooms">{waRooms.map(r => <option key={r.id} value={"room:" + r.id}>{r.name}</option>)}</optgroup>}
+            </select>
+            <input value={waCamp} onChange={e => setWaCamp(e.target.value)} placeholder="AiSensy campaign name (exactly as in AiSensy)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" }} />
+            <input value={waParams} onChange={e => setWaParams(e.target.value)} placeholder="Template variables, comma-separated (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff", marginTop: 8 }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <input value={waTest} onChange={e => setWaTest(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="Your number (test)" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" }} />
+              <button onClick={waDoTest} disabled={waBusy} style={{ ...btn("#fff", "#25D366"), border: "2px solid #25D366", padding: "9px 13px", fontWeight: 800, opacity: waBusy ? .55 : 1 }}>🧪 Test</button>
+            </div>
+            <button onClick={waDoSend} disabled={waBusy || !waCamp.trim()} style={{ ...btn("#25D366", "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: waBusy || !waCamp.trim() ? .6 : 1 }}>{waBusy ? "Sending…" : "📱 Send WhatsApp broadcast"}</button>
+          </div>
+        )}
+      </div>
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginBottom: 12 }}>
         {stat("Total members", rows.length)}
         {stat("New (30 days)", rows.filter((segs.find(x => x[0] === "new"))[2]).length)}
@@ -11764,7 +11817,7 @@ function MembersOverview({ isSuper }) {
                   <td style={{ padding: "9px 12px", fontWeight: 700, color: W.ink, whiteSpace: "nowrap" }}>
                     {r.full_name || "Member"} <span style={{ color: W.soft, fontWeight: 500 }}>{r.gender === "female" ? "♀" : r.gender === "male" ? "♂" : ""}</span>
                   </td>
-                  <td style={{ padding: "9px 12px", color: W.soft, fontSize: 12 }}>{r.phone || "—"}<br />{r.email || ""}</td>
+                  <td style={{ padding: "9px 12px", color: W.soft, fontSize: 12 }}>{r.phone ? <a href={"https://wa.me/" + r.phone.replace(/[^\d]/g, "").replace(/^0+/, "")} target="_blank" rel="noreferrer" style={{ color: "#1a8a4f", fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}><MessageCircle size={12} />{r.phone}</a> : "—"}<br />{r.email || ""}</td>
                   <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{fmtD(r.created_at)}</td>
                   <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{lastSeenStr(r.last_seen).replace("last seen ", "") || "—"}</td>
                   <td style={{ padding: "9px 12px", fontSize: 12 }}>{roomsLine(r) || "—"}</td>
@@ -11786,6 +11839,7 @@ function MembersOverview({ isSuper }) {
               <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>{r.phone || "no phone"} · {r.email || "no email"}</div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Joined {fmtD(r.created_at)} · 🎟️ {r.tickets || 0} · ₹{Math.round((r.spend || 0) / 100)}</div>
               <div style={{ fontSize: 12, color: W.ink, marginTop: 3 }}>💬 {roomsLine(r) || "No rooms yet"}</div>
+              {r.phone && <a href={"https://wa.me/" + r.phone.replace(/[^\d]/g, "").replace(/^0+/, "")} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "6px 12px", fontSize: 12, textDecoration: "none", marginTop: 8, display: "inline-flex" }}><MessageCircle size={13} />WhatsApp</a>}
             </div>
           ))}
         </div>
@@ -11892,41 +11946,6 @@ function ConnectionsPanel({ canApprove }) {
 }
 function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities, onSetRoles }) {
   const [list, setList] = useState(null);
-  const [waOpen, setWaOpen] = useState(false);
-  const [waSegs, setWaSegs] = useState([]);
-  const [waAud, setWaAud] = useState("all");
-  const [waCamp, setWaCamp] = useState("");
-  const [waParams, setWaParams] = useState("");
-  const [waTest, setWaTest] = useState("");
-  const [waBusy, setWaBusy] = useState(false);
-  useEffect(() => { if (waOpen && !waSegs.length) supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setWaSegs(data || [])); }, [waOpen]);
-  const waCall = async (extra) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const body = { access_token: session?.access_token, campaign: waCamp.trim(), params: waParams, ...extra };
-    if (!extra.test_phone) {
-      if (waAud === "all") body.audience = "all";
-      else if (waAud.startsWith("seg:")) body.segment_id = waAud.slice(4);
-      else if (waAud.startsWith("room:")) body.room_id = waAud.slice(5);
-    }
-    const r = await fetch("/api/whatsapp/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    return { ok: r.ok, j: await r.json() };
-  };
-  const waDoTest = async () => {
-    if (!waCamp.trim() || !waTest.trim()) return alert("Enter the campaign name and your test number first.");
-    setWaBusy(true);
-    try { const { ok, j } = await waCall({ test_phone: waTest.trim() }); if (!ok) throw new Error(j.error || "Test failed"); alert(j.sent ? "🧪 Test sent ✓ — check your WhatsApp!" : `🧪 Test failed.\n\nAiSensy says: ${j.detail || ""}`); }
-    catch (e) { alert(e.message); }
-    setWaBusy(false);
-  };
-  const waDoSend = async () => {
-    if (!waCamp.trim()) return alert("Enter your AiSensy campaign name first.");
-    const lbl = waAud === "all" ? "ALL members" : waAud.startsWith("seg:") ? `segment: ${waSegs.find(s => "seg:" + s.id === waAud)?.name || ""}` : `room: ${(rooms || []).find(r => "room:" + r.id === waAud)?.name || ""}`;
-    if (!window.confirm(`Send WhatsApp campaign "${waCamp.trim()}" to ${lbl}? AiSensy charges apply per message.`)) return;
-    setWaBusy(true);
-    try { const { ok, j } = await waCall({}); if (!ok) throw new Error(j.error || "Send failed"); alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? `\n\n${j.failed} failed.${j.detail ? "\nAiSensy says: " + j.detail : ""}` : ""}`); }
-    catch (e) { alert(e.message); }
-    setWaBusy(false);
-  };
   const [pick, setPick] = useState({});
   const [dur, setDur] = useState({});
   const [editing, setEditing] = useState(null);
@@ -12019,29 +12038,6 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
     <div style={{ padding: 14 }}>
       {editing && <EditMemberSheet member={editing} isSuper={isSuper} cities={cities} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
       {rolesFor && <MemberRolesSheet member={rolesFor} cities={cities} onSetRoles={onSetRoles} onClose={() => setRolesFor(null)} onSaved={() => { setRolesFor(null); reload(); }} />}
-      <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #BFE6D6", padding: 12, marginBottom: 12 }}>
-        <div onClick={() => setWaOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
-          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>📱 WhatsApp broadcast <span style={{ color: W.soft, fontWeight: 600, fontSize: 12 }}>via AiSensy</span></div>
-          <span style={{ color: "#25D366", fontWeight: 800, fontSize: 12.5 }}>{waOpen ? "Hide ▴" : "Open ▾"}</span>
-        </div>
-        {waOpen && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Send your AiSensy API Campaign to everyone, a segment, or a room. Personalised with each member's first name. Per-message charges apply.</div>
-            <select value={waAud} onChange={e => setWaAud(e.target.value)} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff", marginBottom: 8 }}>
-              <option value="all">👥 Everyone (all members)</option>
-              {waSegs.length > 0 && <optgroup label="🎯 Segments">{waSegs.map(s => <option key={s.id} value={"seg:" + s.id}>{s.name}</option>)}</optgroup>}
-              {(rooms || []).length > 0 && <optgroup label="💬 Rooms">{(rooms || []).map(r => <option key={r.id} value={"room:" + r.id}>{r.name}</option>)}</optgroup>}
-            </select>
-            <input value={waCamp} onChange={e => setWaCamp(e.target.value)} placeholder="AiSensy campaign name (exactly as in AiSensy)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" }} />
-            <input value={waParams} onChange={e => setWaParams(e.target.value)} placeholder="Template variables, comma-separated (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff", marginTop: 8 }} />
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <input value={waTest} onChange={e => setWaTest(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="Your number (test)" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" }} />
-              <button onClick={waDoTest} disabled={waBusy} style={{ ...btn("#fff", "#25D366"), border: "2px solid #25D366", padding: "9px 13px", fontWeight: 800, opacity: waBusy ? .55 : 1 }}>🧪 Test</button>
-            </div>
-            <button onClick={waDoSend} disabled={waBusy || !waCamp.trim()} style={{ ...btn("#25D366", "#fff"), marginTop: 8, width: "100%", justifyContent: "center", opacity: waBusy || !waCamp.trim() ? .6 : 1 }}>{waBusy ? "Sending…" : "📱 Send WhatsApp broadcast"}</button>
-          </div>
-        )}
-      </div>
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 12, marginBottom: 12 }}>
         {pending && pending.length > 0 && (
           <div style={{ background: "#FDF6EC", border: "1px solid #F2E2C4", borderRadius: 12, padding: "11px 13px", marginBottom: 12 }}>
@@ -12509,7 +12505,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • memwa ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • memwa2 ✅</div>
       </div>
     </div>
   );
