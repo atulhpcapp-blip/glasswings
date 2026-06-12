@@ -902,6 +902,67 @@ function gwEventLive(e) {
   if (e.event_at) return Date.now() <= new Date(e.event_at).getTime() + 6 * 3600000;
   return true; // date-TBD events stay listed until dated
 }
+async function exportGuestListPdf(ev) {
+  try {
+    const [{ data: tix }, gres] = await Promise.all([
+      supabase.from("event_tickets").select("user_id, quantity").eq("event_id", ev.id),
+      supabase.rpc("guest_list", { p_event: ev.id }).then(r => r, () => ({ data: [] })),
+    ]);
+    const byUser = {};
+    (tix || []).forEach(t => { if (t.user_id) byUser[t.user_id] = (byUser[t.user_id] || 0) + (t.quantity || 1); });
+    const ids = Object.keys(byUser);
+    let profs = [];
+    if (ids.length) {
+      const { data } = await supabase.from("profiles").select("id, full_name, gender").in("id", ids);
+      profs = data || [];
+    }
+    const rows = profs.map(p => ({ name: p.full_name || "Member", pax: byUser[p.id] || 1, g: p.gender === "female" ? "F" : p.gender === "male" ? "M" : "—", type: "Member" }));
+    (gres?.data || []).forEach(g => rows.push({ name: (g.name || g.full_name || "Guest"), pax: g.qty || g.quantity || 1, g: "—", type: "Guest" }));
+    if (!rows.length) return alert("No bookings yet for this event.");
+    rows.sort((a, b) => a.name.localeCompare(b.name));
+    const pax = rows.reduce((a, r) => a + r.pax, 0);
+    const fCount = rows.filter(r => r.g === "F").reduce((a, r) => a + r.pax, 0);
+    const mCount = rows.filter(r => r.g === "M").reduce((a, r) => a + r.pax, 0);
+    const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const w = window.open("", "_blank");
+    if (!w) return alert("Please allow pop-ups to export the guest list.");
+    w.document.write(`<!doctype html><html><head><title>Guest list — ${esc(ev.title)}</title><style>
+      body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0}
+      .band{background:linear-gradient(135deg,#008069,#04B08F);color:#fff;padding:26px 34px}
+      .br{font-size:11px;letter-spacing:4px;font-weight:800;opacity:.92}
+      h1{font-size:22px;margin:8px 0 3px}.sub{font-size:13px;opacity:.92}
+      .wrap{padding:22px 34px}
+      .tot{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+      .bx{border-radius:10px;padding:10px 16px;font-weight:800;font-size:15px}
+      .bl{font-size:10px;letter-spacing:1.5px;font-weight:800;opacity:.75;margin-bottom:2px}
+      table{width:100%;border-collapse:collapse;font-size:13.5px}
+      th{text-align:left;font-size:10.5px;letter-spacing:1.2px;color:#667781;border-bottom:2px solid #008069;padding:7px 8px}
+      td{padding:8px;border-bottom:1px solid #E9EDEF}
+      td.n{font-weight:600} .c{text-align:center}
+      .ft{margin-top:22px;font-size:11px;color:#98a5a1}
+      @media print{.noprint{display:none}}
+      .noprint{position:fixed;right:18px;bottom:18px;background:#008069;color:#fff;border:none;border-radius:999px;padding:13px 22px;font-weight:800;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer}
+    </style></head><body>
+      <div class="band"><div class="br">GLASSWINGS EVENTS · GUEST LIST</div>
+        <h1>${esc(ev.emoji || "🎟️")} ${esc(ev.title)}</h1>
+        <div class="sub">${esc(ev.event_date || "")}${ev.venue ? " · " + esc(ev.venue) : ""}</div></div>
+      <div class="wrap">
+        <div class="tot">
+          <div class="bx" style="background:#E7F6EF;color:#008069"><div class="bl">TOTAL PAX</div>${pax}</div>
+          <div class="bx" style="background:#F0F2F5;color:#111B21"><div class="bl">BOOKINGS</div>${rows.length}</div>
+          <div class="bx" style="background:#FDEDF3;color:#C2185B"><div class="bl">WOMEN</div>${fCount}</div>
+          <div class="bx" style="background:#E8F2FB;color:#1B6FB8"><div class="bl">MEN</div>${mCount}</div>
+        </div>
+        <table><thead><tr><th style="width:34px">#</th><th>NAME</th><th class="c" style="width:54px">PAX</th><th class="c" style="width:46px">M/F</th><th style="width:80px">TYPE</th></tr></thead><tbody>
+          ${rows.map((r, i) => `<tr><td>${i + 1}</td><td class="n">${esc(r.name)}</td><td class="c">${r.pax}</td><td class="c">${r.g}</td><td>${r.type}</td></tr>`).join("")}
+        </tbody></table>
+        <div class="ft">Generated ${new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })} · glass-wings.com · For entry coordination only — please don't share further.</div>
+      </div>
+      <button class="noprint" onclick="window.print()">Save as PDF</button>
+    </body></html>`);
+    w.document.close();
+  } catch (e) { alert(e.message || "Could not build the guest list."); }
+}
 function PosterCard({ e, price, popular, going, onOpen, date, unpublished }) {
   return (
     <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
@@ -7144,6 +7205,12 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             </>)}
           </div>
         )}
+        {groupType === "event" && (["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))) && (
+          <div style={{ background: "#fff", borderBottom: `1px solid ${W.line}`, padding: "7px 14px", display: "flex", alignItems: "center", gap: 9 }}>
+            <span style={{ fontSize: 12, color: W.soft, flex: 1 }}>🛡️ Team tools</span>
+            <button onClick={() => exportGuestListPdf((gwEvents || []).find(x => x.id === room.id) || room)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "6px 12px", fontSize: 12, fontWeight: 800 }}>📄 Guest list (PDF)</button>
+          </div>
+        )}
       </div>
       <div style={{ paddingTop: headPad + 8, paddingLeft: 8, paddingRight: 8, paddingBottom: 8 }}>
         <div style={{ textAlign: "center", margin: "0 0 16px" }}><span style={{ background: "#FBF1C7", color: "#54656F", fontSize: 12, padding: "5px 12px", borderRadius: 8 }}>🔒 Only members can see these messages</span></div>
@@ -10924,11 +10991,12 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   : <button onClick={() => onUpdate(e.id, { approved: true })} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px", fontSize: 13 }}>✓ Approve &amp; publish</button>}
               </div>
             )}
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
               <button onClick={() => onBroadcastEvent(e)} title="Post to all group chats" style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />Post</button>
               <button onClick={() => setMembersFor(e)} title="Who's coming — list, contact, withdraw" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Members</button>
               <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Check-in</button>
               <button onClick={() => setSendFor(e)} title="Message members" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Send size={14} />Notify</button>
+              <button onClick={() => exportGuestListPdf(e)} title="Export guest list as PDF for organisers" style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5, fontWeight: 800 }}>📄 List</button>
             </div>
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
@@ -12340,7 +12408,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • mainsupport ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestpdf ✅</div>
       </div>
     </div>
   );
