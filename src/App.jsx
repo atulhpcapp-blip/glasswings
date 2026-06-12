@@ -12320,8 +12320,16 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             <StreakBoard events={events} />
           </div>
         )}
+        <div onClick={() => window.open("/about.html", "_blank")} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "14px 15px", marginTop: 18, cursor: "pointer" }}>
+          <div style={{ width: 38, height: 38, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, flexShrink: 0 }}>GE</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>About Glasswings</div>
+            <div style={{ fontSize: 12, color: W.soft }}>Who we are, our nights, our community</div>
+          </div>
+          <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
+        </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • coupons ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • aboutus ✅</div>
       </div>
     </div>
   );
