@@ -3079,7 +3079,14 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
                 </div>
               </div>
             )}
-            {isMember && <button onClick={onOpenChat} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", padding: 13, fontSize: 14.5 }}><MessageCircle size={16} />Open room chat</button>}
+            <div style={{ display: "flex", gap: 9 }}>
+              {isMember && <button onClick={onOpenChat} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: 13, fontSize: 14.5 }}><MessageCircle size={16} />Open room chat</button>}
+              <button onClick={async () => {
+                const link = `${window.location.origin}/?room=${r.id}`;
+                const text = `${r.emoji || "💬"} Join *${r.name}* on Glasswings 💚\n${link}`;
+                try { if (navigator.share) await navigator.share({ title: r.name, text }); else { window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); } } catch {}
+              }} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, flex: isMember ? "0 0 auto" : 1, justifyContent: "center", padding: 13, fontSize: 14.5 }}><Share2 size={16} />Share</button>
+            </div>
           </>
         )}
         {tab === "events" && (
@@ -7229,6 +7236,11 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             <div style={{ fontWeight: 600, fontSize: 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{room.name}</div>
             <div style={{ fontSize: 12, opacity: .85, fontWeight: (groupType === "p2p" && lastSeenStr(otherSeen) === "online") ? 700 : 400 }}>{groupType === "dm" ? "Glasswings team · we reply here" : groupType === "p2p" ? (lastSeenStr(otherSeen) || "Direct chat") : `${memberCount} members · tap for list`}</div>
           </div>
+          {groupType === "room" && <Share2 size={19} onClick={async () => {
+            const link = `${window.location.origin}/?room=${room.id}`;
+            const text = `${room.emoji || "💬"} Join *${room.name}* on Glasswings 💚\n${link}`;
+            try { if (navigator.share) await navigator.share({ title: room.name, text }); else { window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); } } catch {}
+          }} style={{ cursor: "pointer", flexShrink: 0, opacity: .95 }} />}
           {groupType === "p2p" && onDeleteThread && <Trash2 size={19} onClick={onDeleteThread} style={{ cursor: "pointer", flexShrink: 0, opacity: .9 }} />}
         </div>
         {(room.pinned || isAdmin) && (
@@ -12539,7 +12551,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • roomcover ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • roomshare ✅</div>
       </div>
     </div>
   );
