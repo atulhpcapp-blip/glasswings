@@ -920,43 +920,87 @@ async function exportGuestListPdf(ev) {
     (gres?.data || []).forEach(g => rows.push({ name: (g.name || g.full_name || "Guest"), pax: g.qty || g.quantity || 1, g: "—", type: "Guest" }));
     if (!rows.length) return alert("No bookings yet for this event.");
     rows.sort((a, b) => a.name.localeCompare(b.name));
-    const pax = rows.reduce((a, r) => a + r.pax, 0);
-    const fCount = rows.filter(r => r.g === "F").reduce((a, r) => a + r.pax, 0);
-    const mCount = rows.filter(r => r.g === "M").reduce((a, r) => a + r.pax, 0);
+    const women = rows.filter(r => r.g === "F");
+    const men = rows.filter(r => r.g === "M");
+    const others = rows.filter(r => r.g === "—");
+    const paxOf = a => a.reduce((s, r) => s + r.pax, 0);
+    const pax = paxOf(rows), fCount = paxOf(women), mCount = paxOf(men);
     const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const tbl = (list, cls) => `<table class="${cls}"><thead><tr><th style="width:30px">#</th><th>NAME</th><th class="c" style="width:48px">PAX</th></tr></thead><tbody>
+      ${list.map((r, i) => `<tr><td>${i + 1}</td><td class="n">${esc(r.name)}${r.type === "Guest" ? ' <span class="gst">guest</span>' : ""}</td><td class="c">${r.pax}</td></tr>`).join("")}
+    </tbody></table>`;
+    const manSvg = `<svg viewBox="0 0 60 60" width="40" height="40"><circle cx="30" cy="12" r="7" fill="#fff"/><path d="M30 20 L30 38 M30 24 L16 14 M30 24 L44 30 M30 38 L20 54 M30 38 L42 52" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/></svg>`;
+    const womanSvg = `<svg viewBox="0 0 60 60" width="40" height="40"><circle cx="30" cy="11" r="7" fill="#fff"/><path d="M30 19 L30 26 M30 22 L15 10 M30 22 L45 16" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/><path d="M30 24 L18 44 L42 44 Z" fill="#fff"/><path d="M24 44 L22 56 M36 44 L39 56" stroke="#fff" stroke-width="5" stroke-linecap="round"/><circle cx="47" cy="13" r="2.6" fill="#fff"/></svg>`;
     const w = window.open("", "_blank");
     if (!w) return alert("Please allow pop-ups to export the guest list.");
     w.document.write(`<!doctype html><html><head><title>Guest list — ${esc(ev.title)}</title><style>
-      body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0}
-      .band{background:linear-gradient(135deg,#008069,#04B08F);color:#fff;padding:26px 34px}
-      .br{font-size:11px;letter-spacing:4px;font-weight:800;opacity:.92}
-      h1{font-size:22px;margin:8px 0 3px}.sub{font-size:13px;opacity:.92}
-      .wrap{padding:22px 34px}
-      .tot{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
-      .bx{border-radius:10px;padding:10px 16px;font-weight:800;font-size:15px}
-      .bl{font-size:10px;letter-spacing:1.5px;font-weight:800;opacity:.75;margin-bottom:2px}
-      table{width:100%;border-collapse:collapse;font-size:13.5px}
-      th{text-align:left;font-size:10.5px;letter-spacing:1.2px;color:#667781;border-bottom:2px solid #008069;padding:7px 8px}
-      td{padding:8px;border-bottom:1px solid #E9EDEF}
-      td.n{font-weight:600} .c{text-align:center}
-      .ft{margin-top:22px;font-size:11px;color:#98a5a1}
-      @media print{.noprint{display:none}}
+      *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
+      body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;background:#FDFBF6}
+      .band{position:relative;overflow:hidden;background:linear-gradient(120deg,#04231d 0%,#008069 55%,#04B08F 100%);color:#fff;padding:30px 36px 26px}
+      .band::after{content:"";position:absolute;inset:0;background:
+        radial-gradient(circle 3px at 12% 28%,rgba(255,255,255,.55) 98%,transparent),
+        radial-gradient(circle 2px at 30% 70%,rgba(232,199,123,.8) 98%,transparent),
+        radial-gradient(circle 3px at 55% 20%,rgba(232,199,123,.7) 98%,transparent),
+        radial-gradient(circle 2px at 72% 60%,rgba(255,255,255,.5) 98%,transparent),
+        radial-gradient(circle 3px at 88% 32%,rgba(232,199,123,.8) 98%,transparent),
+        radial-gradient(circle 2px at 95% 75%,rgba(255,255,255,.5) 98%,transparent)}
+      .band>*{position:relative;z-index:1}
+      .logo{height:34px;margin-bottom:12px;display:block}
+      .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#E8C77B}
+      h1{font-size:24px;margin:7px 0 4px}.sub{font-size:13.5px;opacity:.95}
+      .gold{height:6px;background:linear-gradient(90deg,#E8C77B,#d4a94f,#E8C77B)}
+      .wrap{padding:24px 36px 30px}
+      .tot{display:flex;gap:12px;margin-bottom:22px}
+      .bx{flex:1;border-radius:16px;padding:14px 18px;font-weight:800;font-size:26px;color:#fff;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+      .bl{font-size:10px;letter-spacing:2px;font-weight:800;opacity:.9;margin-bottom:3px}
+      .bx.t{background:linear-gradient(135deg,#008069,#04B08F)}
+      .bx.m{background:linear-gradient(135deg,#1B6FB8,#3D9BE9)}
+      .bx.w{background:linear-gradient(135deg,#C2185B,#F06292)}
+      .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+      .panel{border-radius:18px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.10);background:#fff}
+      .ph{display:flex;align-items:center;gap:12px;padding:13px 16px;color:#fff;font-weight:800;font-size:16px;letter-spacing:.5px}
+      .panel.w .ph{background:linear-gradient(120deg,#C2185B,#F06292)}
+      .panel.m .ph{background:linear-gradient(120deg,#1B6FB8,#3D9BE9)}
+      .ph .cnt{margin-left:auto;background:rgba(255,255,255,.22);border-radius:999px;padding:3px 12px;font-size:13px}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      th{text-align:left;font-size:9.5px;letter-spacing:1.4px;color:#8a9b95;padding:8px 12px;border-bottom:2px solid #eee}
+      td{padding:7px 12px;border-bottom:1px solid #F1EFE8}
+      td.n{font-weight:600}.c{text-align:center}
+      .panel.w tbody tr:nth-child(odd){background:#FDF2F7}
+      .panel.m tbody tr:nth-child(odd){background:#F0F7FD}
+      .gst{font-size:9.5px;font-weight:800;color:#B45309;background:#FDF3E0;border-radius:6px;padding:1px 6px;letter-spacing:.5px}
+      .oth{margin-top:18px}
+      .oth .ph{background:linear-gradient(120deg,#B45309,#E8A23D)}
+      .ft{margin-top:22px;font-size:11px;color:#9aa6a1;text-align:center}
+      .ft b{color:#008069}
+      @media print{.noprint{display:none}body{background:#fff}}
       .noprint{position:fixed;right:18px;bottom:18px;background:#008069;color:#fff;border:none;border-radius:999px;padding:13px 22px;font-weight:800;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer}
     </style></head><body>
-      <div class="band"><div class="br">GLASSWINGS EVENTS · GUEST LIST</div>
+      <div class="band">
+        <img class="logo" src="/logo-white.png" alt="Glasswings Events" onerror="this.style.display='none'"/>
+        <div class="br">GUEST LIST ✦ TONIGHT'S CREW</div>
         <h1>${esc(ev.emoji || "🎟️")} ${esc(ev.title)}</h1>
-        <div class="sub">${esc(ev.event_date || "")}${ev.venue ? " · " + esc(ev.venue) : ""}</div></div>
+        <div class="sub">${esc(ev.event_date || "")}${ev.venue ? " · " + esc(ev.venue) : ""}</div>
+      </div>
+      <div class="gold"></div>
       <div class="wrap">
         <div class="tot">
-          <div class="bx" style="background:#E7F6EF;color:#008069"><div class="bl">TOTAL PAX</div>${pax}</div>
-          <div class="bx" style="background:#F0F2F5;color:#111B21"><div class="bl">BOOKINGS</div>${rows.length}</div>
-          <div class="bx" style="background:#FDEDF3;color:#C2185B"><div class="bl">WOMEN</div>${fCount}</div>
-          <div class="bx" style="background:#E8F2FB;color:#1B6FB8"><div class="bl">MEN</div>${mCount}</div>
+          <div class="bx t"><div class="bl">TOTAL PAX</div>${pax}</div>
+          <div class="bx m"><div class="bl">MEN</div>${mCount}</div>
+          <div class="bx w"><div class="bl">WOMEN</div>${fCount}</div>
         </div>
-        <table><thead><tr><th style="width:34px">#</th><th>NAME</th><th class="c" style="width:54px">PAX</th><th class="c" style="width:46px">M/F</th><th style="width:80px">TYPE</th></tr></thead><tbody>
-          ${rows.map((r, i) => `<tr><td>${i + 1}</td><td class="n">${esc(r.name)}</td><td class="c">${r.pax}</td><td class="c">${r.g}</td><td>${r.type}</td></tr>`).join("")}
-        </tbody></table>
-        <div class="ft">Generated ${new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })} · glass-wings.com · For entry coordination only — please don't share further.</div>
+        <div class="cols">
+          <div class="panel w">
+            <div class="ph">${womanSvg} WOMEN <span class="cnt">${fCount} pax</span></div>
+            ${women.length ? tbl(women, "") : '<div style="padding:16px;color:#9aa6a1;font-size:13px">No bookings yet</div>'}
+          </div>
+          <div class="panel m">
+            <div class="ph">${manSvg} MEN <span class="cnt">${mCount} pax</span></div>
+            ${men.length ? tbl(men, "") : '<div style="padding:16px;color:#9aa6a1;font-size:13px">No bookings yet</div>'}
+          </div>
+        </div>
+        ${others.length ? `<div class="panel oth"><div class="ph">🎟️ GUESTS &amp; OTHERS <span class="cnt">${paxOf(others)} pax</span></div>${tbl(others, "")}</div>` : ""}
+        <div class="ft">Generated ${new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })} · <b>glass-wings.com</b> · For entry coordination only — please don't share further ✨</div>
       </div>
       <button class="noprint" onclick="window.print()">Save as PDF</button>
     </body></html>`);
@@ -12408,7 +12452,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestpdf ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestpdf2 ✅</div>
       </div>
     </div>
   );
