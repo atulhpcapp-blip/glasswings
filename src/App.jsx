@@ -3049,10 +3049,7 @@ function RoomPage({ room: r, profile, count, isMember, freeForUser, onJoin, even
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 7, background: "transparent", border: "none", color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: "pointer", padding: 0 }}><ArrowLeft size={19} />Rooms</button>
       </div>
       <div style={{ position: "relative", height: 170, background: "linear-gradient(135deg,#008069,#04B08F)", overflow: "hidden" }}>
-        {r.logo_url && <>
-          <img src={r.logo_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(24px) brightness(.6)", transform: "scale(1.15)" }} />
-          <img src={r.logo_url} alt={r.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
-        </>}
+        {r.logo_url && <img src={r.logo_url} alt={r.name} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />}
         {!r.logo_url && <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 56 }}>{r.emoji || "💬"}</div>}
       </div>
       <div style={{ background: "#fff", padding: "14px 16px 0", borderBottom: `1px solid ${W.line}` }}>
@@ -3275,10 +3272,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
             <div key={r.id} onClick={() => onOpenRoom ? onOpenRoom(r.id) : onJoin(r)} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", boxShadow: "0 3px 12px rgba(0,0,0,.07)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
               <div style={{ position: "relative", height: 130, background: "linear-gradient(135deg,#008069,#04B08F)", overflow: "hidden" }}>
                 {r.logo_url ? (
-                  <>
-                    <img src={r.logo_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(24px) brightness(.65)", transform: "scale(1.15)" }} />
-                    <img src={r.logo_url} alt={r.name} loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
-                  </>
+                  <img src={r.logo_url} alt={r.name} loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
                   <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 46 }}>{r.emoji || "💬"}</div>
                 )}
@@ -12545,7 +12539,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • plangirlsfree ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • roomcover ✅</div>
       </div>
     </div>
   );
