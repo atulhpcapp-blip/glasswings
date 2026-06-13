@@ -11477,6 +11477,7 @@ function AccountsAdmin() {
   const [topMembers, setTopMembers] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [view, setView] = useState("income"); // income | expenses | members
+  const [month, setMonth] = useState("all"); // 'all' or 'YYYY-MM'
   const [addingExp, setAddingExp] = useState(false);
   const [ef, setEf] = useState({ title: "", amount: "", category: "partner", spent_on: new Date().toISOString().slice(0, 10), note: "" });
   const expCat = { partner: "🤝 Partner / organiser", self_event: "🏠 Self / signature event", gettogether: "☕ Get-together", subadmin: "🛡️ Sub-admin pay", promotion: "📣 Promotion / ads", other: "📦 Other" };
@@ -11505,25 +11506,108 @@ function AccountsAdmin() {
   const big = (label, val, c) => <div style={{ flex: 1, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "14px 14px" }}><div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 23, fontWeight: 800, color: c, marginTop: 3 }}>{val}</div></div>;
   const tab = (k, label) => <button onClick={() => setView(k)} style={{ ...btn(view === k ? W.teal : "#fff", view === k ? "#fff" : W.ink), border: `1px solid ${view === k ? W.teal : W.line}`, padding: "8px 15px", fontSize: 13 }}>{label}</button>;
 
+  const ym = d => { const x = new Date(d); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0"); };
+  const monthOpts = (() => {
+    const set = new Set();
+    recent.forEach(r => set.add(ym(r.at)));
+    expenses.forEach(x => set.add(ym(x.spent_on)));
+    return [...set].sort().reverse();
+  })();
+  const monthLabel = m => m === "all" ? "All time" : new Date(m + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const inMonth = d => month === "all" || ym(d) === month;
+  const fRecent = recent.filter(r => inMonth(r.at));
+  const fExpenses = expenses.filter(x => inMonth(x.spent_on));
+  const incomeTotal = fRecent.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const expenseTotal = fExpenses.reduce((s, x) => s + Number(x.amount || 0), 0);
+
+  const exportAccountsPdf = () => {
+    const period = monthLabel(month);
+    const srcRows = ["plan", "ticket", "credits"].map(g => {
+      const items = fRecent.filter(r => g === "credits" ? r.purpose === "credits" : g === "plan" ? (r.purpose === "plan" || r.purpose === "room") : r.purpose === "ticket");
+      const tot = items.reduce((s, r) => s + Number(r.amount || 0), 0);
+      const head = g === "plan" ? "💎 Subscriptions" : g === "ticket" ? "🎟️ Tickets" : "🎮 Games & credits";
+      return { head, tot, items };
+    }).filter(x => x.items.length);
+    const byCat = {};
+    fExpenses.forEach(x => { const k = x.category || "other"; byCat[k] = (byCat[k] || 0) + Number(x.amount || 0); });
+    const rr = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+    const esc = s => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const w = window.open("", "_blank");
+    if (!w) return alert("Allow pop-ups to export the PDF.");
+    const incSections = srcRows.map(s => `
+      <tr class="grp"><td colspan="3">${esc(s.head)} — ${rr(s.tot)}</td></tr>
+      ${s.items.map(r => `<tr><td>${esc(r.member || "Member")}</td><td>${new Date(r.at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td><td class="amt pos">${rr(r.amount)}</td></tr>`).join("")}
+    `).join("");
+    const expByCat = Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td colspan="2">${esc(expCat[k] || k)}</td><td class="amt neg">${rr(v)}</td></tr>`).join("");
+    const expRows = fExpenses.map(x => `<tr><td>${esc(x.title)} <span class="mut">(${esc(expCat[x.category] || x.category || "Other")})</span></td><td>${new Date(x.spent_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</td><td class="amt neg">${rr(x.amount)}</td></tr>`).join("");
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Glasswings Accounts — ${esc(period)}</title>
+    <style>
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111B21;margin:0;padding:0}
+      .hero{background:linear-gradient(135deg,#04231d,#008069 60%,#04B08F);color:#fff;padding:26px 30px}
+      .hero h1{margin:0;font-size:24px}.hero .sub{opacity:.85;margin-top:4px;font-size:13px;letter-spacing:1px}
+      .wrap{padding:22px 30px}
+      .cards{display:flex;gap:12px;margin-bottom:20px}
+      .card{flex:1;border:1px solid #E9EDEF;border-radius:12px;padding:14px}
+      .card .l{font-size:11px;color:#667781;font-weight:700}.card .v{font-size:22px;font-weight:800;margin-top:3px}
+      h2{font-size:15px;margin:20px 0 8px;border-bottom:2px solid #008069;padding-bottom:5px}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      td{padding:7px 6px;border-bottom:1px solid #EEF1F3}
+      .grp td{font-weight:800;color:#0E5247;background:#F4FBF8;padding-top:9px}
+      .amt{text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+      .pos{color:#0E7A5F}.neg{color:#C0392B}.mut{color:#9AA8AE;font-weight:400}
+      .net{font-size:20px;font-weight:800}
+      .foot{margin-top:24px;color:#9AA8AE;font-size:11px;text-align:center}
+    </style></head><body>
+    <div class="hero"><h1>Glasswings — Accounts</h1><div class="sub">${esc(period).toUpperCase()}</div></div>
+    <div class="wrap">
+      <div class="cards">
+        <div class="card"><div class="l">⬆️ INCOME</div><div class="v" style="color:#0E7A5F">${rr(incomeTotal)}</div></div>
+        <div class="card"><div class="l">⬇️ EXPENSES</div><div class="v" style="color:#C0392B">${rr(expenseTotal)}</div></div>
+        <div class="card"><div class="l">💰 NET</div><div class="v net" style="color:#008069">${rr(incomeTotal - expenseTotal)}</div></div>
+      </div>
+      <h2>Income</h2>
+      <table>${incSections || '<tr><td class="mut">No income in this period.</td></tr>'}</table>
+      <h2>Expenses by category</h2>
+      <table>${expByCat || '<tr><td class="mut">No expenses in this period.</td></tr>'}</table>
+      ${fExpenses.length ? `<h2>All expenses</h2><table>${expRows}</table>` : ""}
+      <div class="foot">Generated ${new Date().toLocaleString("en-IN")} · Glasswings</div>
+    </div>
+    <script>setTimeout(()=>window.print(),400)</script>
+    </body></html>`);
+    w.document.close();
+  };
+
   return (
     <div style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+        <select value={month} onChange={e => setMonth(e.target.value)} style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff", fontWeight: 700, color: W.ink }}>
+          <option value="all">📅 All time</option>
+          {monthOpts.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+        </select>
+        <button onClick={exportAccountsPdf} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "10px 14px", fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>📄 PDF</button>
+      </div>
       <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
-        {big("💰 Net (all-time)", ov ? rup(ov.net_total) : "…", W.teal)}
-        {big("📅 Net (this month)", ov ? rup(ov.net_month) : "…", W.teal)}
+        {big("💰 Net" + (month === "all" ? " (all-time)" : ""), month === "all" ? (ov ? rup(ov.net_total) : "…") : rup(incomeTotal - expenseTotal), W.teal)}
+        {big("👤 Paying members", ov ? ov.paying_members : "…", W.ink)}
       </div>
       <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
-        {big("⬆️ Income", ov ? rup(ov.total_income) : "…", "#0E7A5F")}
-        {big("⬇️ Expenses", ov ? rup(ov.total_expense) : "…", "#C0392B")}
+        {big("⬆️ Income", month === "all" ? (ov ? rup(ov.total_income) : "…") : rup(incomeTotal), "#0E7A5F")}
+        {big("⬇️ Expenses", month === "all" ? (ov ? rup(ov.total_expense) : "…") : rup(expenseTotal), "#C0392B")}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         {tab("income", "⬆️ Income")}{tab("expenses", "⬇️ Expenses")}{tab("members", "👤 Top members")}
       </div>
 
-      {view === "income" && <>
+      {view === "income" && (() => {
+        const srcAgg = {};
+        fRecent.forEach(r => { const k = r.purpose || "other"; if (!srcAgg[k]) srcAgg[k] = { txns: 0, income: 0 }; srcAgg[k].txns++; srcAgg[k].income += Number(r.amount || 0); });
+        const srcList = Object.entries(srcAgg).map(([purpose, v]) => ({ purpose, ...v })).sort((a, b) => b.income - a.income);
+        return <>
         <div style={{ fontWeight: 800, fontSize: 14, color: W.ink, margin: "2px 2px 8px" }}>Where income comes from</div>
-        {bySource.length === 0 && <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>No income recorded yet.</div>}
-        {bySource.map((s, i) => (
+        {srcList.length === 0 && <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>No income in this period.</div>}
+        {srcList.map((s, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 8 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: W.ink }}>{srcLabel[s.purpose] || s.purpose}</div>
@@ -11534,7 +11618,7 @@ function AccountsAdmin() {
         ))}
         <div style={{ fontWeight: 800, fontSize: 14, color: W.ink, margin: "16px 2px 8px" }}>Recent payments</div>
         {["plan", "ticket", "credits"].map(grp => {
-          const items = recent.filter(r => grp === "credits" ? (r.purpose === "credits") : grp === "plan" ? (r.purpose === "plan" || r.purpose === "room") : r.purpose === "ticket");
+          const items = fRecent.filter(r => grp === "credits" ? (r.purpose === "credits") : grp === "plan" ? (r.purpose === "plan" || r.purpose === "room") : r.purpose === "ticket");
           const head = grp === "plan" ? "💎 Subscriptions" : grp === "ticket" ? "🎟️ Tickets" : "🎮 Games & credits";
           if (items.length === 0) return null;
           return (
@@ -11552,12 +11636,13 @@ function AccountsAdmin() {
             </div>
           );
         })}
-      </>}
+      </>;
+      })()}
 
       {view === "expenses" && <>
-        {expenses.length > 0 && (() => {
+        {fExpenses.length > 0 && (() => {
           const byCat = {};
-          expenses.forEach(x => { const k = x.category || "other"; byCat[k] = (byCat[k] || 0) + Number(x.amount || 0); });
+          fExpenses.forEach(x => { const k = x.category || "other"; byCat[k] = (byCat[k] || 0) + Number(x.amount || 0); });
           const order = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
           return (
             <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "12px 14px", marginBottom: 12 }}>
@@ -11585,8 +11670,8 @@ function AccountsAdmin() {
             <button onClick={saveExp} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center" }}>Save expense</button>
           </div>
         )}
-        {expenses.length === 0 && <div style={{ fontSize: 13, color: W.soft, textAlign: "center", marginTop: 8 }}>No expenses logged yet.</div>}
-        {expenses.map(x => (
+        {fExpenses.length === 0 && <div style={{ fontSize: 13, color: W.soft, textAlign: "center", marginTop: 8 }}>No expenses logged yet.</div>}
+        {fExpenses.map(x => (
           <div key={x.id} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 13px", marginBottom: 7, gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{x.title}</div>
@@ -12760,7 +12845,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • accounts2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • acctmonth ✅</div>
       </div>
     </div>
   );
