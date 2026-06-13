@@ -12712,6 +12712,7 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
   const [lightbox, setLightbox] = useState(null);
   const [busy, setBusy] = useState(false);
   const [hostFlt, setHostFlt] = useState("all");
+  const [monthFlt, setMonthFlt] = useState("all");
   const fileRef = useRef(null);
   const evMap = {}; (events || []).forEach(e => { evMap[e.id] = e; });
   const load = async () => {
@@ -12724,15 +12725,15 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
   };
   useEffect(() => { load(); }, []);
   const [showNew, setShowNew] = useState(false);
-  const [nf, setNf] = useState({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "" });
+  const [nf, setNf] = useState({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "", event_date: "" });
   const [coverBusy, setCoverBusy] = useState(false);
   const coverRef = useRef(null);
   const saveAlbum = async () => {
     if (!nf.title.trim()) return alert("Give the album a name.");
     const ev = nf.event_id ? evMap[nf.event_id] : null;
     const cover = nf.cover_url || ev?.poster_url || ev?.vertical_banner_url || ev?.banner_url || null;
-    await supabase.from("gallery_albums").insert({ title: nf.title.trim(), link_url: nf.link_url.trim() || null, cover_url: cover, event_id: nf.event_id || null, host_type: nf.event_id ? null : (nf.host_type || null) });
-    setNf({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "" }); setShowNew(false); load();
+    await supabase.from("gallery_albums").insert({ title: nf.title.trim(), link_url: nf.link_url.trim() || null, cover_url: cover, event_id: nf.event_id || null, host_type: nf.event_id ? null : (nf.host_type || null), event_date: (!nf.event_id && nf.event_date) ? new Date(nf.event_date).toISOString() : null });
+    setNf({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "", event_date: "" }); setShowNew(false); load();
   };
   const pickCover = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -12780,12 +12781,22 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
       {gtab === "mine" && myAlbum}
       {gtab === "galleries" && (() => {
         const ht = a => evMap[a.event_id]?.host_type || a.host_type || "glasswings";
-        const filtered = albums.filter(a => hostFlt === "all" || ht(a) === hostFlt);
+        const albDate = a => { const ev = evMap[a.event_id]; return ev?.event_at || a.event_date || a.created_at; };
+        const ym = d => { if (!d) return null; const x = new Date(d); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0"); };
+        const monthLabel = m => m === "all" ? "All months" : new Date(m + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+        const monthOpts = [...new Set(albums.map(a => ym(albDate(a))).filter(Boolean))].sort().reverse();
+        const filtered = albums.filter(a => (hostFlt === "all" || ht(a) === hostFlt) && (monthFlt === "all" || ym(albDate(a)) === monthFlt));
         const slides = albums.filter(a => a.cover_url).slice(0, 6).map(a => ({ id: a.id, img: a.cover_url }));
         const albumById = id => albums.find(a => a.id === id);
         return <div>
         {slides.length > 0 && <HeroSlider slides={slides} wide={false} onSlide={(sl) => { const a = albumById(sl.id); if (a) openAlbum(a); }} />}
-        <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", overflowX: "auto" }}>
+        <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", overflowX: "auto", alignItems: "center" }}>
+          {monthOpts.length > 0 && (
+            <select value={monthFlt} onChange={e => setMonthFlt(e.target.value)} style={{ flexShrink: 0, padding: "7px 11px", borderRadius: 999, border: `1px solid ${monthFlt !== "all" ? W.teal : W.line}`, background: monthFlt !== "all" ? W.teal : "#fff", color: monthFlt !== "all" ? "#fff" : W.ink, fontWeight: 700, fontSize: 12.5, outline: "none" }}>
+              <option value="all">📅 All months</option>
+              {monthOpts.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+            </select>
+          )}
           {[["all", "All"], ["glasswings", "🏠 Glasswings"], ["partner", "🤝 Partner"], ["meetup", "☕ Get-togethers"]].map(([k, lbl]) => (
             <button key={k} onClick={() => setHostFlt(k)} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 999, border: `1px solid ${hostFlt === k ? W.teal : W.line}`, background: hostFlt === k ? W.teal : "#fff", color: hostFlt === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{lbl}</button>
           ))}
@@ -12807,6 +12818,8 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
                     <button key={k} onClick={() => setNf(s => ({ ...s, host_type: s.host_type === k ? "" : k }))} style={{ flex: 1, padding: "8px 4px", borderRadius: 9, border: `1px solid ${nf.host_type === k ? W.teal : W.line}`, background: nf.host_type === k ? W.teal : "#fff", color: nf.host_type === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 11.5, cursor: "pointer" }}>{lbl}</button>
                   ))}
                 </div>
+                <div style={{ fontSize: 11.5, color: W.soft, margin: "9px 0 5px" }}>Event date (so it sorts under the right month):</div>
+                <input type="date" value={nf.event_date} onChange={e => setNf(s => ({ ...s, event_date: e.target.value }))} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none", boxSizing: "border-box" }} />
               </div>
             )}
             <input value={nf.link_url} onChange={e => setNf({ ...nf, link_url: e.target.value })} placeholder="📸 Google Photos / Drive album link (paste here)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", boxSizing: "border-box", marginBottom: 9 }} />
@@ -12817,7 +12830,7 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
               {nf.cover_url && <img src={nf.cover_url} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: "cover" }} />}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => { setShowNew(false); setNf({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "" }); }} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button onClick={() => { setShowNew(false); setNf({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "", event_date: "" }); }} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
               <button onClick={saveAlbum} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center" }}>Create album</button>
             </div>
           </div>
@@ -13057,7 +13070,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gallerytype ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gallerymonth ✅</div>
       </div>
     </div>
   );
