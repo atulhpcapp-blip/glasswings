@@ -12724,15 +12724,15 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
   };
   useEffect(() => { load(); }, []);
   const [showNew, setShowNew] = useState(false);
-  const [nf, setNf] = useState({ title: "", link_url: "", cover_url: "", event_id: "" });
+  const [nf, setNf] = useState({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "" });
   const [coverBusy, setCoverBusy] = useState(false);
   const coverRef = useRef(null);
   const saveAlbum = async () => {
     if (!nf.title.trim()) return alert("Give the album a name.");
     const ev = nf.event_id ? evMap[nf.event_id] : null;
     const cover = nf.cover_url || ev?.poster_url || ev?.vertical_banner_url || ev?.banner_url || null;
-    await supabase.from("gallery_albums").insert({ title: nf.title.trim(), link_url: nf.link_url.trim() || null, cover_url: cover, event_id: nf.event_id || null });
-    setNf({ title: "", link_url: "", cover_url: "", event_id: "" }); setShowNew(false); load();
+    await supabase.from("gallery_albums").insert({ title: nf.title.trim(), link_url: nf.link_url.trim() || null, cover_url: cover, event_id: nf.event_id || null, host_type: nf.event_id ? null : (nf.host_type || null) });
+    setNf({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "" }); setShowNew(false); load();
   };
   const pickCover = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -12779,7 +12779,7 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
       </div>
       {gtab === "mine" && myAlbum}
       {gtab === "galleries" && (() => {
-        const ht = a => evMap[a.event_id]?.host_type || "glasswings";
+        const ht = a => evMap[a.event_id]?.host_type || a.host_type || "glasswings";
         const filtered = albums.filter(a => hostFlt === "all" || ht(a) === hostFlt);
         const slides = albums.filter(a => a.cover_url).slice(0, 6).map(a => ({ id: a.id, img: a.cover_url }));
         const albumById = id => albums.find(a => a.id === id);
@@ -12799,6 +12799,16 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
               <option value="">🔗 Link to an event (for filters & slider) — optional</option>
               {(events || []).slice().sort((a, b) => new Date(b.event_at || 0) - new Date(a.event_at || 0)).map(e => <option key={e.id} value={e.id}>{e.emoji || "🎟️"} {e.title}</option>)}
             </select>
+            {!nf.event_id && (
+              <div style={{ marginBottom: 9 }}>
+                <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 5 }}>Type (for the filter chips) — optional, for events not in the app:</div>
+                <div style={{ display: "flex", gap: 7 }}>
+                  {[["glasswings", "🏠 Glasswings"], ["partner", "🤝 Partner"], ["meetup", "☕ Get-together"]].map(([k, lbl]) => (
+                    <button key={k} onClick={() => setNf(s => ({ ...s, host_type: s.host_type === k ? "" : k }))} style={{ flex: 1, padding: "8px 4px", borderRadius: 9, border: `1px solid ${nf.host_type === k ? W.teal : W.line}`, background: nf.host_type === k ? W.teal : "#fff", color: nf.host_type === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 11.5, cursor: "pointer" }}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             <input value={nf.link_url} onChange={e => setNf({ ...nf, link_url: e.target.value })} placeholder="📸 Google Photos / Drive album link (paste here)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", boxSizing: "border-box", marginBottom: 9 }} />
             <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 10, lineHeight: 1.4 }}>Paste a shared album link and members tap to view all photos there. Leave blank to upload photos inside the app instead.</div>
             <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 12 }}>
@@ -12807,13 +12817,13 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
               {nf.cover_url && <img src={nf.cover_url} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: "cover" }} />}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => { setShowNew(false); setNf({ title: "", link_url: "", cover_url: "", event_id: "" }); }} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button onClick={() => { setShowNew(false); setNf({ title: "", link_url: "", cover_url: "", event_id: "", host_type: "" }); }} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
               <button onClick={saveAlbum} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center" }}>Create album</button>
             </div>
           </div>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
-          {filtered.map(a => { const cover = a.cover_url || ((photos[a.id] || [])[0] || {}).url; const n = (photos[a.id] || []).length; const linked = !!a.link_url; const ev = evMap[a.event_id]; const badge = ev ? (ev.host_type === "partner" ? "🤝" : ev.host_type === "meetup" ? "☕" : "🏠") : null; return (
+          {filtered.map(a => { const cover = a.cover_url || ((photos[a.id] || [])[0] || {}).url; const n = (photos[a.id] || []).length; const linked = !!a.link_url; const ev = evMap[a.event_id]; const t = ev?.host_type || a.host_type; const badge = t === "partner" ? "🤝" : t === "meetup" ? "☕" : t === "glasswings" ? "🏠" : null; return (
             <div key={a.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden", position: "relative" }}>
               {linked && <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,.6)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 7px", borderRadius: 8, zIndex: 2 }}>🔗 ALBUM</div>}
               {isAdmin && <button onClick={(e) => { e.stopPropagation(); delAlbum(a); }} title="Delete album" style={{ position: "absolute", top: 8, left: 8, zIndex: 3, background: "rgba(192,57,43,.92)", color: "#fff", border: "none", borderRadius: 8, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Trash2 size={14} /></button>}
@@ -13047,7 +13057,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • galleryslider ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gallerytype ✅</div>
       </div>
     </div>
   );
