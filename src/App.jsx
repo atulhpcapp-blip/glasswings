@@ -869,6 +869,14 @@ function gwNameColor(id) {
   return GW_NAME_COLORS[h % GW_NAME_COLORS.length];
 }
 function gwRoomPlan(roomId) { try { return (window.__gwRoomPlans || {})[roomId] || null; } catch { return null; } }
+function gwIsSub(userId) { try { return !!(window.__gwSubs && window.__gwSubs.has(userId)); } catch { return false; } }
+// staff-only 💎 badge: shows next to a subscriber's name; invisible to non-staff
+function SubBadge({ userId, size = 13 }) {
+  const [, force] = useState(0);
+  useEffect(() => { const h = () => force(x => x + 1); window.addEventListener("gwsubs", h); return () => window.removeEventListener("gwsubs", h); }, []);
+  if (!gwIsSub(userId)) return null;
+  return <span title="Premium subscriber" style={{ fontSize: size, lineHeight: 1, flexShrink: 0 }}>💎</span>;
+}
 function rzpDesc(str) { return String(str || "").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim() || "Glasswings"; }
 function gwTimeAgo(ts) {
   if (!ts) return "";
@@ -2181,6 +2189,17 @@ function Main({ user }) {
   const capOf = (k) => isSuper || perms.some(p => myRoles.includes(p.role) && p[k]);
   const isAdmin = isSuper || myRoles.includes("admin");
   const isStaff = isSuper || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
+  useEffect(() => {
+    if (!isStaff) { try { window.__gwSubs = null; } catch {} return; }
+    supabase.from("member_plans").select("user_id, expires_at").then(({ data }) => {
+      try {
+        const s = new Set();
+        (data || []).forEach(m => { if (!m.expires_at || new Date(m.expires_at).getTime() > Date.now()) s.add(m.user_id); });
+        window.__gwSubs = s;
+        window.dispatchEvent(new Event("gwsubs"));
+      } catch {}
+    });
+  }, [isStaff]);
   const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics"), editMembers: capOf("can_edit_members"), stamps: capOf("can_stamps") };
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id) || planRoomIds.includes(r.id);
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id) || eventGroups.includes(e.id);
@@ -7325,7 +7344,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
               <div key={m.id} ref={el => { if (el) msgRefs.current[m.id] = el; }} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6, margin: "2px 4px" }}>
                 {!mine && (first ? <PersonAvatar url={s.avatar} name={s.name} size={28} /> : <div style={{ width: 28, flexShrink: 0 }} />)}
                 <div onContextMenu={ev => { ev.preventDefault(); setTray(m.id); }} onDoubleClick={() => setTray(m.id)} style={{ animation: `gwmsgin .28s ease`, transformOrigin: mine ? "bottom right" : "bottom left", maxWidth: "78%", background: flashMsg === m.id ? "#FFF3C4" : (mine ? "linear-gradient(135deg,#D9FDD3,#C2F2E4)" : W.recv), transition: "background .5s ease", padding: "7px 10px 6px", borderRadius: 14, borderTopRightRadius: mine ? 4 : 14, borderTopLeftRadius: mine ? 14 : 4, boxShadow: mine ? "0 2px 6px rgba(0,128,105,.16)" : "0 2px 6px rgba(17,27,33,.08)", border: mine ? "1px solid #BBEBD9" : `1px solid ${W.line}`, userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}>
-                  {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 800, color: gwNameColor(m.sender_id), marginBottom: 1 }}>{s.name || "Member"}</div>}
+                  {!mine && first && <div style={{ fontSize: 12.5, fontWeight: 800, color: gwNameColor(m.sender_id), marginBottom: 1, display: "flex", alignItems: "center", gap: 4 }}>{s.name || "Member"}<SubBadge userId={m.sender_id} size={12} /></div>}
                   {m.reply_to && (() => { const rm = (msgs || []).find(x => x.id === m.reply_to); return (
                     <div onClick={() => jumpToMsg(m.reply_to)} style={{ background: "rgba(0,128,105,.07)", borderLeft: `3px solid ${W.teal}`, borderRadius: 7, padding: "4px 8px", marginBottom: 4, cursor: rm ? "pointer" : "default" }}>
                       <div style={{ fontSize: 11.5, fontWeight: 800, color: rm ? gwNameColor(rm.sender_id) : W.teal }}>{rm ? (senders[rm.sender_id]?.name || "Member") : "Message"}</div>
@@ -12155,7 +12174,7 @@ function MembersOverview({ isSuper }) {
               {list.map(r => (
                 <tr key={r.id} style={{ borderBottom: `1px solid ${W.line}` }}>
                   <td style={{ padding: "9px 12px", fontWeight: 700, color: W.ink, whiteSpace: "nowrap" }}>
-                    {r.full_name || "Member"} <span style={{ color: W.soft, fontWeight: 500 }}>{r.gender === "female" ? "♀" : r.gender === "male" ? "♂" : ""}</span>
+                    {r.full_name || "Member"} <span style={{ color: W.soft, fontWeight: 500 }}>{r.gender === "female" ? "♀" : r.gender === "male" ? "♂" : ""}</span> <SubBadge userId={r.id} size={12} />
                   </td>
                   <td style={{ padding: "9px 12px", color: W.soft, fontSize: 12 }}>{r.phone ? <a href={"https://wa.me/" + r.phone.replace(/[^\d]/g, "").replace(/^0+/, "")} target="_blank" rel="noreferrer" style={{ color: "#1a8a4f", fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}><MessageCircle size={12} />{r.phone}</a> : "—"}<br />{r.email || ""}</td>
                   <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{fmtD(r.created_at)}</td>
@@ -12173,7 +12192,7 @@ function MembersOverview({ isSuper }) {
           {list.map(r => (
             <div key={r.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{r.full_name || "Member"} <span style={{ color: W.soft, fontWeight: 500 }}>{r.gender === "female" ? "♀" : r.gender === "male" ? "♂" : ""}</span></div>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{r.full_name || "Member"} <span style={{ color: W.soft, fontWeight: 500 }}>{r.gender === "female" ? "♀" : r.gender === "male" ? "♂" : ""}</span> <SubBadge userId={r.id} size={12} /></div>
                 <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 700 }}>{lastSeenStr(r.last_seen) || "never active"}</div>
               </div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>{r.phone || "no phone"} · {r.email || "no email"}</div>
@@ -12845,7 +12864,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • acctmonth ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • subbadge ✅</div>
       </div>
     </div>
   );
