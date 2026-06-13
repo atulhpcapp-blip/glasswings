@@ -12794,10 +12794,13 @@ function Gallery({ isAdmin, myAlbum = null }) {
         )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
           {albums.map(a => { const cover = a.cover_url || ((photos[a.id] || [])[0] || {}).url; const n = (photos[a.id] || []).length; const linked = !!a.link_url; return (
-            <div key={a.id} onClick={() => openAlbum(a)} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden", cursor: "pointer", position: "relative" }}>
+            <div key={a.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden", position: "relative" }}>
               {linked && <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,.6)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 7px", borderRadius: 8, zIndex: 2 }}>🔗 ALBUM</div>}
-              <div style={{ width: "100%", aspectRatio: "4/3", background: W.bg }}>{cover ? <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}><ImageIcon size={28} /></div>}</div>
-              <div style={{ padding: "10px 12px" }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{a.title}</div><div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{linked ? "📸 Tap to view photos" : `${n} photo${n === 1 ? "" : "s"}`}</div></div>
+              {isAdmin && <button onClick={(e) => { e.stopPropagation(); delAlbum(a); }} title="Delete album" style={{ position: "absolute", top: 8, left: 8, zIndex: 3, background: "rgba(192,57,43,.92)", color: "#fff", border: "none", borderRadius: 8, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Trash2 size={14} /></button>}
+              <div onClick={() => openAlbum(a)} style={{ cursor: "pointer" }}>
+                <div style={{ width: "100%", aspectRatio: "4/3", background: W.bg }}>{cover ? <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}><ImageIcon size={28} /></div>}</div>
+                <div style={{ padding: "10px 12px" }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{a.title}</div><div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{linked ? "📸 Tap to view photos" : `${n} photo${n === 1 ? "" : "s"}`}</div></div>
+              </div>
             </div>
           ); })}
         </div>
@@ -13022,7 +13025,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gallerylinks ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • albumdel ✅</div>
       </div>
     </div>
   );
