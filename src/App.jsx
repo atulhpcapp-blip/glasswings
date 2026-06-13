@@ -8936,6 +8936,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
+    ...(isSuper ? [["accounts", "📊 Accounts"]] : []),
     ...(isSuper ? [["segments", "🎯 Segments"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
@@ -8956,7 +8957,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "subscribers" ? <SubscribersAdmin />
+      {seg === "accounts" ? <AccountsAdmin />
+        : seg === "subscribers" ? <SubscribersAdmin />
         : seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
         : seg === "segments" ? <SegmentsAdmin />
         : seg === "coupons" ? <CouponsAdmin events={events} />
@@ -11468,6 +11470,124 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
     </div>
   );
 }
+function AccountsAdmin() {
+  const [ov, setOv] = useState(null);
+  const [bySource, setBySource] = useState([]);
+  const [recent, setRecent] = useState([]);
+  const [topMembers, setTopMembers] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [view, setView] = useState("income"); // income | expenses | members
+  const [addingExp, setAddingExp] = useState(false);
+  const [ef, setEf] = useState({ title: "", amount: "", category: "venue", spent_on: new Date().toISOString().slice(0, 10), note: "" });
+
+  const load = () => {
+    supabase.rpc("accounts_overview").then(({ data }) => setOv(data?.[0] || null));
+    supabase.rpc("accounts_by_source").then(({ data }) => setBySource(data || []));
+    supabase.rpc("accounts_recent", { p_limit: 50 }).then(({ data }) => setRecent(data || []));
+    supabase.rpc("accounts_top_members", { p_limit: 20 }).then(({ data }) => setTopMembers(data || []));
+    supabase.rpc("list_expenses", { p_limit: 100 }).then(({ data }) => setExpenses(data || []));
+  };
+  useEffect(load, []);
+
+  const rup = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const srcLabel = { ticket: "🎟️ Tickets", plan: "💎 Subscriptions", room: "💬 Rooms", credits: "🎮 Game credits" };
+
+  const saveExp = async () => {
+    if (!ef.title.trim() || !Number(ef.amount)) return alert("Enter a title and amount.");
+    const { error } = await supabase.rpc("add_expense", { p_title: ef.title.trim(), p_amount: Number(ef.amount), p_category: ef.category, p_spent_on: ef.spent_on, p_note: ef.note || null });
+    if (error) return alert(error.message);
+    setEf({ title: "", amount: "", category: "venue", spent_on: new Date().toISOString().slice(0, 10), note: "" });
+    setAddingExp(false); load();
+  };
+  const delExp = async id => { if (!confirm("Delete this expense?")) return; const { error } = await supabase.rpc("delete_expense", { p_id: id }); if (error) return alert(error.message); load(); };
+
+  const big = (label, val, c) => <div style={{ flex: 1, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "14px 14px" }}><div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{label}</div><div style={{ fontSize: 23, fontWeight: 800, color: c, marginTop: 3 }}>{val}</div></div>;
+  const tab = (k, label) => <button onClick={() => setView(k)} style={{ ...btn(view === k ? W.teal : "#fff", view === k ? "#fff" : W.ink), border: `1px solid ${view === k ? W.teal : W.line}`, padding: "8px 15px", fontSize: 13 }}>{label}</button>;
+
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+        {big("💰 Net (all-time)", ov ? rup(ov.net_total) : "…", W.teal)}
+        {big("📅 Net (this month)", ov ? rup(ov.net_month) : "…", W.teal)}
+      </div>
+      <div style={{ display: "flex", gap: 9, marginBottom: 14 }}>
+        {big("⬆️ Income", ov ? rup(ov.total_income) : "…", "#0E7A5F")}
+        {big("⬇️ Expenses", ov ? rup(ov.total_expense) : "…", "#C0392B")}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {tab("income", "⬆️ Income")}{tab("expenses", "⬇️ Expenses")}{tab("members", "👤 Top members")}
+      </div>
+
+      {view === "income" && <>
+        <div style={{ fontWeight: 800, fontSize: 14, color: W.ink, margin: "2px 2px 8px" }}>Where income comes from</div>
+        {bySource.length === 0 && <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>No income recorded yet.</div>}
+        {bySource.map((s, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: W.ink }}>{srcLabel[s.purpose] || s.purpose}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{s.txns} payment{Number(s.txns) === 1 ? "" : "s"}</div>
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: W.teal }}>{rup(s.income)}</div>
+          </div>
+        ))}
+        <div style={{ fontWeight: 800, fontSize: 14, color: W.ink, margin: "16px 2px 8px" }}>Recent payments</div>
+        {recent.map((r, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 13px", marginBottom: 7 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{r.member || "Member"}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{srcLabel[r.purpose] || r.purpose} · {new Date(r.at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</div>
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "#0E7A5F" }}>{rup(r.amount)}</div>
+          </div>
+        ))}
+      </>}
+
+      {view === "expenses" && <>
+        <button onClick={() => setAddingExp(v => !v)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginBottom: 12 }}>{addingExp ? "Cancel" : "+ Add expense"}</button>
+        {addingExp && (
+          <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+            <input value={ef.title} onChange={e => setEf({ ...ef, title: e.target.value })} placeholder="What was it for? (e.g. Venue booking)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 9 }} />
+            <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+              <input value={ef.amount} onChange={e => setEf({ ...ef, amount: e.target.value.replace(/[^\d.]/g, "") })} placeholder="₹ Amount" inputMode="decimal" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none" }} />
+              <select value={ef.category} onChange={e => setEf({ ...ef, category: e.target.value })} style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff" }}>
+                <option value="venue">🏛️ Venue</option><option value="ads">📣 Ads</option><option value="refund">↩️ Refund</option><option value="tools">🛠️ Tools</option><option value="other">📦 Other</option>
+              </select>
+            </div>
+            <input type="date" value={ef.spent_on} onChange={e => setEf({ ...ef, spent_on: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 9 }} />
+            <button onClick={saveExp} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center" }}>Save expense</button>
+          </div>
+        )}
+        {expenses.length === 0 && <div style={{ fontSize: 13, color: W.soft, textAlign: "center", marginTop: 8 }}>No expenses logged yet.</div>}
+        {expenses.map(x => (
+          <div key={x.id} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 13px", marginBottom: 7, gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{x.title}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{x.category || "other"} · {new Date(x.spent_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "#C0392B" }}>{rup(x.amount)}</div>
+            <button onClick={() => delExp(x.id)} style={{ background: "transparent", border: "none", cursor: "pointer", color: W.soft, fontSize: 18, padding: 2 }}>×</button>
+          </div>
+        ))}
+      </>}
+
+      {view === "members" && <>
+        <div style={{ fontWeight: 800, fontSize: 14, color: W.ink, margin: "2px 2px 8px" }}>Biggest paying members</div>
+        {topMembers.length === 0 && <div style={{ fontSize: 13, color: W.soft }}>No payments yet.</div>}
+        {topMembers.map((m, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", marginBottom: 7, gap: 10 }}>
+            <div style={{ width: 26, height: 26, borderRadius: 13, background: i < 3 ? "#FEF3E2" : W.bg, color: i < 3 ? "#B45309" : W.soft, fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{m.member}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{m.txns} payment{Number(m.txns) === 1 ? "" : "s"}</div>
+            </div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: W.teal }}>{rup(m.spent)}</div>
+          </div>
+        ))}
+      </>}
+    </div>
+  );
+}
 function SubscribersAdmin() {
   const [rows, setRows] = useState(null);
   const [flt, setFlt] = useState("all"); // all | plan | room | expiring
@@ -12613,7 +12733,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • planonly ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • accounts ✅</div>
       </div>
     </div>
   );
