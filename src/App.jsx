@@ -11478,7 +11478,8 @@ function AccountsAdmin() {
   const [expenses, setExpenses] = useState([]);
   const [view, setView] = useState("income"); // income | expenses | members
   const [addingExp, setAddingExp] = useState(false);
-  const [ef, setEf] = useState({ title: "", amount: "", category: "venue", spent_on: new Date().toISOString().slice(0, 10), note: "" });
+  const [ef, setEf] = useState({ title: "", amount: "", category: "partner", spent_on: new Date().toISOString().slice(0, 10), note: "" });
+  const expCat = { partner: "🤝 Partner / organiser", self_event: "🏠 Self / signature event", gettogether: "☕ Get-together", subadmin: "🛡️ Sub-admin pay", promotion: "📣 Promotion / ads", other: "📦 Other" };
 
   const load = () => {
     supabase.rpc("accounts_overview").then(({ data }) => setOv(data?.[0] || null));
@@ -11496,7 +11497,7 @@ function AccountsAdmin() {
     if (!ef.title.trim() || !Number(ef.amount)) return alert("Enter a title and amount.");
     const { error } = await supabase.rpc("add_expense", { p_title: ef.title.trim(), p_amount: Number(ef.amount), p_category: ef.category, p_spent_on: ef.spent_on, p_note: ef.note || null });
     if (error) return alert(error.message);
-    setEf({ title: "", amount: "", category: "venue", spent_on: new Date().toISOString().slice(0, 10), note: "" });
+    setEf({ title: "", amount: "", category: "partner", spent_on: new Date().toISOString().slice(0, 10), note: "" });
     setAddingExp(false); load();
   };
   const delExp = async id => { if (!confirm("Delete this expense?")) return; const { error } = await supabase.rpc("delete_expense", { p_id: id }); if (error) return alert(error.message); load(); };
@@ -11532,18 +11533,44 @@ function AccountsAdmin() {
           </div>
         ))}
         <div style={{ fontWeight: 800, fontSize: 14, color: W.ink, margin: "16px 2px 8px" }}>Recent payments</div>
-        {recent.map((r, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 13px", marginBottom: 7 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{r.member || "Member"}</div>
-              <div style={{ fontSize: 12, color: W.soft }}>{srcLabel[r.purpose] || r.purpose} · {new Date(r.at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</div>
+        {["plan", "ticket", "credits"].map(grp => {
+          const items = recent.filter(r => grp === "credits" ? (r.purpose === "credits") : grp === "plan" ? (r.purpose === "plan" || r.purpose === "room") : r.purpose === "ticket");
+          const head = grp === "plan" ? "💎 Subscriptions" : grp === "ticket" ? "🎟️ Tickets" : "🎮 Games & credits";
+          if (items.length === 0) return null;
+          return (
+            <div key={grp} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: W.soft, letterSpacing: .3, margin: "4px 2px 7px" }}>{head}</div>
+              {items.map((r, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 13px", marginBottom: 7 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{r.member || "Member"}</div>
+                    <div style={{ fontSize: 12, color: W.soft }}>{new Date(r.at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: "#0E7A5F" }}>{rup(r.amount)}</div>
+                </div>
+              ))}
             </div>
-            <div style={{ fontWeight: 800, fontSize: 15, color: "#0E7A5F" }}>{rup(r.amount)}</div>
-          </div>
-        ))}
+          );
+        })}
       </>}
 
       {view === "expenses" && <>
+        {expenses.length > 0 && (() => {
+          const byCat = {};
+          expenses.forEach(x => { const k = x.category || "other"; byCat[k] = (byCat[k] || 0) + Number(x.amount || 0); });
+          const order = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+          return (
+            <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "12px 14px", marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: W.soft, marginBottom: 8 }}>Spending by category</div>
+              {order.map(([k, v]) => (
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, padding: "4px 0" }}>
+                  <span style={{ color: W.ink }}>{expCat[k] || k}</span>
+                  <span style={{ fontWeight: 800, color: "#C0392B" }}>{rup(v)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         <button onClick={() => setAddingExp(v => !v)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginBottom: 12 }}>{addingExp ? "Cancel" : "+ Add expense"}</button>
         {addingExp && (
           <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
@@ -11551,7 +11578,7 @@ function AccountsAdmin() {
             <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
               <input value={ef.amount} onChange={e => setEf({ ...ef, amount: e.target.value.replace(/[^\d.]/g, "") })} placeholder="₹ Amount" inputMode="decimal" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none" }} />
               <select value={ef.category} onChange={e => setEf({ ...ef, category: e.target.value })} style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff" }}>
-                <option value="venue">🏛️ Venue</option><option value="ads">📣 Ads</option><option value="refund">↩️ Refund</option><option value="tools">🛠️ Tools</option><option value="other">📦 Other</option>
+                <option value="partner">🤝 Partner / organiser</option><option value="self_event">🏠 Self / signature event</option><option value="gettogether">☕ Get-together</option><option value="subadmin">🛡️ Sub-admin pay</option><option value="promotion">📣 Promotion / ads</option><option value="other">📦 Other</option>
               </select>
             </div>
             <input type="date" value={ef.spent_on} onChange={e => setEf({ ...ef, spent_on: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 9 }} />
@@ -11563,7 +11590,7 @@ function AccountsAdmin() {
           <div key={x.id} style={{ display: "flex", alignItems: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 13px", marginBottom: 7, gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{x.title}</div>
-              <div style={{ fontSize: 12, color: W.soft }}>{x.category || "other"} · {new Date(x.spent_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{expCat[x.category] || x.category || "📦 Other"} · {new Date(x.spent_on).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
             </div>
             <div style={{ fontWeight: 800, fontSize: 15, color: "#C0392B" }}>{rup(x.amount)}</div>
             <button onClick={() => delExp(x.id)} style={{ background: "transparent", border: "none", cursor: "pointer", color: W.soft, fontSize: 18, padding: 2 }}>×</button>
@@ -12733,7 +12760,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • accounts ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • accounts2 ✅</div>
       </div>
     </div>
   );
