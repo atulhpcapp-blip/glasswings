@@ -1972,7 +1972,7 @@ function Main({ user }) {
     fetch("/api/razorpay/verify-sub", { method: "GET" }).catch(() => { });
   }, [subPage]);
   const coveringPlanId = (roomId) => (allPlanRooms.find(x => x.room_id === roomId) || {}).plan_id || null;
-  const buyPlan = async (plan, months) => {
+  const buyPlan = async (plan, months, coupon_code) => {
     setPayBusy(true);
     const ready = await loadRazorpay();
     if (!ready) { setPayBusy(false); return setNotice("Couldn't open the payment window. Check your connection and try again."); }
@@ -1981,7 +1981,7 @@ function Main({ user }) {
     if (plan.auto_renew) {
       let sd;
       try {
-        const r = await fetch("/api/razorpay/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, plan_id: plan.id, plan_months: months }) });
+        const r = await fetch("/api/razorpay/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, plan_id: plan.id, plan_months: months, coupon_code: coupon_code || "" }) });
         sd = await r.json();
         if (!r.ok) { setPayBusy(false); return setNotice(sd.error || "Could not start the subscription."); }
       } catch { setPayBusy(false); return setNotice("Could not start the subscription. Please try again."); }
@@ -8956,6 +8956,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
     ...(isSuper ? [["accounts", "📊 Accounts"]] : []),
+    ...(isSuper ? [["subcoupons", "🏷️ Sub coupons"]] : []),
     ...(isSuper ? [["segments", "🎯 Segments"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
@@ -8976,7 +8977,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "accounts" ? <AccountsAdmin />
+      {seg === "subcoupons" ? <PlanCouponsAdmin />
+        : seg === "accounts" ? <AccountsAdmin />
         : seg === "subscribers" ? <SubscribersAdmin />
         : seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
         : seg === "segments" ? <SegmentsAdmin />
@@ -11431,6 +11433,17 @@ function PlanStatusCard({ myPlans, plans, onOpen, onStopRenew }) {
 function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight, onBuy, onClose }) {
   const isWoman = profile?.gender === "female";
   const active = plans.filter(p => p.active);
+  const [couponInput, setCouponInput] = useState({}); // planId -> typed code
+  const [couponOk, setCouponOk] = useState({}); // planId -> {percent, code} or {error}
+  const applyCoupon = async (planId) => {
+    const code = (couponInput[planId] || "").trim();
+    if (!code) return;
+    const { data, error } = await supabase.rpc("check_plan_coupon", { p_code: code, p_plan_id: planId });
+    const row = Array.isArray(data) ? data[0] : data;
+    if (error || !row || !row.ok) { setCouponOk(s => ({ ...s, [planId]: { error: row?.reason || "Invalid code" } })); return; }
+    if (row.disc_type !== "forever") { setCouponOk(s => ({ ...s, [planId]: { error: "This code isn't available yet" } })); return; }
+    setCouponOk(s => ({ ...s, [planId]: { percent: row.percent, code } }));
+  };
   return (
     <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, height: "100%", zIndex: 220, background: "#0d1f2a", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
       <div style={{ background: "linear-gradient(135deg,#6D28D9,#EC4899)", color: "#fff", padding: "16px 16px 24px" }}>
@@ -11466,18 +11479,41 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
               </div>
               {isWoman && pl.women_free ? (
                 <div style={{ background: "linear-gradient(95deg,#FCE7F3,#F3E8FF)", borderRadius: 12, padding: "12px 14px", fontSize: 13.5, fontWeight: 800, color: "#BE185D", textAlign: "center" }}>💃 Free for women — you already have it all. Enjoy!</div>
-              ) : (
+              ) : (() => {
+                const cp = couponOk[pl.id];
+                const pct = cp && cp.percent ? cp.percent : 0;
+                const disc = p => pct ? Math.round(p * (100 - pct) / 100) : p;
+                return <>
+                <div style={{ marginBottom: 8 }}>
+                  {!cp || cp.error ? (
+                    <div style={{ display: "flex", gap: 7 }}>
+                      <input value={couponInput[pl.id] || ""} onChange={e => setCouponInput(s => ({ ...s, [pl.id]: e.target.value.toUpperCase() }))} placeholder="Have a coupon?" style={{ flex: 1, minWidth: 0, border: `1px solid ${cp?.error ? "#E0A8A2" : W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13, outline: "none", textTransform: "uppercase" }} />
+                      <button onClick={() => applyCoupon(pl.id)} style={{ ...btn(W.ink, "#fff"), padding: "9px 15px", fontSize: 13 }}>Apply</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#E7F6EF", borderRadius: 9, padding: "8px 12px" }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: "#0d6e58", flex: 1 }}>🏷️ {cp.code} — {cp.percent}% OFF forever</span>
+                      <span onClick={() => { setCouponOk(s => ({ ...s, [pl.id]: null })); setCouponInput(s => ({ ...s, [pl.id]: "" })); }} style={{ fontSize: 16, color: W.soft, cursor: "pointer" }}>×</span>
+                    </div>
+                  )}
+                  {cp?.error && <div style={{ fontSize: 11.5, color: "#C0392B", marginTop: 4 }}>{cp.error}</div>}
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(prices.length, 4) || 1}, 1fr)`, gap: 8, marginTop: 6 }}>
                   {prices.map(([mo, pr]) => (
-                    <div key={mo} onClick={() => onBuy(pl, mo)} style={{ border: mo === 12 ? "2px solid #6D28D9" : `1.5px solid ${W.line}`, borderRadius: 13, padding: "11px 4px", textAlign: "center", cursor: "pointer", position: "relative", background: mo === 12 ? "#F8F5FF" : "#fff" }}>
+                    <div key={mo} onClick={() => onBuy(pl, mo, pct ? cp.code : "")} style={{ border: mo === 12 ? "2px solid #6D28D9" : `1.5px solid ${W.line}`, borderRadius: 13, padding: "11px 4px", textAlign: "center", cursor: "pointer", position: "relative", background: mo === 12 ? "#F8F5FF" : "#fff" }}>
                       {mo === 12 && <div style={{ position: "absolute", top: -9, left: "50%", transform: "translateX(-50%)", background: "#6D28D9", color: "#fff", fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 8, whiteSpace: "nowrap" }}>BEST VALUE</div>}
                       <div style={{ fontWeight: 800, color: W.ink, fontSize: 12.5 }}>{mo === 12 ? "1 year" : mo + " mo"}</div>
-                      <div style={{ fontWeight: 800, color: "#6D28D9", fontSize: 15 }}>₹{pr}</div>
+                      {pct ? (
+                        <div><div style={{ fontWeight: 700, color: W.soft, fontSize: 11, textDecoration: "line-through" }}>₹{pr}</div><div style={{ fontWeight: 800, color: "#0d6e58", fontSize: 15 }}>₹{disc(pr)}</div></div>
+                      ) : (
+                        <div style={{ fontWeight: 800, color: "#6D28D9", fontSize: 15 }}>₹{pr}</div>
+                      )}
                     </div>
                   ))}
                   {!prices.length && <div style={{ gridColumn: "1 / -1", fontSize: 12.5, color: W.soft, textAlign: "center" }}>Pricing coming soon.</div>}
                 </div>
-              )}
+                </>;
+              })()}
               {!(isWoman && pl.women_free) && pl.auto_renew && prices.length > 0 && (
                 <div style={{ fontSize: 10.5, color: W.soft, textAlign: "center", marginTop: 7 }}>🔁 Renews automatically at the same price · cancel anytime from your Profile</div>
               )}
@@ -11486,6 +11522,76 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
         })}
         <div style={{ textAlign: "center", color: "rgba(255,255,255,.55)", fontSize: 11, padding: "4px 0 24px" }}>Secure payments by Razorpay · prices set by Glasswings</div>
       </div>
+    </div>
+  );
+}
+function PlanCouponsAdmin() {
+  const [rows, setRows] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({ code: "", percent: "", plan_id: "", disc_type: "forever", max_uses: "", once: true, expires_at: "" });
+  const load = () => {
+    supabase.rpc("plan_coupons_list").then(({ data }) => setRows(data || []));
+    supabase.from("plans").select("id, name").eq("active", true).then(({ data }) => setPlans(data || []));
+  };
+  useEffect(load, []);
+  const save = async () => {
+    if (!f.code.trim() || !Number(f.percent)) return alert("Enter a code and a percentage.");
+    const { error } = await supabase.rpc("plan_coupon_create", {
+      p_code: f.code.trim(), p_percent: Number(f.percent), p_plan_id: f.plan_id || null,
+      p_disc_type: f.disc_type, p_max_uses: f.max_uses ? Number(f.max_uses) : null,
+      p_once: f.once, p_expires_at: f.expires_at ? new Date(f.expires_at).toISOString() : null,
+    });
+    if (error) return alert(error.message);
+    setF({ code: "", percent: "", plan_id: "", disc_type: "forever", max_uses: "", once: true, expires_at: "" });
+    setAdding(false); load();
+  };
+  const toggle = async id => { await supabase.rpc("plan_coupon_toggle", { p_id: id }); load(); };
+  const del = async id => { if (!confirm("Delete this coupon?")) return; await supabase.rpc("plan_coupon_delete", { p_id: id }); load(); };
+  const planName = id => id ? (plans.find(p => p.id === id)?.name || "a plan") : "All plans";
+
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "0 2px 12px" }}>🏷️ Discount codes for membership subscriptions. <b>Forever</b> codes discount every renewal (e.g. lifetime 20% off). Members type the code on the subscribe screen.</div>
+      <button onClick={() => setAdding(v => !v)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginBottom: 12 }}>{adding ? "Cancel" : "+ New coupon"}</button>
+      {adding && (
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+          <input value={f.code} onChange={e => setF({ ...f, code: e.target.value.toUpperCase() })} placeholder="CODE (e.g. LIFETIME20)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 9, textTransform: "uppercase", fontWeight: 700 }} />
+          <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+            <input value={f.percent} onChange={e => setF({ ...f, percent: e.target.value.replace(/\D/g, "").slice(0, 3) })} placeholder="% off" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none" }} />
+            <select value={f.disc_type} onChange={e => setF({ ...f, disc_type: e.target.value })} style={{ flex: 1.4, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff" }}>
+              <option value="forever">♾️ Forever (every renewal)</option>
+              <option value="first" disabled>1st payment (coming soon)</option>
+            </select>
+          </div>
+          <select value={f.plan_id} onChange={e => setF({ ...f, plan_id: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", background: "#fff", marginBottom: 9 }}>
+            <option value="">All plans</option>
+            {plans.map(p => <option key={p.id} value={p.id}>{p.name} only</option>)}
+          </select>
+          <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+            <input value={f.max_uses} onChange={e => setF({ ...f, max_uses: e.target.value.replace(/\D/g, "") })} placeholder="Max uses (blank = ∞)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none" }} />
+            <input type="date" value={f.expires_at} onChange={e => setF({ ...f, expires_at: e.target.value })} style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none" }} />
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: W.ink, marginBottom: 12, cursor: "pointer" }}><input type="checkbox" checked={f.once} onChange={e => setF({ ...f, once: e.target.checked })} />One use per member</label>
+          <button onClick={save} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center" }}>Create coupon</button>
+        </div>
+      )}
+      {rows === null ? <div style={{ color: W.soft, textAlign: "center", padding: 20 }}>Loading…</div>
+        : rows.length === 0 ? <div style={{ color: W.soft, textAlign: "center", padding: 20, fontSize: 13 }}>No subscription coupons yet.</div>
+        : rows.map(c => (
+          <div key={c.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 8, opacity: c.active ? 1 : .55 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>🏷️ {c.code} <span style={{ color: "#0d6e58" }}>· {c.percent}% off</span></div>
+                <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{c.disc_type === "forever" ? "♾️ Forever" : "1st payment"} · {planName(c.plan_id)} · {c.uses}{c.max_uses ? `/${c.max_uses}` : ""} used{c.once_per_member ? " · 1/member" : ""}{c.expires_at ? ` · till ${new Date(c.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button onClick={() => toggle(c.id)} style={{ ...btn(c.active ? "#fff" : W.teal, c.active ? W.ink : "#fff"), border: `1px solid ${c.active ? W.line : W.teal}`, flex: 1, justifyContent: "center", fontSize: 12.5, padding: "7px 6px" }}>{c.active ? "⏸ Pause" : "▶ Activate"}</button>
+              <button onClick={() => del(c.id)} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", flex: 1, justifyContent: "center", fontSize: 12.5, padding: "7px 6px" }}>Delete</button>
+            </div>
+          </div>
+        ))}
     </div>
   );
 }
@@ -12864,7 +12970,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • subbadge ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • subcoupons ✅</div>
       </div>
     </div>
   );
