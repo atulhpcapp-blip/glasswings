@@ -2675,7 +2675,7 @@ function Main({ user }) {
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
-      {tab === "gallery" && <><Gallery isAdmin={isAdmin} myAlbum={<MyAlbum meId={user.id} />} /></>}
+      {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} myAlbum={<MyAlbum meId={user.id} />} /></>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -12704,14 +12704,16 @@ function MyAlbum({ meId }) {
     </div>
   );
 }
-function Gallery({ isAdmin, myAlbum = null }) {
+function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
   const [gtab, setGtab] = useState("galleries");
   const [albums, setAlbums] = useState([]);
   const [photos, setPhotos] = useState({});
   const [open, setOpen] = useState(null);
   const [lightbox, setLightbox] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [hostFlt, setHostFlt] = useState("all");
   const fileRef = useRef(null);
+  const evMap = {}; (events || []).forEach(e => { evMap[e.id] = e; });
   const load = async () => {
     const [{ data: al }, { data: ph }] = await Promise.all([
       supabase.from("gallery_albums").select("*").order("created_at", { ascending: false }),
@@ -12722,13 +12724,15 @@ function Gallery({ isAdmin, myAlbum = null }) {
   };
   useEffect(() => { load(); }, []);
   const [showNew, setShowNew] = useState(false);
-  const [nf, setNf] = useState({ title: "", link_url: "", cover_url: "" });
+  const [nf, setNf] = useState({ title: "", link_url: "", cover_url: "", event_id: "" });
   const [coverBusy, setCoverBusy] = useState(false);
   const coverRef = useRef(null);
   const saveAlbum = async () => {
     if (!nf.title.trim()) return alert("Give the album a name.");
-    await supabase.from("gallery_albums").insert({ title: nf.title.trim(), link_url: nf.link_url.trim() || null, cover_url: nf.cover_url || null });
-    setNf({ title: "", link_url: "", cover_url: "" }); setShowNew(false); load();
+    const ev = nf.event_id ? evMap[nf.event_id] : null;
+    const cover = nf.cover_url || ev?.poster_url || ev?.vertical_banner_url || ev?.banner_url || null;
+    await supabase.from("gallery_albums").insert({ title: nf.title.trim(), link_url: nf.link_url.trim() || null, cover_url: cover, event_id: nf.event_id || null });
+    setNf({ title: "", link_url: "", cover_url: "", event_id: "" }); setShowNew(false); load();
   };
   const pickCover = async (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -12774,11 +12778,27 @@ function Gallery({ isAdmin, myAlbum = null }) {
         {[["galleries", "📸 Event galleries"], ["mine", "📒 My album"]].map(([k, l]) => <button key={k} onClick={() => setGtab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${gtab === k ? W.teal : W.line}`, background: gtab === k ? W.teal : "#fff", color: gtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>)}
       </div>
       {gtab === "mine" && myAlbum}
-      {gtab === "galleries" && <div style={{ padding: 14 }}>
+      {gtab === "galleries" && (() => {
+        const ht = a => evMap[a.event_id]?.host_type || "glasswings";
+        const filtered = albums.filter(a => hostFlt === "all" || ht(a) === hostFlt);
+        const slides = albums.filter(a => a.cover_url).slice(0, 6).map(a => ({ id: a.id, img: a.cover_url }));
+        const albumById = id => albums.find(a => a.id === id);
+        return <div>
+        {slides.length > 0 && <HeroSlider slides={slides} wide={false} onSlide={(sl) => { const a = albumById(sl.id); if (a) openAlbum(a); }} />}
+        <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", overflowX: "auto" }}>
+          {[["all", "All"], ["glasswings", "🏠 Glasswings"], ["partner", "🤝 Partner"], ["meetup", "☕ Get-togethers"]].map(([k, lbl]) => (
+            <button key={k} onClick={() => setHostFlt(k)} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 999, border: `1px solid ${hostFlt === k ? W.teal : W.line}`, background: hostFlt === k ? W.teal : "#fff", color: hostFlt === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{lbl}</button>
+          ))}
+        </div>
+        <div style={{ padding: 14 }}>
         {isAdmin && !showNew && <button onClick={() => setShowNew(true)} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}><Plus size={18} />New album</button>}
         {isAdmin && showNew && (
           <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
             <input value={nf.title} onChange={e => setNf({ ...nf, title: e.target.value })} placeholder="Album name (e.g. Pub Social — May 2026)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 9 }} />
+            <select value={nf.event_id} onChange={e => { const id = e.target.value; const ev = evMap[id]; setNf(s => ({ ...s, event_id: id, title: (!s.title || s.title === (evMap[s.event_id]?.title || "")) && ev ? ev.title : s.title })); }} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 9, background: "#fff" }}>
+              <option value="">🔗 Link to an event (for filters & slider) — optional</option>
+              {(events || []).slice().sort((a, b) => new Date(b.event_at || 0) - new Date(a.event_at || 0)).map(e => <option key={e.id} value={e.id}>{e.emoji || "🎟️"} {e.title}</option>)}
+            </select>
             <input value={nf.link_url} onChange={e => setNf({ ...nf, link_url: e.target.value })} placeholder="📸 Google Photos / Drive album link (paste here)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", boxSizing: "border-box", marginBottom: 9 }} />
             <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 10, lineHeight: 1.4 }}>Paste a shared album link and members tap to view all photos there. Leave blank to upload photos inside the app instead.</div>
             <div style={{ display: "flex", gap: 9, alignItems: "center", marginBottom: 12 }}>
@@ -12787,25 +12807,27 @@ function Gallery({ isAdmin, myAlbum = null }) {
               {nf.cover_url && <img src={nf.cover_url} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: "cover" }} />}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => { setShowNew(false); setNf({ title: "", link_url: "", cover_url: "" }); }} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button onClick={() => { setShowNew(false); setNf({ title: "", link_url: "", cover_url: "", event_id: "" }); }} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
               <button onClick={saveAlbum} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center" }}>Create album</button>
             </div>
           </div>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
-          {albums.map(a => { const cover = a.cover_url || ((photos[a.id] || [])[0] || {}).url; const n = (photos[a.id] || []).length; const linked = !!a.link_url; return (
+          {filtered.map(a => { const cover = a.cover_url || ((photos[a.id] || [])[0] || {}).url; const n = (photos[a.id] || []).length; const linked = !!a.link_url; const ev = evMap[a.event_id]; const badge = ev ? (ev.host_type === "partner" ? "🤝" : ev.host_type === "meetup" ? "☕" : "🏠") : null; return (
             <div key={a.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden", position: "relative" }}>
               {linked && <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,.6)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 7px", borderRadius: 8, zIndex: 2 }}>🔗 ALBUM</div>}
               {isAdmin && <button onClick={(e) => { e.stopPropagation(); delAlbum(a); }} title="Delete album" style={{ position: "absolute", top: 8, left: 8, zIndex: 3, background: "rgba(192,57,43,.92)", color: "#fff", border: "none", borderRadius: 8, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Trash2 size={14} /></button>}
               <div onClick={() => openAlbum(a)} style={{ cursor: "pointer" }}>
                 <div style={{ width: "100%", aspectRatio: "4/3", background: W.bg }}>{cover ? <img src={cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: W.soft }}><ImageIcon size={28} /></div>}</div>
-                <div style={{ padding: "10px 12px" }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{a.title}</div><div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{linked ? "📸 Tap to view photos" : `${n} photo${n === 1 ? "" : "s"}`}</div></div>
+                <div style={{ padding: "10px 12px" }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{badge ? badge + " " : ""}{a.title}</div><div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{linked ? "📸 Tap to view photos" : `${n} photo${n === 1 ? "" : "s"}`}{ev?.city ? ` · ${ev.city}` : ""}</div></div>
               </div>
             </div>
           ); })}
         </div>
-        {albums.length === 0 && <Center>No galleries yet.{isAdmin ? " Create your first album above." : ""}</Center>}
-      </div>}
+        {filtered.length === 0 && <Center>No galleries here yet.{isAdmin ? " Create your first album above." : ""}</Center>}
+        </div>
+        </div>;
+      })()}
     </div>
   );
 }
@@ -13025,7 +13047,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • albumdel ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • galleryslider ✅</div>
       </div>
     </div>
   );
