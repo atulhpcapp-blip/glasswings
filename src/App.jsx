@@ -3644,7 +3644,7 @@ function LudoHub({ meId, onClose }) {
                 <div style={{ fontSize: 11.5, color: W.soft }}>{(g.players || []).map(pl => pl.name?.split(" ")[0]).join(", ")} · {g.status === "lobby" ? "waiting to start" : g.status === "playing" ? "in progress" : "finished"}</div>
               </div>
               <span onClick={() => setOpenGame(g.id)} style={{ color: W.teal, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Open →</span>
-              <button onClick={async () => { if (!confirm(`Delete game ${g.code}?`)) return; const { error } = await supabase.rpc("ludo_delete", { p_game: g.id }); if (error) return alert(error.message); load(); }} title="Delete game" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#C0392B", padding: "4px 6px", flexShrink: 0 }}><Trash2 size={17} /></button>
+              <button onClick={() => window.gwConfirm(`Delete game ${g.code}?`, async () => { const { error } = await supabase.rpc("ludo_delete", { p_game: g.id }); if (error) return window.gwConfirm(error.message, () => {}); load(); })} title="Delete game" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#C0392B", padding: "4px 6px", flexShrink: 0 }}><Trash2 size={17} /></button>
             </div>
           ))}
       </div>
@@ -13078,7 +13078,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludodelete ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludodel2 ✅</div>
       </div>
     </div>
   );
