@@ -3637,13 +3637,14 @@ function LudoHub({ meId, onClose }) {
         {games === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div>
           : !games.length ? <div style={{ color: W.soft, fontSize: 13 }}>No active games — create one and share the code! 🎲</div>
           : games.map(g => (
-            <div key={g.id} onClick={() => setOpenGame(g.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 4px", borderBottom: `1px solid ${W.line}`, cursor: "pointer" }}>
-              <span style={{ fontSize: 22 }}>🎲</span>
-              <div style={{ flex: 1 }}>
+            <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 4px", borderBottom: `1px solid ${W.line}` }}>
+              <span onClick={() => setOpenGame(g.id)} style={{ fontSize: 22, cursor: "pointer" }}>🎲</span>
+              <div onClick={() => setOpenGame(g.id)} style={{ flex: 1, cursor: "pointer" }}>
                 <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, letterSpacing: 1.5 }}>{g.code}</div>
                 <div style={{ fontSize: 11.5, color: W.soft }}>{(g.players || []).map(pl => pl.name?.split(" ")[0]).join(", ")} · {g.status === "lobby" ? "waiting to start" : g.status === "playing" ? "in progress" : "finished"}</div>
               </div>
-              <span style={{ color: W.teal, fontWeight: 800, fontSize: 12.5 }}>Open →</span>
+              <span onClick={() => setOpenGame(g.id)} style={{ color: W.teal, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Open →</span>
+              <button onClick={async () => { if (!confirm(`Delete game ${g.code}?`)) return; const { error } = await supabase.rpc("ludo_delete", { p_game: g.id }); if (error) return alert(error.message); load(); }} title="Delete game" style={{ background: "transparent", border: "none", cursor: "pointer", color: "#C0392B", padding: "4px 6px", flexShrink: 0 }}><Trash2 size={17} /></button>
             </div>
           ))}
       </div>
@@ -13077,7 +13078,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludorefresh ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludodelete ✅</div>
       </div>
     </div>
   );
