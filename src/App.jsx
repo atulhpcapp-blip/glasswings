@@ -3601,6 +3601,13 @@ function LudoHub({ meId, onClose }) {
   const [openGame, setOpenGame] = useState(null);
   const load = () => supabase.rpc("ludo_my_games").then(({ data }) => setGames(data || []));
   useEffect(() => { load(); }, [openGame]);
+  useEffect(() => {
+    load();
+    const onVis = () => { if (!document.hidden) load(); };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", load);
+    return () => { document.removeEventListener("visibilitychange", onVis); window.removeEventListener("focus", load); };
+  }, []);
   const create = async () => {
     setBusy(true);
     const { data, error } = await supabase.rpc("ludo_create");
@@ -13070,7 +13077,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gallerymonth ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludorefresh ✅</div>
       </div>
     </div>
   );
