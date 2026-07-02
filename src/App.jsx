@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import SnapLensCamera from "./SnapLensCamera.jsx";
 import { supabase } from "./supabaseClient.js";
+const HAS_SNAP_CAM = !!(typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_SNAP_CAMERA_KIT_TOKEN && import.meta.env.VITE_SNAP_LENS_GROUP_ID);
 import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
@@ -2854,7 +2856,7 @@ function Main({ user }) {
         {screen}
       </div>
       <Nav tab={tab} setTab={setTab} isAdmin={isStaff} onCamera={() => setNavCam(true)} />
-      {navCam && <GWCamera meId={user.id} events={events} onClose={() => { setNavCam(false); loadStories(); }} />}
+      {navCam && (HAS_SNAP_CAM ? <SnapLensCamera onClose={() => { setNavCam(false); loadStories(); }} onCapture={() => { setNavCam(false); loadStories(); }} /> : <GWCamera meId={user.id} events={events} onClose={() => { setNavCam(false); loadStories(); }} />)}
       <GwDialogHost />
       {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
@@ -6331,7 +6333,7 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
   );
   return (
     <>
-      {camOpen && <GWCamera meId={meId} events={events} onClose={() => { setCamOpen(false); onRefresh(); }} />}
+      {camOpen && (HAS_SNAP_CAM ? <SnapLensCamera onClose={() => { setCamOpen(false); onRefresh(); }} onCapture={() => { setCamOpen(false); onRefresh(); }} /> : <GWCamera meId={meId} events={events} onClose={() => { setCamOpen(false); onRefresh(); }} />)}
       <div style={{ display: "flex", gap: 8, padding: "10px 14px 0", background: "#fff" }}>
         {[["me", "🟣 My stories"], ["event", "🟢 Event stories"]].map(([k, l]) => <button key={k} onClick={() => setSTab(k)} style={{ padding: "6px 14px", borderRadius: 16, border: `1px solid ${sTab === k ? W.teal : W.line}`, background: sTab === k ? W.teal : "#fff", color: sTab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>)}
       </div>
@@ -7560,7 +7562,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
       {snapOpen && <SnapViewer msg={snapOpen} onClose={() => setSnapOpen(null)} />}
       {pollOpen && <PollCreator onClose={() => setPollOpen(false)} onCreate={(q, opts) => { setPollOpen(false); sendSpecial({ body: q, media_type: "poll", file_name: JSON.stringify(opts) }); }} />}
       {gamesOpen && <GameShareSheet onClose={() => setGamesOpen(false)} onSendToRoom={(label, url) => { setGamesOpen(false); sendSpecial({ body: url ? `${label} ${url}` : label }); }} />}
-      {gwCamOpen && <GWCamera meId={user.id} events={gwEvents} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "snap"); }} onClose={() => setGwCamOpen(false)} />}
+      {gwCamOpen && (HAS_SNAP_CAM ? <SnapLensCamera onClose={() => setGwCamOpen(false)} onCapture={async (dataUrl) => { setGwCamOpen(false); try { const blob = await (await fetch(dataUrl)).blob(); const f = new File([blob], `snap_${Date.now()}.jpg`, { type: "image/jpeg" }); await sendFile(f, "snap"); } catch (e) { console.error(e); } }} /> : <GWCamera meId={user.id} events={gwEvents} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "snap"); }} onClose={() => setGwCamOpen(false)} />)}
       {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
         <div onClick={() => setRoomPick(false)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
@@ -13174,7 +13176,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • reportsfix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • snapcam ✅</div>
       </div>
     </div>
   );
