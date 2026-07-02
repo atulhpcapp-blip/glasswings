@@ -836,8 +836,10 @@ function GwDialogHost() {
     window.alert = (msg) => { try { setD({ msg: String(msg) }); } catch { native(msg); } };
     window.gwConfirm = (msg, onOk) => setD({ msg: String(msg), onOk });
     window.gwPrompt = (msg, dflt = "") => new Promise((resolve) => { setVal(dflt == null ? "" : String(dflt)); setD({ msg: String(msg), input: true, resolve }); });
+    window.gwReport = (opts) => setD({ report: true, ...opts });
     return () => { window.alert = native; _gwDialogSet = null; };
   }, []);
+  if (d && d.report) return <ReportSheet opts={d} onClose={() => setD(null)} />;
   if (!d) return null;
   const dismiss = () => { setD(null); setVal(""); };
   const onCancel = () => { const r = d.resolve; dismiss(); if (r) r(null); };
@@ -862,7 +864,57 @@ function GwDialogHost() {
     </div>
   );
 }
-const GW_NAME_COLORS = ["#E0529C", "#7C3AED", "#0E7490", "#D97706", "#DC2626", "#059669", "#2563EB", "#C026D3", "#EA580C", "#0D9488", "#9333EA", "#B91C1C"];
+function ReportSheet({ opts, onClose }) {
+  const [reason, setReason] = useState("");
+  const [details, setDetails] = useState("");
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState(false);
+  const reasons = ["Harassment or bullying", "Inappropriate / sexual content", "Spam or scam", "Fake profile / impersonation", "Underage user", "Safety concern", "Other"];
+  const submit = async () => {
+    if (!reason) return;
+    setSending(true);
+    const { error } = await supabase.rpc("submit_report", {
+      p_reported_user: opts.userId, p_reason: reason, p_details: details || null,
+      p_message_id: opts.messageId || null, p_context: opts.context || null,
+    });
+    setSending(false);
+    if (error) { window.alert(error.message); return; }
+    setDone(true);
+    setTimeout(onClose, 1600);
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(8,20,18,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 480, padding: "18px 18px 26px", boxShadow: "0 -8px 30px rgba(0,0,0,.25)", animation: "gwup .25s ease" }}>
+        <style>{`@keyframes gwup { 0% { transform: translateY(40px); opacity: .4; } 100% { transform: translateY(0); opacity: 1; } }`}</style>
+        {done ? (
+          <div style={{ textAlign: "center", padding: "24px 8px" }}>
+            <div style={{ fontSize: 40 }}>✅</div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, marginTop: 8 }}>Report sent</div>
+            <div style={{ fontSize: 13, color: W.soft, marginTop: 6, lineHeight: 1.5 }}>Thank you for helping keep Glasswings safe. Our team will review this and take action if needed.</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 20 }}>🚩</span>
+              <div style={{ fontWeight: 800, fontSize: 16, color: W.ink }}>Report{opts.name ? ` ${opts.name}` : ""}</div>
+            </div>
+            <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Reports are confidential. Our team reviews every one.</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 12 }}>
+              {reasons.map(r => (
+                <button key={r} onClick={() => setReason(r)} style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${reason === r ? W.teal : W.line}`, background: reason === r ? W.teal : "#fff", color: reason === r ? "#fff" : W.ink, fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>{r}</button>
+              ))}
+            </div>
+            <textarea value={details} onChange={e => setDetails(e.target.value)} placeholder="Add any details (optional)…" rows={3} style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 11, padding: "11px 13px", fontSize: 14, outline: "none", resize: "none", marginBottom: 12 }} />
+            <div style={{ display: "flex", gap: 9 }}>
+              <button onClick={onClose} style={{ flex: 1, padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Cancel</button>
+              <button onClick={submit} disabled={!reason || sending} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: reason ? "#C0392B" : "#E0A8A2", color: "#fff", fontWeight: 800, cursor: reason ? "pointer" : "default" }}>{sending ? "Sending…" : "Submit report"}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 function gwNameColor(id) {
   let h = 0; const t = String(id || "");
   for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
@@ -7255,6 +7307,9 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             {isGroupChat && <div onClick={() => openInfo(tray)} style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>ℹ️ Info — read by</div>}
             {tray?.media_type === "image" && tray?.media_url && <div onClick={async () => { await supabase.from("my_album").insert({ user_id: user.id, url: tray.media_url, source: "saved" }); setTray(null); alert("💾 Saved to My Album!"); }} style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>💾 Save to My Album</div>}
             {canMod && <div onClick={() => deleteMsg(tray)} style={{ fontSize: 13.5, fontWeight: 800, color: "#C0392B", cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>🗑️ Delete (staff)</div>}
+            {(() => { const mm = (msgs || []).find(x => x.id === tray); if (!mm || mm.sender_id === user.id) return null; return (
+              <div onClick={() => { const nm = senders[mm.sender_id]?.name; setTray(null); window.gwReport({ userId: mm.sender_id, name: nm, messageId: mm.id, context: room.name }); }} style={{ fontSize: 13.5, fontWeight: 800, color: "#C0392B", cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>🚩 Report message</div>
+            ); })()}
           </div>
         </div>
       )}
@@ -7278,6 +7333,7 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             const text = `${room.emoji || "💬"} Join *${room.name}* on Glasswings 💚\n${link}`;
             try { if (navigator.share) await navigator.share({ title: room.name, text }); else { window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); } } catch {}
           }} style={{ cursor: "pointer", flexShrink: 0, opacity: .95 }} />}
+          {groupType === "p2p" && room.otherId && <span title="Report user" onClick={() => window.gwReport({ userId: room.otherId, name: room.name, context: "Direct chat" })} style={{ cursor: "pointer", flexShrink: 0, opacity: .9, fontSize: 17 }}>🚩</span>}
           {groupType === "p2p" && onDeleteThread && <Trash2 size={19} onClick={onDeleteThread} style={{ cursor: "pointer", flexShrink: 0, opacity: .9 }} />}
         </div>
         {(room.pinned || isAdmin) && (
@@ -8969,7 +9025,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
-    ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"]] : []),
+    ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
@@ -8995,7 +9051,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "subcoupons" ? <PlanCouponsAdmin />
+      {seg === "reports" ? <ReportsAdmin />
+        : seg === "subcoupons" ? <PlanCouponsAdmin />
         : seg === "accounts" ? <AccountsAdmin />
         : seg === "subscribers" ? <SubscribersAdmin />
         : seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
@@ -11550,6 +11607,44 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
     </div>
   );
 }
+function ReportsAdmin() {
+  const [rows, setRows] = useState(null);
+  const [status, setStatus] = useState("open");
+  const load = () => supabase.rpc("reports_list", { p_status: status }).then(({ data }) => setRows(data || []));
+  useEffect(load, [status]);
+  const resolve = async (id) => { await supabase.rpc("report_resolve", { p_id: id }); load(); };
+  const openCount = (rows || []).filter(r => r.status === "open").length;
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "0 2px 12px" }}>🚩 Member reports. Review each and take action — you can block the user or delete their messages from the Members tab and chats. Mark resolved when handled.</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[["open", "🔴 Open"], ["resolved", "✅ Resolved"], ["all", "All"]].map(([k, lbl]) => (
+          <button key={k} onClick={() => setStatus(k)} style={{ ...btn(status === k ? W.teal : "#fff", status === k ? "#fff" : W.ink), border: `1px solid ${status === k ? W.teal : W.line}`, padding: "7px 13px", fontSize: 12.5 }}>{lbl}</button>
+        ))}
+      </div>
+      {rows === null ? <div style={{ color: W.soft, textAlign: "center", padding: 20 }}>Loading…</div>
+        : rows.length === 0 ? <div style={{ color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>{status === "open" ? "No open reports — all clear 💚" : "No reports here."}</div>
+        : rows.map(r => (
+          <div key={r.id} style={{ background: "#fff", border: `1px solid ${r.status === "open" ? "#F2C4C0" : W.line}`, borderRadius: 12, padding: 13, marginBottom: 9 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+              <span style={{ background: "#FBE9E7", color: "#C0392B", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 9 }}>🚩 {r.reason || "Report"}</span>
+              {r.status === "resolved" && <span style={{ background: "#E7F6EF", color: "#0d6e58", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 9 }}>✅ Resolved</span>}
+              <span style={{ fontSize: 11.5, color: W.soft, marginLeft: "auto" }}>{new Date(r.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+            </div>
+            <div style={{ fontSize: 14, color: W.ink }}><b>{r.reported || "A member"}</b> reported by <b>{r.reporter || "a member"}</b></div>
+            {r.context && <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>in {r.context}</div>}
+            {r.message_body && <div style={{ fontSize: 13, color: W.ink, background: W.bg, borderRadius: 8, padding: "8px 10px", marginTop: 7, fontStyle: "italic" }}>"{r.message_body}"</div>}
+            {r.details && <div style={{ fontSize: 13, color: W.soft, marginTop: 6 }}>{r.details}</div>}
+            {r.status === "open" && (
+              <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+                <button onClick={() => resolve(r.id)} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", fontSize: 12.5, padding: "8px 6px" }}>✓ Mark resolved</button>
+              </div>
+            )}
+          </div>
+        ))}
+    </div>
+  );
+}
 function PlanCouponsAdmin() {
   const [rows, setRows] = useState(null);
   const [plans, setPlans] = useState([]);
@@ -13078,7 +13173,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • ludodel2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • reports ✅</div>
       </div>
     </div>
   );
