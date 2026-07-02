@@ -310,7 +310,6 @@ class GwErrorBoundary extends React.Component {
             <div style={{ fontSize: 40 }}>😕</div>
             <div style={{ fontWeight: 800, fontSize: 17, color: "#111B21", marginTop: 10 }}>Something went wrong</div>
             <div style={{ fontSize: 13.5, color: "#667781", marginTop: 8, lineHeight: 1.5 }}>A small glitch stopped this screen. Your data is safe — just reload.</div>
-            {this.state.err && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 10, textAlign: "left", background: "#FBE9E7", borderRadius: 8, padding: "8px 10px", wordBreak: "break-word", maxHeight: 160, overflow: "auto" }}>{String(this.state.err && this.state.err.message || this.state.err)}{this.state.err && this.state.err.stack ? "\n\n" + String(this.state.err.stack).split("\n").slice(0, 4).join("\n") : ""}</div>}
             <button onClick={() => { try { window.location.href = "/"; } catch {} }} style={{ marginTop: 18, background: "#008069", color: "#fff", border: "none", borderRadius: 10, padding: "12px 22px", fontWeight: 800, fontSize: 14.5, cursor: "pointer" }}>↻ Reload app</button>
           </div>
         </div>
@@ -916,6 +915,7 @@ function ReportSheet({ opts, onClose }) {
     </div>
   );
 }
+const GW_NAME_COLORS = ["#E0529C", "#7C3AED", "#0E7490", "#D97706", "#DC2626", "#059669", "#2563EB", "#C026D3", "#EA580C", "#0D9488", "#9333EA", "#B91C1C"];
 function gwNameColor(id) {
   let h = 0; const t = String(id || "");
   for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
@@ -13174,7 +13174,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • errdbg ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • reportsfix ✅</div>
       </div>
     </div>
   );
