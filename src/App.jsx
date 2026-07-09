@@ -354,12 +354,12 @@ function Shell({ children }) {
     </div>
   );
 }
-function DesktopSidebar({ tab, setTab, isAdmin, width }) {
+function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
   const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, { id: "meet", icon: Users, label: "Meet" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
-      {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: on ? W.teal : "transparent", color: on ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on ? 700 : 600, fontSize: 15 }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}</button>; })}
+      {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: on ? W.teal : "transparent", color: on ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on ? 700 : 600, fontSize: 15 }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}{it.id === "meet" && meetBadge > 0 && <span style={{ marginLeft: "auto", background: "#EC4899", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{meetBadge}</span>}</button>; })}
     </div>
   );
 }
@@ -1984,6 +1984,21 @@ function Main({ user }) {
   const [hasDM, setHasDM] = useState(false);
   const [focusEvent, setFocusEvent] = useState(null);
   const openEvent = (id) => { setOpen(null); setTab("events"); setEventPage(id); };
+  const openDM = async (id, name) => {
+    const { data: ok } = await supabase.rpc("can_dm", { p_other: id });
+    if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, matched with a mutual wave \ud83d\udc4b, or whom an admin has connected you with.");
+    const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id });
+    if (error) return setNotice(error.message);
+    setTab("chats"); setOpen({ id: tid, type: "p2p", title: name });
+  };
+  const [meetBadge, setMeetBadge] = useState(0);
+  useEffect(() => {
+    const loadBadge = () => supabase.rpc("waves_unseen_count").then(({ data }) => setMeetBadge(data || 0)).catch(() => {});
+    loadBadge();
+    window.addEventListener("gwmeet", loadBadge);
+    window.addEventListener("focus", loadBadge);
+    return () => { window.removeEventListener("gwmeet", loadBadge); window.removeEventListener("focus", loadBadge); };
+  }, []);
   useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setEventPage(ev); } } catch {} }, []);
   useEffect(() => { loadRazorpay(); }, []);
   const [tab, setTab] = useState(() => {
@@ -2723,13 +2738,13 @@ function Main({ user }) {
         </div>
       )}
       {tab === "chats" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>)}
-      {tab === "explore" && <Explore rooms={rooms.filter(r => !r.segment_id || isStaff || mySegs.includes(r.segment_id))} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
+      {tab === "explore" && <Explore rooms={rooms.filter(r => !r.segment_id || isStaff || mySegs.includes(r.segment_id))} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} onOpenDM={openDM} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && <MeetPage meId={user.id} asTab />}
+      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} />}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -2790,7 +2805,7 @@ function Main({ user }) {
           );
         })()}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
-          <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} />
+          <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} meetBadge={meetBadge} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
             {twoPane ? (
               <>
@@ -2854,7 +2869,7 @@ function Main({ user }) {
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {screen}
       </div>
-      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} />
+      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} meetBadge={meetBadge} />
       <GwDialogHost />
       {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
@@ -3339,7 +3354,7 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     </div>
   );
 }
-function MeetPage({ meId, onClose, asTab = false }) {
+function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
   const [mtab, setMtab] = useState("discover");
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
@@ -3354,6 +3369,7 @@ function MeetPage({ meId, onClose, asTab = false }) {
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
   };
   useEffect(load, []);
+  useEffect(() => { if (mtab !== "waves") return; supabase.rpc("waves_mark_seen").then(() => { try { window.dispatchEvent(new Event("gwmeet")); } catch {} }); }, [mtab]);
   const lastActive = (ts) => {
     if (!ts) return "";
     const m = (Date.now() - new Date(ts).getTime()) / 60000;
@@ -3372,7 +3388,7 @@ function MeetPage({ meId, onClose, asTab = false }) {
     if (!data?.ok) return window.gwConfirm("You've used today's 5 free waves 👋\n\n💎 Premium members wave unlimited — check Plans in your Profile!", () => {});
     setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
     setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
-    if (data.mutual) window.gwConfirm(`💚 You and ${p.name?.split(" ")[0] || "they"} both waved!\n\nSay hi at the next event you're both at 🎉`, () => {});
+    if (data.mutual) window.gwConfirm(`💚 You and ${p.name?.split(" ")[0] || "they"} both waved!\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, p.name); });
   };
   const openPeek = (p) => { setPeek(p); supabase.rpc("record_profile_view", { p_user: p.id }); };
   const showViewers = async () => {
@@ -3459,7 +3475,7 @@ function MeetPage({ meId, onClose, asTab = false }) {
     </div>
   );
 }
-function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom, isStaffUser = false, meId }) {
+function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom, isStaffUser = false, meId, onOpenDM }) {
   const [meetOpen, setMeetOpen] = useState(false);
   const admin = ["admin", "superadmin"].includes(profile?.role);
   const [city, setCity] = useState("all");
@@ -3471,7 +3487,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
   return (
     <div>
       <TopBar title="Rooms" />
-      {meetOpen && <MeetPage meId={meId} onClose={() => setMeetOpen(false)} />}
+      {meetOpen && <MeetPage meId={meId} onOpenDM={onOpenDM} onClose={() => setMeetOpen(false)} />}
       <div onClick={() => setMeetOpen(true)} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 15, padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,128,105,.25)" }}>
         <span style={{ fontSize: 30 }}>👋</span>
         <div style={{ flex: 1 }}>
@@ -12796,7 +12812,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meetnav ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meetwave2 ✅</div>
       </div>
     </div>
   );
@@ -13201,12 +13217,15 @@ function lastSeenStr(ts) {
   if (days < 7) return `last seen ${days}d ago`;
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
-function Nav({ tab, setTab, isAdmin }) {
+function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
   const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, { id: "meet", icon: Users, label: "Meet" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", padding: "8px 0 11px" }}>
       {items.map((it) => { const on = tab === it.id; const I = it.icon; return (
-        <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft }}><I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span></button>
+        <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft, position: "relative" }}>
+          {it.id === "meet" && meetBadge > 0 && <span style={{ position: "absolute", top: -4, right: "50%", transform: "translateX(16px)", background: "#EC4899", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 6px", minWidth: 16 }}>{meetBadge}</span>}
+          <I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span>
+        </button>
       ); })}
     </div>
   );
