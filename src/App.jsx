@@ -2727,7 +2727,7 @@ function Main({ user }) {
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
-      {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} myAlbum={<MyAlbum meId={user.id} />} /></>}
+      {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -6837,7 +6837,6 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             <div onClick={() => { const mm = (msgs || []).find(x => x.id === tray); if (mm) setReplyTo(mm); setTray(null); }}
               style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "4px 14px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>↩️ Reply</div>
             {isGroupChat && <div onClick={() => openInfo(tray)} style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>ℹ️ Info — read by</div>}
-            {tray?.media_type === "image" && tray?.media_url && <div onClick={async () => { await supabase.from("my_album").insert({ user_id: user.id, url: tray.media_url, source: "saved" }); setTray(null); alert("💾 Saved to My Album!"); }} style={{ fontSize: 13.5, fontWeight: 800, color: W.teal, cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>💾 Save to My Album</div>}
             {canMod && <div onClick={() => deleteMsg(tray)} style={{ fontSize: 13.5, fontWeight: 800, color: "#C0392B", cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>🗑️ Delete (staff)</div>}
             {(() => { const mm = (msgs || []).find(x => x.id === tray); if (!mm || mm.sender_id === user.id) return null; return (
               <div onClick={() => { const nm = senders[mm.sender_id]?.name; setTray(null); window.gwReport({ userId: mm.sender_id, name: nm, messageId: mm.id, context: room.name }); }} style={{ fontSize: 13.5, fontWeight: 800, color: "#C0392B", cursor: "pointer", padding: "6px 14px 2px", borderTop: `1px solid ${W.line}`, width: "100%", textAlign: "center" }}>🚩 Report message</div>
@@ -12287,57 +12286,7 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
 }
 
 /* ---------------- profile ---------------- */
-function MyAlbum({ meId }) {
-  const [pics, setPics] = useState(null);
-  const [full, setFull] = useState(null);
-  const [openAll, setOpenAll] = useState(false);
-  const load = () => supabase.from("my_album").select("id, url, source, created_at").eq("user_id", meId)
-    .order("created_at", { ascending: false }).then(({ data, error }) => setPics(error ? [] : (data || [])));
-  useEffect(() => { load(); }, []);
-  const del = (id) => window.gwConfirm("Remove this photo from My Album?", async () => {
-    await supabase.from("my_album").delete().eq("id", id); setFull(null); load();
-  });
-  const dl = (url) => { const a = document.createElement("a"); a.href = url; a.download = "glasswings-memory.jpg"; a.target = "_blank"; a.click(); };
-  if (pics === null) return null;
-  const show = openAll ? pics : pics.slice(0, 6);
-  return (
-    <div style={{ background: "#fff", borderBottom: `8px solid ${W.bg}`, padding: "14px 14px 12px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
-        <span style={{ fontSize: 17 }}>📒</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>My Album</div>
-          <div style={{ fontSize: 11, color: W.soft }}>🔒 Only you can see this · {pics.length} photo{pics.length === 1 ? "" : "s"}</div>
-        </div>
-        {pics.length > 6 && <span onClick={() => setOpenAll(v => !v)} style={{ color: W.teal, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{openAll ? "Show less" : "See all"}</span>}
-      </div>
-      {!pics.length ? (
-        <div style={{ fontSize: 12.5, color: W.soft, padding: "6px 0 2px" }}>Photos you take with the 📷 Glasswings Camera, post to stories, or save from chats will appear here automatically. ✨</div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
-          {show.map(ph => (
-            <div key={ph.id} onClick={() => setFull(ph)} style={{ position: "relative", cursor: "pointer" }}>
-              <img src={ph.url} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 9 }} />
-              {ph.source === "story" && <span style={{ position: "absolute", top: 5, right: 5, fontSize: 11 }}>📸</span>}
-            </div>
-          ))}
-        </div>
-      )}
-      {full && (
-        <div onClick={() => setFull(null)} style={{ position: "fixed", inset: 0, zIndex: 240, background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <img src={full.url} alt="" style={{ maxWidth: "100%", maxHeight: "86%", objectFit: "contain" }} />
-          <div style={{ position: "absolute", top: 14, right: 16, display: "flex", gap: 20, alignItems: "center" }} onClick={e => e.stopPropagation()}>
-            <span onClick={async () => { const { error } = await supabase.from("stories").insert({ event_id: null, user_id: meId, media_url: full.url }); alert(error ? error.message : "📸 Posted to your story!"); }} style={{ fontSize: 13, fontWeight: 800, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)", borderRadius: 16, padding: "7px 13px", cursor: "pointer" }}>📸 Story</span>
-            <span onClick={() => dl(full.url)} style={{ fontSize: 21, cursor: "pointer" }}>⬇️</span>
-            <Trash2 size={21} color="#fff" onClick={() => del(full.id)} style={{ cursor: "pointer" }} />
-            <X size={24} color="#fff" style={{ cursor: "pointer" }} onClick={() => setFull(null)} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
-  const [gtab, setGtab] = useState("galleries");
+function Gallery({ isAdmin, events = [], onOpenEvent }) {
   const [albums, setAlbums] = useState([]);
   const [photos, setPhotos] = useState({});
   const [open, setOpen] = useState(null);
@@ -12407,11 +12356,7 @@ function Gallery({ isAdmin, events = [], onOpenEvent, myAlbum = null }) {
   return (
     <div>
       <TopBar title="Glasswings Memories" />
-      <div style={{ display: "flex", gap: 8, padding: "12px 14px 0" }}>
-        {[["galleries", "📸 Event galleries"], ["mine", "📒 My album"]].map(([k, l]) => <button key={k} onClick={() => setGtab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${gtab === k ? W.teal : W.line}`, background: gtab === k ? W.teal : "#fff", color: gtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>)}
-      </div>
-      {gtab === "mine" && myAlbum}
-      {gtab === "galleries" && (() => {
+      {(() => {
         const ht = a => evMap[a.event_id]?.host_type || a.host_type || "glasswings";
         const albDate = a => { const ev = evMap[a.event_id]; return ev?.event_at || a.event_date || a.created_at; };
         const ym = d => { if (!d) return null; const x = new Date(d); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0"); };
@@ -12702,7 +12647,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • nocamera ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • galleryonly ✅</div>
       </div>
     </div>
   );
