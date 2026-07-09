@@ -9920,8 +9920,17 @@ function CheckInSheet({ event, onClose }) {
         fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "guest", access_token: token, guest_id: gNew.id }) });
       } catch (e2) {}
     }
+    // auto-share the ticket on WhatsApp right after adding
+    let gShare = { name: gName.trim(), phone: gPhone, quantity: Number(gQty) || 1, code: gNew?.code };
+    if (!gShare.code && gNew?.id) {
+      const { data: gl } = await supabase.rpc("guest_list", { p_event: event.id });
+      const row = (gl || []).find(x => x.id === gNew.id);
+      if (row) gShare = { ...row };
+      setGuests(gl || []);
+    }
     setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc("");
     loadGuests();
+    if (gShare.code) window.gwConfirm(`✅ ${gShare.name} added to the guest list.\n\nShare their ticket on WhatsApp now?`, () => shareGuest(gShare));
   };
   const guestWa = (g) => {
     const text = `🎟️ ${event.title}\nGuest ticket for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nYour ticket — open & show the QR at the door:\nhttps://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
@@ -12648,7 +12657,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • eventdup ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestwa ✅</div>
       </div>
     </div>
   );
