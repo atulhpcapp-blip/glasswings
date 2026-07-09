@@ -2614,6 +2614,7 @@ function Main({ user }) {
     const { id, created_at, ...rest } = e;
     rest.title = (e.title || "Event") + " (copy)";
     rest.approved = false;
+    rest.host_id = user.id;
     const { data: ne, error } = await supabase.from("events").insert(rest).select("id").single();
     if (error) return setNotice(error.message);
     const { data: tts } = await supabase.from("event_ticket_types").select("*").eq("event_id", id);
@@ -12647,7 +12648,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • galleryonly ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • eventdup ✅</div>
       </div>
     </div>
   );
