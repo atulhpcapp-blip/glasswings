@@ -3338,7 +3338,128 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     </div>
   );
 }
+function MeetPage({ meId, onClose }) {
+  const [mtab, setMtab] = useState("discover");
+  const [rows, setRows] = useState(null);
+  const [inbox, setInbox] = useState([]);
+  const [flt, setFlt] = useState("all");
+  const [viewsN, setViewsN] = useState(0);
+  const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
+  const [peek, setPeek] = useState(null);
+  const [waveBusy, setWaveBusy] = useState(null);
+  const load = () => {
+    supabase.rpc("meet_list").then(({ data }) => setRows(data || []));
+    supabase.rpc("waves_inbox").then(({ data }) => setInbox(data || []));
+    supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
+  };
+  useEffect(load, []);
+  const lastActive = (ts) => {
+    if (!ts) return "";
+    const m = (Date.now() - new Date(ts).getTime()) / 60000;
+    if (m < 60 * 6) return "🟢 active now";
+    if (m < 60 * 24) return "🟢 active today";
+    const d = Math.floor(m / (60 * 24));
+    if (d <= 7) return `active ${d}d ago`;
+    return "";
+  };
+  const isNewbie = (j) => j && (Date.now() - new Date(j).getTime()) < 14 * 86400000;
+  const doWave = async (p) => {
+    setWaveBusy(p.id);
+    const { data, error } = await supabase.rpc("wave_to", { p_user: p.id });
+    setWaveBusy(null);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) return window.gwConfirm("You've used today's 5 free waves 👋\n\n💎 Premium members wave unlimited — check Plans in your Profile!", () => {});
+    setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
+    setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
+    if (data.mutual) window.gwConfirm(`💚 You and ${p.name?.split(" ")[0] || "they"} both waved!\n\nSay hi at the next event you're both at 🎉`, () => {});
+  };
+  const openPeek = (p) => { setPeek(p); supabase.rpc("record_profile_view", { p_user: p.id }); };
+  const showViewers = async () => {
+    const { data, error } = await supabase.rpc("meet_views_list");
+    if (error) { setViewers("locked"); return; }
+    setViewers(data || []);
+  };
+  const filtered = (rows || []).filter(p =>
+    flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt));
+  const card = (p, waveLbl) => (
+    <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden" }}>
+      <div onClick={() => openPeek(p)} style={{ cursor: "pointer", position: "relative" }}>
+        <div style={{ width: "100%", aspectRatio: "1", background: W.bg }}>
+          {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 42 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
+        </div>
+        {isNewbie(p.joined) && <span style={{ position: "absolute", top: 8, left: 8, background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🆕 NEW</span>}
+        {p.waved_me && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
+      </div>
+      <div style={{ padding: "9px 11px" }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
+        <div style={{ fontSize: 11, color: W.soft, marginTop: 1, minHeight: 14 }}>{[p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
+        <button onClick={() => doWave(p)} disabled={p.waved_by_me || waveBusy === p.id} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: p.waved_by_me ? "default" : "pointer", fontWeight: 800, fontSize: 12.5, background: p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal), color: p.waved_by_me ? "#0d6e58" : "#fff" }}>
+          {waveBusy === p.id ? "…" : p.waved_by_me ? "✓ Waved" : (waveLbl || (p.waved_me ? "👋 Wave back" : "👋 Wave"))}
+        </button>
+      </div>
+    </div>
+  );
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 160, background: W.bg, overflowY: "auto" }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 5, background: W.teal, color: "#fff", padding: "13px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+        <ArrowLeft size={21} onClick={onClose} style={{ cursor: "pointer" }} />
+        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>👋 Meet</div>
+      </div>
+      <div style={{ display: "flex", gap: 8, padding: "12px 14px 0" }}>
+        {[["discover", "✨ Discover"], ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]].map(([k, l]) => (
+          <button key={k} onClick={() => setMtab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${mtab === k ? W.teal : W.line}`, background: mtab === k ? W.teal : "#fff", color: mtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>
+        ))}
+      </div>
+      {mtab === "discover" && <>
+        <div onClick={() => (viewers === null ? showViewers() : setViewers(null))} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#F5F3FF,#FDF2F8)", border: "1px solid #E9D5FF", borderRadius: 13, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <span style={{ fontSize: 22 }}>👀</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5 }}>{viewsN} {viewsN === 1 ? "person" : "people"} viewed your profile this week</div>
+            <div style={{ fontSize: 11.5, color: W.soft }}>💎 Subscribers can see who · tap to {viewers === null ? "reveal" : "hide"}</div>
+          </div>
+        </div>
+        {viewers === "locked" && <div style={{ margin: "10px 14px 0", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "13px 14px", fontSize: 13, color: W.ink }}>🔒 Seeing <b>who</b> viewed you is a <b>💎 Premium perk</b> — subscribe from your Profile → Plans and this unlocks instantly.</div>}
+        {Array.isArray(viewers) && <div style={{ margin: "10px 14px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>{viewers.map(v => card({ ...v, joined: null, last_seen: v.viewed_at }, "👋 Wave"))}{viewers.length === 0 && <div style={{ gridColumn: "1/-1", color: W.soft, fontSize: 13, textAlign: "center", padding: 10 }}>No views yet — go wave at some people! 👋</div>}</div>}
+        <div style={{ display: "flex", gap: 7, padding: "12px 14px 2px", overflowX: "auto" }}>
+          {[["all", "All"], ["female", "👩 Women"], ["male", "👨 Men"], ["new", "🆕 Newbies"]].map(([k, l]) => (
+            <button key={k} onClick={() => setFlt(k)} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 999, border: `1px solid ${flt === k ? W.teal : W.line}`, background: flt === k ? W.teal : "#fff", color: flt === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
+          ))}
+        </div>
+        <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>
+          {rows === null ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24 }}>Loading members…</div>
+            : filtered.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>No one here yet.</div>
+            : filtered.map(p => card(p))}
+        </div>
+      </>}
+      {mtab === "waves" && (
+        <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>
+          {inbox.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>No waves yet — when someone waves at you, they'll show up here 👋</div>
+            : inbox.map(p => card({ ...p, joined: null, last_seen: p.waved_at, waved_me: true, waved_by_me: p.mutual }, p.mutual ? "💚 Mutual" : "👋 Wave back"))}
+        </div>
+      )}
+      {peek && (
+        <div onClick={() => setPeek(null)} style={{ position: "fixed", inset: 0, zIndex: 170, background: "rgba(8,20,18,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 480, overflow: "hidden" }}>
+            <div style={{ width: "100%", aspectRatio: "1", maxHeight: 380, background: W.bg }}>
+              {peek.avatar_url ? <img src={peek.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 70 }}>{peek.gender === "female" ? "👩" : peek.gender === "male" ? "👨" : "🙂"}</div>}
+            </div>
+            <div style={{ padding: "14px 16px 20px" }}>
+              <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}</div>
+              <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>Meet them at a Glasswings event — private chat unlocks after you've both checked in at the same event 💚</div>
+              <div style={{ display: "flex", gap: 9, marginTop: 14 }}>
+                <button onClick={() => setPeek(null)} style={{ flex: 1, padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
+                <button onClick={() => { doWave(peek); setPeek(null); }} disabled={peek.waved_by_me} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: peek.waved_by_me ? "#E7F6EF" : W.teal, color: peek.waved_by_me ? "#0d6e58" : "#fff", fontWeight: 800, cursor: peek.waved_by_me ? "default" : "pointer" }}>{peek.waved_by_me ? "✓ Waved" : "👋 Wave"}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom, isStaffUser = false, meId }) {
+  const [meetOpen, setMeetOpen] = useState(false);
   const admin = ["admin", "superadmin"].includes(profile?.role);
   const [city, setCity] = useState("all");
   const cityList = Array.from(new Set(rooms.map(r => r.city).filter(Boolean))).sort();
@@ -3349,6 +3470,15 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
   return (
     <div>
       <TopBar title="Rooms" />
+      {meetOpen && <MeetPage meId={meId} onClose={() => setMeetOpen(false)} />}
+      <div onClick={() => setMeetOpen(true)} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 15, padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,128,105,.25)" }}>
+        <span style={{ fontSize: 30 }}>👋</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800, color: "#fff", fontSize: 15.5 }}>Meet new people</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", marginTop: 2 }}>Wave 👋 · see who's new 🆕 · who viewed you 👀</div>
+        </div>
+        <span style={{ color: "#fff", fontWeight: 800, fontSize: 13, background: "rgba(255,255,255,.18)", padding: "8px 13px", borderRadius: 10 }}>Open →</span>
+      </div>
       <AlbumsStrip isStaff={isStaffUser} meId={meId} />
       {cityList.length > 0 && <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>{chip("all", "All cities")}{cityList.map(c => chip(c, c))}</div>}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
@@ -12625,6 +12755,14 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           </div>
         )}
         <PushToggle user={user} />
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "13px 15px", marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 20 }}>👋</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: W.ink, fontSize: 15 }}>Show me in Meet</div>
+            <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>Appear in the Meet section so members can wave at you</div>
+          </div>
+          <input type="checkbox" defaultChecked={profile?.meet_visible !== false} onChange={async (e) => { await supabase.from("profiles").update({ meet_visible: e.target.checked }).eq("id", user.id); }} style={{ width: 20, height: 20, accentColor: W.teal, cursor: "pointer" }} />
+        </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
         {streak && (
@@ -12657,7 +12795,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • guestwa ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meet ✅</div>
       </div>
     </div>
   );
