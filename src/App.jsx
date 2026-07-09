@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import SnapLensCamera from "./SnapLensCamera.jsx";
 import { supabase } from "./supabaseClient.js";
-const HAS_SNAP_CAM = !!(typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_SNAP_CAMERA_KIT_TOKEN && import.meta.env.VITE_SNAP_LENS_GROUP_ID);
 import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
@@ -1787,9 +1785,9 @@ const PRIVACY = {
   sections: [
     { p: "Glasswings Events Private Limited (we, us, our), which operates glass-wings.com and the Glasswings community app (also known as Glasswings Party Club), is based in India. This policy explains what information we collect, why, who we share it with, and your choices. You must be 18 or older to use the app. By using Glasswings you agree to this policy." },
     { h: "Information we collect", p: "\u2022 Account details you provide: name, email, phone number, gender, age, city, profession and profile photo.\n\u2022 Content you create: chat and direct messages, photos, stories, poll responses and other posts in rooms and events.\n\u2022 Event activity: tickets purchased, check-ins, and guest, waitlist or VIP list entries.\n\u2022 Payment information: processed by Razorpay \u2014 we do not see or store your full card / UPI / bank details, only a record that a payment or subscription succeeded.\n\u2022 Notifications: if you enable them, a push token for your device.\n\u2022 Basic usage and device information needed to run the service securely." },
-    { h: "Camera, photos and AR lenses", p: "When you use the in-app camera, your camera feed is processed in your browser to show the live preview and any AR lens you pick. AR lenses are powered by Snap Camera Kit, which runs on your device \u2014 those camera frames are processed locally and are not sent to us in real time. Only the photos or stories you choose to capture and post are uploaded and shared with other members." },
+    { h: "Photos and stories", p: "Only the photos or stories you choose to upload and post are stored and shared with other members as per the app rules." },
     { h: "How we use it", p: "To run the community, events, tickets and subscriptions; to enable chat and messaging under our community rules; to send organiser messages and notifications you opt into; to process payments and renewals; to analyse usage and prevent fraud or misuse; and to comply with the law." },
-    { h: "Who we share it with", p: "We share only what is necessary with our service providers: Razorpay (payments and recurring subscriptions), Supabase (database and storage hosting), Vercel (app hosting), Resend (email) and Snap Camera Kit (AR lenses). Your profile and the content you post are visible to other members as per the app rules. We may disclose information if required by law, or in connection with a business transfer. We do not sell your personal data." },
+    { h: "Who we share it with", p: "We share only what is necessary with our service providers: Razorpay (payments and recurring subscriptions), Supabase (database and storage hosting), Vercel (app hosting) and Resend (email). Your profile and the content you post are visible to other members as per the app rules. We may disclose information if required by law, or in connection with a business transfer. We do not sell your personal data." },
     { h: "Direct marketing", p: "With your consent, we may send you communications about our events, parties, memberships and related lifestyle, music, food and travel offers, by email, SMS, in-app notification or similar. You can withdraw your consent at any time by emailing us." },
     { h: "Notifications", p: "If you turn on notifications, we store a device token to deliver them. You can turn notifications off any time from your Profile or your browser/device settings." },
     { h: "Data retention and your rights", p: "You can ask us to access or delete your personal data, or delete your account, by contacting us. Deleting your account removes your profile and associated data, except records we must keep for legal or accounting reasons (for example, payment records). Depending on your location you may have additional rights under applicable law, including India's Digital Personal Data Protection Act, 2023." },
@@ -2003,7 +2001,6 @@ function Main({ user }) {
   const [allPlanRooms, setAllPlanRooms] = useState([]);
   const [myPlans, setMyPlans] = useState([]);
   const [subPage, setSubPage] = useState(null);
-  const [navCam, setNavCam] = useState(false);
   const loadPlans = async () => {
     if (!user?.id) return;
     const [{ data: pls }, { data: prsAll }, { data: mps }] = await Promise.all([
@@ -2855,8 +2852,7 @@ function Main({ user }) {
       <div style={{ paddingBottom: 64, minHeight: "100vh", background: W.bg }}>
         {screen}
       </div>
-      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} onCamera={() => setNavCam(true)} />
-      {navCam && (HAS_SNAP_CAM ? <SnapLensCamera onClose={() => { setNavCam(false); loadStories(); }} onCapture={() => { setNavCam(false); loadStories(); }} /> : <GWCamera meId={user.id} events={events} onClose={() => { setNavCam(false); loadStories(); }} />)}
+      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} />
       <GwDialogHost />
       {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
@@ -6277,7 +6273,6 @@ function Flash({ text }) {
 }
 
 function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh }) {
-  const [camOpen, setCamOpen] = useState(false);
   const [sTab, setSTab] = useState("me");
   const [viewer, setViewer] = useState(null); // { k: "e"|"u", id }
   const [busy, setBusy] = useState(false);
@@ -6333,13 +6328,11 @@ function StoriesBar({ stories, events, meId, isStaff, canAccessEvent, onRefresh 
   );
   return (
     <>
-      {camOpen && (HAS_SNAP_CAM ? <SnapLensCamera onClose={() => { setCamOpen(false); onRefresh(); }} onCapture={() => { setCamOpen(false); onRefresh(); }} /> : <GWCamera meId={meId} events={events} onClose={() => { setCamOpen(false); onRefresh(); }} />)}
       <div style={{ display: "flex", gap: 8, padding: "10px 14px 0", background: "#fff" }}>
         {[["me", "🟣 My stories"], ["event", "🟢 Event stories"]].map(([k, l]) => <button key={k} onClick={() => setSTab(k)} style={{ padding: "6px 14px", borderRadius: 16, border: `1px solid ${sTab === k ? W.teal : W.line}`, background: sTab === k ? W.teal : "#fff", color: sTab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>)}
       </div>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "12px 14px 4px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
         {sTab === "me" && <div>
-          <Bubble onClick={() => setCamOpen(true)} ring={"2.5px solid #EC4899"} inner={<div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "linear-gradient(135deg,#7C3AED,#EC4899)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>📷</div>} label="GW Camera" />
         </div>}
         {sTab === "me" && <label style={{ display: "block" }}>
           <Bubble onClick={() => { }} ring={`2px dashed ${W.teal}`} inner={<span style={{ fontSize: 22, color: W.teal, fontWeight: 800 }}>{busy ? "…" : "+"}</span>} label="Add story" />
@@ -6513,469 +6506,6 @@ function SnapViewer({ msg, onClose }) {
       <img src={msg.media_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", userSelect: "none", pointerEvents: "none" }} />
       <div style={{ position: "absolute", top: 16, right: 18, width: 34, height: 34, borderRadius: "50%", background: "rgba(0,0,0,.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>{left}</div>
       <div style={{ position: "absolute", bottom: 24, left: 0, right: 0, textAlign: "center", color: "rgba(255,255,255,.7)", fontSize: 12, fontWeight: 700 }}>👆 tap anywhere to close · view once</div>
-    </div>
-  );
-}
-const GW_FILTERS = [
-  // [name, cssFilter, fx[]] — fx ops: ["grad",c1,c2,alpha,blend] ["wash",color,alpha,blend] ["vig",alpha] ["grain",alpha]
-  ["Original", "none", []],
-  ["Vivid", "saturate(1.5) contrast(1.12)", []],
-  ["Glow", "brightness(1.13) contrast(.9) saturate(1.2)", []],
-  // — Glasswings signatures —
-  ["Teal Dream", "saturate(1.2) brightness(1.04)", [["grad", "#04B08F", "#7C3AED", .20, "source-over"]]],
-  ["Pink Party", "saturate(1.25) brightness(1.05)", [["grad", "#EC4899", "#7C3AED", .22, "source-over"]]],
-  ["Disco", "saturate(1.3) contrast(1.08)", [["grad", "#2563EB", "#EC4899", .22, "source-over"], ["vig", .25]]],
-  // — Asia —
-  ["Tokyo Neon", "saturate(1.55) contrast(1.18) brightness(1.02)", [["grad", "#FF00E5", "#00E5FF", .28, "screen"], ["vig", .3]]],
-  ["Seoul Soft", "brightness(1.12) contrast(.88) saturate(1.08)", [["wash", "#FFD9E8", .16, "source-over"]]],
-  ["Mumbai Masala", "saturate(1.45) contrast(1.1) brightness(1.05)", [["grad", "#FF9500", "#FF2D78", .2, "overlay"]]],
-  ["Kyoto Zen", "contrast(.85) brightness(1.1) saturate(.8)", [["wash", "#E8E4D8", .12, "source-over"]]],
-  ["Bali Bloom", "saturate(1.35) brightness(1.06) hue-rotate(8deg)", [["grad", "#10B981", "#FDE68A", .15, "overlay"]]],
-  ["Goa Sunset", "saturate(1.3) brightness(1.04) sepia(.15)", [["grad", "#FF6B35", "#C44BC7", .26, "overlay"], ["vig", .2]]],
-  // — Europe —
-  ["Paris Noir", "grayscale(1) contrast(1.35) brightness(.96)", [["vig", .42]]],
-  ["London Fog", "saturate(.6) contrast(.92) brightness(1.04)", [["wash", "#8FA3B0", .18, "source-over"]]],
-  ["Santorini", "saturate(1.15) brightness(1.1) contrast(1.05) hue-rotate(-6deg)", [["wash", "#7DD3FC", .1, "overlay"]]],
-  ["Berlin Club", "contrast(1.25) saturate(1.1) brightness(.92)", [["grad", "#7C3AED", "#0F172A", .3, "overlay"], ["vig", .4], ["grain", .5]]],
-  ["Amalfi", "saturate(1.3) brightness(1.08) sepia(.1)", [["grad", "#FDE047", "#38BDF8", .14, "overlay"]]],
-  // — Americas —
-  ["NYC Grit", "grayscale(.35) contrast(1.25) brightness(.98)", [["grain", .55], ["vig", .28]]],
-  ["Rio Carnival", "saturate(1.75) contrast(1.12)", [["grad", "#FACC15", "#EC4899", .2, "overlay"]]],
-  ["Havana", "sepia(.55) saturate(1.25) contrast(1.02) brightness(1.04)", [["grad", "#F59E0B", "#92400E", .18, "overlay"], ["vig", .3]]],
-  ["Hollywood", "contrast(1.15) saturate(1.18) brightness(1.03)", [["grad", "#0EA5E9", "#F97316", .15, "overlay"], ["vig", .22]]],
-  // — Africa & Middle East —
-  ["Sahara Gold", "sepia(.3) saturate(1.35) brightness(1.07) contrast(1.05)", [["grad", "#FBBF24", "#B45309", .22, "overlay"]]],
-  ["Marrakesh", "saturate(1.25) contrast(1.08) sepia(.2)", [["grad", "#DC2626", "#D97706", .17, "overlay"], ["vig", .25]]],
-  ["Lagos Pop", "saturate(1.6) contrast(1.15) brightness(1.04)", [["wash", "#FDE047", .1, "overlay"]]],
-  ["Dubai Lux", "saturate(1.2) contrast(1.1) brightness(1.06)", [["grad", "#D4AF37", "#1E293B", .18, "overlay"], ["vig", .2]]],
-  // — Poles & film —
-  ["Arctic Ice", "saturate(.85) brightness(1.12) contrast(1.06) hue-rotate(18deg)", [["wash", "#BFDBFE", .2, "source-over"]]],
-  ["Velvet Duo", "grayscale(1) contrast(1.1)", [["grad", "#7C3AED", "#EC4899", .55, "color"]]],
-  ["Ocean Ink", "grayscale(1) contrast(1.15)", [["grad", "#0C4A6E", "#22D3EE", .55, "color"]]],
-  ["Film \'90", "sepia(.22) contrast(.94) brightness(1.05) saturate(.9)", [["grain", .65], ["vig", .25]]],
-  ["Lomo", "saturate(1.45) contrast(1.2)", [["vig", .55], ["grain", .35]]],
-  ["B&W", "grayscale(1) contrast(1.18)", []],
-  ["Vintage", "sepia(.5) contrast(.95) brightness(1.06) saturate(.85)", []],
-  ["Warm", "sepia(.28) saturate(1.35) brightness(1.06)", []],
-  ["Cool", "saturate(1.12) hue-rotate(14deg) brightness(1.04)", []],
-  ["Night", "brightness(.9) contrast(1.2) saturate(1.3) hue-rotate(-8deg)", []],
-];
-// beauty lenses: b=blur strength, a=layer alpha, blend, extra css on layer, wash [color,alpha], vig
-const GW_LENSES = [
-  ["No lens", null],
-  ["🧼 Clean", { b: 2.6, a: .28, blend: "source-over", css: "brightness(1.07) contrast(1.04) saturate(1)", wash: ["#FFFFFF", .05] }],
-  ["☀️ Sun-Kissed", { b: 2.6, a: .28, blend: "source-over", css: "brightness(1.05) saturate(1.16) sepia(.06)", wash: ["#FFC07A", .12] }],
-  ["🫧 Velvet", { b: 3, a: .32, blend: "source-over", css: "brightness(1.06) contrast(1.02) saturate(1.02)", wash: ["#FBEFEA", .07] }],
-  ["🌷 Fresh", { b: 2.4, a: .26, blend: "source-over", css: "brightness(1.07) saturate(1.14)", wash: ["#FFE9EE", .09] }],
-  ["🇵🇭 Manila Glow", { b: 2.8, a: .3, blend: "source-over", css: "saturate(1.18) brightness(1.08)", wash: ["#FFC878", .15] }],
-  ["🇨🇳 Douyin Doll", { b: 3.8, a: .4, blend: "lighten", css: "brightness(1.16) saturate(1.04)", wash: ["#FFD6E8", .14] }],
-  ["🇯🇵 Tokyo Blush", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.05) saturate(1.1)", wash: ["#FF8FA3", .14] }],
-  ["🍑 Peach", { b: 3, a: .3, blend: "source-over", css: "brightness(1.06) saturate(1.12)", wash: ["#FFB29E", .14] }],
-  ["🇮🇳 Desi Bridal", { b: 3, a: .33, blend: "source-over", css: "saturate(1.24) brightness(1.06)", wash: ["#FFC04D", .14], vig: .22 }],
-  ["🌅 Golden Hour", { b: 2.8, a: .3, blend: "source-over", css: "brightness(1.06) saturate(1.18)", wash: ["#FFB55C", .18], vig: .2 }],
-  ["🌍 Melanin Gold", { b: 2.6, a: .3, blend: "source-over", css: "contrast(1.08) saturate(1.22) brightness(1.07)", wash: ["#FFB347", .12] }],
-  ["🇧🇷 Ipanema Bronze", { b: 3, a: .32, blend: "source-over", css: "saturate(1.26) sepia(.16) brightness(1.05)", wash: ["#D98A4B", .15] }],
-  ["🇺🇸 LA Baddie", { b: 3, a: .33, blend: "source-over", css: "contrast(1.12) saturate(1.24) brightness(1.05)", wash: ["#FF9E6D", .12], vig: .18 }],
-  ["💋 Bombshell", { b: 3.2, a: .34, blend: "source-over", css: "contrast(1.14) saturate(1.28) brightness(1.04)", wash: ["#FF8A5C", .12], vig: .24 }],
-  ["💎 Glam", { b: 3.4, a: .35, blend: "source-over", css: "contrast(1.1) saturate(1.12) brightness(1.05)", wash: ["#FFFFFF", .04], vig: .22 }],
-  ["🧖 Spa Fresh", { b: 3.4, a: .35, blend: "lighten", css: "brightness(1.15) saturate(.98)", wash: ["#CFF5E6", .1] }],
-  ["🇫🇷 Paris Bare", { b: 2.2, a: .26, blend: "source-over", css: "saturate(.92) brightness(1.06) contrast(1.04)" }],
-  ["🌙 Arabian Night", { b: 3.2, a: .34, blend: "source-over", css: "contrast(1.12) saturate(1.18)", wash: ["#7C3AED", .1], vig: .4 }],
-];
-const GW_FRAMES = ["None", "Glasswings", "Party", "Polaroid", "Retro"];
-const GW_STICKERS = ["🦋", "❤️", "🔥", "✨", "🪩", "🥂", "💃", "😎", "🎉", "💘", "🌙", "👑"];
-let _faceapiP = null;
-function loadFaceApi() {
-  if (_faceapiP) return _faceapiP;
-  _faceapiP = new Promise((resolve, reject) => {
-    if (window.faceapi && window.faceapi.nets.tinyFaceDetector.params) return resolve(window.faceapi);
-    const done = async () => {
-      try {
-        const M = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model";
-        if (!window.faceapi.nets.tinyFaceDetector.params) await window.faceapi.nets.tinyFaceDetector.loadFromUri(M);
-        if (!window.faceapi.nets.faceLandmark68TinyNet.params) await window.faceapi.nets.faceLandmark68TinyNet.loadFromUri(M);
-        resolve(window.faceapi);
-      } catch (e) { reject(e); }
-    };
-    if (window.faceapi) return done();
-    const sc = document.createElement("script");
-    sc.src = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js";
-    sc.onload = done; sc.onerror = reject;
-    document.head.appendChild(sc);
-  });
-  return _faceapiP;
-}
-const AR_LENSES = [
-  { id: "glasses", name: "👓 Glasses" },
-  { id: "hearts", name: "💖 Heart Crown" },
-  { id: "butterflies", name: "🦋 Butterflies" },
-  { id: "moons", name: "🌙 Moons" },
-  { id: "sparkle", name: "✨ Sparkle" },
-];
-function buildOverlay(arId, lm, vw, vh) {
-  const avg = pts => { let x = 0, y = 0; pts.forEach(p => { x += p.x; y += p.y; }); return { x: x / pts.length, y: y / pts.length }; };
-  const le = avg(lm.getLeftEye()), re = avg(lm.getRightEye());
-  const mid = { x: (le.x + re.x) / 2, y: (le.y + re.y) / 2 };
-  const eyeDist = Math.hypot(re.x - le.x, re.y - le.y) || vw * 0.18;
-  const rot = Math.atan2(re.y - le.y, re.x - le.x);
-  const jaw = lm.getJawOutline();
-  const faceW = (jaw[16] && jaw[0]) ? Math.hypot(jaw[16].x - jaw[0].x, jaw[16].y - jaw[0].y) : eyeDist * 2.4;
-  const F = (x, y, e, sizePx, r) => ({ e, fx: x / vw, fy: y / vh, s: sizePx / vw, r: r || 0 });
-  const out = [];
-  if (arId === "glasses") {
-    out.push(F(mid.x, mid.y, "👓", eyeDist * 2.7, rot));
-  } else if (arId === "hearts") {
-    const fy0 = mid.y - eyeDist * 1.4, N = 7;
-    for (let i = 0; i < N; i++) { const a = (-72 + 144 * i / (N - 1)) * Math.PI / 180; out.push(F(mid.x + Math.sin(a) * faceW * 0.6, fy0 - Math.cos(a) * faceW * 0.26, "💖", eyeDist * 0.62, 0)); }
-  } else if (arId === "butterflies" || arId === "moons") {
-    const e = arId === "moons" ? "🌙" : "🦋";
-    const nose = lm.getNose();
-    const pts = [jaw[2], jaw[5], jaw[8], jaw[11], jaw[14], le, re, { x: mid.x, y: mid.y - eyeDist * 1.1 }, nose[3] || mid, { x: mid.x - eyeDist, y: mid.y + eyeDist }];
-    pts.forEach(pt => { if (pt) out.push(F(pt.x, pt.y, e, eyeDist * 0.66, 0)); });
-  } else if (arId === "sparkle") {
-    out.push(F(le.x, le.y, "✨", eyeDist * 0.55, 0));
-    out.push(F(re.x, re.y, "✨", eyeDist * 0.55, 0));
-    out.push(F(mid.x, mid.y - eyeDist * 1.5, "✨", eyeDist * 0.8, 0));
-    out.push(F(jaw[2].x, jaw[2].y, "✨", eyeDist * 0.45, 0));
-    out.push(F(jaw[14].x, jaw[14].y, "✨", eyeDist * 0.45, 0));
-  }
-  return out;
-}
-function GWCamera({ meId, onSend, onClose, events = [] }) {
-  const liveEvents = (events || []).filter(e => e.event_at && Math.abs(Date.now() - new Date(e.event_at).getTime()) < 36 * 3600000).slice(0, 3);
-  const [mode, setMode] = useState("cam");
-  const [facing, setFacing] = useState("user");
-  const [camErr, setCamErr] = useState(false);
-  const [fi, setFi] = useState(0);
-  const [frame, setFrame] = useState("None");
-  const [wm, setWm] = useState(true);
-  const [li, setLi] = useState(0);
-  const [stickers, setStickers] = useState([]);
-  const [selIdx, setSelIdx] = useState(-1);
-  const [capText, setCapText] = useState("");
-  const [capColor, setCapColor] = useState("#ffffff");
-  const [preview, setPreview] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const videoRef = useRef(null); const streamRef = useRef(null);
-  const rawRef = useRef(null); const outRef = useRef(null);
-  const boxRef = useRef(null); const dragRef = useRef(null);
-  const [camTab, setCamTab] = useState("beauty");
-  const [arId, setArId] = useState(null);
-  const [arOverlay, setArOverlay] = useState([]);
-  const [arErr, setArErr] = useState(false);
-  const [boxW, setBoxW] = useState(360);
-  const previewRef = useRef(null);
-  useEffect(() => { const el = previewRef.current; if (!el || typeof ResizeObserver === "undefined") return; const ro = new ResizeObserver(() => setBoxW(el.clientWidth || 360)); ro.observe(el); setBoxW(el.clientWidth || 360); return () => ro.disconnect(); }, [mode]);
-  useEffect(() => {
-    if (mode !== "cam" || !arId) { setArOverlay([]); return; }
-    let stop = false, timer = null, fa = null;
-    setArErr(false);
-    loadFaceApi().then(f => { fa = f; loop(); }).catch(() => setArErr(true));
-    const loop = async () => {
-      if (stop) return;
-      const v = videoRef.current;
-      if (v && v.videoWidth && fa) {
-        try {
-          const det = await fa.detectSingleFace(v, new fa.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 })).withFaceLandmarks(true);
-          if (!stop) setArOverlay(det ? buildOverlay(arId, det.landmarks, v.videoWidth, v.videoHeight) : []);
-        } catch { }
-      }
-      if (!stop) timer = setTimeout(() => requestAnimationFrame(loop), 90);
-    };
-    return () => { stop = true; if (timer) clearTimeout(timer); };
-  }, [arId, mode, facing]);
-  const activeRef = useRef(null);
-  useEffect(() => { const t = setTimeout(() => { try { activeRef.current?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } catch { } }, 30); return () => clearTimeout(t); }, [camTab, li, fi]);
-  const lensBg = (l2) => { const c = l2[1]; if (!c) return "linear-gradient(135deg,#555,#222)"; if (c.wash) return c.wash; return "linear-gradient(135deg,#7C3AED,#EC4899)"; };
-  const filterBg = (f) => { const fx = f[2] || []; const g = fx.find(o => o[0] === "grad"); if (g) return `linear-gradient(135deg, ${g[1]}, ${g[2]})`; const w = fx.find(o => o[0] === "wash"); if (w) return w[1]; return "linear-gradient(135deg,#3a3a3a,#1c1c1c)"; };
-  const lensCssNow = (GW_LENSES[li] && GW_LENSES[li][1] && GW_LENSES[li][1].css) ? GW_LENSES[li][1].css : "";
-  const mainFilter = [GW_FILTERS[fi][1] !== "none" ? GW_FILTERS[fi][1] : "", lensCssNow].filter(Boolean).join(" ") || "none";
-  useEffect(() => {
-    if (mode !== "cam") return;
-    let dead = false;
-    setCamErr(false);
-    (async () => {
-      try {
-        const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1920 }, frameRate: { ideal: 30 } }, audio: false });
-        if (dead) { st.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = st;
-        if (videoRef.current) { videoRef.current.srcObject = st; videoRef.current.play().catch(() => { }); }
-      } catch { if (!dead) setCamErr(true); }
-    })();
-    return () => { dead = true; streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null; };
-  }, [mode, facing]);
-  const toRaw = (srcEl, w, h, mirror) => {
-    const cap = 2160; const sc = Math.min(1, cap / Math.max(w, h));
-    const c = rawRef.current; c.width = Math.round(w * sc); c.height = Math.round(h * sc);
-    const x = c.getContext("2d");
-    if (mirror) { x.translate(c.width, 0); x.scale(-1, 1); }
-    x.drawImage(srcEl, 0, 0, c.width, c.height);
-    setMode("edit");
-  };
-  const shoot = () => { const v = videoRef.current; if (!v || !v.videoWidth) return; toRaw(v, v.videoWidth, v.videoHeight, facing === "user"); };
-  const importPic = (f) => { if (!f) return; const img = new Image(); img.onload = () => toRaw(img, img.width, img.height, false); img.src = URL.createObjectURL(f); };
-  const compose = () => {
-    const raw = rawRef.current, c = outRef.current; if (!raw || !raw.width || !c) return;
-    const W0 = raw.width, H0 = raw.height; c.width = W0; c.height = H0;
-    const x = c.getContext("2d");
-    x.filter = mainFilter; x.drawImage(raw, 0, 0); x.filter = "none";
-    const lz = GW_LENSES[li][1];
-    if (lz) {
-      x.save();
-      x.filter = `${mainFilter === "none" ? "" : mainFilter + " "}blur(${lz.b * (W0 / 1000) * 1.15}px)`;
-      x.globalAlpha = lz.a; x.globalCompositeOperation = lz.blend || "source-over";
-      x.drawImage(raw, 0, 0);
-      x.restore();
-      if (lz.wash) { x.save(); x.globalAlpha = lz.wash[1]; x.fillStyle = lz.wash[0]; x.fillRect(0, 0, W0, H0); x.restore(); }
-      if (lz.vig) {
-        const rg2 = x.createRadialGradient(W0 / 2, H0 / 2, Math.min(W0, H0) * .4, W0 / 2, H0 / 2, Math.max(W0, H0) * .72);
-        rg2.addColorStop(0, "rgba(0,0,0,0)"); rg2.addColorStop(1, `rgba(0,0,0,${lz.vig})`);
-        x.fillStyle = rg2; x.fillRect(0, 0, W0, H0);
-      }
-    }
-    (GW_FILTERS[fi][2] || []).forEach(fx2 => {
-      x.save();
-      if (fx2[0] === "grad") {
-        const g = x.createLinearGradient(0, 0, W0, H0); g.addColorStop(0, fx2[1]); g.addColorStop(1, fx2[2]);
-        x.globalAlpha = fx2[3]; x.globalCompositeOperation = fx2[4] || "source-over";
-        x.fillStyle = g; x.fillRect(0, 0, W0, H0);
-      } else if (fx2[0] === "wash") {
-        x.globalAlpha = fx2[2]; x.globalCompositeOperation = fx2[3] || "source-over";
-        x.fillStyle = fx2[1]; x.fillRect(0, 0, W0, H0);
-      } else if (fx2[0] === "vig") {
-        const rg = x.createRadialGradient(W0 / 2, H0 / 2, Math.min(W0, H0) * .38, W0 / 2, H0 / 2, Math.max(W0, H0) * .72);
-        rg.addColorStop(0, "rgba(0,0,0,0)"); rg.addColorStop(1, `rgba(0,0,0,${fx2[1]})`);
-        x.fillStyle = rg; x.fillRect(0, 0, W0, H0);
-      } else if (fx2[0] === "grain") {
-        x.globalAlpha = .06 * fx2[1] * 10;
-        const n = Math.round((W0 * H0) / 520);
-        for (let i = 0; i < n; i++) {
-          x.fillStyle = Math.random() > .5 ? "#fff" : "#000";
-          x.globalAlpha = Math.random() * .12 * fx2[1] * 2;
-          x.fillRect(Math.random() * W0, Math.random() * H0, 1.4 * (W0 / 1000), 1.4 * (W0 / 1000));
-        }
-      }
-      x.restore();
-    });
-    const u = W0 / 1000;
-    if (arId && arOverlay.length) {
-      arOverlay.forEach(o => {
-        const ox = (facing === "user" ? (1 - o.fx) : o.fx) * W0, oy = o.fy * H0;
-        x.save(); x.translate(ox, oy); if (o.r) x.rotate(o.r);
-        x.font = `${Math.max(10, Math.round(o.s * W0))}px serif`; x.textAlign = "center"; x.textBaseline = "middle";
-        x.fillText(o.e, 0, 0); x.restore();
-      });
-    }
-    if (frame === "Glasswings") {
-      x.fillStyle = "rgba(0,0,0,.42)"; const bw = 320 * u, bh = 64 * u, bx = W0 - bw - 26 * u, by = H0 - bh - 26 * u;
-      x.beginPath(); x.roundRect(bx, by, bw, bh, 32 * u); x.fill();
-      x.fillStyle = "#fff"; x.font = `800 ${34 * u}px sans-serif`; x.textAlign = "center"; x.textBaseline = "middle";
-      x.fillText("🦋 GLASSWINGS", bx + bw / 2, by + bh / 2 + 2 * u);
-    } else if (frame === "Party") {
-      const gT = x.createLinearGradient(0, 0, 0, 150 * u); gT.addColorStop(0, "rgba(0,0,0,.55)"); gT.addColorStop(1, "rgba(0,0,0,0)");
-      x.fillStyle = gT; x.fillRect(0, 0, W0, 150 * u);
-      const gB = x.createLinearGradient(0, H0 - 230 * u, 0, H0); gB.addColorStop(0, "rgba(0,0,0,0)"); gB.addColorStop(1, "rgba(0,0,0,.62)");
-      x.fillStyle = gB; x.fillRect(0, H0 - 230 * u, W0, 230 * u);
-      x.fillStyle = "#fff"; x.textAlign = "center"; x.font = `800 ${44 * u}px sans-serif`;
-      x.fillText("✨ GLASSWINGS NIGHTS ✨", W0 / 2, H0 - 88 * u);
-      x.font = `600 ${26 * u}px sans-serif`; x.fillStyle = "rgba(255,255,255,.85)";
-      x.fillText(new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }), W0 / 2, H0 - 42 * u);
-    } else if (frame === "Polaroid") {
-      const b = 40 * u, bb = 170 * u;
-      x.fillStyle = "#fff";
-      x.fillRect(0, 0, W0, b); x.fillRect(0, 0, b, H0); x.fillRect(W0 - b, 0, b, H0); x.fillRect(0, H0 - bb, W0, bb);
-      x.fillStyle = "#3c4a47"; x.textAlign = "center"; x.font = `italic 700 ${40 * u}px cursive, sans-serif`;
-      x.fillText("🦋 glasswings moments", W0 / 2, H0 - bb / 2 + 12 * u);
-    } else if (frame === "Retro") {
-      x.fillStyle = "#FFB020"; x.textAlign = "left"; x.font = `700 ${34 * u}px monospace`;
-      x.shadowColor = "rgba(0,0,0,.6)"; x.shadowBlur = 6 * u;
-      const d = new Date();
-      x.fillText(`${String(d.getDate()).padStart(2, "0")} ${d.toLocaleString("en", { month: "short" }).toUpperCase()} '${String(d.getFullYear()).slice(2)}  🦋GW`, 34 * u, H0 - 40 * u);
-      x.shadowBlur = 0;
-    } else if (frame.startsWith("event:")) {
-      const ev2 = liveEvents.find(e => "event:" + e.id === frame);
-      if (ev2) {
-        const gB = x.createLinearGradient(0, H0 - 260 * u, 0, H0); gB.addColorStop(0, "rgba(0,0,0,0)"); gB.addColorStop(1, "rgba(0,0,0,.7)");
-        x.fillStyle = gB; x.fillRect(0, H0 - 260 * u, W0, 260 * u);
-        x.textAlign = "center"; x.fillStyle = "#fff";
-        x.font = `800 ${44 * u}px sans-serif`;
-        x.fillText(`${ev2.emoji || "🎟️"} ${String(ev2.title || "").toUpperCase().slice(0, 26)}`, W0 / 2, H0 - 120 * u);
-        x.font = `700 ${26 * u}px sans-serif`; x.fillStyle = "#2FD4A8";
-        x.fillText("I WAS THERE ✨", W0 / 2, H0 - 76 * u);
-        x.font = `600 ${22 * u}px sans-serif`; x.fillStyle = "rgba(255,255,255,.85)";
-        x.fillText("🦋 GLASSWINGS · " + new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" }), W0 / 2, H0 - 38 * u);
-      }
-    }
-    if (wm && frame === "None") {
-      x.textAlign = "left"; x.font = `700 ${24 * u}px sans-serif`;
-      x.fillStyle = "rgba(255,255,255,.75)"; x.shadowColor = "rgba(0,0,0,.5)"; x.shadowBlur = 5 * u;
-      x.fillText("🦋 GLASSWINGS · glass-wings.com", 26 * u, H0 - 30 * u);
-      x.shadowBlur = 0;
-    }
-    stickers.forEach((st, i) => {
-      x.textAlign = "center"; x.textBaseline = "middle";
-      if (st.t === "emoji") { x.font = `${st.s * W0}px serif`; x.fillText(st.v, st.x * W0, st.y * H0); }
-      else {
-        x.font = `800 ${st.s * W0}px sans-serif`; x.fillStyle = st.color;
-        x.shadowColor = "rgba(0,0,0,.55)"; x.shadowBlur = 8 * u;
-        x.fillText(st.v, st.x * W0, st.y * H0); x.shadowBlur = 0;
-      }
-    });
-    setPreview(c.toDataURL("image/jpeg", .95));
-  };
-  useEffect(() => { if (mode === "edit") compose(); }, [mode, fi, frame, stickers, wm, li, arId, arOverlay]);
-  const relPt = (e) => { const r = boxRef.current.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
-  const onDown = (e) => {
-    const pt = relPt(e); let best = -1, bd = 0.12;
-    stickers.forEach((st, i) => { const d = Math.hypot(st.x - pt.x, st.y - pt.y); if (d < bd) { bd = d; best = i; } });
-    setSelIdx(best);
-    if (best >= 0) { dragRef.current = best; e.preventDefault(); }
-  };
-  const onMove = (e) => { if (dragRef.current === null || dragRef.current === undefined || dragRef.current < 0) return; const pt = relPt(e); setStickers(p => p.map((st, i) => i === dragRef.current ? { ...st, x: Math.min(.98, Math.max(.02, pt.x)), y: Math.min(.98, Math.max(.02, pt.y)) } : st)); };
-  const onUp = () => { dragRef.current = -1; };
-  const addEmoji = (em) => { setStickers(p => [...p, { t: "emoji", v: em, x: .5, y: .42, s: .17 }]); setSelIdx(stickers.length); };
-  const addCaption = () => { const t = capText.trim(); if (!t) return; setStickers(p => [...p, { t: "text", v: t, x: .5, y: .82, s: .065, color: capColor }]); setSelIdx(stickers.length); setCapText(""); };
-  const toFile = () => new Promise(r => outRef.current.toBlob(b => r(new File([b], `glasswings-${Date.now()}.jpg`, { type: "image/jpeg" })), "image/jpeg", .95));
-  const doSave = async () => {
-    const a = document.createElement("a"); a.href = preview; a.download = `glasswings-${Date.now()}.jpg`; a.click();
-    try { const f = await toFile(); const url = await uploadPhoto(meId, f); await albumSave(url, "camera"); alert("💾 Saved to My Album (Glasswings Memories) + downloading!"); } catch { }
-  };
-  const albumSave = async (url, source) => { try { await supabase.from("my_album").insert({ user_id: meId, url, source }); } catch { } };
-  const doStory = async () => {
-    setBusy(true);
-    try {
-      const f = await toFile();
-      const url = await uploadPhoto(meId, f);
-      const { error } = await supabase.from("stories").insert({ event_id: null, user_id: meId, media_url: url });
-      if (error) throw error;
-      await albumSave(url, "story");
-      alert("📸 Posted to your story! It glows for 24 hours. 💜");
-      onClose();
-    } catch (e2) { alert(e2.message || "Could not post the story."); }
-    setBusy(false);
-  };
-  const doSend = async () => {
-    setBusy(true);
-    try {
-      const f = await toFile();
-      uploadPhoto(meId, f).then(url => albumSave(url, "camera")).catch(() => { });
-      await onSend(f);
-    } catch { }
-    setBusy(false);
-  };
-  const chip = (label, on, fn) => <div key={label} onClick={fn} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 16, fontSize: 12, fontWeight: 800, cursor: "pointer", background: on ? "#fff" : "rgba(255,255,255,.16)", color: on ? "#0b1f1c" : "#fff", border: "1px solid rgba(255,255,255,.25)" }}>{label}</div>;
-  const lensList = [{ kind: "none", name: "Original" }];
-  GW_LENSES.forEach((l2, i) => { if (i !== 0) lensList.push({ kind: "lens", i, name: l2[0] }); });
-  GW_FILTERS.forEach((f, i) => { if (i !== 0) lensList.push({ kind: "filter", i, name: f[0] }); });
-  const activeName = arId ? (AR_LENSES.find(a => a.id === arId)?.name || "Lens") : li > 0 ? GW_LENSES[li][0] : fi > 0 ? GW_FILTERS[fi][0] : "Original";
-  const sel = stickers[selIdx];
-  return (
-    <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, height: "100%", zIndex: 260, background: "#000", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <canvas ref={rawRef} style={{ display: "none" }} /><canvas ref={outRef} style={{ display: "none" }} />
-      <div style={{ display: "flex", alignItems: "center", padding: "12px 14px", gap: 10 }}>
-        <X size={24} color="#fff" style={{ cursor: "pointer" }} onClick={() => mode === "edit" ? setMode("cam") : onClose()} />
-        <div style={{ flex: 1, color: "#fff", fontWeight: 800, fontSize: 15 }}>🦋 Glasswings Camera</div>
-        {mode === "edit" && <span onClick={doSave} style={{ color: "#fff", fontSize: 19, cursor: "pointer" }}>⬇️</span>}
-      </div>
-      {mode === "cam" ? (
-        <>
-          <div ref={previewRef} style={{ flex: 1, position: "relative", overflow: "hidden", borderRadius: 18, margin: "0 8px" }}>
-            {!camErr ? (
-              <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", filter: mainFilter, transform: facing === "user" ? "scaleX(-1)" : "none" }} />
-            ) : (
-              <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", gap: 10, padding: 30, textAlign: "center" }}>
-                <span style={{ fontSize: 40 }}>📷</span>
-                <div style={{ fontWeight: 700 }}>Camera unavailable</div>
-                <div style={{ fontSize: 12.5, opacity: .8 }}>Allow camera permission, or pick a photo from your gallery below — all filters & frames still work!</div>
-              </div>
-            )}
-            {!camErr && GW_LENSES[li][1] && (
-              <video ref={el => { if (el && streamRef.current && el.srcObject !== streamRef.current) { el.srcObject = streamRef.current; el.play().catch(() => { }); } }}
-                autoPlay playsInline muted
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-                  filter: `${mainFilter === "none" ? "" : mainFilter + " "}blur(5px)`,
-                  opacity: GW_LENSES[li][1].a, mixBlendMode: GW_LENSES[li][1].blend === "lighten" ? "lighten" : "normal",
-                  transform: facing === "user" ? "scaleX(-1)" : "none", pointerEvents: "none" }} />
-            )}
-            {!camErr && GW_LENSES[li][1] && GW_LENSES[li][1].wash && (
-              <div style={{ position: "absolute", inset: 0, background: GW_LENSES[li][1].wash[0], opacity: GW_LENSES[li][1].wash[1], mixBlendMode: GW_LENSES[li][1].blend === "lighten" ? "screen" : "normal", pointerEvents: "none" }} />
-            )}
-            {!camErr && GW_LENSES[li][1] && GW_LENSES[li][1].vig && (
-              <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle, rgba(0,0,0,0) 45%, rgba(0,0,0,${GW_LENSES[li][1].vig}) 100%)`, pointerEvents: "none" }} />
-            )}
-            {!camErr && (GW_FILTERS[fi][2] || []).map((fx2, k) => {
-              if (fx2[0] === "grad") return <div key={k} style={{ position: "absolute", inset: 0, background: `linear-gradient(135deg, ${fx2[1]}, ${fx2[2]})`, opacity: fx2[3], mixBlendMode: fx2[4] && fx2[4] !== "source-over" ? fx2[4] : "normal", pointerEvents: "none" }} />;
-              if (fx2[0] === "wash") return <div key={k} style={{ position: "absolute", inset: 0, background: fx2[1], opacity: fx2[2], mixBlendMode: fx2[3] && fx2[3] !== "source-over" ? fx2[3] : "normal", pointerEvents: "none" }} />;
-              if (fx2[0] === "vig") return <div key={k} style={{ position: "absolute", inset: 0, background: `radial-gradient(circle, rgba(0,0,0,0) 45%, rgba(0,0,0,${fx2[1]}) 100%)`, pointerEvents: "none" }} />;
-              return null;
-            })}
-            {arId && arOverlay.map((o, k2) => (
-              <span key={k2} style={{ position: "absolute", left: `${(facing === "user" ? (1 - o.fx) : o.fx) * 100}%`, top: `${o.fy * 100}%`, transform: `translate(-50%,-50%) rotate(${o.r}rad)`, fontSize: Math.max(12, o.s * boxW), lineHeight: 1, pointerEvents: "none", userSelect: "none", textShadow: "0 1px 4px rgba(0,0,0,.35)" }}>{o.e}</span>
-            ))}
-            {arId && arErr && <div style={{ position: "absolute", top: 10, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 12, background: "rgba(0,0,0,.4)", padding: "5px 0" }}>Face lenses couldn't load — check your connection.</div>}
-          </div>
-          <div style={{ textAlign: "center", color: "#fff", fontWeight: 800, fontSize: 14, padding: "8px 0 6px", textShadow: "0 1px 6px rgba(0,0,0,.55)" }}>{activeName}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px 22px" }}>
-            <label style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,.16)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>
-              🖼️<input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { importPic(e.target.files?.[0]); e.target.value = ""; }} />
-            </label>
-            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 11, overflowX: "auto", padding: "10px 40%", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", userSelect: "none" }}>
-              {lensList.map((o, k) => {
-                const active = o.kind === "ar" ? (arId === o.id) : o.kind === "none" ? (!arId && li === 0 && fi === 0) : o.kind === "lens" ? (!arId && li === o.i) : (!arId && fi === o.i);
-                const name = o.name;
-                const lead = (name || "").split(" ")[0];
-                const isEmoji = !!lead && lead.codePointAt(0) > 0x2000;
-                const bg = o.kind === "ar" ? "linear-gradient(135deg,#7C3AED,#EC4899)" : o.kind === "none" ? "linear-gradient(135deg,#555,#222)" : o.kind === "lens" ? lensBg(GW_LENSES[o.i]) : filterBg(GW_FILTERS[o.i]);
-                const glyph = o.kind === "ar" ? lead : o.kind === "none" ? "\u2300" : o.kind === "lens" ? (isEmoji ? lead : "\u2728") : (name.split(" ").map(w => w[0] || "").join("").slice(0, 2).toUpperCase());
-                return (
-                  <div key={o.kind + k} ref={active ? activeRef : null}
-                    onClick={() => { if (active) { shoot(); return; } if (o.kind === "ar") { setArId(o.id); setLi(0); setFi(0); } else if (o.kind === "none") { setArId(null); setLi(0); setFi(0); } else if (o.kind === "lens") { setArId(null); setLi(o.i); setFi(0); } else { setArId(null); setFi(o.i); setLi(0); } }}
-                    style={{ flexShrink: 0, scrollSnapAlign: "center", width: active ? 70 : 50, height: active ? 70 : 50, borderRadius: "50%", background: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: active ? 26 : 18, color: "#fff", fontWeight: 800, cursor: "pointer", border: active ? "4px solid #fff" : "2px solid rgba(255,255,255,.45)", boxShadow: active ? "0 0 0 3px rgba(0,0,0,.25)" : "none", transition: "width .15s, height .15s", textShadow: "0 1px 3px rgba(0,0,0,.45)" }}>
-                    {glyph}
-                  </div>
-                );
-              })}
-            </div>
-            <div onClick={() => setFacing(f => f === "user" ? "environment" : "user")} style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(255,255,255,.16)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>🔄</div>
-          </div>
-        </>
-      ) : (
-        <>
-          <div ref={boxRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
-            style={{ flex: 1, margin: "0 8px", borderRadius: 18, overflow: "hidden", position: "relative", touchAction: "none", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#111" }}>
-            {preview && <img src={preview} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", userSelect: "none" }} />}
-          </div>
-          {sel && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px" }}>
-              <input type="range" min="0.04" max="0.4" step="0.01" value={sel.s} onChange={e => setStickers(p => p.map((st, i) => i === selIdx ? { ...st, s: Number(e.target.value) } : st))} style={{ flex: 1 }} />
-              <span onClick={() => { setStickers(p => p.filter((_, i) => i !== selIdx)); setSelIdx(-1); }} style={{ color: "#FF6B6B", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>🗑️ Remove</span>
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 2px" }}>
-            {GW_LENSES.map((l2, i) => chip(l2[0], li === i, () => setLi(i)))}
-          </div>
-          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 2px" }}>
-            {GW_FILTERS.map((f, i) => chip(f[0], fi === i, () => setFi(i)))}
-          </div>
-          <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 12px 2px" }}>
-            {GW_FRAMES.map(fr => chip(fr === "None" ? "No frame" : fr, frame === fr, () => setFrame(fr)))}
-            {liveEvents.map(e2 => chip(`${e2.emoji || "🎟️"} ${(e2.title || "").slice(0, 16)}`, frame === "event:" + e2.id, () => setFrame("event:" + e2.id)))}
-            {chip(wm ? "🦋 watermark ✓" : "🦋 watermark", wm, () => setWm(v => !v))}
-          </div>
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "8px 12px 2px" }}>
-            {GW_STICKERS.map(em => <span key={em} onClick={() => addEmoji(em)} style={{ fontSize: 26, cursor: "pointer", flexShrink: 0 }}>{em}</span>)}
-          </div>
-          <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "8px 12px 2px" }}>
-            <input value={capText} onChange={e => setCapText(e.target.value)} placeholder="Add a caption…" style={{ flex: 1, minWidth: 0, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.25)", borderRadius: 18, padding: "9px 14px", color: "#fff", fontSize: 13.5, outline: "none" }} />
-            {["#ffffff", "#FFD93B", "#2FD4A8", "#FF5C8A"].map(cl => <div key={cl} onClick={() => setCapColor(cl)} style={{ width: 22, height: 22, borderRadius: "50%", background: cl, cursor: "pointer", border: capColor === cl ? "2.5px solid #04B08F" : "2px solid rgba(255,255,255,.4)", flexShrink: 0 }} />)}
-            <button onClick={addCaption} style={{ ...btn("#fff", "#0b1f1c"), padding: "8px 13px", fontSize: 12.5, flexShrink: 0 }}>Add</button>
-          </div>
-          <div style={{ display: "flex", gap: 9, padding: "12px 12px 22px" }}>
-            <button onClick={doStory} disabled={busy} style={{ flex: 1, padding: "13px", border: "none", borderRadius: 14, background: "linear-gradient(95deg,#7C3AED,#EC4899)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? .6 : 1 }}>📸 My Story</button>
-            {onSend && <button onClick={doSend} disabled={busy} style={{ flex: 1, padding: "13px", border: "none", borderRadius: 14, background: "linear-gradient(95deg,#04B08F,#008069)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? .6 : 1 }}>Send to chat ➤</button>}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -7155,7 +6685,6 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
     setMsgs(prev => prev.filter(x => x.id !== mid));
   };
   const [plusOpen, setPlusOpen] = useState(false);
-  const [gwCamOpen, setGwCamOpen] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
   const [gamesOpen, setGamesOpen] = useState(false);
   const [pollVotes, setPollVotes] = useState({});
@@ -7541,7 +7070,6 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
                 {[
                   ["🖼️", "Gallery", "linear-gradient(135deg,#7C3AED,#A855F7)", () => { setPlusOpen(false); galRef.current?.click(); }],
-                  ["📷", "Camera", "linear-gradient(135deg,#EC4899,#F97316)", () => { setPlusOpen(false); setGwCamOpen(true); }],
                   ["📄", "Document", "linear-gradient(135deg,#0EA5E9,#2563EB)", () => { setPlusOpen(false); fileRef.current?.click(); }],
                   ["📍", "Location", "linear-gradient(135deg,#04B08F,#008069)", () => { shareLocation(); }],
                   ["💬", "Room", "linear-gradient(135deg,#F59E0B,#EF4444)", () => { setRoomPick(true); setPlusOpen(false); }],
@@ -7562,7 +7090,6 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
       {snapOpen && <SnapViewer msg={snapOpen} onClose={() => setSnapOpen(null)} />}
       {pollOpen && <PollCreator onClose={() => setPollOpen(false)} onCreate={(q, opts) => { setPollOpen(false); sendSpecial({ body: q, media_type: "poll", file_name: JSON.stringify(opts) }); }} />}
       {gamesOpen && <GameShareSheet onClose={() => setGamesOpen(false)} onSendToRoom={(label, url) => { setGamesOpen(false); sendSpecial({ body: url ? `${label} ${url}` : label }); }} />}
-      {gwCamOpen && (HAS_SNAP_CAM ? <SnapLensCamera onClose={() => setGwCamOpen(false)} onCapture={async (dataUrl) => { setGwCamOpen(false); try { const blob = await (await fetch(dataUrl)).blob(); const f = new File([blob], `snap_${Date.now()}.jpg`, { type: "image/jpeg" }); await sendFile(f, "snap"); } catch (e) { console.error(e); } }} /> : <GWCamera meId={user.id} events={gwEvents} onSend={async (f) => { setGwCamOpen(false); await sendFile(f, "snap"); }} onClose={() => setGwCamOpen(false)} />)}
       {gifOpen && <GifPicker onPick={(url) => { setGifOpen(false); sendSpecial({ body: "", media_type: "image", media_url: url, file_name: "GIF" }); }} onClose={() => setGifOpen(false)} />}
       {roomPick && (
         <div onClick={() => setRoomPick(false)} style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "flex-end" }}>
@@ -7597,7 +7124,6 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); e.target.style.height = "auto"; } }}
             placeholder="Message"
             style={{ flex: 1, minWidth: 0, border: "none", outline: "none", fontSize: 15.5, color: W.ink, resize: "none", fontFamily: "inherit", lineHeight: 1.4, maxHeight: 110, overflowY: "auto", background: "transparent", padding: 0 }} />
-          <Camera size={21} color="#EC4899" style={{ flexShrink: 0, cursor: "pointer" }} onClick={() => { setGwCamOpen(true); setPlusOpen(false); setEmojiOpen(false); }} />
           <Plus size={24} color={plusOpen ? W.teal : W.soft} style={{ flexShrink: 0, cursor: "pointer", transform: plusOpen ? "rotate(45deg)" : "none", transition: "transform .15s" }} onClick={() => { setPlusOpen(v => !v); setEmojiOpen(false); }} />
         </div>
         <button onMouseDown={e => e.preventDefault()} onTouchStart={e => { e.preventDefault(); send(); }} onClick={send} style={{ width: 47, height: 47, borderRadius: "50%", border: "none", background: "linear-gradient(135deg,#04B08F,#008069)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, WebkitTapHighlightColor: "transparent", touchAction: "manipulation", boxShadow: "0 3px 10px rgba(0,128,105,.35)" }}><Send size={20} /></button>
@@ -13176,7 +12702,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • snapcam ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • nocamera ✅</div>
       </div>
     </div>
   );
@@ -13581,20 +13107,12 @@ function lastSeenStr(ts) {
   if (days < 7) return `last seen ${days}d ago`;
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
-function Nav({ tab, setTab, isAdmin, onCamera }) {
+function Nav({ tab, setTab, isAdmin }) {
   const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", padding: "8px 0 11px" }}>
-      {items.map((it, idx) => { const on = tab === it.id; const I = it.icon; return (
-        <React.Fragment key={it.id}>
-          {idx === 2 && (
-            <button onClick={onCamera} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg,#7C3AED,#EC4899)", display: "flex", alignItems: "center", justifyContent: "center", marginTop: -14, boxShadow: "0 4px 12px rgba(124,58,237,.45)", border: "3px solid #fff" }}><Camera size={20} color="#fff" /></div>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", marginTop: -2 }}>Camera</span>
-            </button>
-          )}
-          <button onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft }}><I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span></button>
-        </React.Fragment>
+      {items.map((it) => { const on = tab === it.id; const I = it.icon; return (
+        <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft }}><I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span></button>
       ); })}
     </div>
   );
