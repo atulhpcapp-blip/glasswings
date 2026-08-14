@@ -2099,7 +2099,7 @@ function Main({ user }) {
   useEffect(() => { loadRazorpay(); }, []);
   const [tab, setTab] = useState(() => {
     try { if (localStorage.getItem("gw_open_explore") === "1") { localStorage.removeItem("gw_open_explore"); return "explore"; } } catch {}
-    return "chats";
+    return "meet";
   });
   const [open, setOpen] = useState(null); // { id, type }
   const [p2pThreads, setP2pThreads] = useState([]);
@@ -2840,7 +2840,7 @@ function Main({ user }) {
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} />}
+      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} />}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -3452,7 +3452,7 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     </div>
   );
 }
-function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
+function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
   const [mtab, setMtab] = useState("discover");
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
@@ -3494,6 +3494,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
   const [viewsN, setViewsN] = useState(0);
   const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
   const [peek, setPeek] = useState(null);
+  const [peekPhone, setPeekPhone] = useState(null);
   const [waveBusy, setWaveBusy] = useState(null);
   const load = () => {
     supabase.rpc("meet_list").then(({ data }) => setRows(data || []));
@@ -3524,7 +3525,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
     setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
     if (data.mutual) window.gwConfirm(`💚 You and ${p.name?.split(" ")[0] || "they"} both waved!\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, p.name); });
   };
-  const openPeek = (p) => { setPeek(p); supabase.rpc("record_profile_view", { p_user: p.id }); };
+  const openPeek = (p) => { setPeek(p); setPeekPhone(null); supabase.rpc("record_profile_view", { p_user: p.id }); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
   const showViewers = async () => {
     const { data, error } = await supabase.rpc("meet_views_list");
     if (error) { setViewers("locked"); return; }
@@ -3674,6 +3675,19 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
               <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}</div>
               <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>{peek.waved_by_me && peek.waved_me ? "💚 You matched! Your chat is open — say hi." : "Wave 👋 — if they wave back, your chat opens and you can meet at an event 💚"}</div>
+              {isAdmin && (
+                <div style={{ marginTop: 12, background: "#F0F7FF", border: "1px solid #BFDBFE", borderRadius: 12, padding: "11px 13px" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#1E40AF", letterSpacing: .4, marginBottom: 5 }}>🛡️ ADMIN ONLY</div>
+                  {peekPhone === null ? <div style={{ fontSize: 13, color: W.soft }}>Loading phone…</div>
+                    : peekPhone === "" ? <div style={{ fontSize: 13, color: W.soft }}>No phone on file</div>
+                    : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                        <div style={{ flex: 1, fontSize: 14.5, fontWeight: 700, color: W.ink }}>{peekPhone}</div>
+                        <a href={`https://wa.me/${peekPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "8px 13px", fontSize: 12.5, textDecoration: "none" }}>💬 WhatsApp</a>
+                      </div>
+                    )}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 9, marginTop: 14 }}>
                 <button onClick={() => setPeek(null)} style={{ flex: 1, padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
                 {peek.waved_by_me && peek.waved_me ? (
@@ -3701,7 +3715,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
   return (
     <div>
       <TopBar title="Rooms" />
-      {meetOpen && <MeetPage meId={meId} onOpenDM={onOpenDM} onClose={() => setMeetOpen(false)} />}
+      {meetOpen && <MeetPage meId={meId} onOpenDM={onOpenDM} isAdmin={isStaffUser} onClose={() => setMeetOpen(false)} />}
       <div onClick={() => setMeetOpen(true)} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 15, padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,128,105,.25)" }}>
         <span style={{ fontSize: 30 }}>👋</span>
         <div style={{ flex: 1 }}>
@@ -13026,7 +13040,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • herenowB ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meetadmin ✅</div>
       </div>
     </div>
   );
