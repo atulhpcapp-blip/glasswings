@@ -78,6 +78,8 @@ export default async function handler(req, res) {
       );
     } else if (pay.purpose === "credits") {
       await sb.rpc("grant_game_credits", { p_user: uid, p_n: pay.quantity || 0 });
+    } else if (pay.purpose === "boost") {
+      await sb.rpc("grant_paid_spotlight", { p_user: uid });
     }
 
     await sb.from("payments").update({ status: "paid", razorpay_payment_id }).eq("razorpay_order_id", razorpay_order_id);
