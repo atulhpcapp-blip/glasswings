@@ -2758,6 +2758,14 @@ function Main({ user }) {
     </div>
   );
   const pendingBuy = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
+  const [reviewFlag, setReviewFlag] = useState(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    const load = () => supabase.rpc("my_review_status").then(({ data }) => { const r = (data || [])[0]; setReviewFlag(r?.flag || null); });
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [user?.id]);
   if (profile && !profile.profile_completed && !pendingBuy) return <ProfileGate user={user} profile={profile} reload={load} />;
   const needPhoto = !!profile && profile.profile_completed && !((profile.avatar_url || "").trim()) && !pendingBuy;
   // Photo is no longer required to browse or buy — it is only requested when the
@@ -2921,6 +2929,11 @@ function Main({ user }) {
 
   return (
     <>
+      {reviewFlag && (
+        <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 1400, background: "linear-gradient(95deg,#6D28D9,#9333EA)", color: "#fff", padding: "10px 14px", fontSize: 12.5, lineHeight: 1.45, boxShadow: "0 2px 10px rgba(109,40,217,.4)" }}>
+          <b>⚠️ Your profile is under review.</b> Please update your {reviewFlag === "photo" ? "profile photo" : "phone number"} in Profile → Edit. Until then, you won't appear to other members in Meet.
+        </div>
+      )}
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
         {payBusy && (
           <div style={{ position: "fixed", inset: 0, zIndex: 1500, background: "rgba(17,27,33,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -3526,6 +3539,37 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
     if (data.mutual) window.gwConfirm(`💚 You and ${p.name?.split(" ")[0] || "they"} both waved!\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, p.name); });
   };
   const openPeek = (p) => { setPeek(p); setPeekPhone(null); supabase.rpc("record_profile_view", { p_user: p.id }); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
+  const flagProfile = (p, kind) => {
+    window.gwConfirm(`🚩 Flag ${p.name?.split(" ")[0] || "this member"}'s ${kind} as not acceptable?\n\nTheir profile will be hidden from other members until they fix their ${kind}. They'll see a notice to update it.`, async () => {
+      const { error } = await supabase.rpc("admin_flag_profile", { p_user: p.id, p_kind: kind, p_note: null });
+      if (error) return window.gwConfirm(error.message, () => {});
+      setRows(rs => (rs || []).filter(x => x.id !== p.id)); setPeek(null);
+      window.gwConfirm(`✅ Flagged. This profile is now hidden from other members until their ${kind} is updated.`, () => {});
+    });
+  };
+  const clearFlag = (p) => {
+    window.gwConfirm(`Make ${p.name?.split(" ")[0] || "this member"} visible again?`, async () => {
+      const { error } = await supabase.rpc("admin_clear_flag", { p_user: p.id });
+      if (error) return window.gwConfirm(error.message, () => {});
+      setPeek(null);
+      window.gwConfirm("✅ Flag cleared — this member is visible again.", () => {});
+    });
+  };
+  const deactivateMember = (p) => {
+    window.gwConfirm(`🔴 Deactivate ${p.name?.split(" ")[0] || "this member"}'s account?\n\nThey will be blocked from the app entirely. You can reactivate them later from Admin → Members.`, async () => {
+      const { error } = await supabase.rpc("admin_set_blocked", { p_user: p.id, p_blocked: true });
+      if (error) return window.gwConfirm(error.message, () => {});
+      setRows(rs => (rs || []).filter(x => x.id !== p.id)); setPeek(null);
+      window.gwConfirm("🔴 Account deactivated.", () => {});
+    });
+  };
+  const emailMember = async (p) => {
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      fetch("/api/email/moderation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, user_id: p.id }) });
+      window.gwConfirm(`✉️ We'll email ${p.name?.split(" ")[0] || "this member"} asking them to update their profile photo and details.`, () => {});
+    } catch (e) { window.gwConfirm("Couldn't send the email right now.", () => {}); }
+  };
   const showViewers = async () => {
     const { data, error } = await supabase.rpc("meet_views_list");
     if (error) { setViewers("locked"); return; }
@@ -3677,15 +3721,22 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
               <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>{peek.waved_by_me && peek.waved_me ? "💚 You matched! Your chat is open — say hi." : "Wave 👋 — if they wave back, your chat opens and you can meet at an event 💚"}</div>
               {isAdmin && (
                 <div style={{ marginTop: 12, background: "#F0F7FF", border: "1px solid #BFDBFE", borderRadius: 12, padding: "11px 13px" }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#1E40AF", letterSpacing: .4, marginBottom: 5 }}>🛡️ ADMIN ONLY</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#1E40AF", letterSpacing: .4, marginBottom: 7 }}>🛡️ ADMIN ONLY</div>
                   {peekPhone === null ? <div style={{ fontSize: 13, color: W.soft }}>Loading phone…</div>
-                    : peekPhone === "" ? <div style={{ fontSize: 13, color: W.soft }}>No phone on file</div>
                     : (
-                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                        <div style={{ flex: 1, fontSize: 14.5, fontWeight: 700, color: W.ink }}>{peekPhone}</div>
-                        <a href={`https://wa.me/${peekPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "8px 13px", fontSize: 12.5, textDecoration: "none" }}>💬 WhatsApp</a>
+                      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+                        <div style={{ flex: 1, fontSize: 14.5, fontWeight: 700, color: W.ink }}>{peekPhone || "No phone on file"}</div>
+                        {peekPhone && <a href={`https://wa.me/${peekPhone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "8px 13px", fontSize: 12.5, textDecoration: "none" }}>💬 WhatsApp</a>}
                       </div>
                     )}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                    <button onClick={() => flagProfile(peek, "photo")} style={{ ...btn("#fff", "#B45309"), border: "1px solid #FCD34D", fontSize: 12, padding: "8px 4px", justifyContent: "center" }}>🚩 Flag photo</button>
+                    <button onClick={() => flagProfile(peek, "phone")} style={{ ...btn("#fff", "#B45309"), border: "1px solid #FCD34D", fontSize: 12, padding: "8px 4px", justifyContent: "center" }}>🚩 Flag phone</button>
+                    <button onClick={() => emailMember(peek)} style={{ ...btn("#fff", "#1E40AF"), border: "1px solid #BFDBFE", fontSize: 12, padding: "8px 4px", justifyContent: "center" }}>✉️ Email to fix</button>
+                    <button onClick={() => deactivateMember(peek)} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", fontSize: 12, padding: "8px 4px", justifyContent: "center" }}>🔴 Deactivate</button>
+                  </div>
+                  <button onClick={() => clearFlag(peek)} style={{ ...btn("#fff", "#0d6e58"), border: "1px solid #A7F3D0", fontSize: 12, padding: "8px 4px", justifyContent: "center", width: "100%", marginTop: 7 }}>✅ Clear flag / make visible</button>
+                  <div style={{ fontSize: 10.5, color: W.soft, marginTop: 7, lineHeight: 1.4 }}>Flagging hides this profile from other members until they fix it. It auto-clears when they update the flagged item.</div>
                 </div>
               )}
               <div style={{ display: "flex", gap: 9, marginTop: 14 }}>
@@ -13040,7 +13091,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meetadmin ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • moderation ✅</div>
       </div>
     </div>
   );
