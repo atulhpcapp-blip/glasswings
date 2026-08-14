@@ -1234,6 +1234,29 @@ function CategoryTiles({ cats, val, set }) {
     </div>
   );
 }
+function SelfCheckin({ eventId, hasTicket }) {
+  const [here, setHere] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { supabase.rpc("am_i_here", { p_event: eventId }).then(({ data }) => setHere(!!data)); }, [eventId]);
+  const doCheckin = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("check_in_self", { p_event: eventId });
+    setBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) {
+      if (data?.reason === "no_ticket") return window.gwConfirm("Grab a ticket first to check in 🎟️", () => {});
+      if (data?.reason === "not_time") return window.gwConfirm("You can check in once the event is about to start ⏰", () => {});
+      return;
+    }
+    setHere(true);
+    window.gwConfirm("✅ You're checked in!\n\nYou now appear in 'Who's here now' — say hi to others here 👋", () => {});
+  };
+  if (!hasTicket) return null;
+  if (here) return <div style={{ margin: "10px 0 2px", background: "#ECFDF5", border: "1px solid #6EE7B7", borderRadius: 12, padding: "11px 14px", fontWeight: 800, color: "#065F46", fontSize: 13.5, textAlign: "center" }}>✅ You're checked in — you're on the "here now" list</div>;
+  return (
+    <button onClick={doCheckin} disabled={busy} style={{ width: "100%", margin: "10px 0 2px", padding: 13, borderRadius: 12, border: "none", background: "linear-gradient(95deg,#10B981,#008069)", color: "#fff", fontWeight: 800, fontSize: 14.5, cursor: "pointer" }}>{busy ? "…" : "📍 I'm here — check in"}</button>
+  );
+}
 function HereNow({ eventId, onOpenDM }) {
   const [rows, setRows] = useState([]);
   const [busy, setBusy] = useState(null);
@@ -1459,6 +1482,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             </div>
           )}
           {!wide && <Sec title="Tickets"><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
+          {onOpenDM && <SelfCheckin eventId={e.id} hasTicket={hasTicket} />}
           {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
           {onOpenDM && <Sec title="Who's going"><EventGoers eventId={e.id} onOpenDM={onOpenDM} /></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
@@ -13002,7 +13026,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • spotlight ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • herenowB ✅</div>
       </div>
     </div>
   );
