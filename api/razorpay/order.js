@@ -213,6 +213,9 @@ export default async function handler(req, res) {
         creditsGrant = n;
         Object.assign(notes, { credits: n });
       }
+    } else if (purpose === "boost") {
+      amount = 99 * 100; // ₹99 fixed spotlight boost
+      Object.assign(notes, { boost: "24h" });
     } else {
       return res.status(400).json({ error: "Unknown purpose." });
     }
