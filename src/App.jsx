@@ -3436,14 +3436,19 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
     setViewers(data || []);
   };
   const areaOpts = [...new Set((rows || []).map(p => (p.area || "").trim()).filter(Boolean))].sort();
-  const nearYou = (rows || []).filter(p => {
+  const locMatches = (rows || []).filter(p => {
     const pa = (p.area || "").trim(), pc = (p.city || "").trim();
     return (me.area && pa === me.area) || (me.city && pc === me.city);
   }).sort((a, b) => {
     const aa = me.area && (a.area || "").trim() === me.area ? 0 : 1;
     const bb = me.area && (b.area || "").trim() === me.area ? 0 : 1;
     return aa - bb;
-  }).slice(0, 12);
+  });
+  // Always populate: use location matches if we have them, otherwise show
+  // recently-active members so the row is never empty.
+  const nearHasLoc = locMatches.length > 0;
+  const nearYou = (nearHasLoc ? locMatches : (rows || [])).slice(0, 12);
+  const nearTitle = nearHasLoc ? `Near you${me.area ? ` — ${me.area}` : me.city ? ` — ${me.city}` : ""}` : "People to meet";
   const filtered = (rows || []).filter(p =>
     (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
     && (areaFlt === "all" || (p.area || "").trim() === areaFlt));
@@ -3481,6 +3486,14 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
         ))}
       </div>
       {mtab === "discover" && <>
+        {!me.area && !me.city && (
+          <div style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#FFF7ED,#FEF3C7)", border: "1px solid #FCD34D", borderRadius: 13, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 22 }}>📍</span>
+            <div style={{ flex: 1, fontSize: 12.5, color: "#78350F", lineHeight: 1.45 }}>
+              <b>Add your area to see members near you.</b> Go to <b>Profile → Edit profile</b> and fill in your <b>Area</b> and <b>City</b> — then this page shows people close to you first.
+            </div>
+          </div>
+        )}
         <div onClick={() => (viewers === null ? showViewers() : setViewers(null))} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#F5F3FF,#FDF2F8)", border: "1px solid #E9D5FF", borderRadius: 13, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
           <span style={{ fontSize: 22 }}>👀</span>
           <div style={{ flex: 1 }}>
@@ -3494,7 +3507,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
           <div style={{ marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 14px 8px" }}>
               <span style={{ fontSize: 16 }}>📍</span>
-              <div style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>Near you{me.area ? ` — ${me.area}` : me.city ? ` — ${me.city}` : ""}</div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>{nearTitle}</div>
             </div>
             <div style={{ display: "flex", gap: 11, overflowX: "auto", padding: "0 14px 4px" }}>
               {nearYou.map(p => { const mutual = p.waved_by_me && p.waved_me; return (
@@ -12897,7 +12910,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • nearyou ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meethint ✅</div>
       </div>
     </div>
   );
