@@ -1234,7 +1234,40 @@ function CategoryTiles({ cats, val, set }) {
     </div>
   );
 }
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart, isPlanMember, onViewPlans }) {
+function EventGoers({ eventId, onOpenDM }) {
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(null);
+  useEffect(() => { supabase.rpc("event_meet_list", { p_event: eventId }).then(({ data }) => setRows(data || [])); }, [eventId]);
+  const wave = async (p) => {
+    setBusy(p.id);
+    const { data, error } = await supabase.rpc("wave_to", { p_user: p.id });
+    setBusy(null);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) return window.gwConfirm("You've used your free wave for today 👋\n\n💎 Premium members wave unlimited — check Plans in your Profile!", () => {});
+    setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
+    if (data.mutual) window.gwConfirm(`💚 You and ${(p.name || "").split(" ")[0]} both waved!\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0]); });
+  };
+  if (rows === null || rows.length === 0) return null;
+  return (
+    <div style={{ margin: "8px 0 4px" }}>
+      <div style={{ fontWeight: 800, fontSize: 15, color: W.ink, marginBottom: 8 }}>👋 {rows.length} going — say hi before the night</div>
+      <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+        {rows.map(p => { const mutual = p.waved_by_me && p.waved_me; return (
+          <div key={p.id} style={{ flexShrink: 0, width: 92, textAlign: "center" }}>
+            <div style={{ width: 74, height: 74, borderRadius: "50%", overflow: "hidden", margin: "0 auto", background: W.bg, border: `2px solid ${p.waved_me ? "#EC4899" : W.line}` }}>
+              {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
+            <button onClick={() => mutual ? (onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])) : wave(p)} disabled={busy === p.id || (p.waved_by_me && !mutual)} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: mutual ? "linear-gradient(95deg,#6D28D9,#008069)" : p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "#EC4899" : W.teal), color: p.waved_by_me && !mutual ? "#0d6e58" : "#fff" }}>
+              {busy === p.id ? "…" : mutual ? "💬 Msg" : p.waved_by_me ? "✓" : (p.waved_me ? "Wave back" : "👋 Wave")}
+            </button>
+          </div>
+        ); })}
+      </div>
+    </div>
+  );
+}
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart, isPlanMember, onViewPlans, onOpenDM }) {
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1389,6 +1422,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             </div>
           )}
           {!wide && <Sec title="Tickets"><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
+          {onOpenDM && <Sec title="Who's going"><EventGoers eventId={e.id} onOpenDM={onOpenDM} /></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
           {Array.isArray(e.about_media) && e.about_media.length > 0 && (
             <Sec title="Gallery & media">
@@ -2780,7 +2814,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
@@ -2844,7 +2878,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
@@ -3411,10 +3445,14 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
       </div>
       <div style={{ padding: "9px 11px" }}>
         <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
-        <div style={{ fontSize: 11, color: W.soft, marginTop: 1, minHeight: 14 }}>{[p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
-        <button onClick={() => doWave(p)} disabled={p.waved_by_me || waveBusy === p.id} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: p.waved_by_me ? "default" : "pointer", fontWeight: 800, fontSize: 12.5, background: p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal), color: p.waved_by_me ? "#0d6e58" : "#fff" }}>
-          {waveBusy === p.id ? "…" : p.waved_by_me ? "✓ Waved" : (waveLbl || (p.waved_me ? "👋 Wave back" : "👋 Wave"))}
-        </button>
+        <div style={{ fontSize: 11, color: W.soft, marginTop: 1, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
+        {p.waved_by_me && p.waved_me ? (
+          <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff" }}>💬 Message</button>
+        ) : (
+          <button onClick={() => doWave(p)} disabled={p.waved_by_me || waveBusy === p.id} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: p.waved_by_me ? "default" : "pointer", fontWeight: 800, fontSize: 12.5, background: p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal), color: p.waved_by_me ? "#0d6e58" : "#fff" }}>
+            {waveBusy === p.id ? "…" : p.waved_by_me ? "✓ Waved" : (waveLbl || (p.waved_me ? "👋 Wave back" : "👋 Wave"))}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -3464,11 +3502,15 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
             </div>
             <div style={{ padding: "14px 16px 20px" }}>
               <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}</div>
-              <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>Meet them at a Glasswings event — private chat unlocks after you've both checked in at the same event 💚</div>
+              <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>{peek.waved_by_me && peek.waved_me ? "💚 You matched! Your chat is open — say hi." : "Wave 👋 — if they wave back, your chat opens and you can meet at an event 💚"}</div>
               <div style={{ display: "flex", gap: 9, marginTop: 14 }}>
                 <button onClick={() => setPeek(null)} style={{ flex: 1, padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
-                <button onClick={() => { doWave(peek); setPeek(null); }} disabled={peek.waved_by_me} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: peek.waved_by_me ? "#E7F6EF" : W.teal, color: peek.waved_by_me ? "#0d6e58" : "#fff", fontWeight: 800, cursor: peek.waved_by_me ? "default" : "pointer" }}>{peek.waved_by_me ? "✓ Waved" : "👋 Wave"}</button>
+                {peek.waved_by_me && peek.waved_me ? (
+                  <button onClick={() => { onOpenDM && onOpenDM(peek.id, (peek.name || "Member").split(" ")[0]); setPeek(null); }} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>💬 Message</button>
+                ) : (
+                  <button onClick={() => { doWave(peek); setPeek(null); }} disabled={peek.waved_by_me} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: peek.waved_by_me ? "#E7F6EF" : W.teal, color: peek.waved_by_me ? "#0d6e58" : "#fff", fontWeight: 800, cursor: peek.waved_by_me ? "default" : "pointer" }}>{peek.waved_by_me ? "✓ Waved" : "👋 Wave"}</button>
+                )}
               </div>
             </div>
           </div>
@@ -12814,7 +12856,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • widefix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meetv3 ✅</div>
       </div>
     </div>
   );
