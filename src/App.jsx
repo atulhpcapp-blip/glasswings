@@ -1234,6 +1234,43 @@ function CategoryTiles({ cats, val, set }) {
     </div>
   );
 }
+function HereNow({ eventId, onOpenDM }) {
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(null);
+  const load = () => supabase.rpc("event_here_now", { p_event: eventId }).then(({ data }) => setRows(data || []));
+  useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, [eventId]);
+  const wave = async (p) => {
+    setBusy(p.id);
+    const { data, error } = await supabase.rpc("wave_to", { p_user: p.id });
+    setBusy(null);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) return window.gwConfirm("You've used your free wave for today 👋\n\n💎 Premium members wave unlimited!", () => {});
+    setRows(rs => rs.map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
+    if (data.mutual) window.gwConfirm(`💚 You and ${(p.name || "").split(" ")[0]} both waved!\n\nSay hi — you're both here 🎉`, () => { onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0]); });
+  };
+  if (rows.length === 0) return null;
+  return (
+    <div style={{ margin: "10px 0 4px", background: "linear-gradient(100deg,#ECFDF5,#D1FAE5)", border: "1px solid #6EE7B7", borderRadius: 14, padding: "13px 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+        <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#10B981", boxShadow: "0 0 0 3px rgba(16,185,129,.25)" }} />
+        <div style={{ fontWeight: 800, fontSize: 15, color: "#065F46" }}>{rows.length} here now — say hi 🎉</div>
+      </div>
+      <div style={{ display: "flex", gap: 11, overflowX: "auto" }}>
+        {rows.map(p => { const mutual = p.waved_by_me && p.waved_me; return (
+          <div key={p.id} style={{ flexShrink: 0, width: 84, textAlign: "center" }}>
+            <div style={{ width: 66, height: 66, borderRadius: "50%", overflow: "hidden", margin: "0 auto", background: "#fff", border: "2px solid #10B981" }}>
+              {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
+            </div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
+            <button onClick={() => mutual ? (onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])) : wave(p)} disabled={busy === p.id || (p.waved_by_me && !mutual)} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: mutual ? "linear-gradient(95deg,#6D28D9,#008069)" : p.waved_by_me ? "#D1FAE5" : (p.waved_me ? "#EC4899" : "#10B981"), color: p.waved_by_me && !mutual ? "#065F46" : "#fff" }}>
+              {busy === p.id ? "…" : mutual ? "💬" : p.waved_by_me ? "✓" : (p.waved_me ? "Wave back" : "👋 Hi")}
+            </button>
+          </div>
+        ); })}
+      </div>
+    </div>
+  );
+}
 function EventGoers({ eventId, onOpenDM }) {
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -1422,6 +1459,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             </div>
           )}
           {!wide && <Sec title="Tickets"><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
+          {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
           {onOpenDM && <Sec title="Who's going"><EventGoers eventId={e.id} onOpenDM={onOpenDM} /></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
           {Array.isArray(e.about_media) && e.about_media.length > 0 && (
@@ -3395,6 +3433,38 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
   const [me, setMe] = useState({ area: "", city: "" });
+  const [mySpot, setMySpot] = useState(null);
+  const [boostOpen, setBoostOpen] = useState(false);
+  const loadSpot = () => supabase.rpc("my_spotlight").then(({ data }) => setMySpot(data || null));
+  const freeBoost = async () => {
+    const { data, error } = await supabase.rpc("spotlight_free");
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) {
+      if (data?.reason === "not_sub") return window.gwConfirm("Free boosts are a 💎 Premium perk.\n\nSubscribe from Profile → Plans to get 2 free spotlights every month — or pay ₹99 for a 24-hour boost.", () => {});
+      if (data?.reason === "limit") return window.gwConfirm("You've used both free boosts this month 💎\n\nYou can still pay ₹99 for a 24-hour spotlight.", () => {});
+      return;
+    }
+    setBoostOpen(false); loadSpot();
+    window.gwConfirm("✨ You're spotlighted for 24 hours!\n\nYou'll appear at the top of Meet with a glow. Enjoy the extra waves 👋", () => {});
+  };
+  const payBoost = async () => {
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      const r = await fetch("/api/razorpay/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, purpose: "boost" }) });
+      const o = await r.json();
+      if (!o.order_id) return window.gwConfirm(o.error || "Couldn't start payment.", () => {});
+      const rzp = new window.Razorpay({
+        key: o.key_id, order_id: o.order_id, amount: o.amount, currency: "INR",
+        name: "Glasswings", description: "✨ Spotlight — 24h boost",
+        handler: async (resp) => {
+          await fetch("/api/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
+          setTimeout(() => { setBoostOpen(false); loadSpot(); window.gwConfirm("✨ Boost active! You're at the top of Meet for 24 hours.", () => {}); }, 1200);
+        },
+        theme: { color: "#008069" },
+      });
+      rzp.open();
+    } catch (e) { window.gwConfirm("Payment couldn't start. Try again.", () => {}); }
+  };
   const [flt, setFlt] = useState("all");
   const [areaFlt, setAreaFlt] = useState("all");
   const [viewsN, setViewsN] = useState(0);
@@ -3407,6 +3477,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
   };
   useEffect(load, []);
+  useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
   useEffect(() => { supabase.from("member_details").select("area, city").eq("user_id", meId).maybeSingle().then(({ data }) => setMe({ area: (data?.area || "").trim(), city: (data?.city || "").trim() })); }, [meId]);
   useEffect(() => { if (mtab !== "waves") return; supabase.rpc("waves_mark_seen").then(() => { try { window.dispatchEvent(new Event("gwmeet")); } catch {} }); }, [mtab]);
   const lastActive = (ts) => {
@@ -3453,11 +3524,12 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
     (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
     && (areaFlt === "all" || (p.area || "").trim() === areaFlt));
   const card = (p, waveLbl) => (
-    <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden" }}>
+    <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: p.spotlighted ? "2px solid #F59E0B" : `1px solid ${W.line}`, overflow: "hidden", boxShadow: p.spotlighted ? "0 0 14px rgba(245,158,11,.4)" : "none" }}>
       <div onClick={() => openPeek(p)} style={{ cursor: "pointer", position: "relative" }}>
         <div style={{ width: "100%", aspectRatio: "1", background: W.bg }}>
           {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 42 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
         </div>
+        {p.spotlighted && <span style={{ position: "absolute", bottom: 8, left: 8, background: "rgba(245,158,11,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>✨ Spotlight</span>}
         {isNewbie(p.joined) && <span style={{ position: "absolute", top: 8, left: 8, background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🆕 NEW</span>}
         {p.waved_me && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
       </div>
@@ -3486,6 +3558,26 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
         ))}
       </div>
       {mtab === "discover" && <>
+        <div onClick={() => setBoostOpen(true)} style={{ margin: "12px 14px 0", background: mySpot ? "linear-gradient(100deg,#FEF9C3,#FDE68A)" : "linear-gradient(100deg,#6D28D9,#EC4899)", borderRadius: 13, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <span style={{ fontSize: 22 }}>✨</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 800, color: mySpot ? "#78350F" : "#fff", fontSize: 13.5 }}>{mySpot ? "You're spotlighted ✨" : "Get spotlighted"}</div>
+            <div style={{ fontSize: 11.5, color: mySpot ? "#92400E" : "rgba(255,255,255,.9)" }}>{mySpot ? "Top of Meet — glowing for everyone to see" : "Be top of Meet for 24h · more waves 👋"}</div>
+          </div>
+          {!mySpot && <span style={{ background: "rgba(255,255,255,.2)", color: "#fff", fontWeight: 800, fontSize: 12, padding: "7px 12px", borderRadius: 9 }}>Boost →</span>}
+        </div>
+        {boostOpen && !mySpot && (
+          <div onClick={() => setBoostOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 180, background: "rgba(8,20,18,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 480, padding: "20px 18px 26px" }}>
+              <div style={{ textAlign: "center", marginBottom: 4 }}><span style={{ fontSize: 34 }}>✨</span></div>
+              <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, textAlign: "center" }}>Get Spotlighted</div>
+              <div style={{ fontSize: 13, color: W.soft, textAlign: "center", marginTop: 6, lineHeight: 1.5 }}>Sit at the top of Meet for 24 hours with a glow — so more people see you and wave 👋</div>
+              <button onClick={freeBoost} style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff", fontWeight: 800, fontSize: 14.5, cursor: "pointer" }}>💎 Use a free boost <span style={{ opacity: .85, fontWeight: 600 }}>(Premium · 2/month)</span></button>
+              <button onClick={payBoost} style={{ width: "100%", marginTop: 10, padding: 13, borderRadius: 12, border: `1px solid ${W.teal}`, background: "#fff", color: W.teal, fontWeight: 800, fontSize: 14.5, cursor: "pointer" }}>Pay ₹99 · 24-hour boost</button>
+              <button onClick={() => setBoostOpen(false)} style={{ width: "100%", marginTop: 10, padding: 11, borderRadius: 12, border: "none", background: "transparent", color: W.soft, fontWeight: 700, cursor: "pointer" }}>Maybe later</button>
+            </div>
+          </div>
+        )}
         {!me.area && !me.city && (
           <div style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#FFF7ED,#FEF3C7)", border: "1px solid #FCD34D", borderRadius: 13, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 22 }}>📍</span>
@@ -12910,7 +13002,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meethint ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • spotlight ✅</div>
       </div>
     </div>
   );
