@@ -3395,6 +3395,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
   const [flt, setFlt] = useState("all");
+  const [areaFlt, setAreaFlt] = useState("all");
   const [viewsN, setViewsN] = useState(0);
   const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
   const [peek, setPeek] = useState(null);
@@ -3432,8 +3433,10 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
     if (error) { setViewers("locked"); return; }
     setViewers(data || []);
   };
+  const areaOpts = [...new Set((rows || []).map(p => (p.area || "").trim()).filter(Boolean))].sort();
   const filtered = (rows || []).filter(p =>
-    flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt));
+    (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
+    && (areaFlt === "all" || (p.area || "").trim() === areaFlt));
   const card = (p, waveLbl) => (
     <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden" }}>
       <div onClick={() => openPeek(p)} style={{ cursor: "pointer", position: "relative" }}>
@@ -3477,7 +3480,13 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
         </div>
         {viewers === "locked" && <div style={{ margin: "10px 14px 0", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "13px 14px", fontSize: 13, color: W.ink }}>🔒 Seeing <b>who</b> viewed you is a <b>💎 Premium perk</b> — subscribe from your Profile → Plans and this unlocks instantly.</div>}
         {Array.isArray(viewers) && <div style={{ margin: "10px 14px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>{viewers.map(v => card({ ...v, joined: null, last_seen: v.viewed_at }, "👋 Wave"))}{viewers.length === 0 && <div style={{ gridColumn: "1/-1", color: W.soft, fontSize: 13, textAlign: "center", padding: 10 }}>No views yet — go wave at some people! 👋</div>}</div>}
-        <div style={{ display: "flex", gap: 7, padding: "12px 14px 2px", overflowX: "auto" }}>
+        <div style={{ display: "flex", gap: 7, padding: "12px 14px 2px", overflowX: "auto", alignItems: "center" }}>
+          {areaOpts.length > 0 && (
+            <select value={areaFlt} onChange={e => setAreaFlt(e.target.value)} style={{ flexShrink: 0, padding: "7px 11px", borderRadius: 999, border: `1px solid ${areaFlt !== "all" ? W.teal : W.line}`, background: areaFlt !== "all" ? W.teal : "#fff", color: areaFlt !== "all" ? "#fff" : W.ink, fontWeight: 700, fontSize: 12.5, outline: "none" }}>
+              <option value="all">📍 All areas</option>
+              {areaOpts.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          )}
           {[["all", "All"], ["female", "👩 Women"], ["male", "👨 Men"], ["new", "🆕 Newbies"]].map(([k, l]) => (
             <button key={k} onClick={() => setFlt(k)} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 999, border: `1px solid ${flt === k ? W.teal : W.line}`, background: flt === k ? W.teal : "#fff", color: flt === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
           ))}
@@ -12856,7 +12865,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meetv3 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • areafilter ✅</div>
       </div>
     </div>
   );
