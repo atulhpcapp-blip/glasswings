@@ -3394,6 +3394,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
   const [mtab, setMtab] = useState("discover");
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
+  const [me, setMe] = useState({ area: "", city: "" });
   const [flt, setFlt] = useState("all");
   const [areaFlt, setAreaFlt] = useState("all");
   const [viewsN, setViewsN] = useState(0);
@@ -3406,6 +3407,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
   };
   useEffect(load, []);
+  useEffect(() => { supabase.from("member_details").select("area, city").eq("user_id", meId).maybeSingle().then(({ data }) => setMe({ area: (data?.area || "").trim(), city: (data?.city || "").trim() })); }, [meId]);
   useEffect(() => { if (mtab !== "waves") return; supabase.rpc("waves_mark_seen").then(() => { try { window.dispatchEvent(new Event("gwmeet")); } catch {} }); }, [mtab]);
   const lastActive = (ts) => {
     if (!ts) return "";
@@ -3434,6 +3436,14 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
     setViewers(data || []);
   };
   const areaOpts = [...new Set((rows || []).map(p => (p.area || "").trim()).filter(Boolean))].sort();
+  const nearYou = (rows || []).filter(p => {
+    const pa = (p.area || "").trim(), pc = (p.city || "").trim();
+    return (me.area && pa === me.area) || (me.city && pc === me.city);
+  }).sort((a, b) => {
+    const aa = me.area && (a.area || "").trim() === me.area ? 0 : 1;
+    const bb = me.area && (b.area || "").trim() === me.area ? 0 : 1;
+    return aa - bb;
+  }).slice(0, 12);
   const filtered = (rows || []).filter(p =>
     (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
     && (areaFlt === "all" || (p.area || "").trim() === areaFlt));
@@ -3480,6 +3490,28 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
         </div>
         {viewers === "locked" && <div style={{ margin: "10px 14px 0", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "13px 14px", fontSize: 13, color: W.ink }}>🔒 Seeing <b>who</b> viewed you is a <b>💎 Premium perk</b> — subscribe from your Profile → Plans and this unlocks instantly.</div>}
         {Array.isArray(viewers) && <div style={{ margin: "10px 14px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>{viewers.map(v => card({ ...v, joined: null, last_seen: v.viewed_at }, "👋 Wave"))}{viewers.length === 0 && <div style={{ gridColumn: "1/-1", color: W.soft, fontSize: 13, textAlign: "center", padding: 10 }}>No views yet — go wave at some people! 👋</div>}</div>}
+        {nearYou.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 14px 8px" }}>
+              <span style={{ fontSize: 16 }}>📍</span>
+              <div style={{ fontWeight: 800, fontSize: 15, color: W.ink }}>Near you{me.area ? ` — ${me.area}` : me.city ? ` — ${me.city}` : ""}</div>
+            </div>
+            <div style={{ display: "flex", gap: 11, overflowX: "auto", padding: "0 14px 4px" }}>
+              {nearYou.map(p => { const mutual = p.waved_by_me && p.waved_me; return (
+                <div key={p.id} style={{ flexShrink: 0, width: 96, textAlign: "center" }}>
+                  <div onClick={() => openPeek(p)} style={{ width: 84, height: 84, borderRadius: "50%", overflow: "hidden", margin: "0 auto", background: "#fff", border: `2px solid ${p.waved_me ? "#EC4899" : W.line}`, cursor: "pointer", position: "relative" }}>
+                    {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
+                  <div style={{ fontSize: 10, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.area || p.city}</div>
+                  <button onClick={() => mutual ? (onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])) : doWave(p)} disabled={waveBusy === p.id || (p.waved_by_me && !mutual)} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: mutual ? "linear-gradient(95deg,#6D28D9,#008069)" : p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "#EC4899" : W.teal), color: p.waved_by_me && !mutual ? "#0d6e58" : "#fff" }}>
+                    {waveBusy === p.id ? "…" : mutual ? "💬 Msg" : p.waved_by_me ? "✓" : (p.waved_me ? "Wave back" : "👋 Wave")}
+                  </button>
+                </div>
+              ); })}
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 7, padding: "12px 14px 2px", overflowX: "auto", alignItems: "center" }}>
           {areaOpts.length > 0 && (
             <select value={areaFlt} onChange={e => setAreaFlt(e.target.value)} style={{ flexShrink: 0, padding: "7px 11px", borderRadius: 999, border: `1px solid ${areaFlt !== "all" ? W.teal : W.line}`, background: areaFlt !== "all" ? W.teal : "#fff", color: areaFlt !== "all" ? "#fff" : W.ink, fontWeight: 700, fontSize: 12.5, outline: "none" }}>
@@ -12865,7 +12897,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • areafilter ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • nearyou ✅</div>
       </div>
     </div>
   );
