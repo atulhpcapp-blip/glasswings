@@ -2817,6 +2817,8 @@ function Main({ user }) {
             )}
           </div>
         </div>
+        <GwDialogHost />
+        {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
       </>
     );
   }
@@ -3385,7 +3387,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM }) {
     const { data, error } = await supabase.rpc("wave_to", { p_user: p.id });
     setWaveBusy(null);
     if (error) return window.gwConfirm(error.message, () => {});
-    if (!data?.ok) return window.gwConfirm("You've used today's 5 free waves 👋\n\n💎 Premium members wave unlimited — check Plans in your Profile!", () => {});
+    if (!data?.ok) return window.gwConfirm("You've used your free wave for today 👋\n\n💎 Premium members wave unlimited — check Plans in your Profile!", () => {});
     setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
     setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
     if (data.mutual) window.gwConfirm(`💚 You and ${p.name?.split(" ")[0] || "they"} both waved!\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, p.name); });
@@ -12812,7 +12814,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • meetwave2 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • widefix ✅</div>
       </div>
     </div>
   );
