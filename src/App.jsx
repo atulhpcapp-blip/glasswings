@@ -3509,6 +3509,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
   const [viewsN, setViewsN] = useState(0);
   const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
   const [peek, setPeek] = useState(null);
+  const [peekInfo, setPeekInfo] = useState(null);
   const [peekPhone, setPeekPhone] = useState(null);
   const [waveBusy, setWaveBusy] = useState(null);
   const load = () => {
@@ -3544,7 +3545,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
     setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
     if (data.mutual) window.gwConfirm(`💚 You and ${p.name?.split(" ")[0] || "they"} both waved!\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, p.name); });
   };
-  const openPeek = (p) => { setPeek(p); setPeekPhone(null); supabase.rpc("record_profile_view", { p_user: p.id }); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
+  const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
   const flagProfile = (p, kind) => {
     window.gwConfirm(`🚩 Flag ${p.name?.split(" ")[0] || "this member"}'s ${kind} as not acceptable?\n\nTheir profile will be hidden from other members until they fix their ${kind}. They'll see a notice to update it.`, async () => {
       const { error } = await supabase.rpc("admin_flag_profile", { p_user: p.id, p_kind: kind, p_note: null });
@@ -3733,6 +3734,15 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
             <div style={{ padding: "14px 16px 20px" }}>
               <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}</div>
               <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
+              {peekInfo?.bio && <div style={{ fontSize: 14, color: W.ink, marginTop: 10, lineHeight: 1.5 }}>{peekInfo.bio}</div>}
+              {peekInfo?.interests?.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                  {peekInfo.interests.map(it => { const shared = (peekInfo.shared_interests || []).includes(it); return (
+                    <span key={it} style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 999, background: shared ? "#E7F6EF" : W.bg, color: shared ? "#0d6e58" : W.soft, border: shared ? "1px solid #A7F3D0" : "1px solid transparent" }}>{shared ? "✓ " : ""}{it}</span>
+                  ); })}
+                </div>
+              )}
+              {peekInfo?.shared_interests?.length > 0 && <div style={{ fontSize: 12, color: "#0d6e58", fontWeight: 700, marginTop: 8 }}>💚 You both like {peekInfo.shared_interests.slice(0, 3).join(", ")}</div>}
               <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>{peek.waved_by_me && peek.waved_me ? "💚 You matched! Your chat is open — say hi." : "Wave 👋 — if they wave back, your chat opens and you can meet at an event 💚"}</div>
               {isAdmin && (
                 <div style={{ marginTop: 12, background: "#F0F7FF", border: "1px solid #BFDBFE", borderRadius: 12, padding: "11px 13px" }}>
@@ -12887,11 +12897,14 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
   const [name, setName] = useState(profile.full_name || "");
   const [gender, setGender] = useState(profile.gender || "male");
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");
+  const [bio, setBio] = useState(""), [interests, setInterests] = useState([]);
+  const INTERESTS = [["🎵","Music"],["🍸","Nightlife"],["☕","Coffee"],["✈️","Travel"],["🏸","Sports"],["🎮","Gaming"],["🎨","Art"],["🍜","Foodie"],["📸","Photography"],["💃","Dancing"],["🎬","Movies"],["📚","Reading"],["🧘","Fitness"],["🎤","Karaoke"],["🐶","Pets"],["🌿","Outdoors"]];
+  const toggleInterest = (label) => setInterests(xs => xs.includes(label) ? xs.filter(x => x !== label) : (xs.length >= 6 ? xs : [...xs, label]));
   const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const fileRef = useRef(null);
   useEffect(() => {
-    supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); } });
+    supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); setBio(data.bio || ""); setInterests(Array.isArray(data.interests) ? data.interests : []); } });
     supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data?.phone) setPhone(data.phone); });
   }, [user.id]);
   const pick = async (e) => {
@@ -12903,7 +12916,7 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
   const save = async () => {
     setErr(""); if (!name.trim()) return setErr("Please enter your name.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city, bio: bio.trim() || null, interests: interests.length ? interests : null });
     if (phone) await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name.trim(), gender, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
@@ -12920,6 +12933,12 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 14 }}>Edit profile</div>
+      {(() => { const parts = [!!avatar, !!name.trim(), !!age, !!city, !!bio.trim(), interests.length > 0]; const pct = Math.round(parts.filter(Boolean).length / parts.length * 100); if (pct >= 100) return null; return (
+        <div style={{ background: "#F5F3FF", border: "1px solid #E9D5FF", borderRadius: 12, padding: "11px 13px", marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, color: "#6D28D9", marginBottom: 6 }}><span>✨ Profile {pct}% complete</span><span style={{ fontWeight: 500, color: W.soft }}>{!avatar ? "Add a photo" : !bio.trim() ? "Add a bio" : interests.length === 0 ? "Pick interests" : "Almost there!"}</span></div>
+          <div style={{ height: 6, background: "#E9D5FF", borderRadius: 999, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg,#7C3AED,#EC4899)" }} /></div>
+        </div>
+      ); })()}
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
         <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer" }}>
           <PersonAvatar url={avatar} name={name} size={84} />
@@ -12940,6 +12959,19 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
         {inp("Area / locality", area, setArea)}
         {inp("City", city, setCity)}
         {inp("Profession", prof, setProf)}
+        <div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6, fontWeight: 600 }}>About me <span style={{ fontWeight: 400 }}>— one line to introduce yourself</span></div>
+          <textarea value={bio} onChange={e => setBio(e.target.value.slice(0, 150))} placeholder="e.g. Foodie & live-music addict, always up for a Sunday brunch 🎶" rows={2} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink, boxSizing: "border-box", resize: "none" }} />
+          <div style={{ fontSize: 11, color: W.soft, textAlign: "right" }}>{bio.length}/150</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8, fontWeight: 600 }}>My interests <span style={{ fontWeight: 400 }}>— pick up to 6</span></div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {INTERESTS.map(([emo, label]) => { const on = interests.includes(label); return (
+              <button key={label} onClick={() => toggleInterest(label)} style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${on ? W.teal : W.line}`, background: on ? W.teal : "#fff", color: on ? "#fff" : W.ink, fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>{emo} {label}</button>
+            ); })}
+          </div>
+        </div>
         {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
           <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
@@ -13107,7 +13139,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • leaner ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • richprofile ✅</div>
       </div>
     </div>
   );
