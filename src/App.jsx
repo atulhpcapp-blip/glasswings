@@ -3543,7 +3543,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
     window.gwConfirm(`🚩 Flag ${p.name?.split(" ")[0] || "this member"}'s ${kind} as not acceptable?\n\nTheir profile will be hidden from other members until they fix their ${kind}. They'll see a notice to update it.`, async () => {
       const { error } = await supabase.rpc("admin_flag_profile", { p_user: p.id, p_kind: kind, p_note: null });
       if (error) return window.gwConfirm(error.message, () => {});
-      setRows(rs => (rs || []).filter(x => x.id !== p.id)); setPeek(null);
+      setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, review_flag: kind } : x)); setPeek(null);
       window.gwConfirm(`✅ Flagged. This profile is now hidden from other members until their ${kind} is updated.`, () => {});
     });
   };
@@ -3551,7 +3551,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
     window.gwConfirm(`Make ${p.name?.split(" ")[0] || "this member"} visible again?`, async () => {
       const { error } = await supabase.rpc("admin_clear_flag", { p_user: p.id });
       if (error) return window.gwConfirm(error.message, () => {});
-      setPeek(null);
+      setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, review_flag: null } : x)); setPeek(null);
       window.gwConfirm("✅ Flag cleared — this member is visible again.", () => {});
     });
   };
@@ -3599,6 +3599,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
           {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 42 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
         </div>
         {p.spotlighted && <span style={{ position: "absolute", bottom: 8, left: 8, background: "rgba(245,158,11,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>✨ Spotlight</span>}
+        {isAdmin && p.review_flag && <span style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(192,57,43,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🚩 {p.review_flag}</span>}
         {isNewbie(p.joined) && <span style={{ position: "absolute", top: 8, left: 8, background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🆕 NEW</span>}
         {p.waved_me && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
       </div>
@@ -3722,6 +3723,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
               {isAdmin && (
                 <div style={{ marginTop: 12, background: "#F0F7FF", border: "1px solid #BFDBFE", borderRadius: 12, padding: "11px 13px" }}>
                   <div style={{ fontSize: 10.5, fontWeight: 800, color: "#1E40AF", letterSpacing: .4, marginBottom: 7 }}>🛡️ ADMIN ONLY</div>
+                  {peek.review_flag && <div style={{ background: "#FBE9E7", color: "#C0392B", fontSize: 12, fontWeight: 800, padding: "7px 10px", borderRadius: 8, marginBottom: 9 }}>🚩 Currently flagged: {peek.review_flag} — hidden from other members</div>}
                   {peekPhone === null ? <div style={{ fontSize: 13, color: W.soft }}>Loading phone…</div>
                     : (
                       <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
@@ -13091,7 +13093,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • modfix ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • flagvisible ✅</div>
       </div>
     </div>
   );
