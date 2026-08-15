@@ -2102,6 +2102,7 @@ function Main({ user }) {
     return "meet";
   });
   const [open, setOpen] = useState(null); // { id, type }
+  const [reviewFlag, setReviewFlag] = useState(null);
   const [p2pThreads, setP2pThreads] = useState([]);
   const [stories, setStories] = useState([]);
   const [coupleFor, setCoupleFor] = useState(null);
@@ -2136,6 +2137,13 @@ function Main({ user }) {
     setPlanRoomIds(liveIds.length ? [...new Set((prsAll || []).filter(x => liveIds.includes(x.plan_id)).map(x => x.room_id))] : []);
   };
   useEffect(() => { loadPlans(); }, [user?.id, tab]);
+  useEffect(() => {
+    if (!user?.id) return;
+    const load = () => supabase.rpc("my_review_status").then(({ data }) => { const r = (data || [])[0]; setReviewFlag(r?.flag || null); });
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [user?.id]);
   useEffect(() => {
     if (!subPage) return;
     loadRazorpay();
@@ -2758,14 +2766,6 @@ function Main({ user }) {
     </div>
   );
   const pendingBuy = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
-  const [reviewFlag, setReviewFlag] = useState(null);
-  useEffect(() => {
-    if (!user?.id) return;
-    const load = () => supabase.rpc("my_review_status").then(({ data }) => { const r = (data || [])[0]; setReviewFlag(r?.flag || null); });
-    load();
-    window.addEventListener("focus", load);
-    return () => window.removeEventListener("focus", load);
-  }, [user?.id]);
   if (profile && !profile.profile_completed && !pendingBuy) return <ProfileGate user={user} profile={profile} reload={load} />;
   const needPhoto = !!profile && profile.profile_completed && !((profile.avatar_url || "").trim()) && !pendingBuy;
   // Photo is no longer required to browse or buy — it is only requested when the
@@ -13091,7 +13091,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • moderation ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • modfix ✅</div>
       </div>
     </div>
   );
