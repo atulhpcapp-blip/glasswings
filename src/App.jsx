@@ -3734,6 +3734,11 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
             <div style={{ padding: "14px 16px 20px" }}>
               <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}</div>
               <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
+              {peekInfo?.photos?.length > 0 && (
+                <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 12 }}>
+                  {peekInfo.photos.map((url, i) => <img key={i} src={url} alt="" style={{ width: 88, height: 110, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />)}
+                </div>
+              )}
               {peekInfo?.bio && <div style={{ fontSize: 14, color: W.ink, marginTop: 10, lineHeight: 1.5 }}>{peekInfo.bio}</div>}
               {peekInfo?.interests?.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
@@ -12898,13 +12903,26 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
   const [gender, setGender] = useState(profile.gender || "male");
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");
   const [bio, setBio] = useState(""), [interests, setInterests] = useState([]);
+  const [photos, setPhotos] = useState([]);
+  const [galBusy, setGalBusy] = useState(false);
+  const galRef = useRef(null);
+  const addPhotos = async (e) => {
+    const files = Array.from(e.target.files || []); if (!files.length) return;
+    setGalBusy(true);
+    try {
+      const room = 5 - photos.length;
+      for (const f of files.slice(0, room)) { const url = await uploadPhoto(user.id, f); setPhotos(ps => ps.length < 5 ? [...ps, url] : ps); }
+    } catch (x) { setErr("Photo upload failed: " + x.message); }
+    setGalBusy(false);
+  };
+  const removePhoto = (i) => setPhotos(ps => ps.filter((_, idx) => idx !== i));
   const INTERESTS = [["🎵","Music"],["🍸","Nightlife"],["☕","Coffee"],["✈️","Travel"],["🏸","Sports"],["🎮","Gaming"],["🎨","Art"],["🍜","Foodie"],["📸","Photography"],["💃","Dancing"],["🎬","Movies"],["📚","Reading"],["🧘","Fitness"],["🎤","Karaoke"],["🐶","Pets"],["🌿","Outdoors"]];
   const toggleInterest = (label) => setInterests(xs => xs.includes(label) ? xs.filter(x => x !== label) : (xs.length >= 6 ? xs : [...xs, label]));
   const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const fileRef = useRef(null);
   useEffect(() => {
-    supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); setBio(data.bio || ""); setInterests(Array.isArray(data.interests) ? data.interests : []); } });
+    supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); setBio(data.bio || ""); setInterests(Array.isArray(data.interests) ? data.interests : []); setPhotos(Array.isArray(data.photos) ? data.photos : []); } });
     supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data?.phone) setPhone(data.phone); });
   }, [user.id]);
   const pick = async (e) => {
@@ -12916,7 +12934,7 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
   const save = async () => {
     setErr(""); if (!name.trim()) return setErr("Please enter your name.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city, bio: bio.trim() || null, interests: interests.length ? interests : null });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city, bio: bio.trim() || null, interests: interests.length ? interests : null, photos: photos.length ? photos : null });
     if (phone) await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name.trim(), gender, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
@@ -12933,9 +12951,9 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 14 }}>Edit profile</div>
-      {(() => { const parts = [!!avatar, !!name.trim(), !!age, !!city, !!bio.trim(), interests.length > 0]; const pct = Math.round(parts.filter(Boolean).length / parts.length * 100); if (pct >= 100) return null; return (
+      {(() => { const parts = [!!avatar, !!name.trim(), !!age, !!city, !!bio.trim(), interests.length > 0, photos.length >= 2]; const pct = Math.round(parts.filter(Boolean).length / parts.length * 100); if (pct >= 100) return null; return (
         <div style={{ background: "#F5F3FF", border: "1px solid #E9D5FF", borderRadius: 12, padding: "11px 13px", marginBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, color: "#6D28D9", marginBottom: 6 }}><span>✨ Profile {pct}% complete</span><span style={{ fontWeight: 500, color: W.soft }}>{!avatar ? "Add a photo" : !bio.trim() ? "Add a bio" : interests.length === 0 ? "Pick interests" : "Almost there!"}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, fontWeight: 700, color: "#6D28D9", marginBottom: 6 }}><span>✨ Profile {pct}% complete</span><span style={{ fontWeight: 500, color: W.soft }}>{!avatar ? "Add a photo" : !bio.trim() ? "Add a bio" : interests.length === 0 ? "Pick interests" : photos.length < 2 ? "Add more photos" : "Almost there!"}</span></div>
           <div style={{ height: 6, background: "#E9D5FF", borderRadius: 999, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg,#7C3AED,#EC4899)" }} /></div>
         </div>
       ); })()}
@@ -12971,6 +12989,21 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
               <button key={label} onClick={() => toggleInterest(label)} style={{ padding: "8px 12px", borderRadius: 999, border: `1px solid ${on ? W.teal : W.line}`, background: on ? W.teal : "#fff", color: on ? "#fff" : W.ink, fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>{emo} {label}</button>
             ); })}
           </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8, fontWeight: 600 }}>Your photos <span style={{ fontWeight: 400 }}>— a few pics so people recognise you at events (up to 5)</span></div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+            {photos.map((url, i) => (
+              <div key={i} style={{ position: "relative", aspectRatio: "1", borderRadius: 10, overflow: "hidden", background: W.bg }}>
+                <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <div onClick={() => removePhoto(i)} style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,.6)", color: "#fff", width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 13, fontWeight: 800 }}>✕</div>
+              </div>
+            ))}
+            {photos.length < 5 && (
+              <button onClick={() => galRef.current?.click()} disabled={galBusy} style={{ aspectRatio: "1", borderRadius: 10, border: `1.5px dashed ${W.teal}`, background: "#fff", color: W.teal, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, fontSize: 12, fontWeight: 700 }}>{galBusy ? "…" : <><Plus size={20} />Add</>}</button>
+            )}
+          </div>
+          <input ref={galRef} type="file" accept="image/*" multiple onChange={addPhotos} style={{ display: "none" }} />
         </div>
         {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
@@ -13139,7 +13172,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • richprofile ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gallery5 ✅</div>
       </div>
     </div>
   );
