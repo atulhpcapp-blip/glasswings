@@ -3509,6 +3509,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
   const [viewsN, setViewsN] = useState(0);
   const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
   const [peek, setPeek] = useState(null);
+  const [photoZoom, setPhotoZoom] = useState(null);
   const [peekInfo, setPeekInfo] = useState(null);
   const [peekPhone, setPeekPhone] = useState(null);
   const [waveBusy, setWaveBusy] = useState(null);
@@ -3725,18 +3726,24 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
             : inbox.map(p => card({ ...p, joined: null, last_seen: p.waved_at, waved_me: true, waved_by_me: p.mutual }, p.mutual ? "💚 Mutual" : "👋 Wave back"))}
         </div>
       )}
+      {photoZoom && (
+        <div onClick={() => setPhotoZoom(null)} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.92)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={() => setPhotoZoom(null)} style={{ position: "absolute", top: 16, right: 18, color: "#fff", fontSize: 26, fontWeight: 300, cursor: "pointer", lineHeight: 1 }}>✕</div>
+          <img src={photoZoom} alt="" onClick={e => e.stopPropagation()} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 10 }} />
+        </div>
+      )}
       {peek && (
         <div onClick={() => setPeek(null)} style={{ position: "fixed", inset: 0, zIndex: 170, background: "rgba(8,20,18,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 480, overflow: "hidden" }}>
             <div style={{ width: "100%", aspectRatio: "1", maxHeight: 380, background: W.bg }}>
-              {peek.avatar_url ? <img src={peek.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 70 }}>{peek.gender === "female" ? "👩" : peek.gender === "male" ? "👨" : "🙂"}</div>}
+              {peek.avatar_url ? <img src={peek.avatar_url} alt="" onClick={() => setPhotoZoom(peek.avatar_url)} style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "pointer" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 70 }}>{peek.gender === "female" ? "👩" : peek.gender === "male" ? "👨" : "🙂"}</div>}
             </div>
             <div style={{ padding: "14px 16px 20px" }}>
               <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}</div>
               <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
               {peekInfo?.photos?.length > 0 && (
                 <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 12 }}>
-                  {peekInfo.photos.map((url, i) => <img key={i} src={url} alt="" style={{ width: 88, height: 110, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />)}
+                  {peekInfo.photos.map((url, i) => <img key={i} src={url} alt="" onClick={() => setPhotoZoom(url)} style={{ width: 88, height: 110, borderRadius: 10, objectFit: "cover", flexShrink: 0, cursor: "pointer" }} />)}
                 </div>
               )}
               {peekInfo?.bio && <div style={{ fontSize: 14, color: W.ink, marginTop: 10, lineHeight: 1.5 }}>{peekInfo.bio}</div>}
@@ -13172,7 +13179,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <span style={{ color: W.teal, fontWeight: 800 }}>→</span>
         </div>
         <div style={{ textAlign: "center", marginTop: 18 }}><TermsLink /></div>
-        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • gallery5 ✅</div>
+        <div style={{ textAlign: "center", color: W.soft, fontSize: 11, marginTop: 10 }}>Glasswings build • photozoom ✅</div>
       </div>
     </div>
   );
