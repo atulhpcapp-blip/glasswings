@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v2 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v3 build</div>
       </div>
     </div>
   );
@@ -10837,7 +10837,13 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const [mSeg, setMSeg] = useState("details");
-  const MSEGS = [["details", "📝 Details"], ["media", "🖼️ Media & share"], ["tickets", "🎟️ Tickets"], ["guests", "🧑‍🤝‍🧑 Guest list"], ["terms", "📋 Terms"]];
+  const MSEGS = [
+    ["details", "📝", "Details", "#008069", "#E7F6EF"],
+    ["media", "🖼️", "Media & share", "#2563EB", "#EAF1FE"],
+    ["tickets", "🎟️", "Tickets", "#7C3AED", "#F3EEFE"],
+    ["guests", "🧑‍🤝‍🧑", "Guest list", "#D97706", "#FDF3E4"],
+    ["terms", "📋", "Terms", "#E11D48", "#FDE9EF"],
+  ];
   const [step, setStep] = useState(0);
   const STEPS = ["Basics", "Media", "When & where", "Details", "Tickets"];
   const STEP_HINTS = [
@@ -11235,10 +11241,15 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             </div>
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}>
-                <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 14, WebkitOverflowScrolling: "touch" }}>
-                  {MSEGS.map(([k, l]) => (
-                    <button key={k} onClick={() => setMSeg(k)} style={{ flexShrink: 0, padding: "8px 13px", borderRadius: 18, border: `1px solid ${mSeg === k ? W.teal : W.line}`, background: mSeg === k ? W.teal : "#fff", color: mSeg === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>{l}</button>
-                  ))}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+                  {MSEGS.map(([k, ic, l, col, bg]) => {
+                    const on = mSeg === k;
+                    return (
+                      <button key={k} onClick={() => setMSeg(k)} style={{ flex: "1 1 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "11px 15px", borderRadius: 13, border: `2px solid ${on ? col : bg}`, background: on ? col : bg, color: on ? "#fff" : col, fontWeight: 800, fontSize: 15, letterSpacing: .2, cursor: "pointer", whiteSpace: "nowrap", boxShadow: on ? `0 4px 12px ${col}44` : "none", transform: on ? "translateY(-1px)" : "none", transition: "all .18s" }}>
+                        <span style={{ fontSize: 17 }}>{ic}</span>{l}
+                      </button>
+                    );
+                  })}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   {mSeg === "details" && (<>
