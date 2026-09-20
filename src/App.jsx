@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v3 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v4 build</div>
       </div>
     </div>
   );
@@ -2916,7 +2916,7 @@ function Main({ user }) {
                 <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
               </>
             ) : (
-              <div style={{ maxWidth: 1100, margin: "0 auto", width: "100%" }}>{screen}</div>
+              <div style={{ maxWidth: tab === "admin" ? "none" : 1100, margin: "0 auto", width: "100%", padding: tab === "admin" ? "0 24px" : 0, boxSizing: "border-box" }}>{screen}</div>
             )}
           </div>
         </div>
@@ -10844,6 +10844,15 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     ["guests", "🧑‍🤝‍🧑", "Guest list", "#D97706", "#FDF3E4"],
     ["terms", "📋", "Terms", "#E11D48", "#FDE9EF"],
   ];
+  const EVCOLORS = [
+    { bg: "#FFEAF1", bar: "#E11D48" },
+    { bg: "#E7F1FF", bar: "#2563EB" },
+    { bg: "#E3FBEE", bar: "#059669" },
+    { bg: "#FFF4DE", bar: "#D97706" },
+    { bg: "#F1E8FE", bar: "#7C3AED" },
+    { bg: "#E0FAFA", bar: "#0891B2" },
+    { bg: "#FDE9FB", bar: "#C026D3" },
+  ];
   const [step, setStep] = useState(0);
   const STEPS = ["Basics", "Media", "When & where", "Details", "Tickets"];
   const STEP_HINTS = [
@@ -11211,8 +11220,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         </div>
       )}
       {!creating && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {visEvents.map(e => (
-          <div key={e.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
+        {visEvents.map((e, ei) => { const ec = EVCOLORS[ei % EVCOLORS.length]; return (
+          <div key={e.id} style={{ background: ec.bg, borderRadius: 14, border: `1px solid ${ec.bar}33`, borderLeft: `6px solid ${ec.bar}`, padding: 14, boxShadow: `0 2px 10px ${ec.bar}1f` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -11314,7 +11323,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               </div>
             )}
           </div>
-        ))}
+        ); })}
         {visEvents.length === 0 && <Center>{view === "past" ? "No past events." : "No upcoming events — create one!"}</Center>}
       </div>}
     </div>
