@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-wizard build</div>
       </div>
     </div>
   );
@@ -10836,6 +10836,15 @@ function EventDetailsEditor({ event, onUpdate }) {
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
+  const [step, setStep] = useState(0);
+  const STEPS = ["Basics", "Media", "When & where", "Details", "Tickets"];
+  const STEP_HINTS = [
+    "The essentials — what it's called, who's hosting, and where it fits.",
+    "Poster, banner and any videos. All optional, but a poster makes the event card pop.",
+    "When it happens and where people go. Set an end time so the event auto-closes.",
+    "Everything guests read on the event page — schedule, artists, FAQs, terms.",
+    "Set the price and any add-ons, then create the event.",
+  ];
   const [membersFor, setMembersFor] = useState(null);
   const todayISO = new Date().toISOString().slice(0, 10);
   const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" };
@@ -10901,7 +10910,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const create = async () => {
     if (!f.title) return;
     const dates = buildDates();
-    if (!f.dateTbd && !(f.endTime || "").trim()) { alert("Please set the event END time (end date optional — same day assumed). This is required so the event auto-closes after it finishes."); return; }
+    if (!f.dateTbd && !(f.endTime || "").trim()) { setStep(2); alert("Please set the event END time (end date optional — same day assumed). This is required so the event auto-closes after it finishes."); return; }
     let label0 = f.dateTbd ? "📅 To be decided" : (dates[0]?.label || "");
     let endAt = null;
     if (!f.dateTbd && dates[0]?.iso && (f.endTime || f.finishDate)) {
@@ -10913,7 +10922,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
     await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
-    reset(); setCreating(false);
+    reset(); setCreating(false); setStep(0);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
   return (
@@ -10923,50 +10932,21 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
       {membersFor && <EventMembersSheet event={membersFor} onClose={() => setMembersFor(null)} />}
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 12, color: W.ink }}>New ticketed event</div>
-          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-            <div onClick={() => pRef.current?.click()} style={{ width: 108, flexShrink: 0, aspectRatio: "3/4", borderRadius: 12, overflow: "hidden", border: f.poster ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textAlign: "center", color: W.soft, fontSize: 11.5, fontWeight: 600, padding: f.poster ? 0 : 8 }}>
-              {f.poster ? <img src={f.poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? "Uploading…" : "+ Poster\u00A0· portrait 3:4 (event cards)")}
-            </div>
-            <div onClick={() => bRef.current?.click()} style={{ flex: 1, minWidth: 0, borderRadius: 12, overflow: "hidden", border: f.banner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textAlign: "center", color: W.soft, fontSize: 12, fontWeight: 600, padding: f.banner ? 0 : 8 }}>
-              {f.banner ? <BannerMedia url={f.banner} type={f.bannerType} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? "Uploading…" : "+ Banner · landscape (slider & event page) — or a video")}
-            </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: W.ink }}>New ticketed event</div>
+            <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 800, background: W.bg, borderRadius: 20, padding: "3px 10px" }}>Step {step + 1} of {STEPS.length}</div>
           </div>
-          <input ref={bRef} type="file" accept="image/*,video/*" onChange={pickBanner} style={{ display: "none" }} />
-          <input ref={pRef} type="file" accept="image/*" onChange={pickPoster} style={{ display: "none" }} />
-          <input ref={vvRef} type="file" accept="video/*" onChange={pickVVideo} style={{ display: "none" }} />
-          <div onClick={() => vvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
-            <div style={{ width: 80, aspectRatio: "9/16", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.vvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-              {f.vvideo ? <video src={f.vvideo} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🎬")}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.vvideo ? "Vertical video added ✓" : "+ Vertical video (optional)"}</div>
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Reel-style clip (9:16). Plays full — no cropping — on the event page.</div>
-              {f.vvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, vvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
-            </div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            {STEPS.map((s, i) => (
+              <div key={s} onClick={() => setStep(i)} style={{ flex: 1, cursor: "pointer", textAlign: "center" }}>
+                <div style={{ height: 5, borderRadius: 3, background: i <= step ? W.teal : W.line, marginBottom: 5, transition: "background .2s" }} />
+                <div style={{ fontSize: 10, fontWeight: 700, color: i === step ? W.teal : W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s}</div>
+              </div>
+            ))}
           </div>
-          <input ref={vbRef} type="file" accept="image/*" onChange={pickVBanner} style={{ display: "none" }} />
-          <div onClick={() => vbRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
-            <div style={{ width: 80, aspectRatio: "9/16", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.vbanner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-              {f.vbanner ? <img src={f.vbanner} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🖼️")}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.vbanner ? "Vertical banner added ✓" : "+ Vertical banner (9:16)"}</div>
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Shown on the event card when there's no vertical video.</div>
-              {f.vbanner && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, vbanner: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
-            </div>
-          </div>
-          <input ref={lvRef} type="file" accept="video/*" onChange={pickLVideo} style={{ display: "none" }} />
-          <div onClick={() => lvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
-            <div style={{ width: 110, aspectRatio: "16/9", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.lvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
-              {f.lvideo ? <video src={f.lvideo} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🎥")}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.lvideo ? "Landscape video added ✓" : "+ Landscape video (optional)"}</div>
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Wide clip (16:9). Fills the banner area on the event page.</div>
-              {f.lvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, lvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
-            </div>
-          </div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14, lineHeight: 1.4 }}>{STEP_HINTS[step]}</div>
+
+          {step === 0 && (<>
           <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
             <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Event title" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
@@ -11010,11 +10990,87 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
             {cities.length === 0 ? <span style={{ fontSize: 12.5, color: W.soft }}>Add cities with "Manage" above first.</span> : cities.map(c => chip(c.name, f.city === c.name, () => setF({ ...f, city: f.city === c.name ? "" : c.name })))}
           </div>
-          <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
-          <textarea value={f.schedule} onChange={e => setF({ ...f, schedule: e.target.value })} placeholder={"Schedule (optional) — one item per line, e.g.\n7:00 PM — Doors open\n8:00 PM — Live music"} rows={3} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
-          <textarea value={f.food} onChange={e => setF({ ...f, food: e.target.value })} placeholder={"Food & dining (optional) — one item per line, e.g.\nUnlimited starters\nDinner buffet included"} rows={2} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
-          <textarea value={f.facilities} onChange={e => setF({ ...f, facilities: e.target.value })} placeholder="Facilities (optional) — comma separated, e.g. Parking, Washrooms, DJ, Photo booth" rows={2} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
-          <input value={f.dress} onChange={e => setF({ ...f, dress: e.target.value })} placeholder="Dress code (optional) — e.g. Smart casuals / Bollywood theme" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          </>)}
+
+          {step === 1 && (<>
+          <input ref={bRef} type="file" accept="image/*,video/*" onChange={pickBanner} style={{ display: "none" }} />
+          <input ref={pRef} type="file" accept="image/*" onChange={pickPoster} style={{ display: "none" }} />
+          <input ref={vvRef} type="file" accept="video/*" onChange={pickVVideo} style={{ display: "none" }} />
+          <input ref={vbRef} type="file" accept="image/*" onChange={pickVBanner} style={{ display: "none" }} />
+          <input ref={lvRef} type="file" accept="video/*" onChange={pickLVideo} style={{ display: "none" }} />
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            <div onClick={() => pRef.current?.click()} style={{ width: 108, flexShrink: 0, aspectRatio: "3/4", borderRadius: 12, overflow: "hidden", border: f.poster ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textAlign: "center", color: W.soft, fontSize: 11.5, fontWeight: 600, padding: f.poster ? 0 : 8 }}>
+              {f.poster ? <img src={f.poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? "Uploading…" : "+ Poster · portrait 3:4 (event cards)")}
+            </div>
+            <div onClick={() => bRef.current?.click()} style={{ flex: 1, minWidth: 0, borderRadius: 12, overflow: "hidden", border: f.banner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textAlign: "center", color: W.soft, fontSize: 12, fontWeight: 600, padding: f.banner ? 0 : 8 }}>
+              {f.banner ? <BannerMedia url={f.banner} type={f.bannerType} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? "Uploading…" : "+ Banner · landscape (slider & event page) — or a video")}
+            </div>
+          </div>
+          <div onClick={() => vvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
+            <div style={{ width: 80, aspectRatio: "9/16", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.vvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+              {f.vvideo ? <video src={f.vvideo} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🎬")}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.vvideo ? "Vertical video added ✓" : "+ Vertical video (optional)"}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Reel-style clip (9:16). Plays full — no cropping — on the event page.</div>
+              {f.vvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, vvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
+            </div>
+          </div>
+          <div onClick={() => vbRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
+            <div style={{ width: 80, aspectRatio: "9/16", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.vbanner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+              {f.vbanner ? <img src={f.vbanner} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🖼️")}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.vbanner ? "Vertical banner added ✓" : "+ Vertical banner (9:16)"}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Shown on the event card when there's no vertical video.</div>
+              {f.vbanner && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, vbanner: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
+            </div>
+          </div>
+          <div onClick={() => lvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
+            <div style={{ width: 110, aspectRatio: "16/9", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.lvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+              {f.lvideo ? <video src={f.lvideo} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? <span style={{ fontSize: 11, color: W.soft }}>…</span> : "🎥")}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink }}>{f.lvideo ? "Landscape video added ✓" : "+ Landscape video (optional)"}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.4 }}>Wide clip (16:9). Fills the banner area on the event page.</div>
+              {f.lvideo && <div onClick={(ev) => { ev.stopPropagation(); setF(s => ({ ...s, lvideo: "" })); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 4 }}>Remove</div>}
+            </div>
+          </div>
+          <div style={{ margin: "4px 0 12px" }}>
+            <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>🖼️ About-section media (optional)</div>
+            {(f.aboutMedia || []).map((m, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0", borderBottom: `1px solid ${W.line}` }}>
+                {m.kind === "image" ? <img src={m.url} alt="" style={{ width: 42, height: 30, objectFit: "cover", borderRadius: 6 }} /> : <span style={{ fontSize: 18 }}>{m.kind === "video" ? "🎬" : "📎"}</span>}
+                <div style={{ flex: 1, fontSize: 12, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name || m.kind}</div>
+                <X size={14} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => setF({ ...f, aboutMedia: f.aboutMedia.filter((_, k) => k !== i) })} />
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 8, marginTop: 7, flexWrap: "wrap" }}>
+              {[["image", "🖼️ Images", "image/*", true], ["video", "🎬 Video", "video/*", false], ["file", "📎 File", "*/*", false]].map(([kind, label, accept, multi]) => (
+                <label key={kind} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "7px 11px", fontSize: 12, cursor: "pointer" }}>
+                  {amBusy === kind ? "Uploading…" : label}
+                  <input type="file" accept={accept} multiple={!!multi} style={{ display: "none" }} disabled={!!amBusy}
+                    onChange={async e => {
+                      const files = Array.from(e.target.files || []); e.target.value = "";
+                      if (!files.length) return;
+                      setAmBusy(kind);
+                      try {
+                        const added = [];
+                        for (const fl of files) {
+                          const url = kind === "image" ? await uploadPhoto("eventmedia", fl) : await uploadChatFile("eventmedia", fl);
+                          added.push({ kind, url, name: fl.name });
+                        }
+                        setF(prev => ({ ...prev, aboutMedia: [...(prev.aboutMedia || []), ...added] }));
+                      } catch (e2) { alert(e2.message || "Upload failed"); }
+                      setAmBusy(null);
+                    }} />
+                </label>
+              ))}
+            </div>
+          </div>
+          </>)}
+
+          {step === 2 && (<>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
             {[["none", "One-time"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["custom", "Custom dates"]].map(([v, l]) => (
               <button key={v} onClick={() => setF({ ...f, repeat: v })} style={{ padding: "7px 13px", borderRadius: 16, border: `1px solid ${f.repeat === v ? W.teal : W.line}`, background: f.repeat === v ? W.teal : "#fff", color: f.repeat === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
@@ -11059,38 +11115,14 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           </div>
           {f.locType === "physical" && <VenueAutocomplete value={f.venue} onChange={({ venue, lat, lng }) => setF({ ...f, venue, venueLat: lat, venueLng: lng })} />}
           {f.locType === "online" && <input value={f.onlineUrl} onChange={e => setF({ ...f, onlineUrl: e.target.value })} placeholder="Meeting / stream link (https://…)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, boxSizing: "border-box" }} />}
-          <div style={{ margin: "4px 0 12px" }}>
-            <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>🖼️ About-section media (optional)</div>
-            {(f.aboutMedia || []).map((m, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, padding: "5px 0", borderBottom: `1px solid ${W.line}` }}>
-                {m.kind === "image" ? <img src={m.url} alt="" style={{ width: 42, height: 30, objectFit: "cover", borderRadius: 6 }} /> : <span style={{ fontSize: 18 }}>{m.kind === "video" ? "🎬" : "📎"}</span>}
-                <div style={{ flex: 1, fontSize: 12, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name || m.kind}</div>
-                <X size={14} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => setF({ ...f, aboutMedia: f.aboutMedia.filter((_, k) => k !== i) })} />
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 8, marginTop: 7, flexWrap: "wrap" }}>
-              {[["image", "🖼️ Images", "image/*", true], ["video", "🎬 Video", "video/*", false], ["file", "📎 File", "*/*", false]].map(([kind, label, accept, multi]) => (
-                <label key={kind} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "7px 11px", fontSize: 12, cursor: "pointer" }}>
-                  {amBusy === kind ? "Uploading…" : label}
-                  <input type="file" accept={accept} multiple={!!multi} style={{ display: "none" }} disabled={!!amBusy}
-                    onChange={async e => {
-                      const files = Array.from(e.target.files || []); e.target.value = "";
-                      if (!files.length) return;
-                      setAmBusy(kind);
-                      try {
-                        const added = [];
-                        for (const fl of files) {
-                          const url = kind === "image" ? await uploadPhoto("eventmedia", fl) : await uploadChatFile("eventmedia", fl);
-                          added.push({ kind, url, name: fl.name });
-                        }
-                        setF(prev => ({ ...prev, aboutMedia: [...(prev.aboutMedia || []), ...added] }));
-                      } catch (e2) { alert(e2.message || "Upload failed"); }
-                      setAmBusy(null);
-                    }} />
-                </label>
-              ))}
-            </div>
-          </div>
+          </>)}
+
+          {step === 3 && (<>
+          <input value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} placeholder="Short description" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
+          <textarea value={f.schedule} onChange={e => setF({ ...f, schedule: e.target.value })} placeholder={"Schedule (optional) — one item per line, e.g.\n7:00 PM — Doors open\n8:00 PM — Live music"} rows={3} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
+          <textarea value={f.food} onChange={e => setF({ ...f, food: e.target.value })} placeholder={"Food & dining (optional) — one item per line, e.g.\nUnlimited starters\nDinner buffet included"} rows={2} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
+          <textarea value={f.facilities} onChange={e => setF({ ...f, facilities: e.target.value })} placeholder="Facilities (optional) — comma separated, e.g. Parking, Washrooms, DJ, Photo booth" rows={2} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 10, fontFamily: "inherit", resize: "vertical" }} />
+          <input value={f.dress} onChange={e => setF({ ...f, dress: e.target.value })} placeholder="Dress code (optional) — e.g. Smart casuals / Bollywood theme" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10 }} />
           <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 6 }}>Entry / age badge <span style={{ fontWeight: 600 }}>(pick any)</span></div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 8 }}>
             {entryBadgeOpts(optsAll).map(b => chip(b, (f.entryBadge || []).includes(b), () => { const cur = f.entryBadge || []; setF({ ...f, entryBadge: cur.includes(b) ? cur.filter(x => x !== b) : [...cur, b] }); }))}
@@ -11104,7 +11136,9 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           <CannedTerms value={f.terms} onApply={(b) => setF({ ...f, terms: b })} />
           <textarea value={f.terms} onChange={e => setF({ ...f, terms: e.target.value })} rows={2} placeholder="Terms & conditions (optional)" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", marginBottom: 10, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
           <PerkPicker kind="exclusion" label="Not included" color="#C0392B" value={f.exclusions} onChange={v => setF({ ...f, exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
-          <AddonDraft value={f.addons} onChange={v => setF({ ...f, addons: v })} />
+          </>)}
+
+          {step === 4 && (<>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
             <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
@@ -11118,13 +11152,18 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               <span style={{ fontSize: 11.5, color: W.soft }}>0 = none · 100 = free tickets for plan members.</span>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => { setCreating(false); reset(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-            <button onClick={create} disabled={up} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: up ? .6 : 1 }}>Create</button>
+          <AddonDraft value={f.addons} onChange={v => setF({ ...f, addons: v })} />
+          </>)}
+
+          <div style={{ display: "flex", gap: 10, marginTop: 16, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}>
+            <button onClick={() => { if (step === 0) { setCreating(false); reset(); setStep(0); } else { setStep(step - 1); } }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>{step === 0 ? "Cancel" : "← Back"}</button>
+            {step < STEPS.length - 1
+              ? <button onClick={() => { if (step === 0 && !f.title.trim()) { alert("Please add an event title first."); return; } setStep(step + 1); }} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Next →</button>
+              : <button onClick={create} disabled={up} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: up ? .6 : 1 }}>✓ Create event</button>}
           </div>
         </div>
       ) : (
-        <button onClick={() => setCreating(true)} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 }}><Plus size={18} />Create ticketed event</button>
+        <button onClick={() => { setStep(0); setCreating(true); }} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 }}><Plus size={18} />Create ticketed event</button>
       )}
       {!creating && (
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
