@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-wizard build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v2 build</div>
       </div>
     </div>
   );
@@ -10836,6 +10836,8 @@ function EventDetailsEditor({ event, onUpdate }) {
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
+  const [mSeg, setMSeg] = useState("details");
+  const MSEGS = [["details", "📝 Details"], ["media", "🖼️ Media & share"], ["tickets", "🎟️ Tickets"], ["guests", "🧑‍🤝‍🧑 Guest list"], ["terms", "📋 Terms"]];
   const [step, setStep] = useState(0);
   const STEPS = ["Basics", "Media", "When & where", "Details", "Tickets"];
   const STEP_HINTS = [
@@ -11215,7 +11217,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   ? <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>● Live</span>
                   : <span style={{ background: "#FDF6EC", color: "#B45309", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>⏳ Pending approval{canApprove ? "" : " — visible only to you"}</span>}</div>
               </div>
-              <button onClick={() => setManage(manage === e.id ? null : e.id)} style={{ ...btn("#fff", manage === e.id ? W.teal : W.soft), border: `1px solid ${W.line}`, padding: "7px 9px", flexShrink: 0 }}><Settings size={17} /></button>
+              <button onClick={() => { setMSeg("details"); setManage(manage === e.id ? null : e.id); }} style={{ ...btn("#fff", manage === e.id ? W.teal : W.soft), border: `1px solid ${W.line}`, padding: "7px 9px", flexShrink: 0 }}><Settings size={17} /></button>
             </div>
             {canApprove && (
               <div style={{ marginTop: 10 }}>
@@ -11232,53 +11234,72 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               <button onClick={() => exportGuestListPdf(e)} title="Export guest list as PDF for organisers" style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5, fontWeight: 800 }}>📄 List</button>
             </div>
             {manage === e.id && (
-              <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 14 }}>
-                <EventVideos ev={e} onUpdate={onUpdate} />
-                <EventShare event={e} />
-                <EventWaBlast event={e} />
-                <GuestTickets event={e} />
-                <EventDetailsEditor event={e} onUpdate={onUpdate} />
-                <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
-                <div style={{ marginTop: 16 }}>
-                  <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Category &amp; city</label>
-                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                    <select value={e.category || ""} onChange={ev => onUpdate(e.id, { category: ev.target.value || null })} style={{ flex: "1 1 140px", padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" }}>
-                      <option value="">No category</option>
-                      {categories.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
-                    </select>
-                    <select value={e.city || ""} onChange={ev => onUpdate(e.id, { city: ev.target.value || null })} disabled={!!lockCity} style={{ flex: "1 1 140px", padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none", opacity: lockCity ? .6 : 1 }}>
-                      <option value="">All cities</option>
-                      {cities.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  {(dims || []).map(d => {
-                    const dopts = (optsAll || []).filter(o => o.kind === d.name);
-                    if (!dopts.length) return null;
-                    const vals = tagVals(e.tags, d.name);
-                    return (
-                      <div key={d.id} style={{ marginTop: 10 }}>
-                        <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700, marginBottom: 5 }}>{d.name}</div>
-                        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                          {dopts.map(o => chip(o.name, vals.includes(o.name), () => { const cur = vals.includes(o.name) ? vals.filter(x => x !== o.name) : [...vals, o.name]; const t = { ...(e.tags || {}) }; if (cur.length) t[d.name] = cur; else delete t[d.name]; onUpdate(e.id, { tags: t }); }))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Changes save instantly — works on already-posted events.</div>
+              <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}>
+                <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 14, WebkitOverflowScrolling: "touch" }}>
+                  {MSEGS.map(([k, l]) => (
+                    <button key={k} onClick={() => setMSeg(k)} style={{ flexShrink: 0, padding: "8px 13px", borderRadius: 18, border: `1px solid ${mSeg === k ? W.teal : W.line}`, background: mSeg === k ? W.teal : "#fff", color: mSeg === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>{l}</button>
+                  ))}
                 </div>
-                <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
-                <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
-                <PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
-                <GenderBalance ev={e} onUpdate={onUpdate} />
-                <EventTerms ev={e} onUpdate={onUpdate} />
-                <EntryBadgeEditor ev={e} onUpdate={onUpdate} optsAll={optsAll} onAddOption={onAddOption} />
-                <ArtistEditor ev={e} onUpdate={onUpdate} />
-                <EventFAQ ev={e} onUpdate={onUpdate} />
-                <PinEditor room={e} onUpdate={onUpdate} />
-                <button onClick={() => setManage(null)} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", padding: "12px", fontSize: 15 }}>✓ Save &amp; close</button>
-                <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center", marginTop: -8 }}>Every change here saves on its own — tap above when you're done.</div>
-                {onDuplicate && <button onClick={() => onDuplicate(e)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", justifyContent: "center", marginBottom: 8 }}>📋 Duplicate event</button>}
-                <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {mSeg === "details" && (<>
+                    <EventDetailsEditor event={e} onUpdate={onUpdate} />
+                    <div style={{ marginTop: 4 }}>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Category &amp; city</label>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                        <select value={e.category || ""} onChange={ev => onUpdate(e.id, { category: ev.target.value || null })} style={{ flex: "1 1 140px", padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" }}>
+                          <option value="">No category</option>
+                          {categories.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+                        </select>
+                        <select value={e.city || ""} onChange={ev => onUpdate(e.id, { city: ev.target.value || null })} disabled={!!lockCity} style={{ flex: "1 1 140px", padding: "9px 10px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none", opacity: lockCity ? .6 : 1 }}>
+                          <option value="">All cities</option>
+                          {cities.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      {(dims || []).map(d => {
+                        const dopts = (optsAll || []).filter(o => o.kind === d.name);
+                        if (!dopts.length) return null;
+                        const vals = tagVals(e.tags, d.name);
+                        return (
+                          <div key={d.id} style={{ marginTop: 10 }}>
+                            <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700, marginBottom: 5 }}>{d.name}</div>
+                            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                              {dopts.map(o => chip(o.name, vals.includes(o.name), () => { const cur = vals.includes(o.name) ? vals.filter(x => x !== o.name) : [...vals, o.name]; const t = { ...(e.tags || {}) }; if (cur.length) t[d.name] = cur; else delete t[d.name]; onUpdate(e.id, { tags: t }); }))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Changes save instantly — works on already-posted events.</div>
+                    </div>
+                    <EntryBadgeEditor ev={e} onUpdate={onUpdate} optsAll={optsAll} onAddOption={onAddOption} />
+                    <ArtistEditor ev={e} onUpdate={onUpdate} />
+                    <EventFAQ ev={e} onUpdate={onUpdate} />
+                    <PinEditor room={e} onUpdate={onUpdate} />
+                  </>)}
+                  {mSeg === "media" && (<>
+                    <EventVideos ev={e} onUpdate={onUpdate} />
+                    <EventShare event={e} />
+                    <EventWaBlast event={e} />
+                  </>)}
+                  {mSeg === "tickets" && (<>
+                    <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
+                    <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
+                    <PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
+                    <GenderBalance ev={e} onUpdate={onUpdate} />
+                    <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
+                  </>)}
+                  {mSeg === "guests" && (<>
+                    <GuestTickets event={e} />
+                  </>)}
+                  {mSeg === "terms" && (<>
+                    <EventTerms ev={e} onUpdate={onUpdate} />
+                  </>)}
+                </div>
+                <div style={{ marginTop: 16, borderTop: `1px solid ${W.line}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <button onClick={() => setManage(null)} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", padding: "12px", fontSize: 15 }}>✓ Save &amp; close</button>
+                  <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center", marginTop: -6 }}>Every change here saves on its own — tap above when you're done.</div>
+                  {onDuplicate && <button onClick={() => onDuplicate(e)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", justifyContent: "center" }}>📋 Duplicate event</button>}
+                  <button onClick={() => { if (confirm("Delete this event and all its messages?")) onDelete(e.id); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", justifyContent: "center" }}><Trash2 size={15} />Delete event</button>
+                </div>
               </div>
             )}
           </div>
