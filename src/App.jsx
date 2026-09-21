@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v5 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v6 build</div>
       </div>
     </div>
   );
@@ -9872,19 +9872,23 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
   };
   if (!ed) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 9, padding: "7px 10px" }}>
-        <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <b>{t.name}</b>
-          <span style={{ color: W.soft }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
-          {t.credit_price ? <span style={{ color: "#6D28D9", fontWeight: 700 }}>· 💳 {t.credit_price}</span> : null}
-          {audBadge(t.gender_restrict)}
-          {t.disc_female_pct != null && <span style={{ color: "#C0246E", fontWeight: 700 }}>· ♀ {t.disc_female_pct}% off</span>}
-          {t.disc_male_pct != null && <span style={{ color: "#1B6FB8", fontWeight: 700 }}>· ♂ {t.disc_male_pct}% off</span>}
-          {t.capacity != null && <span style={{ color: W.soft }}>· cap {t.capacity}</span>}
-          {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal }}>· {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${W.teal}`, borderRadius: 12, padding: "13px 14px", boxShadow: "0 1px 4px rgba(17,27,33,.06)" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+            <b style={{ fontSize: 15.5, color: W.ink }}>{t.name}</b>
+            <span style={{ fontSize: 15, fontWeight: 800, color: t.price === 0 ? W.teal : W.ink }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
+            {audBadge(t.gender_restrict)}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6, fontSize: 13 }}>
+            {t.credit_price ? <span style={{ color: "#6D28D9", fontWeight: 700, background: "#F3EEFE", padding: "2px 9px", borderRadius: 9 }}>💳 {t.credit_price} credits</span> : null}
+            {t.disc_female_pct != null && <span style={{ color: "#C0246E", fontWeight: 800, background: "#FBE9F2", padding: "2px 9px", borderRadius: 9 }}>♀ {t.disc_female_pct}% off</span>}
+            {t.disc_male_pct != null && <span style={{ color: "#1B6FB8", fontWeight: 800, background: "#E8F2FB", padding: "2px 9px", borderRadius: 9 }}>♂ {t.disc_male_pct}% off</span>}
+            {t.capacity != null && <span style={{ color: W.soft, fontWeight: 700 }}>cap {t.capacity}</span>}
+            {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal, fontWeight: 700 }}>{t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
+          </div>
         </div>
-        {onUpdate && <button onClick={() => setEd(true)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "5px 11px", fontSize: 12.5, fontWeight: 800 }}>Edit</button>}
-        <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(t.id)} />
+        {onUpdate && <button onClick={() => setEd(true)} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, fontWeight: 800, flexShrink: 0 }}>✏️ Edit</button>}
+        <button onClick={() => onDel(t.id)} title="Delete ticket type" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "9px 11px", flexShrink: 0 }}><Trash2 size={15} /></button>
       </div>
     );
   }
@@ -11279,17 +11283,17 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
       {!creating && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {visEvents.map((e, ei) => { const ec = EVCOLORS[ei % EVCOLORS.length]; return (
           <div key={e.id} style={{ background: ec.bg, borderRadius: 14, border: `1px solid ${ec.bar}33`, borderLeft: `6px solid ${ec.bar}`, padding: 14, boxShadow: `0 2px 10px ${ec.bar}1f` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div onClick={() => { setMSeg("details"); setManage(manage === e.id ? null : e.id); }} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
                 <div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(() => { const tt = (ticketTypes && ticketTypes[e.id]) || []; if (tt.length) { const min = Math.min(...tt.map(t => t.price || 0)); return min === 0 ? "Free" : `From ₹${min}`; } return (e.ticket_price || 0) === 0 ? "Free" : `₹${e.ticket_price}/ticket`; })()}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div>
                 {e.host_id && hosts[e.host_id] && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700, marginTop: 2 }}>👤 {hosts[e.host_id].name}{topRole(hosts[e.host_id].roles) ? ` · ${roleLabel[topRole(hosts[e.host_id].roles)]}` : ""}</div>}
                 <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>{e.promo_pct != null && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>📣 Promo {e.promo_pct}%</span>}{e.approved
                   ? <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>● Live</span>
                   : <span style={{ background: "#FDF6EC", color: "#B45309", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>⏳ Pending approval{canApprove ? "" : " — visible only to you"}</span>}</div>
               </div>
-              <button onClick={() => { setMSeg("details"); setManage(manage === e.id ? null : e.id); }} style={{ ...btn("#fff", manage === e.id ? W.teal : W.soft), border: `1px solid ${W.line}`, padding: "7px 9px", flexShrink: 0 }}><Settings size={17} /></button>
+              <button onClick={(ev) => { ev.stopPropagation(); setMSeg("details"); setManage(manage === e.id ? null : e.id); }} style={{ ...btn("#fff", manage === e.id ? W.teal : ec.bar), border: `1px solid ${ec.bar}55`, padding: "8px 12px", flexShrink: 0, fontWeight: 800, fontSize: 12.5, gap: 6 }}>{manage === e.id ? <>Close <X size={15} /></> : <>Open <Settings size={15} /></>}</button>
             </div>
             {canApprove && (
               <div style={{ marginTop: 10 }}>
