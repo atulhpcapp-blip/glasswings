@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guides-v13 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · sales-v14 build</div>
       </div>
     </div>
   );
@@ -10903,6 +10903,73 @@ function EventDetailsEditor({ event, onUpdate }) {
     </div>
   );
 }
+function EventSalesTab({ event }) {
+  const [a, setA] = useState(null);
+  const [people, setPeople] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    supabase.rpc("event_ticket_analysis", { p_event: event.id }).then(({ data, error }) => { setA(error ? undefined : data); if (error) setErr(error.message || "Could not load sales."); });
+    supabase.rpc("event_sales_people", { p_event: event.id }).then(({ data, error }) => setPeople(error ? [] : (data || [])));
+  }, [event.id]);
+  const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const online = a ? Number(a.paid_gross || 0) : 0, doorCash = a ? Number(a.door_cash || 0) : 0, doorUpi = a ? Number(a.door_upi || 0) : 0;
+  const total = online + doorCash + doorUpi;
+  const mMeta = { online: ["🟢 Razorpay", "#0E7A5F", "#E3F7EF"], cash: ["💵 Cash", "#B45309", "#FDF3E4"], upi: ["📱 UPI", "#2563EB", "#EAF1FE"] };
+  const Tile = ({ label, val, color }) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", flex: "1 1 90px", minWidth: 84 }}><div style={{ fontSize: 10, color: W.soft, fontWeight: 800, letterSpacing: .3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 800, color: color || W.ink, marginTop: 3 }}>{val}</div></div>;
+  const exportCsv = () => {
+    if (!people || !people.length) return;
+    const esc = t => `"${String(t ?? "").replace(/"/g, '""')}"`;
+    const head = ["Name", "Method", "Ticket type", "Qty", "Amount (INR)", "Phone", "Paid at", "Ref"];
+    const rows = people.map(r => [r.name, r.kind, r.ticket_type, r.qty, r.amount, r.phone || "", r.paid_at ? new Date(r.paid_at).toLocaleString("en-IN") : "", r.ref || ""].map(esc).join(","));
+    const csv = [head.map(esc).join(","), ...rows].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const link = document.createElement("a"); link.href = url; link.download = `${(event.title || "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-sales.csv`; link.click(); URL.revokeObjectURL(url);
+  };
+  if (a === null && !err) return <Center>Loading sales…</Center>;
+  return (
+    <div>
+      {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
+      <div style={{ background: "linear-gradient(135deg,#0E7A5F,#04B08F)", color: "#fff", borderRadius: 14, padding: "16px 18px", marginBottom: 12 }}>
+        <div style={{ fontSize: 12, opacity: .9, fontWeight: 700 }}>Total collected</div>
+        <div style={{ fontSize: 30, fontWeight: 900, margin: "2px 0 10px" }}>{money(total)}</div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5 }}>
+          <span>🟢 Online <b>{money(online)}</b></span>
+          <span>💵 Cash <b>{money(doorCash)}</b></span>
+          <span>📱 UPI <b>{money(doorUpi)}</b></span>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        <Tile label="TICKETS" val={a?.tickets ?? 0} />
+        <Tile label="PAID ORDERS" val={a?.paid_orders ?? 0} />
+        <Tile label="CHECKED IN" val={a?.checked_in ?? 0} color={W.teal} />
+        <Tile label="AVG ORDER" val={a?.paid_orders ? money(Math.round(online / a.paid_orders)) : "—"} />
+      </div>
+      {(a?.types || []).length > 0 && <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink, marginBottom: 6 }}>Revenue by ticket type</div>
+        {a.types.map((t, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderTop: `1px solid ${W.line}`, fontSize: 13.5 }}>
+            <span style={{ color: W.ink, fontWeight: 700 }}>{t.name}</span>
+            <span style={{ color: W.soft }}>{t.sold || 0} sold · <b style={{ color: W.ink }}>{money(t.revenue)}</b></span>
+          </div>
+        ))}
+      </div>}
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: W.ink, flex: 1 }}>Who paid how much {people ? `(${people.length})` : ""}</div>
+        {people && people.length > 0 && <button onClick={exportCsv} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 11px", fontSize: 12 }}>⬇️ CSV</button>}
+      </div>
+      {people === null ? <Center>Loading…</Center> : people.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No paid sales yet. Free / comp guests are in the Guest list tab.</div> :
+        people.map((r, i) => { const mm = mMeta[r.kind] || mMeta.online; return (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 11px", marginBottom: 7, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `4px solid ${mm[1]}`, borderRadius: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{r.name}{(r.qty || 1) > 1 ? ` ×${r.qty}` : ""}</div>
+              <div style={{ fontSize: 11.5, color: W.soft, marginTop: 3 }}><span style={{ background: mm[2], color: mm[1], fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{mm[0]}</span> · {r.ticket_type}{r.phone ? ` · ${r.phone}` : ""}{r.paid_at ? ` · ${new Date(r.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}</div>
+            </div>
+            <div style={{ fontWeight: 900, fontSize: 15, color: "#0E7A5F", flexShrink: 0 }}>{money(r.amount)}</div>
+          </div>
+        ); })}
+    </div>
+  );
+}
 function HelpBox({ title = "How this works", tips, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -10925,6 +10992,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     ["details", "📝", "Details", "#008069", "#E7F6EF"],
     ["media", "🖼️", "Media & share", "#2563EB", "#EAF1FE"],
     ["tickets", "🎟️", "Tickets", "#7C3AED", "#F3EEFE"],
+    ["sales", "💰", "Sales", "#059669", "#E3F7EF"],
     ["guests", "🧑‍🤝‍🧑", "Guest list", "#D97706", "#FDF3E4"],
     ["terms", "📋", "Terms", "#E11D48", "#FDE9EF"],
   ];
@@ -11400,6 +11468,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <GenderBalance ev={e} onUpdate={onUpdate} />
                     <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
                   </>)}
+                  {mSeg === "sales" && <EventSalesTab event={e} />}
                   {mSeg === "guests" && (<>
                     <GuestTickets event={e} />
                   </>)}
