@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guides-v12 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guides-v13 build</div>
       </div>
     </div>
   );
@@ -9828,6 +9828,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
         {types.map(t => <EditableTicketRow key={t.id} t={t} plansList={plansList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
         {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
       </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 9px", color: "#7C3AED", fontWeight: 800, fontSize: 14.5, letterSpacing: .3, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}><Plus size={17} />CREATE NEW TICKET TYPE</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Men)" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
         <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 64 }} />
@@ -9875,7 +9876,7 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
   };
   if (!ed) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${W.teal}`, borderRadius: 12, padding: "13px 14px", boxShadow: "0 1px 4px rgba(17,27,33,.06)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#F1E8FE", border: `1px solid #D6BCFA`, borderLeft: `6px solid #7C3AED`, borderRadius: 12, padding: "13px 14px", boxShadow: "0 2px 8px rgba(124,58,237,.15)" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
             <b style={{ fontSize: 15.5, color: W.ink }}>{t.name}</b>
