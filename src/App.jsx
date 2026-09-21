@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · pnl-v19 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · pnl-v20 build</div>
       </div>
     </div>
   );
@@ -9849,8 +9849,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
       <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 9px", color: "#7C3AED", fontWeight: 800, fontSize: 14.5, letterSpacing: .3, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}><Plus size={17} />CREATE NEW TICKET TYPE</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Men)" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
-        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 64 }} />
-        <input value={credit} onChange={e => setCredit(e.target.value.replace(/\D/g, ""))} placeholder="💳 cr" title="Credit price (blank = not sold for credits)" inputMode="numeric" style={{ ...ip, width: 78 }} />
+        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 74 }} />
         <input value={wf} onChange={e => setWf(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♀ % off" title="Optional discount for women, e.g. 20" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Optional discount for men" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
@@ -9870,9 +9869,6 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
         </div>
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Plan members get this off. 100% (or ₹ ≥ price) makes the ticket free for them.</div>
       </div>
-      {credit !== "" && Number(credit) > 0 && price !== "" && Number(price) > 0 && Number(credit) < Number(price) * 0.5 && (
-        <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E", borderRadius: 9, padding: "8px 11px", fontSize: 12, marginTop: 9, lineHeight: 1.5 }}>⚠️ Credit price ({credit}) is far below the ₹{price} cash price — buyers could get this ticket for almost nothing. Use the same number as the ₹ price (₹1 ≈ 1 credit), or leave it blank for cash-only.</div>
-      )}
       <button onClick={add} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}><Plus size={15} />Add ticket type</button>
     </div>
   );
@@ -9905,7 +9901,6 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
             {audBadge(t.gender_restrict)}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6, fontSize: 13 }}>
-            {t.credit_price ? <span style={{ color: "#6D28D9", fontWeight: 700, background: "#F3EEFE", padding: "2px 9px", borderRadius: 9 }}>💳 {t.credit_price} credits</span> : null}
             {t.disc_female_pct != null && <span style={{ color: "#C0246E", fontWeight: 800, background: "#FBE9F2", padding: "2px 9px", borderRadius: 9 }}>♀ {t.disc_female_pct}% off</span>}
             {t.disc_male_pct != null && <span style={{ color: "#1B6FB8", fontWeight: 800, background: "#E8F2FB", padding: "2px 9px", borderRadius: 9 }}>♂ {t.disc_male_pct}% off</span>}
             {t.capacity != null && <span style={{ color: W.soft, fontWeight: 700 }}>cap {t.capacity}</span>}
@@ -9922,8 +9917,7 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
       <div style={{ fontSize: 12.5, fontWeight: 800, color: W.teal, marginBottom: 9 }}>✏️ Editing “{t.name}”</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
-        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 70 }} />
-        <input value={credit} onChange={e => setCredit(e.target.value.replace(/\D/g, ""))} placeholder="💳 cr" title="Credit price (blank = not sold for credits)" inputMode="numeric" style={{ ...ip, width: 82 }} />
+        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 80 }} />
         <input value={wf} onChange={e => setWf(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♀ % off" title="Discount for women" inputMode="decimal" style={{ ...ip, width: 86 }} />
         <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Discount for men" inputMode="decimal" style={{ ...ip, width: 86 }} />
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 82 }} />
@@ -9942,9 +9936,6 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
           <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
         </div>
       </div>
-      {credit !== "" && Number(credit) > 0 && price !== "" && Number(price) > 0 && Number(credit) < Number(price) * 0.5 && (
-        <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E", borderRadius: 9, padding: "8px 11px", fontSize: 12, marginTop: 9, lineHeight: 1.5 }}>⚠️ Credit price ({credit}) is far below the ₹{price} cash price — buyers could get this ticket for almost nothing. Use the same number as the ₹ price (₹1 ≈ 1 credit), or clear it for cash-only.</div>
-      )}
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button onClick={() => setEd(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
         <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "✓ Save changes"}</button>
