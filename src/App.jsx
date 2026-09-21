@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guest-tiers-v7 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guest-tiers-v8 build</div>
       </div>
     </div>
   );
@@ -9018,6 +9018,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
+    ...((canApprove || caps.host) ? [["door", "🚪 EVENT DOOR"]] : []),
     ...(caps.broadcast ? [["broadcast", "Send"]] : []),
     ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
@@ -9028,7 +9029,6 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["segments", "🎯 Segments"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
-    ...((canApprove || caps.host) ? [["door", "Door"]] : []),
     ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
     ...(isSuper ? [["emailmkt", "Email"]] : []),
     ...((canApprove || caps.host) ? [["settle", "Payouts"]] : []),
@@ -10430,6 +10430,9 @@ function CheckInSheet({ event, onClose }) {
   const [gName, setGName] = useState(""); const [gPhone, setGPhone] = useState(""); const [gEmail, setGEmail] = useState(""); const [gQty, setGQty] = useState("1");
   const [gAge, setGAge] = useState(""); const [gLoc, setGLoc] = useState("");
   const [gBusy, setGBusy] = useState(false);
+  const TMETA = { guest: ["🎟️", "Guest", "#008069", "#E7F6EF"], vip: ["💎", "VIP", "#B7791F", "#FBF3DC"], team: ["🛡️", "Team", "#475569", "#EDF1F6"] };
+  const gtm = (g) => TMETA[g.guest_type || "guest"] || TMETA.guest;
+  const gcount = (k) => guests.filter(g => (g.guest_type || "guest") === k).length;
   const loadGuests = () => supabase.rpc("guest_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setGuests(data || []); });
   const load = () => { supabase.rpc("event_attendees", { p_event: event.id }).then(({ data, error }) => { setErr(error ? (error.message || "Could not load attendees.") : ""); setList(data || []); }); loadGuests(); };
   useEffect(() => { load(); }, [event.id]);
@@ -10507,11 +10510,12 @@ function CheckInSheet({ event, onClose }) {
         )}
         <div style={{ marginTop: 18, borderTop: `2px solid ${W.line}`, paddingTop: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest list (manual) {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guests.filter(g => g.checked_in).length}/{guests.length} in</span>}</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest list {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guests.filter(g => g.checked_in).length}/{guests.length} in · 🎟️{gcount("guest")} 💎{gcount("vip")} 🛡️{gcount("team")}</span>}</div>
             {guests.length > 0 && <button onClick={() => {
               const w = window.open("", "_blank", "width=800,height=940"); if (!w) return;
               const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml(g.location || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
+              const tierLabel = { guest: "Guest", vip: "VIP", team: "Team" };
+              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${escapeHtml(tierLabel[g.guest_type || "guest"] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml(g.location || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
               w.document.write(`<!doctype html><html><head><title>Guest checklist — ${escapeHtml(event.title)}</title><style>
                 body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:30px}
                 .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#008069}
@@ -10527,7 +10531,7 @@ function CheckInSheet({ event, onClose }) {
                 <div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
                 <h1>Guest checklist — ${escapeHtml(event.title)}</h1>
                 <div class="sub">${escapeHtml(event.event_date || "")} · Printed ${today} · ${guests.length} guest${guests.length === 1 ? "" : "s"} · ${guests.reduce((a, g) => a + (g.quantity || 1), 0)} entries</div>
-                <table><thead><tr><th>#</th><th>In</th><th>Guest name</th><th>Qty</th><th>Phone</th><th>Email</th><th>Age</th><th>Location</th><th>Code</th><th>Time in</th></tr></thead><tbody>${rowsH}</tbody></table>
+                <table><thead><tr><th>#</th><th>In</th><th>Guest name</th><th>Tier</th><th>Qty</th><th>Phone</th><th>Email</th><th>Age</th><th>Location</th><th>Code</th><th>Time in</th></tr></thead><tbody>${rowsH}</tbody></table>
                 <div class="ft">Tick "In" on arrival and note the time. Codes must match the WhatsApp ticket. — Glasswings Events · glass-wings.com</div>
                 <script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`);
               w.document.close();
@@ -10547,10 +10551,10 @@ function CheckInSheet({ event, onClose }) {
             <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ width: 58, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", textAlign: "center" }} />
             <button onClick={addGuest} disabled={gBusy} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, opacity: gBusy ? .6 : 1 }}>{gBusy ? "…" : "+ Add"}</button>
           </div>
-          {guests.map(g => (
-            <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
+          {guests.map(g => { const tm = gtm(g); return (
+            <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}`, borderLeft: `4px solid ${tm[2]}`, paddingLeft: 9 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span><span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
                 <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
               </div>
               {g.email && <button onClick={async () => {
@@ -10565,7 +10569,7 @@ function CheckInSheet({ event, onClose }) {
               <button onClick={() => { if (window.confirm(`Remove ${g.name} from the guest list?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove guest" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
               <div onClick={() => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, checked_in: !g.checked_in } : x)); supabase.rpc("set_guest_checkin", { p_id: g.id, p_in: !g.checked_in }); }} style={{ width: 26, height: 26, borderRadius: "50%", border: `2px solid ${g.checked_in ? W.teal : W.line}`, background: g.checked_in ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>{g.checked_in && <Check size={15} />}</div>
             </div>
-          ))}
+          ); })}
         </div>
       </div>
     </div>
