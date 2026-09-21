@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · creditrate-v23 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · promo-v24 build</div>
       </div>
     </div>
   );
@@ -11012,6 +11012,36 @@ function EventPnLTab({ event }) {
     </div>
   );
 }
+function EventPromotionsTab({ event, onUpdate, canApprove }) {
+  const [promoters, setPromoters] = useState(null);
+  useEffect(() => { supabase.rpc("event_promoters", { p_event: event.id }).then(({ data, error }) => setPromoters(error ? [] : (data || []))); }, [event.id]);
+  const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const totalComm = (promoters || []).reduce((a, p) => a + Number(p.commission || 0), 0);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 12, color: W.soft, lineHeight: 1.5 }}>Everything to promote this event in one place — set the promotion fee, blast it on WhatsApp, share the link, and track promoter commission.</div>
+      <PromoPctEditor event={event} onUpdate={onUpdate} canApprove={canApprove} />
+      <div>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: W.ink, flex: 1 }}>📣 Promoters &amp; commission</div>
+          {totalComm > 0 && <div style={{ fontSize: 12.5, fontWeight: 800, color: "#7C3AED" }}>Owed: {money(totalComm)}</div>}
+        </div>
+        {promoters === null ? <Center>Loading…</Center> : promoters.length === 0 ? <div style={{ fontSize: 12.5, color: W.soft, lineHeight: 1.5 }}>No promoter sales yet. Promoters share the event link with their own code — sales through that code appear here with the commission owed.</div> :
+          promoters.map((p, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 11px", marginBottom: 7, background: "#fff", border: `1px solid ${W.line}`, borderLeft: "4px solid #7C3AED", borderRadius: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{p.name}{p.promo_code ? <span style={{ color: W.soft, fontWeight: 600, fontFamily: "ui-monospace,monospace" }}> · {p.promo_code}</span> : ""}</div>
+                <div style={{ fontSize: 11.5, color: W.soft }}>{p.tickets} ticket{p.tickets === 1 ? "" : "s"} sold via their code</div>
+              </div>
+              <div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 15, flexShrink: 0 }}>{money(p.commission)}</div>
+            </div>
+          ))}
+      </div>
+      <EventWaBlast event={event} />
+      <EventShare event={event} />
+    </div>
+  );
+}
 function CreditCapEditor({ ev, onUpdate }) {
   const [v, setV] = useState(ev.credit_cap_pct == null ? "" : String(ev.credit_cap_pct));
   const [saved, setSaved] = useState(false);
@@ -11124,6 +11154,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     ["tickets", "🎟️", "Tickets", "#7C3AED", "#F3EEFE"],
     ["sales", "💰", "Sales", "#059669", "#E3F7EF"],
     ["pnl", "💹", "P&L", "#0E7A5F", "#E3F7EF"],
+    ["promo", "📣", "Promotions", "#DB2777", "#FCE7F3"],
     ["guests", "🧑‍🤝‍🧑", "Guest list", "#D97706", "#FDF3E4"],
     ["terms", "📋", "Terms", "#E11D48", "#FDE9EF"],
   ];
@@ -11598,7 +11629,6 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   {mSeg === "media" && (<>
                     <EventVideos ev={e} onUpdate={onUpdate} />
                     <EventShare event={e} />
-                    <EventWaBlast event={e} />
                   </>)}
                   {mSeg === "tickets" && (<>
                     <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} onUpdate={onUpdateTicketType} />
@@ -11606,10 +11636,10 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
                     <GenderBalance ev={e} onUpdate={onUpdate} />
                     <CreditCapEditor ev={e} onUpdate={onUpdate} />
-                    <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
                   </>)}
                   {mSeg === "sales" && <EventSalesTab event={e} />}
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
+                  {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} />}
                   {mSeg === "guests" && (<>
                     <GuestTickets event={e} />
                   </>)}
