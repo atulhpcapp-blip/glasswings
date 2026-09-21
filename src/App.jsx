@@ -843,6 +843,95 @@ function SettlementsPanel({ isSuper }) {
     </div>
   );
 }
+function PromoterPayouts() {
+  const [rows, setRows] = useState(null);
+  const [payouts, setPayouts] = useState([]);
+  const [busy, setBusy] = useState(null);
+  const load = () => {
+    supabase.rpc("promoter_stats").then(({ data }) => setRows(data || []));
+    supabase.rpc("payout_list", { p_kind: "promoter", p_event: null }).then(({ data, error }) => setPayouts(error ? [] : (data || [])));
+  };
+  useEffect(() => { load(); }, []);
+  const inr = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const paidFor = id => payouts.filter(x => x.payee_id === id).reduce((a, x) => a + Number(x.amount || 0), 0);
+  const markPaid = (p) => {
+    const comm = Math.round((p.commission || 0) / 100);
+    const outstanding = Math.max(0, comm - paidFor(p.id));
+    if (outstanding <= 0) return;
+    window.gwConfirm(`Record a commission payout of ${inr(outstanding)} to ${p.full_name || "this promoter"}?\n\nThis is for your records — it marks their outstanding commission (all events) as paid.`, async () => {
+      setBusy(p.id);
+      const { error } = await supabase.rpc("record_payout", { p_kind: "promoter", p_payee: p.id, p_event: null, p_amount: outstanding, p_note: null });
+      setBusy(null);
+      if (error) return window.gwConfirm(error.message, () => {});
+      load();
+    });
+  };
+  const undo = (id) => window.gwConfirm("Remove this payout record?", async () => { await supabase.rpc("delete_payout", { p_id: id }); load(); });
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Commission earned by each promoter across all events. Mark paid once you've settled with them.</div>
+      {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No promoter commission yet.</Center> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {rows.map(p => {
+            const comm = Math.round((p.commission || 0) / 100);
+            const paid = paidFor(p.id);
+            const outstanding = Math.max(0, comm - paid);
+            const hist = payouts.filter(x => x.payee_id === p.id);
+            return (
+              <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, borderLeft: "4px solid #7C3AED", padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{p.full_name || "Promoter"}{p.code ? <span style={{ color: W.soft, fontWeight: 600, fontFamily: "ui-monospace,monospace" }}> · {p.code}</span> : ""}</div>
+                    <div style={{ fontSize: 11.5, color: W.soft, marginTop: 2 }}>{p.tickets} tickets · {p.pct || 0}% · commission {inr(comm)}</div>
+                  </div>
+                  {outstanding <= 0
+                    ? <span style={{ fontSize: 12, color: "#0d6e58", fontWeight: 800, background: "#E7F6EF", borderRadius: 8, padding: "6px 11px" }}>✅ Paid</span>
+                    : <button onClick={() => markPaid(p)} disabled={busy === p.id} style={{ ...btn("#7C3AED", "#fff"), padding: "9px 14px", fontSize: 12.5 }}>{busy === p.id ? "…" : `✓ Mark ${inr(outstanding)} paid`}</button>}
+                </div>
+                <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
+                  <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>COMMISSION</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 15 }}>{inr(comm)}</div></div>
+                  <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PAID</div><div style={{ fontWeight: 800, color: "#0d6e58", fontSize: 15 }}>{inr(paid)}</div></div>
+                  <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>OUTSTANDING</div><div style={{ fontWeight: 800, color: outstanding > 0 ? "#B45309" : "#0d6e58", fontSize: 15 }}>{outstanding > 0 ? inr(outstanding) : "✓ settled"}</div></div>
+                </div>
+                {hist.length > 0 && (
+                  <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
+                    {hist.map(x => (
+                      <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: W.soft }}>
+                        <span style={{ color: "#0d6e58", fontWeight: 800 }}>✓ {inr(x.amount)}</span>
+                        <span>paid {new Date(x.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}{x.event_id ? " · per-event" : ""}</span>
+                        <div style={{ flex: 1 }} />
+                        <button onClick={() => undo(x.id)} style={{ background: "transparent", border: "none", color: "#C0392B", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Undo</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+function PayoutsPanel({ isSuper }) {
+  const [tab, setTab] = useState("organiser");
+  return (
+    <div>
+      <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 12 }}>💸 Payouts</div>
+      {isSuper && (
+        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+          {[["organiser", "🎪", "Organiser payouts"], ["promoter", "📣", "Promoter payouts"]].map(([k, ic, l]) => (
+            <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: "13px 0", borderRadius: 13, border: tab === k ? "2px solid #008069" : `1.5px solid ${W.line}`, background: tab === k ? "#E7F6EF" : "#fff", color: tab === k ? "#0d6e58" : W.soft, fontWeight: 800, fontSize: 13.5, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 20 }}>{ic}</span><span>{l}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {(!isSuper || tab === "organiser") && <SettlementsPanel isSuper={isSuper} />}
+      {isSuper && tab === "promoter" && <PromoterPayouts />}
+    </div>
+  );
+}
 function RideButtons({ e, compact }) {
   const hasGeo = e.venue_lat && e.venue_lng;
   if (!hasGeo && !e.venue) return null;
@@ -1947,7 +2036,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v40 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v41 build</div>
       </div>
     </div>
   );
@@ -9294,7 +9383,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
-        : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
+        : seg === "settle" ? <PayoutsPanel isSuper={isSuper} />
         : seg === "events" ? <AdminEvents onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
