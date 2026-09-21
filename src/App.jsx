@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guest-tiers-v8 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guest-tiers-v9 build</div>
       </div>
     </div>
   );
@@ -10515,7 +10515,7 @@ function CheckInSheet({ event, onClose }) {
               const w = window.open("", "_blank", "width=800,height=940"); if (!w) return;
               const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
               const tierLabel = { guest: "Guest", vip: "VIP", team: "Team" };
-              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${escapeHtml(tierLabel[g.guest_type || "guest"] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml(g.location || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
+              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${escapeHtml(tierLabel[g.guest_type || "guest"] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml([g.location, g.note].filter(Boolean).join(" — ") || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
               w.document.write(`<!doctype html><html><head><title>Guest checklist — ${escapeHtml(event.title)}</title><style>
                 body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:30px}
                 .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#008069}
@@ -10556,6 +10556,7 @@ function CheckInSheet({ event, onClose }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span><span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
                 <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
+                {g.note && <div style={{ fontSize: 12, color: tm[2], fontWeight: 700, marginTop: 2 }}>📌 {g.note}</div>}
               </div>
               {g.email && <button onClick={async () => {
                 try {
@@ -11403,7 +11404,7 @@ function GuestTickets({ event }) {
   const tmeta = (k) => TIERS.find(t => t[0] === k) || TIERS[0];
   const [mode, setMode] = useState("outsider");
   const [tier, setTier] = useState("guest");
-  const [gName, setGName] = useState(""), [gPhone, setGPhone] = useState(""), [gEmail, setGEmail] = useState(""), [gQty, setGQty] = useState("1"), [gAge, setGAge] = useState(""), [gLoc, setGLoc] = useState("");
+  const [gName, setGName] = useState(""), [gPhone, setGPhone] = useState(""), [gEmail, setGEmail] = useState(""), [gQty, setGQty] = useState("1"), [gAge, setGAge] = useState(""), [gLoc, setGLoc] = useState(""), [gNote, setGNote] = useState("");
   const [gBusy, setGBusy] = useState(false);
   const [guests, setGuests] = useState([]);
   const [q, setQ] = useState(""); const [list, setList] = useState([]); const [given, setGiven] = useState({}); const [added, setAdded] = useState({}); const [msg, setMsg] = useState("");
@@ -11411,13 +11412,14 @@ function GuestTickets({ event }) {
   useEffect(() => { loadGuests(); supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, [event.id]);
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", color: W.ink, background: "#fff" };
   const label = (g) => g.guest_type === "vip" ? "VIP guest ticket" : g.guest_type === "team" ? "Team pass" : "Guest ticket";
+  const noteLine = (g) => g.note ? `\n📌 ${g.note}` : "";
   const waLink = (g) => {
-    const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nOpen & show the QR at the door:\nhttps://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
+    const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}${noteLine(g)}\nOpen & show the QR at the door:\nhttps://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
     const num = (g.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "");
     return num ? `https://wa.me/${num}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
   };
   const shareGuest = async (g) => {
-    const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nCode: ${g.code}\nTicket: https://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
+    const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}${noteLine(g)}\nCode: ${g.code}\nTicket: https://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
     try {
       const blob = await makeTicketBlob({ emoji: tmeta(g.guest_type)[1], title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
       const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
@@ -11436,7 +11438,7 @@ function GuestTickets({ event }) {
   const addGuest = async () => {
     if (!gName.trim()) return alert("Guest name is required.");
     setGBusy(true);
-    const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc, p_type: tier });
+    const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc, p_type: tier, p_note: gNote });
     setGBusy(false);
     if (error) return alert(error.message);
     if (gEmail.trim() && gNew?.id) { try { const token = (await supabase.auth.getSession()).data.session?.access_token; fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "guest", access_token: token, guest_id: gNew.id }) }); } catch (e) {} }
@@ -11444,10 +11446,11 @@ function GuestTickets({ event }) {
     setGuests(gl || []);
     const row = (gl || []).find(x => x.id === gNew?.id);
     const tn = tmeta(tier)[2];
-    setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc("");
+    setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc(""); setGNote("");
     if (row?.code) window.gwConfirm(`✅ ${row.name} added as ${tn}.\n\nShare their ticket on WhatsApp now?`, () => shareGuest(row));
   };
   const changeTier = async (g, t) => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, guest_type: t } : x)); const { error } = await supabase.rpc("set_guest_type", { p_id: g.id, p_type: t }); if (error) { alert(error.message); loadGuests(); } };
+  const editNote = async (g) => { const n = window.prompt("Reserved table / note for " + g.name + ":", g.note || ""); if (n === null) return; setGuests(gs => gs.map(x => x.id === g.id ? { ...x, note: n.trim() || null } : x)); const { error } = await supabase.rpc("set_guest_note", { p_id: g.id, p_note: n }); if (error) { alert(error.message); loadGuests(); } };
   const matches = q.trim().length < 2 ? [] : list.filter(m => (m.full_name || "").toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6);
   const give = async (m) => {
     setMsg("");
@@ -11505,7 +11508,8 @@ function GuestTickets({ event }) {
             <input value={gAge} onChange={e => setGAge(e.target.value.replace(/\D/g, ""))} placeholder="Age" inputMode="numeric" style={{ ...ip, width: 60, textAlign: "center" }} />
             <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ ...ip, width: 60, textAlign: "center" }} />
           </div>
-          <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ ...ip, width: "100%", marginBottom: 9 }} />
+          <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ ...ip, width: "100%", marginBottom: 7 }} />
+          <input value={gNote} onChange={e => setGNote(e.target.value)} placeholder={tier === "vip" ? "Reserved table / area / note (e.g. Table 4, near stage)" : "Note (optional) — e.g. reserved table, special instruction"} style={{ ...ip, width: "100%", marginBottom: 9 }} />
           <button onClick={addGuest} disabled={gBusy} style={{ ...btn(tmeta(tier)[3], "#fff"), width: "100%", justifyContent: "center", opacity: gBusy ? .6 : 1, fontSize: 14.5 }}>{gBusy ? "Adding…" : `${tmeta(tier)[1]} Add ${tmeta(tier)[2]} & send ticket`}</button>
         </div>
       ) : (
@@ -11532,6 +11536,7 @@ function GuestTickets({ event }) {
               <b style={{ fontSize: 14.5, color: W.ink }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</b>
             </div>
             <div style={{ fontSize: 11.5, color: W.soft, wordBreak: "break-all", marginTop: 3 }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
+            <div onClick={() => editNote(g)} title="Tap to edit note" style={{ fontSize: 12, marginTop: 5, cursor: "pointer", color: g.note ? tm[3] : W.soft, fontWeight: g.note ? 700 : 500 }}>{g.note ? `📌 ${g.note}` : "＋ Add reserved table / note"}</div>
             <select value={g.guest_type || "guest"} onChange={e => changeTier(g, e.target.value)} style={{ ...ip, marginTop: 6, padding: "5px 8px", fontSize: 12, width: "auto" }}>
               {TIERS.map(([k, ic, lbl]) => <option key={k} value={k}>{ic} {lbl}</option>)}
             </select>
