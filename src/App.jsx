@@ -827,6 +827,27 @@ function RideButtons({ e, compact }) {
     </div>
   );
 }
+function MediaSlider({ imgs, wide }) {
+  const ref = useRef(null);
+  const scroll = (dir) => { const el = ref.current; if (!el) return; el.scrollBy({ left: dir * el.clientWidth * 0.86, behavior: "smooth" }); };
+  const arrow = { position: "absolute", top: wide ? 150 : 100, width: 40, height: 40, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.96)", boxShadow: "0 2px 10px rgba(0,0,0,.28)", cursor: "pointer", fontSize: 22, fontWeight: 900, color: W.ink, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, paddingBottom: 3, zIndex: 2 };
+  return (
+    <div style={{ marginBottom: 10, position: "relative" }}>
+      <div ref={ref} style={{ display: "flex", gap: 10, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
+        {imgs.map((m, i) => (
+          <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{ flex: "0 0 auto", width: imgs.length === 1 ? "100%" : "86%", scrollSnapAlign: "center", display: "block" }}>
+            <img src={m.url} alt="" style={{ width: "100%", height: wide ? 340 : 240, objectFit: "cover", borderRadius: 14, display: "block", background: "#eee" }} />
+          </a>
+        ))}
+      </div>
+      {imgs.length > 1 && wide && (<>
+        <button onClick={() => scroll(-1)} aria-label="Previous" style={{ ...arrow, left: 8 }}>‹</button>
+        <button onClick={() => scroll(1)} aria-label="Next" style={{ ...arrow, right: 8 }}>›</button>
+      </>)}
+      {imgs.length > 1 && <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, marginTop: 5, fontWeight: 600 }}>{wide ? "‹ use arrows ·" : "← swipe ·"} {imgs.length} photos {wide ? "›" : "→"}</div>}
+    </div>
+  );
+}
 let _gwDialogSet = null;
 function GwDialogHost() {
   const [d, setD] = useState(null); // {msg, onOk?} | {msg, input:true, resolve}
@@ -1517,21 +1538,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
           {Array.isArray(e.about_media) && e.about_media.length > 0 && (
             <Sec title="Gallery & media">
-              {e.about_media.filter(m => m.kind === "image").length > 0 && (() => {
-                const imgs = e.about_media.filter(m => m.kind === "image");
-                return (
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
-                      {imgs.map((m, i) => (
-                        <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{ flex: "0 0 auto", width: imgs.length === 1 ? "100%" : "86%", scrollSnapAlign: "center", display: "block" }}>
-                          <img src={m.url} alt="" style={{ width: "100%", height: wide ? 340 : 240, objectFit: "cover", borderRadius: 14, display: "block", background: "#eee" }} />
-                        </a>
-                      ))}
-                    </div>
-                    {imgs.length > 1 && <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, marginTop: 5, fontWeight: 600 }}>← swipe · {imgs.length} photos →</div>}
-                  </div>
-                );
-              })()}
+              {e.about_media.filter(m => m.kind === "image").length > 0 && (
+                <MediaSlider imgs={e.about_media.filter(m => m.kind === "image")} wide={wide} />
+              )}
               {e.about_media.filter(m => m.kind === "video").map((m, i) => (
                 <video key={i} src={m.url} controls playsInline style={{ width: "100%", borderRadius: 12, marginBottom: 10, background: "#000" }} />
               ))}
@@ -1888,7 +1897,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v37 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v38 build</div>
       </div>
     </div>
   );
