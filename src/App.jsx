@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · report-v26 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · share-v28 build</div>
       </div>
     </div>
   );
@@ -11012,6 +11012,43 @@ function EventPnLTab({ event }) {
     </div>
   );
 }
+function ShareCaptionEditor({ event, onUpdate }) {
+  const link = `${window.location.origin}/e/${event.id}`;
+  const suggested = `🎉 ${event.title}${event.event_date ? `\n📅 ${event.event_date}` : ""}${[event.venue, event.city].filter(Boolean).length ? `\n📍 ${[event.venue, event.city].filter(Boolean).join(", ")}` : ""}\n\nGrab your tickets 👉`;
+  const [text, setText] = useState(event.share_text != null && event.share_text !== "" ? event.share_text : suggested);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [img, setImg] = useState(event.share_image_url || "");
+  const [imgBusy, setImgBusy] = useState(false);
+  const full = `${(text || "").trim()}\n${link}`;
+  const pickImg = async (ev) => { const file = ev.target.files?.[0]; ev.target.value = ""; if (!file) return; setImgBusy(true); try { const url = await uploadPhoto("banners", file); setImg(url); await onUpdate(event.id, { share_image_url: url }); } catch (x) { alert("Upload failed: " + x.message); } setImgBusy(false); };
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 13 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 800, color: W.ink }}>📝 Share message</div>
+      <div style={{ fontSize: 12, color: W.soft, margin: "3px 0 9px", lineHeight: 1.5 }}>Write the caption that goes with the link. When you share, people see your message plus the preview photo below.</div>
+      <div style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 11 }}>
+        <div style={{ width: 96, height: 60, borderRadius: 10, overflow: "hidden", flexShrink: 0, border: `1px solid ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {img ? <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (event.banner_url && event.banner_type !== "video") ? <img src={event.banner_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : event.poster_url ? <img src={event.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 11, color: W.soft }}>No image</span>}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: W.ink }}>Link preview photo</div>
+          <div style={{ fontSize: 11.5, color: W.soft, margin: "2px 0 6px", lineHeight: 1.4 }}>{img ? "Custom photo set." : "Using your banner/poster. Upload a different one just for the link preview."}</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <label style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "6px 11px", fontSize: 12, cursor: "pointer" }}>{imgBusy ? "Uploading…" : (img ? "Change photo" : "Upload photo")}<input type="file" accept="image/*" style={{ display: "none" }} onChange={pickImg} /></label>
+            {img && <button onClick={async () => { setImg(""); await onUpdate(event.id, { share_image_url: null }); }} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 11px", fontSize: 12 }}>Reset</button>}
+          </div>
+        </div>
+      </div>
+      <textarea value={text} onChange={e => { setText(e.target.value); setSaved(false); }} rows={4} placeholder="Write your promo caption…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
+      <div style={{ fontSize: 11, color: W.soft, margin: "6px 0 10px", wordBreak: "break-all" }}>The link <b style={{ color: W.ink }}>{link}</b> is added below your message automatically.</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(full)}`, "_blank")} style={{ ...btn("#25D366", "#fff"), flex: "1 1 150px", justifyContent: "center" }}><MessageCircle size={15} />Share on WhatsApp</button>
+        <button onClick={() => { try { navigator.clipboard.writeText(full); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) {} }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: "1 1 120px", justifyContent: "center" }}>{copied ? "Copied ✓" : "Copy caption + link"}</button>
+        <button onClick={async () => { await onUpdate(event.id, { share_text: text }); setSaved(true); }} style={{ ...btn(W.teal, "#fff"), flex: "0 1 90px", justifyContent: "center" }}>{saved ? "Saved ✓" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
 function EventAnalyticsTab({ event }) {
   const [a, setA] = useState(null);
   const [guests, setGuests] = useState([]);
@@ -11229,6 +11266,7 @@ function EventPromotionsTab({ event, onUpdate, canApprove, isSuper }) {
             </div>
           ))}
       </div>
+      <ShareCaptionEditor event={event} onUpdate={onUpdate} />
       <EventWaBlast event={event} />
       <EventShare event={event} />
     </div>
