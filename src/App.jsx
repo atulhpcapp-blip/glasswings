@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v32 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v33 build</div>
       </div>
     </div>
   );
@@ -3709,16 +3709,20 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
               </div>
             ) : <div style={{ fontSize: 12.5, color: W.soft, paddingBottom: 8, lineHeight: 1.5 }}>No mutual matches yet — when you both wave 👋 it's a match and chat unlocks 💬</div>}
             {matchOfDay && (
-              <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", borderRadius: 13, padding: "10px 12px", margin: "4px 0 10px", border: "1px solid #FDE68A" }}>
-                <div style={{ width: 56, flexShrink: 0 }}>{miniAv(matchOfDay, "#F59E0B")}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#B45309", letterSpacing: .3 }}>🔥 MATCH OF THE DAY</div>
-                  <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{(matchOfDay.name || "Member").split(" ")[0]}{matchOfDay.age ? `, ${matchOfDay.age}` : ""}</div>
-                  <div style={{ fontSize: 11.5, color: W.soft }}>{matchOfDay.area || matchOfDay.city || "Say hi 👋"}</div>
+              <div style={{ background: "#fff", borderRadius: 16, margin: "6px 0 12px", border: "1px solid #FDE68A", overflow: "hidden", boxShadow: "0 6px 18px rgba(245,158,11,.20)" }}>
+                <div onClick={() => openPeek(matchOfDay)} style={{ position: "relative", width: "100%", aspectRatio: "4/5", background: W.bg, cursor: "pointer" }}>
+                  {matchOfDay.avatar_url
+                    ? <img src={matchOfDay.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 78 }}>{matchOfDay.gender === "female" ? "👩" : matchOfDay.gender === "male" ? "👨" : "🙂"}</div>}
+                  <div style={{ position: "absolute", top: 11, left: 11, background: "rgba(245,158,11,.96)", color: "#fff", fontSize: 11, fontWeight: 900, letterSpacing: .4, padding: "6px 11px", borderRadius: 999 }}>🔥 MATCH OF THE DAY</div>
+                  <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "30px 15px 13px", background: "linear-gradient(transparent, rgba(0,0,0,.74))" }}>
+                    <div style={{ fontWeight: 900, color: "#fff", fontSize: 22, lineHeight: 1.1 }}>{(matchOfDay.name || "Member").split(" ")[0]}{matchOfDay.age ? `, ${matchOfDay.age}` : ""}</div>
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,.92)", marginTop: 3 }}>{matchOfDay.area || matchOfDay.city || "Say hi 👋"}</div>
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button onClick={() => doPass(matchOfDay)} disabled={waveBusy === matchOfDay.id} title="Decline" style={{ padding: "8px 11px", borderRadius: 9, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>✗</button>
-                  <button onClick={() => doWave(matchOfDay)} disabled={waveBusy === matchOfDay.id} title="Like" style={{ ...btn("#EC4899", "#fff"), padding: "8px 14px", fontSize: 12.5, opacity: waveBusy === matchOfDay.id ? .6 : 1 }}>✓ Like</button>
+                <div style={{ display: "flex", gap: 10, padding: 12 }}>
+                  <button onClick={() => doPass(matchOfDay)} disabled={waveBusy === matchOfDay.id} title="Decline" style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 20, lineHeight: 1, cursor: "pointer" }}>✗</button>
+                  <button onClick={() => doWave(matchOfDay)} disabled={waveBusy === matchOfDay.id} title="Like" style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(95deg,#EC4899,#F472B6)", color: "#fff", fontWeight: 900, fontSize: 15.5, cursor: "pointer", opacity: waveBusy === matchOfDay.id ? .6 : 1 }}>{matchOfDay.waved_me ? "✓ It's a match" : "✓ Like"}</button>
                 </div>
               </div>
             )}
