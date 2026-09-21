@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · promo-v25 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · report-v26 build</div>
       </div>
     </div>
   );
@@ -11012,6 +11012,158 @@ function EventPnLTab({ event }) {
     </div>
   );
 }
+function EventAnalyticsTab({ event }) {
+  const [a, setA] = useState(null);
+  const [guests, setGuests] = useState([]);
+  const [holders, setHolders] = useState([]);
+  const [ledger, setLedger] = useState([]);
+  const [proms, setProms] = useState([]);
+  useEffect(() => {
+    supabase.rpc("event_ticket_analysis", { p_event: event.id }).then(({ data }) => setA(data || {}));
+    supabase.rpc("guest_list", { p_event: event.id }).then(({ data }) => setGuests(data || []));
+    supabase.rpc("event_ticket_holders", { p_event: event.id }).then(({ data }) => setHolders(data || []));
+    supabase.rpc("event_ledger_list", { p_event: event.id }).then(({ data }) => setLedger(data || []));
+    supabase.rpc("event_promoters", { p_event: event.id }).then(({ data }) => setProms(data || []));
+  }, [event.id]);
+  const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const tier = k => guests.filter(g => (g.guest_type || "guest") === k).length;
+  const methodCount = k => holders.filter(h => h.method === k).length;
+  const online = a ? Number(a.paid_gross || 0) : 0, dCash = a ? Number(a.door_cash || 0) : 0, dUpi = a ? Number(a.door_upi || 0) : 0;
+  const totalCollected = online + dCash + dUpi;
+  const tIncome = totalCollected;
+  const manualIncome = ledger.filter(r => r.kind === "income").reduce((s, r) => s + Number(r.amount || 0), 0);
+  const expense = ledger.filter(r => r.kind === "expense").reduce((s, r) => s + Number(r.amount || 0), 0);
+  const net = tIncome + manualIncome - expense;
+  const male = a ? Number(a.male || 0) : 0, female = a ? Number(a.female || 0) : 0;
+  const members = a ? Number(a.members || 0) : 0, returning = a ? Number(a.returning || 0) : 0, newbies = Math.max(0, members - returning);
+  const Tile = ({ label, val, color }) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", flex: "1 1 84px", minWidth: 82 }}><div style={{ fontSize: 10, color: W.soft, fontWeight: 800, letterSpacing: .3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 800, color: color || W.ink, marginTop: 3 }}>{val}</div></div>;
+  const Bars = ({ rows, color }) => { const mx = Math.max(1, ...rows.map(r => r.v)); return (<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{rows.map((r, i) => (<div key={i} style={{ display: "flex", alignItems: "center", gap: 9 }}><span style={{ width: 74, fontSize: 12, color: W.soft, flexShrink: 0 }}>{r.l}</span><div style={{ flex: 1, background: W.bg, borderRadius: 6, height: 16, overflow: "hidden" }}><div style={{ width: `${Math.max(4, Math.round(r.v / mx * 100))}%`, height: "100%", background: color, borderRadius: 6 }} /></div><span style={{ width: 34, textAlign: "right", fontSize: 12, fontWeight: 800, color: W.ink }}>{r.v}</span></div>))}</div>); };
+  const Section = ({ title, children }) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 13, marginBottom: 12 }}><div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink, marginBottom: 9 }}>{title}</div>{children}</div>;
+
+  const downloadReport = () => {
+    const esc = t => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const m2 = v => "₹" + Number(v || 0).toLocaleString("en-IN");
+    const today = new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+    const types = (a?.types || []);
+    const typeRows = types.map(t => `<tr><td>${esc(t.name)}</td><td class="c">${t.sold || 0}${t.capacity != null ? " / " + t.capacity : ""}</td><td class="r">${m2(t.revenue)}</td></tr>`).join("") || `<tr><td colspan="3" class="mut">No ticket types</td></tr>`;
+    const ageRows = (a?.age_groups || []).map(g => `<tr><td>${esc(g.g)}</td><td class="r">${g.c}</td></tr>`).join("") || `<tr><td colspan="2" class="mut">—</td></tr>`;
+    const areaRows = (a?.areas || []).map(z => `<tr><td>${esc(z.name)}</td><td class="r">${z.c}</td></tr>`).join("") || `<tr><td colspan="2" class="mut">—</td></tr>`;
+    const acq = [["Paid (Razorpay)", methodCount("online")], ["Credits", methodCount("credits")], ["Free / comp", methodCount("free")], ["Door cash", methodCount("cash")], ["Door UPI", methodCount("upi")]];
+    const acqRows = acq.map(([l, v]) => `<tr><td>${l}</td><td class="r">${v}</td></tr>`).join("");
+    const buyerRows = holders.map(h => `<tr><td>${esc(h.name)}</td><td>${h.method === "online" ? "Razorpay" : h.method === "free" ? "Free/comp" : h.method === "credits" ? "Credits" : h.method}</td><td>${esc(h.ticket_type)}</td><td class="c">${h.qty || 1}</td><td class="r">${Number(h.paid || 0) > 0 ? m2(h.paid) : "Free"}</td><td>${esc(h.phone || "")}</td><td class="mono">${esc(h.ref || "")}</td></tr>`).join("") || `<tr><td colspan="7" class="mut">No ticket holders</td></tr>`;
+    const incomeRows = ledger.filter(r => r.kind === "income").map(r => `<tr><td>${esc(r.title)}</td><td class="r pos">${m2(r.amount)}</td></tr>`).join("");
+    const expRows = ledger.filter(r => r.kind === "expense").map(r => `<tr><td>${esc(r.title)}</td><td class="r neg">${m2(r.amount)}</td></tr>`).join("") || `<tr><td colspan="2" class="mut">No expenses</td></tr>`;
+    const promRows = proms.map(p => `<tr><td>${esc(p.name)}${p.promo_code ? " · " + esc(p.promo_code) : ""}</td><td class="c">${p.tickets}</td><td class="r">${m2(p.commission)}</td></tr>`).join("") || `<tr><td colspan="3" class="mut">No promoter sales</td></tr>`;
+    const w = window.open("", "_blank", "width=900,height=1000"); if (!w) return;
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Event report — ${esc(event.title)}</title><style>
+      body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:34px;max-width:900px}
+      .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#008069}
+      h1{font-size:23px;margin:6px 0 2px}.sub{color:#5d6f6b;font-size:12.5px;margin-bottom:18px}
+      h2{font-size:15px;margin:26px 0 8px;border-bottom:2px solid #008069;padding-bottom:5px;color:#0b1f1c}
+      .kpis{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0 4px}
+      .kpi{border:1px solid #d8e4e0;border-radius:12px;padding:10px 14px;min-width:120px}
+      .kpi .l{font-size:10px;letter-spacing:.4px;text-transform:uppercase;color:#5d6f6b;font-weight:800}
+      .kpi .v{font-size:20px;font-weight:800;margin-top:3px}
+      .net{background:${net >= 0 ? "#0E7A5F" : "#B23B2E"};color:#fff}.net .l{color:rgba(255,255,255,.85)}
+      table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+      th{background:#008069;color:#fff;font-size:10px;letter-spacing:.4px;text-transform:uppercase;text-align:left;padding:7px 8px}
+      td{padding:7px 8px;border-bottom:1px solid #e2ece8}
+      .c{text-align:center}.r{text-align:right}.mut{color:#8a9b97}.pos{color:#0E7A5F;font-weight:700}.neg{color:#C0392B;font-weight:700}.mono{font-family:ui-monospace,monospace;font-size:11px}
+      .cols{display:flex;gap:20px;flex-wrap:wrap}.cols>div{flex:1;min-width:230px}
+      .ft{margin-top:22px;font-size:11px;color:#8a9b97}
+      @media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+      <div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
+      <h1>${esc(event.emoji || "🎟️")} ${esc(event.title)} — Event Report</h1>
+      <div class="sub">${esc(event.event_date || "")}${event.venue ? " · " + esc(event.venue) : ""}${event.city ? " · " + esc(event.city) : ""} · Generated ${today}</div>
+
+      <h2>💰 Financial summary</h2>
+      <div class="kpis">
+        <div class="kpi net"><div class="l">Net profit</div><div class="v">${net < 0 ? "− " : ""}${m2(Math.abs(net))}</div></div>
+        <div class="kpi"><div class="l">Total collected</div><div class="v">${m2(totalCollected)}</div></div>
+        <div class="kpi"><div class="l">Ticket income</div><div class="v">${m2(tIncome)}</div></div>
+        <div class="kpi"><div class="l">Other income</div><div class="v">${m2(manualIncome)}</div></div>
+        <div class="kpi"><div class="l">Expenses</div><div class="v">${m2(expense)}</div></div>
+      </div>
+      <div class="sub" style="margin-top:8px">Collected: 🟢 Online ${m2(online)} · 💵 Cash ${m2(dCash)} · 📱 UPI ${m2(dUpi)}</div>
+      <div class="cols">
+        <div><h2>▲ Income lines</h2><table><tr><td>🎟️ Ticket sales</td><td class="r pos">${m2(tIncome)}</td></tr>${incomeRows}</table></div>
+        <div><h2>▼ Expenses</h2><table>${expRows}</table></div>
+      </div>
+
+      <h2>🎫 Ticket types</h2>
+      <table><thead><tr><th>Type</th><th class="c">Sold</th><th class="r">Revenue</th></tr></thead><tbody>${typeRows}</tbody></table>
+
+      <h2>👥 Audience</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="l">Tickets</div><div class="v">${a?.tickets ?? 0}</div></div>
+        <div class="kpi"><div class="l">Checked in</div><div class="v">${a?.checked_in ?? 0}</div></div>
+        <div class="kpi"><div class="l">Guys</div><div class="v">${male}</div></div>
+        <div class="kpi"><div class="l">Girls</div><div class="v">${female}</div></div>
+        <div class="kpi"><div class="l">New (first time)</div><div class="v">${newbies}</div></div>
+        <div class="kpi"><div class="l">Returning</div><div class="v">${returning}</div></div>
+      </div>
+      <div class="cols">
+        <div><h2>🎂 Age groups</h2><table>${ageRows}</table></div>
+        <div><h2>📍 Top areas</h2><table>${areaRows}</table></div>
+      </div>
+
+      <h2>🎟️ Guest tiers &amp; how they got in</h2>
+      <div class="cols">
+        <div><table><tr><td>🎟️ Guest</td><td class="r">${tier("guest")}</td></tr><tr><td>💎 VIP</td><td class="r">${tier("vip")}</td></tr><tr><td>🛡️ Team</td><td class="r">${tier("team")}</td></tr></table></div>
+        <div><table>${acqRows}</table></div>
+      </div>
+
+      <h2>💳 Who paid how much</h2>
+      <table><thead><tr><th>Name</th><th>How</th><th>Type</th><th class="c">Qty</th><th class="r">Amount</th><th>Phone</th><th>Razorpay / code</th></tr></thead><tbody>${buyerRows}</tbody></table>
+
+      <h2>📣 Promoters &amp; commission</h2>
+      <table><thead><tr><th>Promoter</th><th class="c">Tickets</th><th class="r">Commission</th></tr></thead><tbody>${promRows}</tbody></table>
+
+      <div class="ft">Glasswings Events · glass-wings.com · Confidential organiser report.</div>
+      <script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script>
+    </body></html>`);
+    w.document.close();
+  };
+
+  if (a === null) return <Center>Loading analytics…</Center>;
+  return (
+    <div>
+      <button onClick={downloadReport} style={{ ...btn("#4F46E5", "#fff"), width: "100%", justifyContent: "center", marginBottom: 14, padding: "13px", fontSize: 15, fontWeight: 800 }}>📄 Download full event report (PDF)</button>
+      <Section title="👥 Audience">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <Tile label="TICKETS" val={a?.tickets ?? 0} />
+          <Tile label="CHECKED IN" val={a?.checked_in ?? 0} color={W.teal} />
+          <Tile label="🧑 GUYS" val={male} />
+          <Tile label="👩 GIRLS" val={female} />
+        </div>
+      </Section>
+      <Section title="🆕 New vs returning members">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Tile label="🆕 NEW (first time)" val={newbies} color="#DB2777" />
+          <Tile label="🔁 RETURNING" val={returning} color="#0E7A5F" />
+          <Tile label="MEMBERS TOTAL" val={members} />
+        </div>
+      </Section>
+      {(a?.age_groups || []).length > 0 && <Section title="🎂 Age groups"><Bars rows={a.age_groups.map(g => ({ l: g.g, v: g.c }))} color="#4F46E5" /></Section>}
+      <Section title="🎟️ Guest tiers">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Tile label="🎟️ GUEST" val={tier("guest")} color="#008069" />
+          <Tile label="💎 VIP" val={tier("vip")} color="#B7791F" />
+          <Tile label="🛡️ TEAM" val={tier("team")} color="#475569" />
+        </div>
+      </Section>
+      <Section title="🎫 How they got in">
+        <Bars rows={[{ l: "🟢 Paid", v: methodCount("online") }, { l: "💳 Credits", v: methodCount("credits") }, { l: "🎁 Free", v: methodCount("free") }, { l: "💵 Cash", v: methodCount("cash") }, { l: "📱 UPI", v: methodCount("upi") }]} color="#0E7A5F" />
+      </Section>
+      {(a?.types || []).length > 0 && <Section title="🎫 Ticket types">
+        {a.types.map((t, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderTop: i ? `1px solid ${W.line}` : "none", fontSize: 13.5 }}><span style={{ color: W.ink, fontWeight: 700 }}>{t.name}</span><span style={{ color: W.soft }}>{t.sold || 0}{t.capacity != null ? ` / ${t.capacity}` : ""} · <b style={{ color: W.ink }}>{money(t.revenue)}</b></span></div>)}
+      </Section>}
+      {(a?.areas || []).length > 0 && <Section title="📍 Top areas"><Bars rows={a.areas.map(z => ({ l: z.name, v: z.c }))} color="#D97706" /></Section>}
+      <div style={{ fontSize: 11.5, color: W.soft, lineHeight: 1.5 }}>The PDF report also includes the financial summary, P&L, full buyer list and promoter commission.</div>
+    </div>
+  );
+}
 function EventPromotionsTab({ event, onUpdate, canApprove, isSuper }) {
   const [promoters, setPromoters] = useState(null);
   const loadProm = () => supabase.rpc("event_promoters", { p_event: event.id }).then(({ data, error }) => setPromoters(error ? [] : (data || [])));
@@ -11194,6 +11346,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     ["tickets", "🎟️", "Tickets", "#7C3AED", "#F3EEFE"],
     ["sales", "💰", "Sales", "#059669", "#E3F7EF"],
     ["pnl", "💹", "P&L", "#0E7A5F", "#E3F7EF"],
+    ["analytics", "📊", "Analytics", "#4F46E5", "#EEF0FF"],
     ["promo", "📣", "Promotions", "#DB2777", "#FCE7F3"],
     ["guests", "🧑‍🤝‍🧑", "Guest list", "#D97706", "#FDF3E4"],
     ["terms", "📋", "Terms", "#E11D48", "#FDE9EF"],
@@ -11679,6 +11832,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   </>)}
                   {mSeg === "sales" && <EventSalesTab event={e} />}
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
+                  {mSeg === "analytics" && <EventAnalyticsTab event={e} />}
                   {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} isSuper={isSuper} />}
                   {mSeg === "guests" && (<>
                     <GuestTickets event={e} />
