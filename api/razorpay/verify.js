@@ -56,6 +56,10 @@ export default async function handler(req, res) {
         });
         if (insErr && insErr.code !== "23505") throw insErr;   // 23505 = already granted
       }
+      // 💳 deduct any credits the buyer applied to this order (only now that the card payment cleared)
+      if (pay.credits_used && pay.credits_used > 0) {
+        try { await sb.rpc("spend_event_credits", { p_user: uid, p_n: pay.credits_used }); } catch (e2) {}
+      }
     } else if (pay.purpose === "plan") {
       const pm = Number(pay.plan_months) || 1;
       const { data: existing } = await sb.from("member_plans").select("id, expires_at")
