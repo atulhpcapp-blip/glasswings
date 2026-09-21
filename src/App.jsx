@@ -660,8 +660,26 @@ function SettlementsPanel({ isSuper }) {
   const [draft, setDraft] = useState({});
   const [gwDraft, setGwDraft] = useState(null);
   const [saving, setSaving] = useState(null);
-  const load = () => supabase.rpc("organiser_settlements").then(({ data, error }) => setRows(error ? [] : (data || [])));
+  const [payouts, setPayouts] = useState([]);
+  const [payBusy, setPayBusy] = useState(null);
+  const load = () => {
+    supabase.rpc("organiser_settlements").then(({ data, error }) => setRows(error ? [] : (data || [])));
+    if (isSuper) supabase.rpc("payout_list", { p_kind: "organiser", p_event: null }).then(({ data, error }) => setPayouts(error ? [] : (data || [])));
+  };
   useEffect(() => { load(); }, []);
+  const paidFor = (hid) => payouts.filter(p => p.payee_id === hid).reduce((a, p) => a + Number(p.amount || 0), 0);
+  const markPaid = (r) => {
+    const outstanding = Math.max(0, Math.round(Number(r.payable || 0) - paidFor(r.host_id)));
+    if (outstanding <= 0) return;
+    window.gwConfirm(`Record a payout of ₹${outstanding.toLocaleString("en-IN")} to ${r.host_name || "this organiser"}?\n\nThis is for your records — it marks the current outstanding amount as paid.`, async () => {
+      setPayBusy(r.host_id);
+      const { error } = await supabase.rpc("record_payout", { p_kind: "organiser", p_payee: r.host_id, p_event: null, p_amount: outstanding, p_note: null });
+      setPayBusy(null);
+      if (error) return window.gwConfirm(error.message, () => {});
+      load();
+    });
+  };
+  const undoPayout = (id) => window.gwConfirm("Remove this payout record?", async () => { await supabase.rpc("delete_payout", { p_id: id }); load(); });
   const gwPct = rows && rows.length ? rows[0].gateway_pct : null;
   const inr = n => n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   const savePct = async (uid) => {
@@ -789,6 +807,35 @@ function SettlementsPanel({ isSuper }) {
                 {Number(r.promo_fees) > 0 && <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PROMO FEES</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>− {inr(r.promo_fees)}</div></div>}
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PAYABLE</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{r.payable == null ? "—" : inr(r.payable)}</div></div>
               </div>
+              {isSuper && r.payable != null && (() => {
+                const paid = paidFor(r.host_id);
+                const outstanding = Math.max(0, Math.round(Number(r.payable || 0) - paid));
+                const hist = payouts.filter(p => p.payee_id === r.host_id);
+                return (
+                  <div style={{ marginTop: 12, borderTop: `1px dashed ${W.line}`, paddingTop: 11 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                      <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PAID</div><div style={{ fontWeight: 800, color: "#0d6e58", fontSize: 15 }}>{inr(paid)}</div></div>
+                      <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>OUTSTANDING</div><div style={{ fontWeight: 800, color: outstanding > 0 ? "#B45309" : "#0d6e58", fontSize: 15 }}>{outstanding > 0 ? inr(outstanding) : "✓ settled"}</div></div>
+                      <div style={{ flex: 1 }} />
+                      {outstanding > 0
+                        ? <button onClick={() => markPaid(r)} disabled={payBusy === r.host_id} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px", fontSize: 13 }}>{payBusy === r.host_id ? "…" : `✓ Mark ${inr(outstanding)} paid`}</button>
+                        : <span style={{ fontSize: 12.5, color: "#0d6e58", fontWeight: 800, background: "#E7F6EF", borderRadius: 8, padding: "7px 12px" }}>✅ Fully paid</span>}
+                    </div>
+                    {hist.length > 0 && (
+                      <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
+                        {hist.map(p => (
+                          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: W.soft }}>
+                            <span style={{ color: "#0d6e58", fontWeight: 800 }}>✓ {inr(p.amount)}</span>
+                            <span>paid {new Date(p.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                            <div style={{ flex: 1 }} />
+                            <button onClick={() => undoPayout(p.id)} style={{ background: "transparent", border: "none", color: "#C0392B", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Undo</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -1900,7 +1947,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v39 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v40 build</div>
       </div>
     </div>
   );
@@ -11371,8 +11418,24 @@ function EventAnalyticsTab({ event }) {
 function EventPromotionsTab({ event, onUpdate, canApprove, isSuper }) {
   const [promoters, setPromoters] = useState(null);
   const loadProm = () => supabase.rpc("event_promoters", { p_event: event.id }).then(({ data, error }) => setPromoters(error ? [] : (data || [])));
-  useEffect(() => { loadProm(); }, [event.id]);
+  const [payouts, setPayouts] = useState([]);
+  const loadPayouts = () => supabase.rpc("payout_list", { p_kind: "promoter", p_event: event.id }).then(({ data, error }) => setPayouts(error ? [] : (data || [])));
+  useEffect(() => { loadProm(); loadPayouts(); }, [event.id]);
   const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const [ppBusy, setPpBusy] = useState(null);
+  const paidForP = (id) => payouts.filter(x => x.payee_id === id).reduce((a, x) => a + Number(x.amount || 0), 0);
+  const markPromoterPaid = (p) => {
+    const outstanding = Math.max(0, Math.round(Number(p.commission || 0) - paidForP(p.promoter_id)));
+    if (outstanding <= 0) return;
+    window.gwConfirm(`Record a commission payout of ${money(outstanding)} to ${p.name}?\n\nThis marks their outstanding commission for this event as paid.`, async () => {
+      setPpBusy(p.promoter_id);
+      const { error } = await supabase.rpc("record_payout", { p_kind: "promoter", p_payee: p.promoter_id, p_event: event.id, p_amount: outstanding, p_note: null });
+      setPpBusy(null);
+      if (error) return window.gwConfirm(error.message, () => {});
+      loadPayouts();
+    });
+  };
+  const undoP = (id) => window.gwConfirm("Remove this payout record?", async () => { await supabase.rpc("delete_payout", { p_id: id }); loadPayouts(); });
   const totalComm = (promoters || []).reduce((a, p) => a + Number(p.commission || 0), 0);
   // assign promoter (superadmin)
   const [q, setQ] = useState(""); const [dir, setDir] = useState([]); const [comm, setComm] = useState(""); const [aBusy, setABusy] = useState(""); const [aMsg, setAMsg] = useState("");
@@ -11423,15 +11486,38 @@ function EventPromotionsTab({ event, onUpdate, canApprove, isSuper }) {
           {totalComm > 0 && <div style={{ fontSize: 12.5, fontWeight: 800, color: "#7C3AED" }}>Owed: {money(totalComm)}</div>}
         </div>
         {promoters === null ? <Center>Loading…</Center> : promoters.length === 0 ? <div style={{ fontSize: 12.5, color: W.soft, lineHeight: 1.5 }}>No promoter sales yet. Promoters share the event link with their own code — sales through that code appear here with the commission owed.</div> :
-          promoters.map((p, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 11px", marginBottom: 7, background: "#fff", border: `1px solid ${W.line}`, borderLeft: "4px solid #7C3AED", borderRadius: 10 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{p.name}{p.promo_code ? <span style={{ color: W.soft, fontWeight: 600, fontFamily: "ui-monospace,monospace" }}> · {p.promo_code}</span> : ""}</div>
-                <div style={{ fontSize: 11.5, color: W.soft }}>{p.tickets} ticket{p.tickets === 1 ? "" : "s"} sold via their code</div>
+          promoters.map((p, i) => {
+            const paid = paidForP(p.promoter_id);
+            const outstanding = Math.max(0, Math.round(Number(p.commission || 0) - paid));
+            const hist = payouts.filter(x => x.payee_id === p.promoter_id);
+            return (
+              <div key={i} style={{ padding: "11px 12px", marginBottom: 8, background: "#fff", border: `1px solid ${W.line}`, borderLeft: "4px solid #7C3AED", borderRadius: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{p.name}{p.promo_code ? <span style={{ color: W.soft, fontWeight: 600, fontFamily: "ui-monospace,monospace" }}> · {p.promo_code}</span> : ""}</div>
+                    <div style={{ fontSize: 11.5, color: W.soft }}>{p.tickets} ticket{p.tickets === 1 ? "" : "s"} · commission {money(p.commission)}</div>
+                  </div>
+                  {outstanding <= 0
+                    ? <span style={{ fontSize: 12, color: "#0d6e58", fontWeight: 800, background: "#E7F6EF", borderRadius: 8, padding: "6px 11px", flexShrink: 0 }}>✅ Paid</span>
+                    : (isSuper || canApprove)
+                      ? <button onClick={() => markPromoterPaid(p)} disabled={ppBusy === p.promoter_id} style={{ ...btn("#7C3AED", "#fff"), padding: "8px 13px", fontSize: 12.5, flexShrink: 0 }}>{ppBusy === p.promoter_id ? "…" : `✓ Mark ${money(outstanding)} paid`}</button>
+                      : <span style={{ fontWeight: 800, color: "#7C3AED", fontSize: 15, flexShrink: 0 }}>{money(outstanding)}</span>}
+                </div>
+                {hist.length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {hist.map(x => (
+                      <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: W.soft }}>
+                        <span style={{ color: "#0d6e58", fontWeight: 800 }}>✓ {money(x.amount)}</span>
+                        <span>paid {new Date(x.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                        <div style={{ flex: 1 }} />
+                        {(isSuper || canApprove) && <button onClick={() => undoP(x.id)} style={{ background: "transparent", border: "none", color: "#C0392B", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Undo</button>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 15, flexShrink: 0 }}>{money(p.commission)}</div>
-            </div>
-          ))}
+            );
+          })}
       </div>
       <ShareCaptionEditor event={event} onUpdate={onUpdate} />
       <EventWaBlast event={event} />
