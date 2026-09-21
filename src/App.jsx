@@ -1593,13 +1593,23 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               {excl.map((x, i) => <div key={i} style={{ display: "flex", gap: 9, alignItems: "center", padding: "5px 0", fontSize: 14.5, color: "#3c4a47" }}><span style={{ color: "#C0392B", fontWeight: 800 }}>✗</span>{x}</div>)}
             </Sec>
           )}
-          {e.venue_lat && (
+          {(e.venue_lat || (e.venue && e.location_type !== "online")) && (
             <Sec title="Venue">
-              <iframe title="map" src={`https://maps.google.com/maps?q=${e.venue_lat},${e.venue_lng}&z=15&output=embed`} style={{ border: 0, width: "100%", height: wide ? 260 : 200, borderRadius: 14 }} loading="lazy" />
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 12.5, color: W.soft, fontWeight: 700, marginBottom: 7 }}>🚕 Getting there — opens a cab app with the venue pre-filled</div>
-                <RideButtons e={e} />
-              </div>
+              {e.venue && <div style={{ fontSize: 14.5, color: W.ink, fontWeight: 700, marginBottom: 9, display: "flex", gap: 7, alignItems: "flex-start" }}><span>📍</span><span>{[e.venue, e.city].filter(Boolean).join(", ")}</span></div>}
+              <iframe title="map" src={e.venue_lat
+                ? `https://maps.google.com/maps?q=${e.venue_lat},${e.venue_lng}&z=15&output=embed`
+                : `https://maps.google.com/maps?q=${encodeURIComponent([e.venue, e.city].filter(Boolean).join(", "))}&z=15&output=embed`}
+                style={{ border: 0, width: "100%", height: wide ? 280 : 210, borderRadius: 14 }} loading="lazy" />
+              <a href={e.venue_lat
+                ? `https://www.google.com/maps/search/?api=1&query=${e.venue_lat},${e.venue_lng}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([e.venue, e.city].filter(Boolean).join(", "))}`}
+                target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, textDecoration: "none", background: "#E7F6EF", color: "#0d6e58", fontWeight: 800, fontSize: 13.5, borderRadius: 10, padding: "10px 15px" }}>📍 Open in Google Maps</a>
+              {e.venue_lat && (
+                <div style={{ marginTop: 13 }}>
+                  <div style={{ fontSize: 12.5, color: W.soft, fontWeight: 700, marginBottom: 7 }}>🚕 Getting there — opens a cab app with the venue pre-filled</div>
+                  <RideButtons e={e} />
+                </div>
+              )}
             </Sec>
           )}
           {Array.isArray(e.artists) && e.artists.length > 0 && (
@@ -1870,7 +1880,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v35 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v36 build</div>
       </div>
     </div>
   );
@@ -11568,6 +11578,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const cityOpts = Array.from(new Set((events || []).map(e => e.city).filter(Boolean))).sort();
   const orgOpts = Array.from(new Set((events || []).map(e => e.host_id).filter(Boolean)));
   const [fArtist, setFArtist] = useState("all");
+  const wide = useWide(900);
   const artistOpts = Array.from(new Set((events || []).flatMap(e => (Array.isArray(e.artists) ? e.artists : []).map(a => (a.name || "").trim()).filter(Boolean)))).sort();
   const visEvents = events.filter(e => (view === "past" ? (e.event_at && e.event_at < todayISO) : (!e.event_at || e.event_at >= todayISO))
     && (fCat === "all" || e.category === fCat)
@@ -11575,6 +11586,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fOrg === "all" || e.host_id === fOrg)
     && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole))
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
+  const upCount = events.filter(e => (!e.event_at || e.event_at >= todayISO)).length;
+  const pastCount = events.filter(e => (e.event_at && e.event_at < todayISO)).length;
   const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
@@ -11879,12 +11892,24 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           </div>
         </div>
       ) : (
-        <button onClick={() => { setStep(0); setCreating(true); }} style={{ width: "100%", padding: 14, border: `1.5px dashed ${W.teal}`, borderRadius: 14, background: "#fff", color: W.teal, fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 }}><Plus size={18} />Create ticketed event</button>
+        <div style={{ background: "linear-gradient(125deg,#008069,#00A884)", borderRadius: 18, padding: wide ? "20px 22px" : "17px 16px", marginBottom: 14, color: "#fff", boxShadow: "0 8px 22px rgba(0,128,105,.28)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(255,255,255,.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>🎟️</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 900, fontSize: wide ? 24 : 20, lineHeight: 1.05 }}>Events</div>
+              <div style={{ fontSize: 12.5, opacity: .92, marginTop: 3 }}>Create, manage tickets, sales & guests</div>
+            </div>
+          </div>
+          <button onClick={() => { setStep(0); setCreating(true); }} style={{ width: "100%", marginTop: 15, padding: "15px 0", borderRadius: 13, border: "none", background: "#fff", color: "#008069", fontWeight: 900, fontSize: 15.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, boxShadow: "0 4px 12px rgba(0,0,0,.14)" }}><Plus size={20} />Create ticketed event</button>
+        </div>
       )}
       {!creating && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          {[["upcoming", "Upcoming"], ["past", "Past"]].map(([v, l]) => (
-            <button key={v} onClick={() => setView(v)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${view === v ? W.teal : W.line}`, background: view === v ? W.teal : "#fff", color: view === v ? "#fff" : W.soft, fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>{l}</button>
+        <div style={{ display: "flex", gap: 11, marginBottom: 14 }}>
+          {[["upcoming", "📅", "Upcoming", upCount], ["past", "🕓", "Past", pastCount]].map(([v, ic, l, n]) => (
+            <button key={v} onClick={() => setView(v)} style={{ flex: 1, padding: "15px 0 13px", borderRadius: 15, border: view === v ? "2px solid #008069" : `1.5px solid ${W.line}`, background: view === v ? "#E7F6EF" : "#fff", color: view === v ? "#0d6e58" : W.soft, fontWeight: 800, fontSize: 15, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, boxShadow: view === v ? "0 4px 12px rgba(0,128,105,.16)" : "none", transition: "all .15s" }}>
+              <span style={{ fontSize: 23 }}>{ic}</span>
+              <span>{l} <span style={{ fontSize: 12.5, fontWeight: 800, opacity: .75 }}>· {n}</span></span>
+            </button>
           ))}
         </div>
       )}
