@@ -400,6 +400,7 @@ function Auth({ initialMode = "login", onClose }) {
   const [mode, setMode] = useState(initialMode);
   const buying = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   const [name, setName] = useState(""), [email, setEmail] = useState(""), [pass, setPass] = useState(""), [gender, setGender] = useState("male");
+  const [city, setCity] = useState(""), [area, setArea] = useState("");
   const [err, setErr] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
   const VIBES = ["HOUSE PARTIES 🪩", "BLIND DATE EVENTS 💘", "SINGLES MEETUPS 🥂", "GAME NIGHTS 🎲", "LIVE EVENTS 🎤", "SATURDAY NIGHT PARTIES 🌃", "PUB PARTIES 🍻", "POOL PARTIES 🏖️", "THEME PARTIES 🎭", "ROOFTOP PARTIES 🌆", "WEEKEND GETAWAYS 🏕️", "TRIPS WITH FRIENDS 🚐", "WORKSHOPS 🎨", "SPORTS MEETUPS ⚽"];
   const [wi, setWi] = useState(0);
@@ -414,14 +415,16 @@ function Auth({ initialMode = "login", onClose }) {
       setBusy(false); return;
     }
     if (!email || !pass || (mode === "signup" && !name)) return setErr("Please fill in all fields.");
+    if (mode === "signup" && !city.trim()) return setErr("Please add your city.");
     setBusy(true);
     if (mode === "signup") {
-      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, gender } } });
+      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, gender, city: city.trim(), area: area.trim() } } });
       if (error) { setErr(error.message); }
       else {
         try {
           const buying = localStorage.getItem("gw_buy");
           if (buying && data?.session?.user) await supabase.from("profiles").update({ full_name: name, gender, profile_completed: true }).eq("id", data.session.user.id);
+          if (data?.session?.user && (city.trim() || area.trim())) await supabase.from("member_details").upsert({ user_id: data.session.user.id, city: city.trim(), area: area.trim() });
           if (data?.session?.user) { try { localStorage.setItem("gw_open_explore", "1"); } catch {} }
         } catch {}
         if (!data?.session) setNote("Account created! Please log in to continue.");
@@ -499,6 +502,11 @@ function Auth({ initialMode = "login", onClose }) {
                   <button key={v} onClick={() => setGender(v)} style={{ flex: 1, padding: "10px 4px", borderRadius: 12, cursor: "pointer", fontWeight: 800, fontSize: 12.5, transition: "all .15s", border: gender === v ? "2px solid transparent" : "1.5px solid #E8E3F2", background: gender === v ? (v === "male" ? "linear-gradient(95deg,#2563EB,#06B6D4)" : v === "female" ? "linear-gradient(95deg,#EC4899,#F472B6)" : "linear-gradient(95deg,#7C3AED,#A78BFA)") : "#FAF9FE", color: gender === v ? "#fff" : "#7A7390", boxShadow: gender === v ? "0 4px 12px rgba(0,0,0,.18)" : "none" }}>{l}</button>
                 ))}
               </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+                <div style={{ flex: 1 }}>{inp("City", city, setCity)}</div>
+                <div style={{ flex: 1 }}>{inp("Area / locality", area, setArea)}</div>
+              </div>
+              <div style={{ fontSize: 11.5, color: "#7A7390", marginTop: 6, lineHeight: 1.4 }}>Helps us show you people & events near you 📍</div>
             </div>
           )}
           {err && <div style={{ color: "#C0392B", fontSize: 13, fontWeight: 600, background: "#FDF0EF", borderRadius: 10, padding: "9px 12px" }}>{err}</div>}
@@ -2036,7 +2044,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v41 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v42 build</div>
       </div>
     </div>
   );
@@ -2114,7 +2122,7 @@ function ProfileGate({ user, profile, reload }) {
   const fileRef = useRef(null);
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); } });
+      .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); });
     supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { if (data?.phone) setPhone(data.phone); });
   }, [user.id]);
