@@ -3679,6 +3679,8 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
   };
   const [flt, setFlt] = useState("all");
   const [areaFlt, setAreaFlt] = useState("all");
+  const [cityFlt, setCityFlt] = useState("all");
+  const [ageFlt, setAgeFlt] = useState("all");
   const [viewsN, setViewsN] = useState(0);
   const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
   const [peek, setPeek] = useState(null);
@@ -3771,7 +3773,8 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
     if (error) { setViewers("locked"); return; }
     setViewers(data || []);
   };
-  const areaOpts = [...new Set((rows || []).map(p => (p.area || "").trim()).filter(Boolean))].sort();
+  const cityOpts = [...new Set((rows || []).map(p => (p.city || "").trim()).filter(Boolean))].sort();
+  const areaOpts = [...new Set((rows || []).filter(p => cityFlt === "all" || (p.city || "").trim() === cityFlt).map(p => (p.area || "").trim()).filter(Boolean))].sort();
   const locMatches = (rows || []).filter(p => {
     const pa = (p.area || "").trim(), pc = (p.city || "").trim();
     return (me.area && pa === me.area) || (me.city && pc === me.city);
@@ -3785,9 +3788,12 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
   const nearHasLoc = locMatches.length > 0;
   const nearYou = (nearHasLoc ? locMatches : (rows || [])).slice(0, 12);
   const nearTitle = nearHasLoc ? `Near you${me.area ? ` — ${me.area}` : me.city ? ` — ${me.city}` : ""}` : "People to meet";
+  const inAge = (a) => { if (ageFlt === "all") return true; const n = Number(a); if (!n) return false; if (ageFlt === "45+") return n >= 45; const [lo, hi] = ageFlt.split("-").map(Number); return n >= lo && n <= hi; };
   const filtered = (rows || []).filter(p =>
     (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
-    && (areaFlt === "all" || (p.area || "").trim() === areaFlt));
+    && (areaFlt === "all" || (p.area || "").trim() === areaFlt)
+    && (cityFlt === "all" || (p.city || "").trim() === cityFlt)
+    && inAge(p.age));
   const card = (p, waveLbl) => (
     <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: p.spotlighted ? "2px solid #F59E0B" : `1px solid ${W.line}`, overflow: "hidden", boxShadow: p.spotlighted ? "0 0 14px rgba(245,158,11,.4)" : "none" }}>
       <div onClick={() => openPeek(p)} style={{ cursor: "pointer", position: "relative" }}>
@@ -4005,16 +4011,34 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
             </div>
           </div>
         )}
-        <div style={{ display: "flex", gap: 7, padding: "12px 14px 2px", overflowX: "auto", alignItems: "center" }}>
-          {areaOpts.length > 0 && (
-            <select value={areaFlt} onChange={e => setAreaFlt(e.target.value)} style={{ flexShrink: 0, padding: "7px 11px", borderRadius: 999, border: `1px solid ${areaFlt !== "all" ? W.teal : W.line}`, background: areaFlt !== "all" ? W.teal : "#fff", color: areaFlt !== "all" ? "#fff" : W.ink, fontWeight: 700, fontSize: 12.5, outline: "none" }}>
+        <div style={{ margin: wide ? "14px 6px 2px" : "14px 14px 2px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 11 }}>
+            <span style={{ fontSize: 17 }}>🔎</span>
+            <div style={{ fontWeight: 900, fontSize: 15, color: W.ink, flex: 1 }}>Find people</div>
+            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all") && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); }} style={{ background: "transparent", border: "none", color: W.teal, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Clear all</button>}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {[["all", "Everyone"], ["female", "👩 Women"], ["male", "👨 Men"], ["new", "🆕 Newbies"]].map(([k, l]) => (
+              <button key={k} onClick={() => setFlt(k)} style={{ padding: "9px 15px", borderRadius: 999, border: flt === k ? "none" : `1.5px solid ${W.line}`, background: flt === k ? W.teal : "#fff", color: flt === k ? "#fff" : W.soft, fontWeight: 800, fontSize: 13, cursor: "pointer" }}>{l}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 11 }}>
+            <select value={cityFlt} onChange={e => { setCityFlt(e.target.value); setAreaFlt("all"); }} style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${cityFlt !== "all" ? W.teal : W.line}`, background: cityFlt !== "all" ? "#E7F6EF" : "#fff", color: W.ink, fontWeight: 700, fontSize: 13, outline: "none" }}>
+              <option value="all">🏙️ All cities</option>
+              {cityOpts.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={areaFlt} onChange={e => setAreaFlt(e.target.value)} disabled={areaOpts.length === 0} style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${areaFlt !== "all" ? W.teal : W.line}`, background: areaFlt !== "all" ? "#E7F6EF" : "#fff", color: W.ink, fontWeight: 700, fontSize: 13, outline: "none", opacity: areaOpts.length === 0 ? .5 : 1 }}>
               <option value="all">📍 All areas</option>
               {areaOpts.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
-          )}
-          {[["all", "All"], ["female", "👩 Women"], ["male", "👨 Men"], ["new", "🆕 Newbies"]].map(([k, l]) => (
-            <button key={k} onClick={() => setFlt(k)} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 999, border: `1px solid ${flt === k ? W.teal : W.line}`, background: flt === k ? W.teal : "#fff", color: flt === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
-          ))}
+          </div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginRight: 2 }}>Age</span>
+            {[["all", "Any"], ["18-24", "18–24"], ["25-34", "25–34"], ["35-44", "35–44"], ["45+", "45+"]].map(([k, l]) => (
+              <button key={k} onClick={() => setAgeFlt(k)} style={{ padding: "7px 13px", borderRadius: 999, border: ageFlt === k ? "none" : `1.5px solid ${W.line}`, background: ageFlt === k ? "#7C3AED" : "#fff", color: ageFlt === k ? "#fff" : W.soft, fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{l}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 11, fontWeight: 600 }}>{filtered.length} {filtered.length === 1 ? "person" : "people"} match</div>
         </div>
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>
           {rows === null ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24 }}>Loading members…</div>
