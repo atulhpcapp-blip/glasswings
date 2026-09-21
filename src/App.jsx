@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · sales-v16 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · credits-v18 build</div>
       </div>
     </div>
   );
@@ -2592,7 +2592,7 @@ function Main({ user }) {
     if (open && open.type === "room" && open.id === roomId) setOpen(null);
     await load();
   };
-  const confirmPurchase = async (cart, sel = [], couponCode = null) => {
+  const confirmPurchase = async (cart, sel = [], couponCode = null, creditsUse = 0) => {
     const { event: e } = buyTarget;
     const { data: phRow } = await supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle();
     if (((phRow?.phone || "").replace(/\D/g, "")).length < 8) {
@@ -2616,6 +2616,7 @@ function Main({ user }) {
       return startPayment("ticket", {
         event_id: e.id,
         coupon_code: couponCode || undefined,
+        credits_use: Math.max(0, Math.floor(Number(creditsUse) || 0)) || undefined,
         items: cart.map(c => ({ ticket_type_id: c.type ? c.type.id : null, quantity: c.qty })),
         ticket_type_id: cart[0].type ? cart[0].type.id : null,
         quantity: cart.reduce((a, c) => a + c.qty, 0),
@@ -9567,6 +9568,13 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
   const payTotal = cApplied ? Math.max(0, total - Math.min(cApplied.off, total)) : total;
   const [bal, setBal] = useState(null);
   useEffect(() => { if (!meId) return; (async () => { try { await supabase.rpc("gw_sweep_credits", { p_user: meId }); } catch {} const { data } = await supabase.from("profiles").select("game_credits").eq("id", meId).maybeSingle(); setBal(Number(data?.game_credits) || 0); })(); }, [meId]);
+  const capPct = Math.min(100, Math.max(0, Number(e.credit_cap_pct) || 0));
+  const maxCreditRupees = capPct > 0 ? Math.floor(payTotal * capPct / 100) : 0;
+  const maxUse = Math.max(0, Math.min(Number(bal) || 0, maxCreditRupees));
+  const [useCredits, setUseCredits] = useState(false);
+  const creditsUse = (useCredits && capPct > 0) ? maxUse : 0;
+  useEffect(() => { if (maxUse <= 0) setUseCredits(false); }, [maxUse]);
+  const netPay = Math.max(0, payTotal - creditsUse);
   const selAdd = sel.filter(a => a.qty > 0);
   const addonCreditOK = selAdd.filter(a => Number(a.price) > 0).every(a => Number(a.credit_price) > 0);
   const creditCost = (live.length > 0 && live.every(c => c.type && Number(c.type.credit_price) > 0) && addonCreditOK)
@@ -9657,22 +9665,31 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
           )}
         </div>
       )}
+      {capPct > 0 && payTotal > 0 && maxCreditRupees > 0 && (
+        <div style={{ margin: "12px 0 2px", background: "#F5F0FF", border: "1px solid #E0D4FA", borderRadius: 12, padding: 12 }}>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: maxUse > 0 ? "pointer" : "default" }}>
+            <input type="checkbox" checked={useCredits} disabled={maxUse <= 0} onChange={ev => setUseCredits(ev.target.checked)} style={{ marginTop: 3 }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 13.5, color: "#5B21B6" }}>💳 Use my credits {creditsUse > 0 ? `— saving ₹${creditsUse}` : ""}</div>
+              <div style={{ fontSize: 12, color: "#6D5399", marginTop: 3, lineHeight: 1.45 }}>
+                {bal == null ? "Checking your wallet…"
+                  : maxUse > 0 ? `You have ${bal} credits. Credits can cover up to ${capPct}% of this order (₹${maxCreditRupees}). 1 credit = ₹1.`
+                  : (Number(bal) || 0) <= 0 ? "You have 0 credits — top up in Profile → Wallet." : `Credits can cover up to ${capPct}% (₹${maxCreditRupees}) of this order.`}
+              </div>
+            </div>
+          </label>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "14px 0" }}>
         <span style={{ color: W.soft, fontSize: 14 }}>Total · {totalQty} ticket{totalQty !== 1 ? "s" : ""}</span>
-        <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : cApplied ? <><s style={{ color: W.soft, fontWeight: 600, fontSize: 14, marginRight: 7 }}>₹{total}</s>{payTotal === 0 ? "Free 🎉" : `₹${payTotal}`}</> : `₹${total}`}</span>
+        <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : (cApplied || creditsUse > 0) ? <><s style={{ color: W.soft, fontWeight: 600, fontSize: 14, marginRight: 7 }}>₹{total}</s>{netPay === 0 ? "Free 🎉" : `₹${netPay}`}</> : `₹${total}`}</span>
       </div>
+      {creditsUse > 0 && <div style={{ fontSize: 12, color: "#6D28D9", fontWeight: 700, marginBottom: 8, textAlign: "right" }}>₹{creditsUse} paid by credits · ₹{netPay} by card</div>}
       {total > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your tickets are issued the moment payment succeeds.</div>}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-        <button disabled={!canConfirm} onClick={async () => { if (await savePhoneIfNeeded()) onConfirm(live, sel, cApplied?.code || null); }} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? (payTotal === 0 ? "Get tickets 🎉" : `Pay ₹${payTotal}`) : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
+        <button disabled={!canConfirm} onClick={async () => { if (await savePhoneIfNeeded()) onConfirm(live, sel, cApplied?.code || null, creditsUse); }} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? (netPay === 0 ? "Get tickets 🎉" : `Pay ₹${netPay}`) : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
       </div>
-      {creditCost != null && total > 0 && (
-        <>
-          <div style={{ textAlign: "center", color: W.soft, fontSize: 12, margin: "12px 0 8px" }}>— or pay with credits —</div>
-          <button disabled={!canConfirm || (bal != null && bal < creditCost)} onClick={async () => { if (await savePhoneIfNeeded()) onConfirmCredits && onConfirmCredits(live, selAdd); }} style={{ ...btn("#6D28D9", "#fff"), width: "100%", justifyContent: "center", opacity: (canConfirm && !(bal != null && bal < creditCost)) ? 1 : .5 }}>💳 Use {creditCost} credits</button>
-          <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, marginTop: 6 }}>{bal == null ? "Checking your wallet…" : bal < creditCost ? `Wallet: ${bal} credits — top up in Profile → Wallet` : `Wallet: ${bal} credits`}</div>
-        </>
-      )}
     </Sheet>
   );
 }
@@ -9852,6 +9869,9 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
         </div>
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Plan members get this off. 100% (or ₹ ≥ price) makes the ticket free for them.</div>
       </div>
+      {credit !== "" && Number(credit) > 0 && price !== "" && Number(price) > 0 && Number(credit) < Number(price) * 0.5 && (
+        <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E", borderRadius: 9, padding: "8px 11px", fontSize: 12, marginTop: 9, lineHeight: 1.5 }}>⚠️ Credit price ({credit}) is far below the ₹{price} cash price — buyers could get this ticket for almost nothing. Use the same number as the ₹ price (₹1 ≈ 1 credit), or leave it blank for cash-only.</div>
+      )}
       <button onClick={add} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}><Plus size={15} />Add ticket type</button>
     </div>
   );
@@ -9921,6 +9941,9 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
           <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
         </div>
       </div>
+      {credit !== "" && Number(credit) > 0 && price !== "" && Number(price) > 0 && Number(credit) < Number(price) * 0.5 && (
+        <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E", borderRadius: 9, padding: "8px 11px", fontSize: 12, marginTop: 9, lineHeight: 1.5 }}>⚠️ Credit price ({credit}) is far below the ₹{price} cash price — buyers could get this ticket for almost nothing. Use the same number as the ₹ price (₹1 ≈ 1 credit), or clear it for cash-only.</div>
+      )}
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button onClick={() => setEd(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
         <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "✓ Save changes"}</button>
@@ -10903,6 +10926,21 @@ function EventDetailsEditor({ event, onUpdate }) {
     </div>
   );
 }
+function CreditCapEditor({ ev, onUpdate }) {
+  const [v, setV] = useState(ev.credit_cap_pct == null ? "" : String(ev.credit_cap_pct));
+  const [saved, setSaved] = useState(false);
+  return (
+    <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 10, padding: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#6D28D9" }}>💳 Pay-with-credits cap</div>
+      <div style={{ fontSize: 11.5, color: W.soft, margin: "3px 0 8px", lineHeight: 1.5 }}>Members can use credits for up to this % of the ticket bill (1 credit = ₹1), paying the rest by card. 0 = credits not accepted for this event.</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <input value={v} onChange={e => { setV(e.target.value.replace(/\D/g, "").slice(0, 3)); setSaved(false); }} inputMode="numeric" placeholder="0" style={{ width: 70, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14, fontWeight: 800, outline: "none" }} />
+        <span style={{ fontSize: 13, color: W.soft }}>%</span>
+        <button onClick={async () => { await onUpdate(ev.id, { credit_cap_pct: v === "" ? 0 : Math.min(100, Math.max(0, Number(v) || 0)) }); setSaved(true); }} style={btn(W.teal, "#fff")}>{saved ? "Saved ✓" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
 function EventSalesTab({ event }) {
   const [a, setA] = useState(null);
   const [people, setPeople] = useState(null);
@@ -10914,13 +10952,13 @@ function EventSalesTab({ event }) {
   const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   const online = a ? Number(a.paid_gross || 0) : 0, doorCash = a ? Number(a.door_cash || 0) : 0, doorUpi = a ? Number(a.door_upi || 0) : 0;
   const total = online + doorCash + doorUpi;
-  const mMeta = { online: ["🟢 Razorpay", "#0E7A5F", "#E3F7EF"], cash: ["💵 Cash", "#B45309", "#FDF3E4"], upi: ["📱 UPI", "#2563EB", "#EAF1FE"], free: ["🎁 Free / comp", "#6D28D9", "#F3EEFE"] };
+  const mMeta = { online: ["🟢 Razorpay", "#0E7A5F", "#E3F7EF"], cash: ["💵 Cash", "#B45309", "#FDF3E4"], upi: ["📱 UPI", "#2563EB", "#EAF1FE"], credits: ["💳 Credits", "#6D28D9", "#F3EEFE"], free: ["🎁 Free / comp", "#475569", "#EDF1F6"] };
   const Tile = ({ label, val, color }) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", flex: "1 1 90px", minWidth: 84 }}><div style={{ fontSize: 10, color: W.soft, fontWeight: 800, letterSpacing: .3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 800, color: color || W.ink, marginTop: 3 }}>{val}</div></div>;
   const exportCsv = () => {
     if (!people || !people.length) return;
     const esc = t => `"${String(t ?? "").replace(/"/g, '""')}"`;
-    const head = ["Name", "How they got it", "Ticket type", "Qty", "Amount paid (INR)", "Phone", "Checked in", "Razorpay txn / code"];
-    const rows = people.map(r => [r.name, r.method === "online" ? "Razorpay" : r.method === "free" ? "Free/comp" : r.method, r.ticket_type, r.qty, r.paid, r.phone || "", r.checked_in ? "Yes" : "No", r.ref || ""].map(esc).join(","));
+    const head = ["Name", "How they got it", "Ticket type", "Qty", "Amount paid (INR)", "Credits spent", "Phone", "Checked in", "Razorpay txn / code"];
+    const rows = people.map(r => [r.name, r.method === "online" ? "Razorpay" : r.method === "free" ? "Free/comp" : r.method === "credits" ? "Credits" : r.method, r.ticket_type, r.qty, r.paid, r.credits || 0, r.phone || "", r.checked_in ? "Yes" : "No", r.ref || ""].map(esc).join(","));
     const csv = [head.map(esc).join(","), ...rows].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const link = document.createElement("a"); link.href = url; link.download = `${(event.title || "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-sales.csv`; link.click(); URL.revokeObjectURL(url);
@@ -10958,7 +10996,7 @@ function EventSalesTab({ event }) {
         {people && people.length > 0 && <button onClick={exportCsv} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 11px", fontSize: 12 }}>⬇️ CSV</button>}
       </div>
       {people === null ? <Center>Loading…</Center> : people.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No ticket holders yet. Free VIP/Team invites are in the Guest list tab.</div> :
-        people.map((r, i) => { const mm = mMeta[r.method] || mMeta.free; const isPaid = Number(r.paid || 0) > 0; return (
+        people.map((r, i) => { const mm = mMeta[r.method] || mMeta.free; const isPaid = Number(r.paid || 0) > 0; const isCredits = r.method === "credits"; return (
           <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px", marginBottom: 7, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `4px solid ${mm[1]}`, borderRadius: 10 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
@@ -10970,7 +11008,7 @@ function EventSalesTab({ event }) {
               {r.phone && <div style={{ fontSize: 12.5, marginTop: 3 }}>📞 <a href={`tel:${r.phone}`} style={{ color: "#2563EB", fontWeight: 700, textDecoration: "none" }}>{r.phone}</a> <a href={`https://wa.me/${(r.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "")}`} target="_blank" rel="noreferrer" style={{ color: "#25D366", fontWeight: 700, textDecoration: "none", marginLeft: 6 }}>WhatsApp</a></div>}
               {r.ref && <div style={{ fontSize: 11, color: W.soft, marginTop: 3, wordBreak: "break-all" }}>{r.method === "online" ? "Razorpay txn" : "Code"}: <span onClick={() => { try { navigator.clipboard.writeText(r.ref); } catch (e) {} }} title="Tap to copy" style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: W.bg, padding: "1px 7px", borderRadius: 6, cursor: "pointer" }}>{r.ref}</span></div>}
             </div>
-            <div style={{ fontWeight: 900, fontSize: isPaid ? 15.5 : 12.5, color: isPaid ? "#0E7A5F" : "#6D28D9", flexShrink: 0, textAlign: "right" }}>{isPaid ? money(r.paid) : "Free"}</div>
+            <div style={{ fontWeight: 900, fontSize: isPaid ? 15.5 : 13, color: isPaid ? "#0E7A5F" : isCredits ? "#6D28D9" : "#475569", flexShrink: 0, textAlign: "right" }}>{isPaid ? money(r.paid) : isCredits ? `💳 ${Number(r.credits || 0)} cr` : "Free"}</div>
           </div>
         ); })}
     </div>
@@ -11051,7 +11089,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fOrg === "all" || e.host_id === fOrg)
     && (fRole === "all" || (hosts[e.host_id]?.roles || []).includes(fRole))
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", hostType: "glasswings", hostName: "", hostLogo: "" };
+  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const [newBadge, setNewBadge] = useState("");
@@ -11103,7 +11141,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
+    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
     reset(); setCreating(false); setStep(0);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -11336,6 +11374,14 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               <span style={{ fontSize: 11.5, color: W.soft }}>0 = none · 100 = free tickets for plan members.</span>
             </div>
           </div>
+          <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 10, padding: "9px 11px", marginBottom: 10 }}>
+            <label style={{ fontSize: 12.5, fontWeight: 800, color: "#6D28D9" }}>💳 Credits can cover up to __% of the bill</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <input value={f.creditCapPct} onChange={e => setF({ ...f, creditCapPct: e.target.value.replace(/\D/g, "").slice(0, 3) })} inputMode="numeric" placeholder="0"
+                style={{ width: 80, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14, fontWeight: 800, outline: "none" }} />
+              <span style={{ fontSize: 11.5, color: W.soft }}>% · 0 = credits off · e.g. 10 = up to 10% paid by credits (1 credit = ₹1).</span>
+            </div>
+          </div>
           <AddonDraft value={f.addons} onChange={v => setF({ ...f, addons: v })} />
           </>)}
 
@@ -11472,6 +11518,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                     <PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
                     <GenderBalance ev={e} onUpdate={onUpdate} />
+                    <CreditCapEditor ev={e} onUpdate={onUpdate} />
                     <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
                   </>)}
                   {mSeg === "sales" && <EventSalesTab event={e} />}
