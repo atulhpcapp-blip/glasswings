@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · sales-v14 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · sales-v15 build</div>
       </div>
     </div>
   );
@@ -10959,12 +10959,17 @@ function EventSalesTab({ event }) {
       </div>
       {people === null ? <Center>Loading…</Center> : people.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No paid sales yet. Free / comp guests are in the Guest list tab.</div> :
         people.map((r, i) => { const mm = mMeta[r.kind] || mMeta.online; return (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 11px", marginBottom: 7, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `4px solid ${mm[1]}`, borderRadius: 10 }}>
+          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px", marginBottom: 7, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `4px solid ${mm[1]}`, borderRadius: 10 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{r.name}{(r.qty || 1) > 1 ? ` ×${r.qty}` : ""}</div>
-              <div style={{ fontSize: 11.5, color: W.soft, marginTop: 3 }}><span style={{ background: mm[2], color: mm[1], fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{mm[0]}</span> · {r.ticket_type}{r.phone ? ` · ${r.phone}` : ""}{r.paid_at ? ` · ${new Date(r.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                <span style={{ background: mm[2], color: mm[1], fontWeight: 800, fontSize: 10.5, padding: "1px 8px", borderRadius: 8 }}>{mm[0]}</span>
+                <b style={{ color: W.ink, fontSize: 14.5 }}>{r.name}{(r.qty || 1) > 1 ? ` ×${r.qty}` : ""}</b>
+              </div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>{r.ticket_type}{r.paid_at ? ` · ${new Date(r.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}</div>
+              {r.phone && <div style={{ fontSize: 12.5, marginTop: 3 }}>📞 <a href={`tel:${r.phone}`} style={{ color: "#2563EB", fontWeight: 700, textDecoration: "none" }}>{r.phone}</a> <a href={`https://wa.me/${(r.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "")}`} target="_blank" rel="noreferrer" style={{ color: "#25D366", fontWeight: 700, textDecoration: "none", marginLeft: 6 }}>WhatsApp</a></div>}
+              {r.ref && <div style={{ fontSize: 11, color: W.soft, marginTop: 3, wordBreak: "break-all" }}>{r.kind === "online" ? "Razorpay txn" : "Code"}: <span onClick={() => { try { navigator.clipboard.writeText(r.ref); } catch (e) {} }} title="Tap to copy" style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: W.bg, padding: "1px 7px", borderRadius: 6, cursor: "pointer" }}>{r.ref}</span></div>}
             </div>
-            <div style={{ fontWeight: 900, fontSize: 15, color: "#0E7A5F", flexShrink: 0 }}>{money(r.amount)}</div>
+            <div style={{ fontWeight: 900, fontSize: 15.5, color: "#0E7A5F", flexShrink: 0 }}>{money(r.amount)}</div>
           </div>
         ); })}
     </div>
