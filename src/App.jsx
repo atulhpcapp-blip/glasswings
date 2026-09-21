@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guest-tiers-v10 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guides-v11 build</div>
       </div>
     </div>
   );
@@ -8371,8 +8371,9 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const ip2 = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", background: "#fff", color: W.ink };
   return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 620, margin: "0 auto" }}>
-      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>🎫 Door check-in</div>
-      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 14px" }}>Scan ticket QRs to admit, or sell at the door with cash / your UPI QR.</div>
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>🚪 Event door</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>Scan ticket QRs to admit, or sell at the door with cash / your UPI QR.</div>
+      <HelpBox title="How the door works" tips={["Pick the event first from the dropdown below.", "Tap ‘Scan tickets’ and point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the code (from the WhatsApp/email ticket) in the box and tap Check.", "‘Door sale’ lets you sell a ticket on the spot and take cash or UPI.", "Every scan and sale is recorded — see running counts and recent scans below."]} />
       <select value={evId} onChange={e => { setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
         <option value="">Choose event…</option>
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
@@ -9821,6 +9822,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
+      <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity.", "‘cr’ = credit price: how many in-app credits it costs (leave blank for cash-only).", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change price or discounts later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map(t => <EditableTicketRow key={t.id} t={t} plansList={plansList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
         {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
@@ -10899,6 +10901,20 @@ function EventDetailsEditor({ event, onUpdate }) {
     </div>
   );
 }
+function HelpBox({ title = "How this works", tips, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ border: `1px solid #CDE6DC`, borderRadius: 10, background: "#F2F9F6", marginBottom: 12, overflow: "hidden" }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", cursor: "pointer" }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: W.teal }}>❔ {title}</span>
+        <span style={{ fontSize: 12, color: W.teal, fontWeight: 700 }}>{open ? "Hide" : "Show"}</span>
+      </div>
+      {open && <div style={{ padding: "0 14px 11px" }}>
+        {tips ? <ul style={{ margin: 0, paddingLeft: 18, color: W.ink, fontSize: 12.5, lineHeight: 1.65 }}>{tips.map((t, i) => <li key={i}>{t}</li>)}</ul> : children}
+      </div>}
+    </div>
+  );
+}
 function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
@@ -10927,6 +10943,13 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     "When it happens and where people go. Set an end time so the event auto-closes.",
     "Everything guests read on the event page — schedule, artists, FAQs, terms.",
     "Set the price and any add-ons, then create the event.",
+  ];
+  const STEP_TIPS = [
+    ["Give the event a clear title and pick who's hosting — Glasswings Original, Partner (an outside organiser) or a Get-together.", "Partner events: add your organiser name and logo so guests see who's running it.", "Choose a category and city so the event shows under the right filters."],
+    ["Add a Poster (portrait 3:4) — this is what people see on the event card.", "Add a Banner (landscape) — shown on the event page and when the event is shared.", "Videos are optional; a vertical reel autoplays on the card if you add one."],
+    ["Pick the date and start time, and always set the END time so the event auto-closes after it finishes.", "Use Weekly / Monthly / Custom for events that repeat.", "Choose Physical (add the venue), Online (add a link) or Venue TBD."],
+    ["Write a short description, then add schedule, food, facilities and dress code if they apply.", "Add your line-up/artists, FAQs and terms so guests have everything.", "Pick entry badges (18+, Couples only, Members only…) — they show on the event."],
+    ["Set the ticket price (enter 0 for a free event); add a member discount if you want.", "Add-ons are optional paid extras guests can add at checkout.", "After you tap Create, open the event to add more ticket types, guests (Guest/VIP/Team) and edit anything."],
   ];
   const [membersFor, setMembersFor] = useState(null);
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -11013,6 +11036,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
       {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
       {checkIn && <CheckInSheet event={checkIn} onClose={() => setCheckIn(null)} />}
       {membersFor && <EventMembersSheet event={membersFor} onClose={() => setMembersFor(null)} />}
+      {!creating && <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: "#EEF6FF", border: "1px solid #CFE2FA", color: "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 12 }}>📖 Organiser guide — how event bookings work</a>}
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -11027,7 +11051,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14, lineHeight: 1.4 }}>{STEP_HINTS[step]}</div>
+          <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10, lineHeight: 1.4 }}>{STEP_HINTS[step]}</div>
+          <HelpBox title={`Step ${step + 1} guide — ${STEPS[step]}`} tips={STEP_TIPS[step]} />
 
           {step === 0 && (<>
           <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
@@ -11495,6 +11520,7 @@ function GuestTickets({ event }) {
     <div style={{ marginTop: 4 }}>
       <label style={{ fontSize: 14, fontWeight: 800, color: W.ink }}>Guest list — free invites</label>
       <div style={{ fontSize: 12, color: W.soft, margin: "3px 0 10px", lineHeight: 1.5 }}>Give free entry to anyone — <b>members or outsiders</b> (no account needed). Pick a tier, then send the QR ticket by WhatsApp or email. Tick people in on the Check-in screen.</div>
+      <HelpBox title="How guest invites work" tips={["Choose a tier first: 🎟️ Guest (friends/plus-ones), 💎 VIP (special guests — add a reserved-table note), 🛡️ Team (crew/artists/security).", "One = add a single person; Bulk = paste a whole list at once; Member = search existing members.", "No account needed for outsiders — just a name. Add a phone to send on WhatsApp, or an email to send automatically.", "After adding, tap WhatsApp or ✉️ to send their QR ticket. Change tier or note anytime from the list.", "At the event, check them in from EVENT DOOR (scan) or the Check-in screen."]} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {TIERS.map(([k, ic, lbl, col, bg]) => (
           <div key={k} style={{ flex: "1 1 84px", background: bg, borderRadius: 11, padding: "9px 11px", textAlign: "center" }}>
