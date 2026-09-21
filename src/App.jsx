@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · share-v28 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v30 build</div>
       </div>
     </div>
   );
@@ -3472,6 +3472,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
   const [me, setMe] = useState({ area: "", city: "" });
+  const [myGender, setMyGender] = useState(null);
   const [hasPhoto, setHasPhoto] = useState(true);
   const [nudgeDismissed, setNudgeDismissed] = useState(() => { try { return sessionStorage.getItem("gw_meet_nudge") === "1"; } catch { return false; } });
   useEffect(() => { supabase.rpc("i_have_photo").then(({ data }) => setHasPhoto(data !== false)); }, [meId]);
@@ -3523,7 +3524,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
   };
   useEffect(load, []);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
-  useEffect(() => { supabase.from("member_details").select("area, city").eq("user_id", meId).maybeSingle().then(({ data }) => setMe({ area: (data?.area || "").trim(), city: (data?.city || "").trim() })); }, [meId]);
+  useEffect(() => { supabase.from("member_details").select("area, city").eq("user_id", meId).maybeSingle().then(({ data }) => setMe({ area: (data?.area || "").trim(), city: (data?.city || "").trim() })); supabase.from("profiles").select("gender").eq("id", meId).maybeSingle().then(({ data }) => setMyGender(data?.gender || null)); }, [meId]);
   useEffect(() => { if (mtab !== "waves") return; supabase.rpc("waves_mark_seen").then(() => { try { window.dispatchEvent(new Event("gwmeet")); } catch {} }); }, [mtab]);
   const lastActive = (ts) => {
     if (!ts) return "";
@@ -3627,6 +3628,12 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
       </div>
     </div>
   );
+  const matchList = (rows || []).filter(p => p.waved_by_me && p.waved_me);
+  const wavedYouList = (rows || []).filter(p => p.waved_me && !p.waved_by_me);
+  const oppG = myGender === "male" ? "female" : myGender === "female" ? "male" : null;
+  const mCandidates = (rows || []).filter(p => !p.waved_by_me && !p.waved_me && p.avatar_url && (!oppG || p.gender === oppG));
+  const matchOfDay = mCandidates.length ? mCandidates[new Date().getDate() % mCandidates.length] : null;
+  const miniAv = (p, ring) => <div onClick={() => openPeek(p)} style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", margin: "0 auto", border: `2.5px solid ${ring}`, cursor: "pointer", background: "#fff" }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>;
   return (
     <div style={asTab ? { paddingBottom: 90 } : { position: "fixed", inset: 0, zIndex: 160, background: W.bg, overflowY: "auto" }}>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: W.teal, color: "#fff", padding: "13px 14px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -3639,6 +3646,45 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
         ))}
       </div>
       {mtab === "discover" && <>
+        {(matchList.length > 0 || wavedYouList.length > 0 || matchOfDay) && (
+          <div style={{ margin: "12px 14px 0", background: "linear-gradient(120deg,#FDF2F8,#F5F3FF)", border: "1px solid #F3D9EE", borderRadius: 16, padding: "14px 14px 8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}><span style={{ fontSize: 19 }}>💘</span><div style={{ fontWeight: 900, fontSize: 16, color: "#BE185D" }}>Your matches{matchList.length ? ` (${matchList.length})` : ""}</div></div>
+            {matchList.length > 0 ? (
+              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
+                {matchList.map(p => (
+                  <div key={p.id} style={{ flexShrink: 0, width: 88, textAlign: "center" }}>
+                    {miniAv(p, "#EC4899")}
+                    <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}</div>
+                    <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: "linear-gradient(95deg,#6D28D9,#EC4899)", color: "#fff" }}>💬 Chat</button>
+                  </div>
+                ))}
+              </div>
+            ) : <div style={{ fontSize: 12.5, color: W.soft, paddingBottom: 8, lineHeight: 1.5 }}>No mutual matches yet — when you both wave 👋 it's a match and chat unlocks 💬</div>}
+            {matchOfDay && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", borderRadius: 13, padding: "10px 12px", margin: "4px 0 10px", border: "1px solid #FDE68A" }}>
+                <div style={{ width: 56, flexShrink: 0 }}>{miniAv(matchOfDay, "#F59E0B")}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#B45309", letterSpacing: .3 }}>🔥 MATCH OF THE DAY</div>
+                  <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{(matchOfDay.name || "Member").split(" ")[0]}{matchOfDay.age ? `, ${matchOfDay.age}` : ""}</div>
+                  <div style={{ fontSize: 11.5, color: W.soft }}>{matchOfDay.area || matchOfDay.city || "Say hi 👋"}</div>
+                </div>
+                <button onClick={() => doWave(matchOfDay)} disabled={waveBusy === matchOfDay.id} style={{ ...btn("#EC4899", "#fff"), padding: "8px 14px", fontSize: 12.5, flexShrink: 0, opacity: waveBusy === matchOfDay.id ? .6 : 1 }}>👋 Wave</button>
+              </div>
+            )}
+            {wavedYouList.length > 0 && (<>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#DB2777", margin: "2px 0 8px" }}>👀 Waved at you ({wavedYouList.length}) — wave back to match!</div>
+              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
+                {wavedYouList.map(p => (
+                  <div key={p.id} style={{ flexShrink: 0, width: 88, textAlign: "center" }}>
+                    {miniAv(p, "#DB2777")}
+                    <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
+                    <button onClick={() => doWave(p)} disabled={waveBusy === p.id || p.waved_by_me} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: "#EC4899", color: "#fff", opacity: waveBusy === p.id ? .6 : 1 }}>Wave back</button>
+                  </div>
+                ))}
+              </div>
+            </>)}
+          </div>
+        )}
         {!hasPhoto && !nudgeDismissed && (
           <div style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 14, padding: "14px 15px", color: "#fff", position: "relative" }}>
             <div onClick={() => { setNudgeDismissed(true); try { sessionStorage.setItem("gw_meet_nudge", "1"); } catch {} }} style={{ position: "absolute", top: 10, right: 12, cursor: "pointer", opacity: .8, fontSize: 16, fontWeight: 800 }}>✕</div>
