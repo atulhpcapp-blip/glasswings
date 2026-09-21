@@ -2044,7 +2044,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v44 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v45 build</div>
       </div>
     </div>
   );
@@ -3690,6 +3690,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
   const [areaFlt, setAreaFlt] = useState("all");
   const [cityFlt, setCityFlt] = useState("all");
   const [ageFlt, setAgeFlt] = useState("all");
+  const [nameQ, setNameQ] = useState("");
   const [viewsN, setViewsN] = useState(0);
   const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
   const [peek, setPeek] = useState(null);
@@ -3813,11 +3814,13 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
   const nearYou = (nearHasLoc ? locMatches : (rows || [])).slice(0, 12);
   const nearTitle = nearHasLoc ? `Near you${me.area ? ` — ${me.area}` : me.city ? ` — ${me.city}` : ""}` : "People to meet";
   const inAge = (a) => { if (ageFlt === "all") return true; const n = Number(a); if (!n) return false; if (ageFlt === "45+") return n >= 45; const [lo, hi] = ageFlt.split("-").map(Number); return n >= lo && n <= hi; };
+  const nq = nameQ.trim().toLowerCase();
   const filtered = (rows || []).filter(p =>
     (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
     && (areaFlt === "all" || (p.area || "").trim() === areaFlt)
     && (cityFlt === "all" || (p.city || "").trim() === cityFlt)
-    && inAge(p.age));
+    && inAge(p.age)
+    && (!nq || (p.name || "").toLowerCase().includes(nq)));
   const card = (p, waveLbl) => (
     <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: p.spotlighted ? "2px solid #F59E0B" : `1px solid ${W.line}`, overflow: "hidden", boxShadow: p.spotlighted ? "0 0 14px rgba(245,158,11,.4)" : "none" }}>
       <div onClick={() => openPeek(p)} style={{ cursor: "pointer", position: "relative" }}>
@@ -4039,7 +4042,12 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <span style={{ fontSize: 19 }}>🔎</span>
             <div style={{ fontWeight: 900, fontSize: 16, flex: 1, background: "linear-gradient(95deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Find your people</div>
-            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all") && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
+            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all" || nameQ.trim()) && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); setNameQ(""); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
+          </div>
+          <div style={{ position: "relative", marginBottom: 13 }}>
+            <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 15 }}>🔍</span>
+            <input value={nameQ} onChange={e => setNameQ(e.target.value)} placeholder="Search by name…" style={{ width: "100%", boxSizing: "border-box", padding: "11px 34px 11px 38px", borderRadius: 11, border: `1.5px solid ${nameQ.trim() ? "#7C3AED" : "#E4DCEF"}`, background: nameQ.trim() ? "#F5F0FF" : "#fff", color: W.ink, fontWeight: 600, fontSize: 14, outline: "none" }} />
+            {nameQ && <span onClick={() => setNameQ("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: W.soft, cursor: "pointer", fontWeight: 800 }}>✕</span>}
           </div>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#0d6e58", marginBottom: 7 }}>👥 SHOW</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 13 }}>
