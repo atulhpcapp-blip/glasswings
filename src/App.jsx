@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v34 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v35 build</div>
       </div>
     </div>
   );
@@ -3639,12 +3639,9 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
         {p.waved_by_me && p.waved_me ? (
           <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff" }}>💬 Message</button>
         ) : p.waved_by_me ? (
-          <div style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, textAlign: "center", fontWeight: 800, fontSize: 12.5, background: "#E7F6EF", color: "#0d6e58" }}>✓ Liked · waiting</div>
+          <div style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, textAlign: "center", fontWeight: 800, fontSize: 12.5, background: "#E7F6EF", color: "#0d6e58" }}>✓ Sent · waiting</div>
         ) : (
-          <div style={{ marginTop: 7, display: "flex", gap: 7 }}>
-            <button onClick={() => doPass(p)} disabled={waveBusy === p.id} title="Decline" style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: "1px solid #F3C7C7", cursor: "pointer", fontWeight: 800, fontSize: 15, background: "#FFF1F1", color: "#DC2626" }}>✗</button>
-            <button onClick={() => doWave(p)} disabled={waveBusy === p.id} title={p.waved_me ? "It's a match!" : "Like"} style={{ flex: 2, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff" }}>{waveBusy === p.id ? "…" : (p.waved_me ? "✓ Match" : "✓ Like")}</button>
-          </div>
+          <button onClick={() => doWave(p)} disabled={waveBusy === p.id} style={{ marginTop: 7, width: "100%", padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff", opacity: waveBusy === p.id ? .6 : 1 }}>{waveBusy === p.id ? "…" : "🤝 Be My Friend"}</button>
         )}
       </div>
     </div>
@@ -3656,6 +3653,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
   const mCandidates = (rows || []).filter(p => !p.waved_by_me && !p.waved_me && p.avatar_url && oppOnly(p));
   const matchOfDay = mCandidates.length ? mCandidates[new Date().getDate() % mCandidates.length] : null;
   const hasPlan = typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0;
+  const unlocked = hasPlan || isAdmin || isSuper; // admins/superadmins are never paywalled
   const perfectList = mCandidates;
   const goPlan = () => onUpgrade ? onUpgrade() : window.gwConfirm("💎 Take a plan from Profile → Plans to unlock this.", () => {});
   const heroCard = (p) => (
@@ -3736,7 +3734,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
               ? <div style={{ fontSize: 12.5, color: W.soft, padding: "4px 2px 8px", lineHeight: 1.5 }}>No new suggestions right now — check back soon 💫</div>
               : (<>
                   {heroCard(perfectList[0])}
-                  {perfectList[1] && (hasPlan ? heroCard(perfectList[1]) : lockedCard(perfectList[1]))}
+                  {perfectList[1] && (unlocked ? heroCard(perfectList[1]) : lockedCard(perfectList[1]))}
                 </>))}
             {matchTab === "friends" && (matchList.length === 0
               ? <div style={{ fontSize: 12.5, color: W.soft, padding: "4px 2px 8px", lineHeight: 1.5 }}>No friends yet — when you <b>both tick ✓</b> you become friends and your chat opens 💬</div>
@@ -3749,7 +3747,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
                     </div>
                   ))}
                 </div>))}
-            {matchTab === "waved" && (hasPlan
+            {matchTab === "waved" && (unlocked
               ? (wavedYouList.length === 0
                   ? <div style={{ fontSize: 12.5, color: W.soft, padding: "4px 2px 8px", lineHeight: 1.5 }}>No one's liked you yet — keep exploring 💫</div>
                   : (<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(84px,1fr))", gap: 12, paddingBottom: 4 }}>
