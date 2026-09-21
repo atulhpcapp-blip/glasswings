@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · creditrate-v22 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · creditrate-v23 build</div>
       </div>
     </div>
   );
@@ -8628,6 +8628,15 @@ function CreditsAdmin() {
   };
   return (
     <div style={{ padding: 14 }}>
+      <div style={{ background: "linear-gradient(135deg,#6D28D9,#9333EA)", borderRadius: 16, padding: "18px 20px", marginBottom: 18, boxShadow: "0 8px 24px rgba(109,40,217,.28)" }}>
+        <div style={{ fontWeight: 900, color: "#fff", fontSize: 19, letterSpacing: .2 }}>💳 Credit value</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,.9)", marginTop: 4, lineHeight: 1.5, fontWeight: 500 }}>How much <b>1 credit</b> is worth as a discount at ticket checkout. Members pay the rest by card, up to each event's cap %. Superadmin only.</div>
+        <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap", alignItems: "center", background: "rgba(255,255,255,.14)", borderRadius: 12, padding: "12px 14px" }}>
+          <span style={{ fontSize: 18, color: "#fff", fontWeight: 900 }}>1 credit = ₹</span>
+          <input value={rate} onChange={e => setRate(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="1" style={{ width: 110, border: "none", borderRadius: 10, padding: "12px 14px", fontSize: 20, fontWeight: 900, outline: "none", color: "#5B21B6", background: "#fff" }} />
+          <button onClick={saveRate} disabled={rBusy} style={{ background: "#fff", color: "#6D28D9", border: "none", borderRadius: 11, padding: "12px 22px", fontSize: 15, fontWeight: 900, cursor: "pointer", opacity: rBusy ? .6 : 1 }}>{rBusy ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
       <div style={{ fontWeight: 800, color: W.ink, fontSize: 16, marginBottom: 4 }}>🎮 Free vs Paid games</div>
       <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Mark a game Paid to charge credits per play, then set how many. Free games never cost credits.</div>
       {games === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div> : games.map((g, i) => (
@@ -8666,16 +8675,6 @@ function CreditsAdmin() {
           <span style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>👩 New women:</span>
           <input value={welcome.female} onChange={e => setWelcome(w => ({ ...w, female: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="0" style={{ width: 80, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14 }} />
           <button onClick={saveWelcome} disabled={wBusy} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>{wBusy ? "Saving…" : "Save"}</button>
-        </div>
-      </div>
-      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
-        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>💳 Credit value (redemption rate)</div>
-        <div style={{ fontSize: 12, color: W.soft, marginTop: 3, lineHeight: 1.5 }}>How much 1 credit is worth as a discount at ticket checkout. Members pay the rest by card, up to each event's cap %.</div>
-        <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 14, color: W.ink, fontWeight: 700 }}>1 credit =</span>
-          <span style={{ fontSize: 14, color: W.ink, fontWeight: 700 }}>₹</span>
-          <input value={rate} onChange={e => setRate(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="1" style={{ width: 90, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14, fontWeight: 800 }} />
-          <button onClick={saveRate} disabled={rBusy} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>{rBusy ? "Saving…" : "Save"}</button>
         </div>
       </div>
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
