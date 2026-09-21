@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · sales-v15 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · sales-v16 build</div>
       </div>
     </div>
   );
@@ -10909,18 +10909,18 @@ function EventSalesTab({ event }) {
   const [err, setErr] = useState("");
   useEffect(() => {
     supabase.rpc("event_ticket_analysis", { p_event: event.id }).then(({ data, error }) => { setA(error ? undefined : data); if (error) setErr(error.message || "Could not load sales."); });
-    supabase.rpc("event_sales_people", { p_event: event.id }).then(({ data, error }) => setPeople(error ? [] : (data || [])));
+    supabase.rpc("event_ticket_holders", { p_event: event.id }).then(({ data, error }) => setPeople(error ? [] : (data || [])));
   }, [event.id]);
   const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   const online = a ? Number(a.paid_gross || 0) : 0, doorCash = a ? Number(a.door_cash || 0) : 0, doorUpi = a ? Number(a.door_upi || 0) : 0;
   const total = online + doorCash + doorUpi;
-  const mMeta = { online: ["🟢 Razorpay", "#0E7A5F", "#E3F7EF"], cash: ["💵 Cash", "#B45309", "#FDF3E4"], upi: ["📱 UPI", "#2563EB", "#EAF1FE"] };
+  const mMeta = { online: ["🟢 Razorpay", "#0E7A5F", "#E3F7EF"], cash: ["💵 Cash", "#B45309", "#FDF3E4"], upi: ["📱 UPI", "#2563EB", "#EAF1FE"], free: ["🎁 Free / comp", "#6D28D9", "#F3EEFE"] };
   const Tile = ({ label, val, color }) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", flex: "1 1 90px", minWidth: 84 }}><div style={{ fontSize: 10, color: W.soft, fontWeight: 800, letterSpacing: .3 }}>{label}</div><div style={{ fontSize: 18, fontWeight: 800, color: color || W.ink, marginTop: 3 }}>{val}</div></div>;
   const exportCsv = () => {
     if (!people || !people.length) return;
     const esc = t => `"${String(t ?? "").replace(/"/g, '""')}"`;
-    const head = ["Name", "Method", "Ticket type", "Qty", "Amount (INR)", "Phone", "Paid at", "Ref"];
-    const rows = people.map(r => [r.name, r.kind, r.ticket_type, r.qty, r.amount, r.phone || "", r.paid_at ? new Date(r.paid_at).toLocaleString("en-IN") : "", r.ref || ""].map(esc).join(","));
+    const head = ["Name", "How they got it", "Ticket type", "Qty", "Amount paid (INR)", "Phone", "Checked in", "Razorpay txn / code"];
+    const rows = people.map(r => [r.name, r.method === "online" ? "Razorpay" : r.method === "free" ? "Free/comp" : r.method, r.ticket_type, r.qty, r.paid, r.phone || "", r.checked_in ? "Yes" : "No", r.ref || ""].map(esc).join(","));
     const csv = [head.map(esc).join(","), ...rows].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const link = document.createElement("a"); link.href = url; link.download = `${(event.title || "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-sales.csv`; link.click(); URL.revokeObjectURL(url);
@@ -10954,22 +10954,23 @@ function EventSalesTab({ event }) {
         ))}
       </div>}
       <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 800, color: W.ink, flex: 1 }}>Who paid how much {people ? `(${people.length})` : ""}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: W.ink, flex: 1 }}>Ticket holders — who got in & how {people ? `(${people.length})` : ""}</div>
         {people && people.length > 0 && <button onClick={exportCsv} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 11px", fontSize: 12 }}>⬇️ CSV</button>}
       </div>
-      {people === null ? <Center>Loading…</Center> : people.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No paid sales yet. Free / comp guests are in the Guest list tab.</div> :
-        people.map((r, i) => { const mm = mMeta[r.kind] || mMeta.online; return (
+      {people === null ? <Center>Loading…</Center> : people.length === 0 ? <div style={{ fontSize: 13, color: W.soft }}>No ticket holders yet. Free VIP/Team invites are in the Guest list tab.</div> :
+        people.map((r, i) => { const mm = mMeta[r.method] || mMeta.free; const isPaid = Number(r.paid || 0) > 0; return (
           <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px", marginBottom: 7, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `4px solid ${mm[1]}`, borderRadius: 10 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                 <span style={{ background: mm[2], color: mm[1], fontWeight: 800, fontSize: 10.5, padding: "1px 8px", borderRadius: 8 }}>{mm[0]}</span>
-                <b style={{ color: W.ink, fontSize: 14.5 }}>{r.name}{(r.qty || 1) > 1 ? ` ×${r.qty}` : ""}</b>
+                <b style={{ color: W.ink, fontSize: 14.5 }}>{r.name || "—"}{(r.qty || 1) > 1 ? ` ×${r.qty}` : ""}</b>
+                {r.checked_in && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 9.5, fontWeight: 800, padding: "1px 6px", borderRadius: 8 }}>✓ IN</span>}
               </div>
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>{r.ticket_type}{r.paid_at ? ` · ${new Date(r.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>{r.ticket_type}</div>
               {r.phone && <div style={{ fontSize: 12.5, marginTop: 3 }}>📞 <a href={`tel:${r.phone}`} style={{ color: "#2563EB", fontWeight: 700, textDecoration: "none" }}>{r.phone}</a> <a href={`https://wa.me/${(r.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "")}`} target="_blank" rel="noreferrer" style={{ color: "#25D366", fontWeight: 700, textDecoration: "none", marginLeft: 6 }}>WhatsApp</a></div>}
-              {r.ref && <div style={{ fontSize: 11, color: W.soft, marginTop: 3, wordBreak: "break-all" }}>{r.kind === "online" ? "Razorpay txn" : "Code"}: <span onClick={() => { try { navigator.clipboard.writeText(r.ref); } catch (e) {} }} title="Tap to copy" style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: W.bg, padding: "1px 7px", borderRadius: 6, cursor: "pointer" }}>{r.ref}</span></div>}
+              {r.ref && <div style={{ fontSize: 11, color: W.soft, marginTop: 3, wordBreak: "break-all" }}>{r.method === "online" ? "Razorpay txn" : "Code"}: <span onClick={() => { try { navigator.clipboard.writeText(r.ref); } catch (e) {} }} title="Tap to copy" style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: W.bg, padding: "1px 7px", borderRadius: 6, cursor: "pointer" }}>{r.ref}</span></div>}
             </div>
-            <div style={{ fontWeight: 900, fontSize: 15.5, color: "#0E7A5F", flexShrink: 0 }}>{money(r.amount)}</div>
+            <div style={{ fontWeight: 900, fontSize: isPaid ? 15.5 : 12.5, color: isPaid ? "#0E7A5F" : "#6D28D9", flexShrink: 0, textAlign: "right" }}>{isPaid ? money(r.paid) : "Free"}</div>
           </div>
         ); })}
     </div>
