@@ -57,7 +57,7 @@ export default async function handler(req, res) {
   let ev = null;
   if (id) {
     const { data } = await sb.from("events")
-      .select("id,title,emoji,description,event_date,venue,city,banner_url,banner_type,poster_url")
+      .select("id,title,emoji,description,event_date,venue,city,banner_url,banner_type,poster_url,share_image_url")
       .eq("id", id).maybeSingle();
     ev = data;
   }
@@ -68,7 +68,8 @@ export default async function handler(req, res) {
   const descr = ev
     ? [ev.event_date, place, ev.description].filter(Boolean).join(" · ").slice(0, 200)
     : "Community events, socials & meetups";
-  const img = (ev?.banner_url && ev.banner_type !== "video") ? ev.banner_url
+  const img = ev?.share_image_url ? ev.share_image_url
+    : (ev?.banner_url && ev.banner_type !== "video") ? ev.banner_url
     : (ev?.poster_url || `${origin}/icon-512.png`);
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
