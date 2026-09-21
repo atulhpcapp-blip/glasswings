@@ -161,20 +161,26 @@ export default async function handler(req, res) {
 
       const grand = Math.max(0, subtotal + addonSum - couponOff);
 
-      // 💳 credit redemption (1 credit = ₹1), capped at the event's credit_cap_pct of the bill.
+      // 💳 credit redemption: 1 credit = ₹(credit_inr setting), capped at the event's credit_cap_pct.
       // The SERVER decides the number from the real bill + the member's balance — never the client.
-      let creditsUse = 0;
+      let creditsUse = 0;    // number of credits applied
+      let rupeesOff = 0;     // ₹ they cover
       if (grand > 0) {
         const capPct = Math.min(100, Math.max(0, Number(ev?.credit_cap_pct) || 0));
         const want = Math.max(0, Math.floor(Number(body.credits_use) || 0));
         if (capPct > 0 && want > 0) {
+          let rate = 1;
+          const { data: st } = await sb.from("gw_settings").select("num").eq("key", "credit_inr").maybeSingle();
+          if (st && Number(st.num) > 0) rate = Number(st.num);
           const { data: prof } = await sb.from("profiles").select("game_credits").eq("id", uid).single();
           const bal = Math.max(0, Number(prof?.game_credits) || 0);
           const capRupees = Math.floor(grand * capPct / 100);
-          creditsUse = Math.max(0, Math.min(want, bal, capRupees));
+          const maxByCap = Math.floor(capRupees / rate);           // most credits the cap allows
+          creditsUse = Math.max(0, Math.min(want, bal, maxByCap));
+          rupeesOff = Math.round(creditsUse * rate);
         }
       }
-      const grandAfter = Math.max(0, grand - creditsUse);
+      const grandAfter = Math.max(0, grand - rupeesOff);
       creditNote = creditsUse;
 
       if (grandAfter <= 0) {
