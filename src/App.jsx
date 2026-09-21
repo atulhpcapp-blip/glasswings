@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v30 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v32 build</div>
       </div>
     </div>
   );
@@ -2850,7 +2850,7 @@ function Main({ user }) {
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} />}
+      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} />}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -3467,12 +3467,14 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     </div>
   );
 }
-function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
+function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false }) {
   const [mtab, setMtab] = useState("discover");
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
   const [me, setMe] = useState({ area: "", city: "" });
   const [myGender, setMyGender] = useState(null);
+  const [wide, setWide] = useState(typeof window !== "undefined" && window.innerWidth >= 900);
+  useEffect(() => { const f = () => setWide(window.innerWidth >= 900); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
   const [hasPhoto, setHasPhoto] = useState(true);
   const [nudgeDismissed, setNudgeDismissed] = useState(() => { try { return sessionStorage.getItem("gw_meet_nudge") === "1"; } catch { return false; } });
   useEffect(() => { supabase.rpc("i_have_photo").then(({ data }) => setHasPhoto(data !== false)); }, [meId]);
@@ -3517,8 +3519,14 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
   const [peekInfo, setPeekInfo] = useState(null);
   const [peekPhone, setPeekPhone] = useState(null);
   const [waveBusy, setWaveBusy] = useState(null);
+  const [allMatches, setAllMatches] = useState(null); // superadmin: null=hidden, []=loading/empty
+  const [showAllMatches, setShowAllMatches] = useState(false);
+  const loadAllMatches = () => { setShowAllMatches(true); setAllMatches(null); supabase.rpc("admin_all_matches").then(({ data }) => setAllMatches(data || [])); };
   const load = () => {
-    supabase.rpc("meet_list").then(({ data }) => setRows(data || []));
+    Promise.all([supabase.rpc("meet_list"), supabase.rpc("meet_hidden_ids")]).then(([r, h]) => {
+      const hide = new Set(h.error ? [] : (h.data || []));
+      setRows((r.data || []).filter(p => !hide.has(p.id)));
+    });
     supabase.rpc("waves_inbox").then(({ data }) => setInbox(data || []));
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
   };
@@ -3548,7 +3556,16 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
     }
     setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
     setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
-    if (data.mutual) window.gwConfirm(`💚 You and ${p.name?.split(" ")[0] || "they"} both waved!\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, p.name); });
+    if (data.mutual) window.gwConfirm(`💚 It's a match! You and ${p.name?.split(" ")[0] || "they"} both said yes ✓\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, p.name); });
+  };
+  const doPass = async (p) => {
+    setWaveBusy(p.id);
+    const { error } = await supabase.rpc("pass_member", { p_user: p.id });
+    setWaveBusy(null);
+    if (error) return window.gwConfirm(error.message, () => {});
+    setRows(rs => (rs || []).filter(x => x.id !== p.id));
+    setInbox(ib => (ib || []).filter(x => x.id !== p.id));
+    setPeek(pk => (pk && pk.id === p.id) ? null : pk);
   };
   const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
   const flagProfile = (p, kind) => {
@@ -3620,18 +3637,22 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
         <div style={{ fontSize: 11, color: W.soft, marginTop: 1, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
         {p.waved_by_me && p.waved_me ? (
           <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff" }}>💬 Message</button>
+        ) : p.waved_by_me ? (
+          <div style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, textAlign: "center", fontWeight: 800, fontSize: 12.5, background: "#E7F6EF", color: "#0d6e58" }}>✓ Liked · waiting</div>
         ) : (
-          <button onClick={() => doWave(p)} disabled={p.waved_by_me || waveBusy === p.id} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: p.waved_by_me ? "default" : "pointer", fontWeight: 800, fontSize: 12.5, background: p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal), color: p.waved_by_me ? "#0d6e58" : "#fff" }}>
-            {waveBusy === p.id ? "…" : p.waved_by_me ? "✓ Waved" : (waveLbl || (p.waved_me ? "👋 Wave back" : "👋 Wave"))}
-          </button>
+          <div style={{ marginTop: 7, display: "flex", gap: 7 }}>
+            <button onClick={() => doPass(p)} disabled={waveBusy === p.id} title="Decline" style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: "1px solid #F3C7C7", cursor: "pointer", fontWeight: 800, fontSize: 15, background: "#FFF1F1", color: "#DC2626" }}>✗</button>
+            <button onClick={() => doWave(p)} disabled={waveBusy === p.id} title={p.waved_me ? "It's a match!" : "Like"} style={{ flex: 2, padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff" }}>{waveBusy === p.id ? "…" : (p.waved_me ? "✓ Match" : "✓ Like")}</button>
+          </div>
         )}
       </div>
     </div>
   );
-  const matchList = (rows || []).filter(p => p.waved_by_me && p.waved_me);
-  const wavedYouList = (rows || []).filter(p => p.waved_me && !p.waved_by_me);
   const oppG = myGender === "male" ? "female" : myGender === "female" ? "male" : null;
-  const mCandidates = (rows || []).filter(p => !p.waved_by_me && !p.waved_me && p.avatar_url && (!oppG || p.gender === oppG));
+  const oppOnly = p => !oppG || p.gender === oppG;
+  const matchList = (rows || []).filter(p => p.waved_by_me && p.waved_me && oppOnly(p));
+  const wavedYouList = (rows || []).filter(p => p.waved_me && !p.waved_by_me && oppOnly(p));
+  const mCandidates = (rows || []).filter(p => !p.waved_by_me && !p.waved_me && p.avatar_url && oppOnly(p));
   const matchOfDay = mCandidates.length ? mCandidates[new Date().getDate() % mCandidates.length] : null;
   const miniAv = (p, ring) => <div onClick={() => openPeek(p)} style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", margin: "0 auto", border: `2.5px solid ${ring}`, cursor: "pointer", background: "#fff" }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>;
   return (
@@ -3645,9 +3666,36 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
           <button key={k} onClick={() => setMtab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${mtab === k ? W.teal : W.line}`, background: mtab === k ? W.teal : "#fff", color: mtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>
         ))}
       </div>
-      {mtab === "discover" && <>
+      {mtab === "discover" && <div style={{ display: wide ? "flex" : "block", gap: 16, alignItems: "flex-start" }}>
+        <div style={{ order: wide ? 2 : 0, width: wide ? 340 : "auto", flexShrink: 0, position: wide ? "sticky" : "static", top: 62, alignSelf: "flex-start" }}>
+        {isSuper && (
+          <div style={{ margin: wide ? "12px 6px 0" : "12px 14px 0", background: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 16, padding: "12px 13px" }}>
+            <div onClick={() => showAllMatches ? setShowAllMatches(false) : loadAllMatches()} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer" }}>
+              <span style={{ fontSize: 17 }}>🛡️</span>
+              <div style={{ flex: 1, fontWeight: 900, fontSize: 14, color: "#3730A3" }}>All matches <span style={{ fontWeight: 700, fontSize: 11, color: "#6366F1" }}>· superadmin</span></div>
+              <span style={{ fontSize: 12, color: "#6366F1", fontWeight: 800 }}>{showAllMatches ? "Hide ▲" : "View ▼"}</span>
+            </div>
+            {showAllMatches && (
+              <div style={{ marginTop: 10 }}>
+                {allMatches === null ? <div style={{ fontSize: 12.5, color: W.soft }}>Loading…</div>
+                  : allMatches.length === 0 ? <div style={{ fontSize: 12.5, color: W.soft }}>No mutual matches yet.</div>
+                  : (<>
+                    <div style={{ fontSize: 11, color: "#6366F1", fontWeight: 700, marginBottom: 7 }}>{allMatches.length} match{allMatches.length === 1 ? "" : "es"} — visible only to you and the two members</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
+                      {allMatches.map((m, i) => (
+                        <div key={i} style={{ background: "#fff", border: "1px solid #E0E7FF", borderRadius: 10, padding: "8px 10px", fontSize: 12.5 }}>
+                          <div style={{ fontWeight: 800, color: W.ink }}>{m.a_name} <span style={{ color: "#EC4899" }}>💚</span> {m.b_name}</div>
+                          {m.matched_at && <div style={{ fontSize: 10.5, color: W.soft, marginTop: 2 }}>{new Date(m.matched_at).toLocaleDateString()}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </>)}
+              </div>
+            )}
+          </div>
+        )}
         {(matchList.length > 0 || wavedYouList.length > 0 || matchOfDay) && (
-          <div style={{ margin: "12px 14px 0", background: "linear-gradient(120deg,#FDF2F8,#F5F3FF)", border: "1px solid #F3D9EE", borderRadius: 16, padding: "14px 14px 8px" }}>
+          <div style={{ margin: wide ? "12px 6px 0" : "12px 14px 0", background: "linear-gradient(120deg,#FDF2F8,#F5F3FF)", border: "1px solid #F3D9EE", borderRadius: 16, padding: "14px 14px 8px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}><span style={{ fontSize: 19 }}>💘</span><div style={{ fontWeight: 900, fontSize: 16, color: "#BE185D" }}>Your matches{matchList.length ? ` (${matchList.length})` : ""}</div></div>
             {matchList.length > 0 ? (
               <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
@@ -3668,7 +3716,10 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
                   <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{(matchOfDay.name || "Member").split(" ")[0]}{matchOfDay.age ? `, ${matchOfDay.age}` : ""}</div>
                   <div style={{ fontSize: 11.5, color: W.soft }}>{matchOfDay.area || matchOfDay.city || "Say hi 👋"}</div>
                 </div>
-                <button onClick={() => doWave(matchOfDay)} disabled={waveBusy === matchOfDay.id} style={{ ...btn("#EC4899", "#fff"), padding: "8px 14px", fontSize: 12.5, flexShrink: 0, opacity: waveBusy === matchOfDay.id ? .6 : 1 }}>👋 Wave</button>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => doPass(matchOfDay)} disabled={waveBusy === matchOfDay.id} title="Decline" style={{ padding: "8px 11px", borderRadius: 9, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>✗</button>
+                  <button onClick={() => doWave(matchOfDay)} disabled={waveBusy === matchOfDay.id} title="Like" style={{ ...btn("#EC4899", "#fff"), padding: "8px 14px", fontSize: 12.5, opacity: waveBusy === matchOfDay.id ? .6 : 1 }}>✓ Like</button>
+                </div>
               </div>
             )}
             {wavedYouList.length > 0 && (<>
@@ -3685,6 +3736,8 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
             </>)}
           </div>
         )}
+        </div>
+        <div style={{ order: wide ? 1 : 0, flex: wide ? "1 1 0%" : "none", minWidth: 0 }}>
         {!hasPhoto && !nudgeDismissed && (
           <div style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 14, padding: "14px 15px", color: "#fff", position: "relative" }}>
             <div onClick={() => { setNudgeDismissed(true); try { sessionStorage.setItem("gw_meet_nudge", "1"); } catch {} }} style={{ position: "absolute", top: 10, right: 12, cursor: "pointer", opacity: .8, fontSize: 16, fontWeight: 800 }}>✕</div>
@@ -3768,7 +3821,8 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
             : filtered.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>No one here yet.</div>
             : filtered.map(p => card(p))}
         </div>
-      </>}
+        </div>
+      </div>}
       {mtab === "waves" && (
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>
           {inbox.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>No waves yet — when someone waves at you, they'll show up here 👋</div>
@@ -3804,7 +3858,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
                 </div>
               )}
               {peekInfo?.shared_interests?.length > 0 && <div style={{ fontSize: 12, color: "#0d6e58", fontWeight: 700, marginTop: 8 }}>💚 You both like {peekInfo.shared_interests.slice(0, 3).join(", ")}</div>}
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>{peek.waved_by_me && peek.waved_me ? "💚 You matched! Your chat is open — say hi." : "Wave 👋 — if they wave back, your chat opens and you can meet at an event 💚"}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>{peek.waved_by_me && peek.waved_me ? "💚 It's a match! Your chat is open — say hi." : peek.waved_by_me ? "✓ You liked them — waiting to see if they like you back 💚" : "Tap ✓ to like · ✗ to decline. If you both tick ✓ it's a match and chat unlocks 💬"}</div>
               {isAdmin && (
                 <div style={{ marginTop: 12, background: "#F0F7FF", border: "1px solid #BFDBFE", borderRadius: 12, padding: "11px 13px" }}>
                   <div style={{ fontSize: 10.5, fontWeight: 800, color: "#1E40AF", letterSpacing: .4, marginBottom: 7 }}>🛡️ ADMIN ONLY</div>
@@ -3830,9 +3884,12 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false }) {
                 <button onClick={() => setPeek(null)} style={{ flex: 1, padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
                 {peek.waved_by_me && peek.waved_me ? (
                   <button onClick={() => { onOpenDM && onOpenDM(peek.id, (peek.name || "Member").split(" ")[0]); setPeek(null); }} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>💬 Message</button>
-                ) : (
-                  <button onClick={() => { doWave(peek); setPeek(null); }} disabled={peek.waved_by_me} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: peek.waved_by_me ? "#E7F6EF" : W.teal, color: peek.waved_by_me ? "#0d6e58" : "#fff", fontWeight: 800, cursor: peek.waved_by_me ? "default" : "pointer" }}>{peek.waved_by_me ? "✓ Waved" : "👋 Wave"}</button>
-                )}
+                ) : peek.waved_by_me ? (
+                  <div style={{ flex: 2, padding: 12, borderRadius: 11, textAlign: "center", background: "#E7F6EF", color: "#0d6e58", fontWeight: 800 }}>✓ Liked · waiting</div>
+                ) : (<>
+                  <button onClick={() => doPass(peek)} title="Decline" style={{ flex: 1, padding: 12, borderRadius: 11, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>✗</button>
+                  <button onClick={() => { doWave(peek); setPeek(null); }} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: peek.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff", fontWeight: 800, cursor: "pointer" }}>{peek.waved_me ? "✓ Match" : "✓ Like"}</button>
+                </>)}
               </div>
             </div>
           </div>
@@ -3853,7 +3910,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
   return (
     <div>
       <TopBar title="Rooms" />
-      {meetOpen && <MeetPage meId={meId} onOpenDM={onOpenDM} isAdmin={isStaffUser} onClose={() => setMeetOpen(false)} />}
+      {meetOpen && <MeetPage meId={meId} onOpenDM={onOpenDM} isAdmin={isStaffUser} isSuper={profile?.role === "superadmin" || (profile?.roles || []).includes("superadmin")} onClose={() => setMeetOpen(false)} />}
       <div onClick={() => setMeetOpen(true)} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 15, padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,128,105,.25)" }}>
         <span style={{ fontSize: 30 }}>👋</span>
         <div style={{ flex: 1 }}>
