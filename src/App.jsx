@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v4 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v5 build</div>
       </div>
     </div>
   );
@@ -2752,6 +2752,7 @@ function Main({ user }) {
   const delAddon = async (id) => { const { error } = await supabase.rpc("del_event_addon", { p_id: id }); if (error) return setNotice(error.message); await load(); };
   const addTicketType = async (eventId, d) => { const { error } = await supabase.from("event_ticket_types").insert({ event_id: eventId, ...d }); if (error) return setNotice(error.message); await load(); };
   const delTicketType = async (id) => { const { error } = await supabase.from("event_ticket_types").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
+  const updateTicketType = async (id, d) => { const { error } = await supabase.from("event_ticket_types").update(d).eq("id", id); if (error) return setNotice(error.message); await load(); };
 
   if (!ready) return <Splash />;
   if (profile?.blocked) return (
@@ -2845,7 +2846,7 @@ function Main({ user }) {
       {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
-      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} />}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
@@ -9011,7 +9012,7 @@ function SegmentsAdmin() {
     </div>
   );
 }
-function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
+function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
@@ -9058,7 +9059,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
-        : seg === "events" ? <AdminEvents onDuplicate={onDuplicateEvent} canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents onDuplicate={onDuplicateEvent} canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -9797,7 +9798,7 @@ function MyTicket({ event: e, profile, rows, onClose }) {
     </Sheet>
   );
 }
-function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
+function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   const [plansList, setPlansList] = useState([]);
   useEffect(() => { supabase.from("plans").select("id, name, emoji").eq("active", true).then(({ data }) => setPlansList(data || [])); }, []);
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [cap, setCap] = useState("");
@@ -9821,19 +9822,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
-        {types.map(t => (
-          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 9, padding: "7px 10px" }}>
-            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <b>{t.name}</b>
-              <span style={{ color: W.soft }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
-              {t.credit_price ? <span style={{ color: "#6D28D9", fontWeight: 700 }}>· 💳 {t.credit_price}</span> : null}
-              {audBadge(t.gender_restrict)}
-              {t.capacity != null && <span style={{ color: W.soft }}>· cap {t.capacity}</span>}
-              {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal }}>· {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
-            </div>
-            <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(t.id)} />
-          </div>
-        ))}
+        {types.map(t => <EditableTicketRow key={t.id} t={t} plansList={plansList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
         {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -9860,6 +9849,74 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel }) {
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Plan members get this off. 100% (or ₹ ≥ price) makes the ticket free for them.</div>
       </div>
       <button onClick={add} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}><Plus size={15} />Add ticket type</button>
+    </div>
+  );
+}
+function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onDel }) {
+  const [ed, setEd] = useState(false);
+  const [name, setName] = useState(t.name || "");
+  const [price, setPrice] = useState(t.price == null ? "" : String(t.price));
+  const [credit, setCredit] = useState(t.credit_price == null ? "" : String(t.credit_price));
+  const [wf, setWf] = useState(t.disc_female_pct == null ? "" : String(t.disc_female_pct));
+  const [wm, setWm] = useState(t.disc_male_pct == null ? "" : String(t.disc_male_pct));
+  const [cap, setCap] = useState(t.capacity == null ? "" : String(t.capacity));
+  const [dRoom, setDRoom] = useState(t.discount_plan_id ? "plan:" + t.discount_plan_id : (t.discount_room_id || ""));
+  const [dKind, setDKind] = useState(t.discount_kind || "percent");
+  const [dVal, setDVal] = useState(t.discount_value == null ? "" : String(t.discount_value));
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (!name.trim() || !onUpdate) return;
+    setBusy(true);
+    await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit) });
+    setBusy(false); setEd(false);
+  };
+  if (!ed) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 9, padding: "7px 10px" }}>
+        <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: W.ink, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <b>{t.name}</b>
+          <span style={{ color: W.soft }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
+          {t.credit_price ? <span style={{ color: "#6D28D9", fontWeight: 700 }}>· 💳 {t.credit_price}</span> : null}
+          {audBadge(t.gender_restrict)}
+          {t.disc_female_pct != null && <span style={{ color: "#C0246E", fontWeight: 700 }}>· ♀ {t.disc_female_pct}% off</span>}
+          {t.disc_male_pct != null && <span style={{ color: "#1B6FB8", fontWeight: 700 }}>· ♂ {t.disc_male_pct}% off</span>}
+          {t.capacity != null && <span style={{ color: W.soft }}>· cap {t.capacity}</span>}
+          {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal }}>· {t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
+        </div>
+        {onUpdate && <button onClick={() => setEd(true)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "5px 11px", fontSize: 12.5, fontWeight: 800 }}>Edit</button>}
+        <X size={15} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => onDel(t.id)} />
+      </div>
+    );
+  }
+  return (
+    <div style={{ background: "#fff", border: `1.5px solid ${W.teal}`, borderRadius: 10, padding: 11 }}>
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: W.teal, marginBottom: 9 }}>✏️ Editing “{t.name}”</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
+        <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 70 }} />
+        <input value={credit} onChange={e => setCredit(e.target.value.replace(/\D/g, ""))} placeholder="💳 cr" title="Credit price (blank = not sold for credits)" inputMode="numeric" style={{ ...ip, width: 82 }} />
+        <input value={wf} onChange={e => setWf(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♀ % off" title="Discount for women" inputMode="decimal" style={{ ...ip, width: 86 }} />
+        <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Discount for men" inputMode="decimal" style={{ ...ip, width: 86 }} />
+        <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 82 }} />
+      </div>
+      <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
+        <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>💎 Discount for plan members (optional)</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <select value={dRoom} onChange={e => setDRoom(e.target.value)} style={{ ...ip, flex: "1 1 120px", minWidth: 0 }}>
+            <option value="">No discount</option>
+            {plansList.map(pl => <option key={"plan:" + pl.id} value={"plan:" + pl.id}>{(pl.emoji || "💎") + " " + pl.name}</option>)}
+          </select>
+          <select value={dKind} onChange={e => setDKind(e.target.value)} style={ip}>
+            <option value="percent">% off</option>
+            <option value="flat">₹ off</option>
+          </select>
+          <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button onClick={() => setEd(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+        <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "✓ Save changes"}</button>
+      </div>
     </div>
   );
 }
@@ -10833,7 +10890,7 @@ function EventDetailsEditor({ event, onUpdate }) {
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const [mSeg, setMSeg] = useState("details");
@@ -11301,7 +11358,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <EventWaBlast event={e} />
                   </>)}
                   {mSeg === "tickets" && (<>
-                    <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} />
+                    <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} onUpdate={onUpdateTicketType} />
                     <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                     <PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
                     <GenderBalance ev={e} onUpdate={onUpdate} />
