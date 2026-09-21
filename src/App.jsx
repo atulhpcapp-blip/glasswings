@@ -2044,7 +2044,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v43 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v44 build</div>
       </div>
     </div>
   );
@@ -2543,6 +2543,7 @@ function Main({ user }) {
   const myCity = profile?.staff_city || null;
   const capOf = (k) => isSuper || perms.some(p => myRoles.includes(p.role) && p[k]);
   const isAdmin = isSuper || myRoles.includes("admin");
+  const isMod = isSuper || myRoles.some(r => ["admin", "subadmin"].includes(r));
   const isStaff = isSuper || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
   useEffect(() => {
     if (!isStaff) { try { window.__gwSubs = null; } catch {} return; }
@@ -3024,7 +3025,7 @@ function Main({ user }) {
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} onUpgrade={() => setSubPage({ highlight: null })} />}
+      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} />}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -3641,7 +3642,7 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     </div>
   );
 }
-function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false, onUpgrade }) {
+function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false, isMod = false, onUpgrade }) {
   const [mtab, setMtab] = useState("discover");
   const [matchTab, setMatchTab] = useState("perfect");
   const [rows, setRows] = useState(null);
@@ -3696,6 +3697,21 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
   const [peekInfo, setPeekInfo] = useState(null);
   const [peekPhone, setPeekPhone] = useState(null);
   const [waveBusy, setWaveBusy] = useState(null);
+  const photoRef = useRef(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const updateMemberPhoto = async (file) => {
+    if (!file || !peek) return;
+    setPhotoBusy(true);
+    try {
+      const url = await uploadPhoto(meId, file);
+      const { error } = await supabase.rpc("admin_set_member_photo", { p_user: peek.id, p_url: url });
+      if (error) throw error;
+      setPeek(pk => pk ? { ...pk, avatar_url: url } : pk);
+      setRows(rs => (rs || []).map(x => x.id === peek.id ? { ...x, avatar_url: url } : x));
+      window.gwConfirm("✅ Member photo updated.", () => {});
+    } catch (x) { window.gwConfirm("Photo update failed: " + (x.message || x), () => {}); }
+    setPhotoBusy(false);
+  };
   const [allMatches, setAllMatches] = useState(null); // superadmin: null=hidden, []=loading/empty
   const [showAllMatches, setShowAllMatches] = useState(false);
   const loadAllMatches = () => { setShowAllMatches(true); setAllMatches(null); supabase.rpc("admin_all_matches").then(({ data }) => setAllMatches(data || [])); };
@@ -4093,6 +4109,13 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
               )}
               {peekInfo?.shared_interests?.length > 0 && <div style={{ fontSize: 12, color: "#0d6e58", fontWeight: 700, marginTop: 8 }}>💚 You both like {peekInfo.shared_interests.slice(0, 3).join(", ")}</div>}
               <div style={{ fontSize: 12, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>{peek.waved_by_me && peek.waved_me ? "💚 It's a match! Your chat is open — say hi." : peek.waved_by_me ? "✓ You liked them — waiting to see if they like you back 💚" : "Tap ✓ to like · ✗ to decline. If you both tick ✓ it's a match and chat unlocks 💬"}</div>
+              {isMod && (
+                <div style={{ marginTop: 12, background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: "11px 13px" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "#B45309", letterSpacing: .4, marginBottom: 7 }}>🛠️ MODERATOR</div>
+                  <label style={{ ...btn("#fff", "#B45309"), border: "1px solid #FCD34D", fontSize: 12.5, padding: "9px 13px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>{photoBusy ? "Uploading…" : "📸 Update member photo"}<input ref={photoRef} type="file" accept="image/*" style={{ display: "none" }} disabled={photoBusy} onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; updateMemberPhoto(f); }} /></label>
+                  <div style={{ fontSize: 10.5, color: W.soft, marginTop: 6, lineHeight: 1.4 }}>Replace this member's profile photo — e.g. if it's missing, blurry or inappropriate.</div>
+                </div>
+              )}
               {isAdmin && (
                 <div style={{ marginTop: 12, background: "#F0F7FF", border: "1px solid #BFDBFE", borderRadius: 12, padding: "11px 13px" }}>
                   <div style={{ fontSize: 10.5, fontWeight: 800, color: "#1E40AF", letterSpacing: .4, marginBottom: 7 }}>🛡️ ADMIN ONLY</div>
@@ -4144,7 +4167,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
   return (
     <div>
       <TopBar title="Rooms" />
-      {meetOpen && <MeetPage meId={meId} onOpenDM={onOpenDM} isAdmin={isStaffUser} isSuper={profile?.role === "superadmin" || (profile?.roles || []).includes("superadmin")} onClose={() => setMeetOpen(false)} />}
+      {meetOpen && <MeetPage meId={meId} onOpenDM={onOpenDM} isAdmin={isStaffUser} isSuper={profile?.role === "superadmin" || (profile?.roles || []).includes("superadmin")} isMod={["admin", "subadmin", "superadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "subadmin", "superadmin"].includes(r))} onClose={() => setMeetOpen(false)} />}
       <div onClick={() => setMeetOpen(true)} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 15, padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,128,105,.25)" }}>
         <span style={{ fontSize: 30 }}>👋</span>
         <div style={{ flex: 1 }}>
