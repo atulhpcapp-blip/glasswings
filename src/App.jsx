@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guest-tiers-v9 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guest-tiers-v10 build</div>
       </div>
     </div>
   );
@@ -11407,6 +11407,7 @@ function GuestTickets({ event }) {
   const [gName, setGName] = useState(""), [gPhone, setGPhone] = useState(""), [gEmail, setGEmail] = useState(""), [gQty, setGQty] = useState("1"), [gAge, setGAge] = useState(""), [gLoc, setGLoc] = useState(""), [gNote, setGNote] = useState("");
   const [gBusy, setGBusy] = useState(false);
   const [guests, setGuests] = useState([]);
+  const [bulkText, setBulkText] = useState(""), [bulkBusy, setBulkBusy] = useState(false), [bulkMsg, setBulkMsg] = useState("");
   const [q, setQ] = useState(""); const [list, setList] = useState([]); const [given, setGiven] = useState({}); const [added, setAdded] = useState({}); const [msg, setMsg] = useState("");
   const loadGuests = () => supabase.rpc("guest_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setGuests(data || []); });
   useEffect(() => { loadGuests(); supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, [event.id]);
@@ -11451,6 +11452,27 @@ function GuestTickets({ event }) {
   };
   const changeTier = async (g, t) => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, guest_type: t } : x)); const { error } = await supabase.rpc("set_guest_type", { p_id: g.id, p_type: t }); if (error) { alert(error.message); loadGuests(); } };
   const editNote = async (g) => { const n = window.prompt("Reserved table / note for " + g.name + ":", g.note || ""); if (n === null) return; setGuests(gs => gs.map(x => x.id === g.id ? { ...x, note: n.trim() || null } : x)); const { error } = await supabase.rpc("set_guest_note", { p_id: g.id, p_note: n }); if (error) { alert(error.message); loadGuests(); } };
+  const addBulk = async () => {
+    const lines = bulkText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+    setBulkBusy(true); setBulkMsg("");
+    let ok = 0, fail = 0;
+    for (const line of lines) {
+      const parts = line.split(/[,\t]/).map(s => s.trim());
+      const name = parts[0];
+      if (!name) { fail++; continue; }
+      const rest = parts.slice(1);
+      const email = rest.find(x => x.includes("@")) || "";
+      const phone = rest.find(x => !x.includes("@")) || "";
+      const { error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: name, p_phone: phone, p_email: email, p_qty: 1, p_age: null, p_location: null, p_type: tier, p_note: null });
+      if (error) fail++; else ok++;
+      setBulkMsg(`Adding… ${ok + fail}/${lines.length}`);
+    }
+    setBulkBusy(false);
+    setBulkMsg(`✓ Added ${ok} ${tmeta(tier)[2]}${ok === 1 ? "" : "s"}${fail ? ` · ${fail} skipped` : ""}. Send tickets from the list below.`);
+    setBulkText("");
+    loadGuests();
+  };
   const matches = q.trim().length < 2 ? [] : list.filter(m => (m.full_name || "").toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6);
   const give = async (m) => {
     setMsg("");
@@ -11486,7 +11508,7 @@ function GuestTickets({ event }) {
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {[["outsider", "➕ Add outsider"], ["member", "🔎 Add member"]].map(([k, l]) => (
+        {[["outsider", "➕ One"], ["bulk", "📋 Bulk"], ["member", "🔎 Member"]].map(([k, l]) => (
           <button key={k} onClick={() => setMode(k)} style={{ flex: 1, padding: "10px 8px", borderRadius: 11, border: `1.5px solid ${mode === k ? W.teal : W.line}`, background: mode === k ? W.teal : "#fff", color: mode === k ? "#fff" : W.soft, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{l}</button>
         ))}
       </div>
@@ -11497,7 +11519,7 @@ function GuestTickets({ event }) {
           return <button key={k} onClick={() => setTier(k)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 8px", borderRadius: 11, border: `2px solid ${on ? col : bg}`, background: on ? col : bg, color: on ? "#fff" : col, fontWeight: 800, fontSize: 13.5, cursor: "pointer", boxShadow: on ? `0 3px 10px ${col}44` : "none" }}><span style={{ fontSize: 16 }}>{ic}</span>{lbl}</button>;
         })}
       </div>
-      {mode === "outsider" ? (
+      {mode === "outsider" && (
         <div style={{ background: W.bg, borderRadius: 12, padding: 12, marginBottom: 14 }}>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7 }}>
             <input value={gName} onChange={e => setGName(e.target.value)} placeholder="Full name *" style={{ ...ip, flex: "1 1 150px" }} />
@@ -11512,7 +11534,17 @@ function GuestTickets({ event }) {
           <input value={gNote} onChange={e => setGNote(e.target.value)} placeholder={tier === "vip" ? "Reserved table / area / note (e.g. Table 4, near stage)" : "Note (optional) — e.g. reserved table, special instruction"} style={{ ...ip, width: "100%", marginBottom: 9 }} />
           <button onClick={addGuest} disabled={gBusy} style={{ ...btn(tmeta(tier)[3], "#fff"), width: "100%", justifyContent: "center", opacity: gBusy ? .6 : 1, fontSize: 14.5 }}>{gBusy ? "Adding…" : `${tmeta(tier)[1]} Add ${tmeta(tier)[2]} & send ticket`}</button>
         </div>
-      ) : (
+      )}
+      {mode === "bulk" && (
+        <div style={{ background: W.bg, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 7, lineHeight: 1.5 }}>Paste a list — <b>one guest per line</b>. Add a phone and/or email after a comma. Everyone is added as <b>{tmeta(tier)[1]} {tmeta(tier)[2]}</b>.<br />e.g. <span style={{ fontFamily: "ui-monospace,monospace" }}>Rahul Verma, 9876543210</span></div>
+          <textarea value={bulkText} onChange={e => setBulkText(e.target.value)} rows={6} placeholder={"Priya Nair, 9876500000\nArjun, 9876511111, arjun@email.com\nMeera Reddy"} style={{ ...ip, width: "100%", fontFamily: "inherit", resize: "vertical", marginBottom: 9 }} />
+          <button onClick={addBulk} disabled={bulkBusy} style={{ ...btn(tmeta(tier)[3], "#fff"), width: "100%", justifyContent: "center", opacity: bulkBusy ? .6 : 1, fontSize: 14.5 }}>{bulkBusy ? "Adding…" : `${tmeta(tier)[1]} Add all as ${tmeta(tier)[2]}`}</button>
+          {bulkMsg && <div style={{ fontSize: 12.5, fontWeight: 700, color: bulkMsg.startsWith("✓") ? W.teal : W.soft, marginTop: 9 }}>{bulkMsg}</div>}
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8 }}>Tip: you can paste a column straight from Excel / Google Sheets.</div>
+        </div>
+      )}
+      {mode === "member" && (
         <div style={{ marginBottom: 14 }}>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member by name…" style={{ ...ip, width: "100%" }} />
           {matches.map(m => (
