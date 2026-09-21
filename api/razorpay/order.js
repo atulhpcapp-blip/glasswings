@@ -44,6 +44,7 @@ export default async function handler(req, res) {
     let addonRows = [];      // resolved [{id,name,price,qty}]
     let ticketRev = 0;       // rupees (for commission)
     let couponRow = null, couponOff = 0;   // 🏷️ discount coupon (rupees)
+    let creditNote = 0;                     // 💳 credits applied to this order
     const coupon_code = String(body.coupon_code || "").trim().toUpperCase();
     const notes = { purpose, uid };
 
@@ -70,7 +71,7 @@ export default async function handler(req, res) {
       // fetch everything needed in parallel
       const [{ data: typeRows }, { data: ev }, { data: tk }, addonSum] = await Promise.all([
         typedIds.length ? sb.from("event_ticket_types").select("*").in("id", typedIds) : Promise.resolve({ data: [] }),
-        sb.from("events").select("ticket_price, balance_on, men_per_woman, men_open_start, member_discount_pct").eq("id", event_id).single(),
+        sb.from("events").select("ticket_price, balance_on, men_per_woman, men_open_start, member_discount_pct, credit_cap_pct").eq("id", event_id).single(),
         sb.from("event_tickets").select("user_id, ticket_type_id, quantity").eq("event_id", event_id),
         resolveAddons(),
       ]);
@@ -159,8 +160,25 @@ export default async function handler(req, res) {
       }
 
       const grand = Math.max(0, subtotal + addonSum - couponOff);
-      if (grand <= 0) {
-        // 💎 100% member discount (or fully free cart): issue tickets directly, no Razorpay
+
+      // 💳 credit redemption (1 credit = ₹1), capped at the event's credit_cap_pct of the bill.
+      // The SERVER decides the number from the real bill + the member's balance — never the client.
+      let creditsUse = 0;
+      if (grand > 0) {
+        const capPct = Math.min(100, Math.max(0, Number(ev?.credit_cap_pct) || 0));
+        const want = Math.max(0, Math.floor(Number(body.credits_use) || 0));
+        if (capPct > 0 && want > 0) {
+          const { data: prof } = await sb.from("profiles").select("game_credits").eq("id", uid).single();
+          const bal = Math.max(0, Number(prof?.game_credits) || 0);
+          const capRupees = Math.floor(grand * capPct / 100);
+          creditsUse = Math.max(0, Math.min(want, bal, capRupees));
+        }
+      }
+      const grandAfter = Math.max(0, grand - creditsUse);
+      creditNote = creditsUse;
+
+      if (grandAfter <= 0) {
+        // Fully free (100% member discount, coupon, or credits cover it all): issue directly, no Razorpay
         const freeOrderId = "free_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
         for (let li = 0; li < lineItems.length; li++) {
           const { error: insErr } = await sb.from("event_tickets").insert({
@@ -173,15 +191,16 @@ export default async function handler(req, res) {
         await sb.from("payments").insert({
           user_id: uid, purpose: "ticket", event_id, ticket_type_id: lineItems[0]?.ticket_type_id || null,
           quantity: totalQty, amount: 0, status: "paid", razorpay_order_id: freeOrderId,
-          addons: addonRows, items: lineItems,
+          addons: addonRows, items: lineItems, credits_used: creditsUse,
         });
+        if (creditsUse > 0) { try { await sb.rpc("spend_event_credits", { p_user: uid, p_n: creditsUse }); } catch (e2) {} }
         if (couponRow) await sb.from("coupon_uses").insert({ coupon_id: couponRow.id, user_id: uid, order_id: freeOrderId });
         return res.status(200).json({ free: true });
       }
       ticketRev = subtotal;
-      amount = grand * 100;
+      amount = grandAfter * 100;
       items = lineItems;
-      Object.assign(notes, { event_id, qty: totalQty, lines: lineItems.length, addons: addonRows.length });
+      Object.assign(notes, { event_id, qty: totalQty, lines: lineItems.length, addons: addonRows.length, credits_used: creditsUse });
     } else if (purpose === "plan") {
       const { data: pl } = await sb.from("plans").select("id, name, active, price_1m, price_3m, price_6m, price_12m").eq("id", plan_id).single();
       if (!pl || !pl.active) return res.status(400).json({ error: "Plan not found." });
@@ -246,6 +265,7 @@ export default async function handler(req, res) {
       room_id: room_id || null, plan_id: (purpose === "plan" ? plan_id : null), plan_months: (purpose === "room" || purpose === "plan" ? (Number(plan_months) || 1) : null), quantity: (purpose === "ticket" ? totalQty : purpose === "credits" ? creditsGrant : qty), amount, status: "created", razorpay_order_id: order.id,
       addons: addonRows, referrer_id, commission_amount,
       items: (purpose === "ticket" ? items : null),
+      credits_used: (purpose === "ticket" ? creditNote : 0),
     });
     // If we can't record the order, abort NOW so the customer is never charged
     // for something we can't later confirm or fulfil.
