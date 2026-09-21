@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · pnl-v20 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · creditrate-v22 build</div>
       </div>
     </div>
   );
@@ -8511,6 +8511,7 @@ function CreditsAdmin() {
   const [tbusy, setTbusy] = useState(false);
   const [welcome, setWelcome] = useState({ male: "", female: "" });
   const [wBusy, setWBusy] = useState(false);
+  const [rate, setRate] = useState(""); const [rBusy, setRBusy] = useState(false);
   const [bulkAmt, setBulkAmt] = useState("");
   const [bulkAud, setBulkAud] = useState("all");
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -8520,6 +8521,14 @@ function CreditsAdmin() {
     supabase.from("game_costs").select("*").order("sort").then(({ data }) => setGames(data || []));
     supabase.from("welcome_credits").select("*").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.gender] = String(r.amount); }); setWelcome({ male: m.male ?? "", female: m.female ?? "" }); });
     supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegList(data || []));
+    supabase.from("gw_settings").select("num").eq("key", "credit_inr").maybeSingle().then(({ data }) => setRate(data?.num != null ? String(data.num) : "1"));
+  };
+  const saveRate = async () => {
+    setRBusy(true);
+    const { error } = await supabase.rpc("set_credit_inr", { p_val: Number(rate) || 0 });
+    setRBusy(false);
+    if (error) return window.alert(error.message);
+    window.alert("Saved ✓ 1 credit = ₹" + (Number(rate) || 0) + " when redeemed at checkout.");
   };
   const saveWelcome = async () => {
     setWBusy(true);
@@ -8657,6 +8666,16 @@ function CreditsAdmin() {
           <span style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>👩 New women:</span>
           <input value={welcome.female} onChange={e => setWelcome(w => ({ ...w, female: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="0" style={{ width: 80, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14 }} />
           <button onClick={saveWelcome} disabled={wBusy} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>{wBusy ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
+      <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>💳 Credit value (redemption rate)</div>
+        <div style={{ fontSize: 12, color: W.soft, marginTop: 3, lineHeight: 1.5 }}>How much 1 credit is worth as a discount at ticket checkout. Members pay the rest by card, up to each event's cap %.</div>
+        <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 14, color: W.ink, fontWeight: 700 }}>1 credit =</span>
+          <span style={{ fontSize: 14, color: W.ink, fontWeight: 700 }}>₹</span>
+          <input value={rate} onChange={e => setRate(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="1" style={{ width: 90, border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 14, fontWeight: 800 }} />
+          <button onClick={saveRate} disabled={rBusy} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>{rBusy ? "Saving…" : "Save"}</button>
         </div>
       </div>
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 14 }}>
@@ -9569,13 +9588,16 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
   const payTotal = cApplied ? Math.max(0, total - Math.min(cApplied.off, total)) : total;
   const [bal, setBal] = useState(null);
   useEffect(() => { if (!meId) return; (async () => { try { await supabase.rpc("gw_sweep_credits", { p_user: meId }); } catch {} const { data } = await supabase.from("profiles").select("game_credits").eq("id", meId).maybeSingle(); setBal(Number(data?.game_credits) || 0); })(); }, [meId]);
+  const [rate, setRate] = useState(1);
+  useEffect(() => { supabase.from("gw_settings").select("num").eq("key", "credit_inr").maybeSingle().then(({ data }) => { const r = Number(data?.num); if (r > 0) setRate(r); }); }, []);
   const capPct = Math.min(100, Math.max(0, Number(e.credit_cap_pct) || 0));
   const maxCreditRupees = capPct > 0 ? Math.floor(payTotal * capPct / 100) : 0;
-  const maxUse = Math.max(0, Math.min(Number(bal) || 0, maxCreditRupees));
+  const maxUse = Math.max(0, Math.min(Number(bal) || 0, Math.floor(maxCreditRupees / (rate || 1))));  // credits
   const [useCredits, setUseCredits] = useState(false);
-  const creditsUse = (useCredits && capPct > 0) ? maxUse : 0;
+  const creditsUse = (useCredits && capPct > 0) ? maxUse : 0;   // credits applied
   useEffect(() => { if (maxUse <= 0) setUseCredits(false); }, [maxUse]);
-  const netPay = Math.max(0, payTotal - creditsUse);
+  const rupeesOff = Math.round(creditsUse * (rate || 1));
+  const netPay = Math.max(0, payTotal - rupeesOff);
   const selAdd = sel.filter(a => a.qty > 0);
   const addonCreditOK = selAdd.filter(a => Number(a.price) > 0).every(a => Number(a.credit_price) > 0);
   const creditCost = (live.length > 0 && live.every(c => c.type && Number(c.type.credit_price) > 0) && addonCreditOK)
@@ -9671,10 +9693,10 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
           <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: maxUse > 0 ? "pointer" : "default" }}>
             <input type="checkbox" checked={useCredits} disabled={maxUse <= 0} onChange={ev => setUseCredits(ev.target.checked)} style={{ marginTop: 3 }} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 13.5, color: "#5B21B6" }}>💳 Use my credits {creditsUse > 0 ? `— saving ₹${creditsUse}` : ""}</div>
+              <div style={{ fontWeight: 800, fontSize: 13.5, color: "#5B21B6" }}>💳 Use my credits {creditsUse > 0 ? `— saving ₹${rupeesOff}` : ""}</div>
               <div style={{ fontSize: 12, color: "#6D5399", marginTop: 3, lineHeight: 1.45 }}>
                 {bal == null ? "Checking your wallet…"
-                  : maxUse > 0 ? `You have ${bal} credits. Credits can cover up to ${capPct}% of this order (₹${maxCreditRupees}). 1 credit = ₹1.`
+                  : maxUse > 0 ? `You have ${bal} credits (1 credit = ₹${rate}). Credits can cover up to ${capPct}% of this order (₹${maxCreditRupees}) — that's ${maxUse} credit${maxUse === 1 ? "" : "s"}.`
                   : (Number(bal) || 0) <= 0 ? "You have 0 credits — top up in Profile → Wallet." : `Credits can cover up to ${capPct}% (₹${maxCreditRupees}) of this order.`}
               </div>
             </div>
@@ -9685,7 +9707,7 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
         <span style={{ color: W.soft, fontSize: 14 }}>Total · {totalQty} ticket{totalQty !== 1 ? "s" : ""}</span>
         <span style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{total === 0 ? "Free" : (cApplied || creditsUse > 0) ? <><s style={{ color: W.soft, fontWeight: 600, fontSize: 14, marginRight: 7 }}>₹{total}</s>{netPay === 0 ? "Free 🎉" : `₹${netPay}`}</> : `₹${total}`}</span>
       </div>
-      {creditsUse > 0 && <div style={{ fontSize: 12, color: "#6D28D9", fontWeight: 700, marginBottom: 8, textAlign: "right" }}>₹{creditsUse} paid by credits · ₹{netPay} by card</div>}
+      {creditsUse > 0 && <div style={{ fontSize: 12, color: "#6D28D9", fontWeight: 700, marginBottom: 8, textAlign: "right" }}>{creditsUse} credit{creditsUse === 1 ? "" : "s"} (−₹{rupeesOff}) · ₹{netPay} by card</div>}
       {total > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your tickets are issued the moment payment succeeds.</div>}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
