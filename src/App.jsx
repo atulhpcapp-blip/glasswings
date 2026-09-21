@@ -1381,7 +1381,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
   const link = `${window.location.origin}/e/${e.id}`;
-  const share = async () => { try { if (navigator.share) await navigator.share({ title: e.title, url: link }); else { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1500); } } catch {} };
+  const shareSuggested = `🎉 ${e.title}${e.event_date ? `\n📅 ${e.event_date}` : ""}${[e.venue, e.city].filter(Boolean).length ? `\n📍 ${[e.venue, e.city].filter(Boolean).join(", ")}` : ""}\n\nGrab your tickets 👉`;
+  const shareCaption = (e.share_text != null && e.share_text !== "") ? e.share_text : shareSuggested;
+  const shareFull = `${(shareCaption || "").trim()}\n${link}`;
+  const share = async () => { try { if (navigator.share) await navigator.share({ title: e.title, text: shareFull }); else { await navigator.clipboard.writeText(shareFull); setCopied(true); setTimeout(() => setCopied(false), 1500); } } catch {} };
   const visTypes = types;
   const realAddons = (addons || []).filter(a => (a.name || "").trim());
   const prices = visTypes.length ? visTypes.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -1897,7 +1900,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v38 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v39 build</div>
       </div>
     </div>
   );
