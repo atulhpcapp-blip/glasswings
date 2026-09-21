@@ -1517,13 +1517,21 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
           {Array.isArray(e.about_media) && e.about_media.length > 0 && (
             <Sec title="Gallery & media">
-              {e.about_media.filter(m => m.kind === "image").length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 7, marginBottom: 10 }}>
-                  {e.about_media.filter(m => m.kind === "image").map((m, i) => (
-                    <a key={i} href={m.url} target="_blank" rel="noreferrer"><img src={m.url} alt="" style={{ width: "100%", height: 96, objectFit: "cover", borderRadius: 10, display: "block" }} /></a>
-                  ))}
-                </div>
-              )}
+              {e.about_media.filter(m => m.kind === "image").length > 0 && (() => {
+                const imgs = e.about_media.filter(m => m.kind === "image");
+                return (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
+                      {imgs.map((m, i) => (
+                        <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{ flex: "0 0 auto", width: imgs.length === 1 ? "100%" : "86%", scrollSnapAlign: "center", display: "block" }}>
+                          <img src={m.url} alt="" style={{ width: "100%", height: wide ? 340 : 240, objectFit: "cover", borderRadius: 14, display: "block", background: "#eee" }} />
+                        </a>
+                      ))}
+                    </div>
+                    {imgs.length > 1 && <div style={{ textAlign: "center", fontSize: 11.5, color: W.soft, marginTop: 5, fontWeight: 600 }}>← swipe · {imgs.length} photos →</div>}
+                  </div>
+                );
+              })()}
               {e.about_media.filter(m => m.kind === "video").map((m, i) => (
                 <video key={i} src={m.url} controls playsInline style={{ width: "100%", borderRadius: 12, marginBottom: 10, background: "#000" }} />
               ))}
@@ -1604,7 +1612,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
                 ? `https://www.google.com/maps/search/?api=1&query=${e.venue_lat},${e.venue_lng}`
                 : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([e.venue, e.city].filter(Boolean).join(", "))}`}
                 target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 11, textDecoration: "none", background: "#E7F6EF", color: "#0d6e58", fontWeight: 800, fontSize: 13.5, borderRadius: 10, padding: "10px 15px" }}>📍 Open in Google Maps</a>
-              {e.venue_lat && (
+              {(e.venue_lat || e.venue) && (
                 <div style={{ marginTop: 13 }}>
                   <div style={{ fontSize: 12.5, color: W.soft, fontWeight: 700, marginBottom: 7 }}>🚕 Getting there — opens a cab app with the venue pre-filled</div>
                   <RideButtons e={e} />
@@ -1880,7 +1888,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v36 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v37 build</div>
       </div>
     </div>
   );
