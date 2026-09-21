@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guides-v11 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guides-v12 build</div>
       </div>
     </div>
   );
@@ -8374,6 +8374,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
       <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>🚪 Event door</div>
       <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>Scan ticket QRs to admit, or sell at the door with cash / your UPI QR.</div>
       <HelpBox title="How the door works" tips={["Pick the event first from the dropdown below.", "Tap ‘Scan tickets’ and point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the code (from the WhatsApp/email ticket) in the box and tap Check.", "‘Door sale’ lets you sell a ticket on the spot and take cash or UPI.", "Every scan and sale is recorded — see running counts and recent scans below."]} />
+      <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: "#EEF6FF", border: "1px solid #CFE2FA", color: "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 14 }}>📖 Organiser guide — how event bookings work</a>
       <select value={evId} onChange={e => { setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
         <option value="">Choose event…</option>
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
