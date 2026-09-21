@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · promo-v24 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · promo-v25 build</div>
       </div>
     </div>
   );
@@ -9081,7 +9081,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <SettlementsPanel isSuper={isSuper} />
-        : seg === "events" ? <AdminEvents onDuplicate={onDuplicateEvent} canApprove={canApprove} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -11012,14 +11012,54 @@ function EventPnLTab({ event }) {
     </div>
   );
 }
-function EventPromotionsTab({ event, onUpdate, canApprove }) {
+function EventPromotionsTab({ event, onUpdate, canApprove, isSuper }) {
   const [promoters, setPromoters] = useState(null);
-  useEffect(() => { supabase.rpc("event_promoters", { p_event: event.id }).then(({ data, error }) => setPromoters(error ? [] : (data || []))); }, [event.id]);
+  const loadProm = () => supabase.rpc("event_promoters", { p_event: event.id }).then(({ data, error }) => setPromoters(error ? [] : (data || [])));
+  useEffect(() => { loadProm(); }, [event.id]);
   const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   const totalComm = (promoters || []).reduce((a, p) => a + Number(p.commission || 0), 0);
+  // assign promoter (superadmin)
+  const [q, setQ] = useState(""); const [dir, setDir] = useState([]); const [comm, setComm] = useState(""); const [aBusy, setABusy] = useState(""); const [aMsg, setAMsg] = useState("");
+  useEffect(() => { if (isSuper) supabase.rpc("staff_directory").then(({ data }) => setDir(data || [])); }, [isSuper]);
+  const matches = q.trim().length < 2 ? [] : dir.filter(m => (m.full_name || "").toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6);
+  const makePromoter = async (m) => {
+    setABusy(m.id); setAMsg("");
+    let current = [];
+    try { const { data } = await supabase.from("profiles").select("roles").eq("id", m.id).maybeSingle(); current = (data?.roles || []).filter(r => ["admin", "subadmin", "organiser", "promoter"].includes(r)); } catch (e) {}
+    const rolesArr = Array.from(new Set([...current, "promoter"]));
+    const { error: e1 } = await supabase.rpc("set_member_roles", { p_user: m.id, p_roles: rolesArr, p_city: null });
+    if (e1) { setABusy(""); return setAMsg(e1.message); }
+    const { error: e2 } = await supabase.rpc("set_commission", { p_user: m.id, p_pct: Number(comm) || 0 });
+    let code = "";
+    try { const { data } = await supabase.from("profiles").select("promo_code").eq("id", m.id).maybeSingle(); code = data?.promo_code || ""; } catch (e) {}
+    setABusy("");
+    if (e2) return setAMsg(e2.message);
+    setAMsg(`✓ ${m.full_name} is now a promoter${comm ? ` at ${comm}% commission` : ""}${code ? ` · code ${code}` : ""}. They share the event link and earn commission on sales.`);
+    setQ(""); loadProm();
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 12, color: W.soft, lineHeight: 1.5 }}>Everything to promote this event in one place — set the promotion fee, blast it on WhatsApp, share the link, and track promoter commission.</div>
+      <div style={{ fontSize: 12, color: W.soft, lineHeight: 1.5 }}>Everything to promote this event in one place — assign promoters, set the promotion fee, blast it on WhatsApp, share the link, and track commission.</div>
+      {isSuper && (
+        <div style={{ background: "#FCE7F3", border: "1px solid #F9C6E0", borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: "#BE185D" }}>➕ Assign a promoter</div>
+          <div style={{ fontSize: 11.5, color: "#9D5273", margin: "3px 0 9px", lineHeight: 1.5 }}>Make any member a promoter and set their commission %. They get a promo code to share; sales through it earn them commission (applies to all events).</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#BE185D", fontWeight: 700 }}>Commission</span>
+            <input value={comm} onChange={e => setComm(e.target.value.replace(/[^\d.]/g, "").slice(0, 5))} inputMode="decimal" placeholder="10" style={{ width: 70, border: "1px solid #F9C6E0", borderRadius: 9, padding: "8px 10px", fontSize: 14, fontWeight: 800, outline: "none", background: "#fff" }} />
+            <span style={{ fontSize: 13, color: "#BE185D", fontWeight: 700 }}>%</span>
+          </div>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member by name…" style={{ width: "100%", border: "1px solid #F9C6E0", borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff", color: W.ink }} />
+          {matches.map(m => (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: "1px solid #F5D6E6" }}>
+              <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
+              <span style={{ flex: 1, minWidth: 90, fontSize: 13.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.full_name}</span>
+              <button onClick={() => makePromoter(m)} disabled={aBusy === m.id} style={{ ...btn("#DB2777", "#fff"), padding: "6px 12px", fontSize: 12.5, opacity: aBusy === m.id ? .6 : 1 }}>{aBusy === m.id ? "…" : "Make promoter"}</button>
+            </div>
+          ))}
+          {aMsg && <div style={{ fontSize: 12.5, color: aMsg.startsWith("✓") ? "#0E7A5F" : "#C0392B", marginTop: 8, lineHeight: 1.5 }}>{aMsg}</div>}
+        </div>
+      )}
       <PromoPctEditor event={event} onUpdate={onUpdate} canApprove={canApprove} />
       <div>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
@@ -11144,7 +11184,7 @@ function HelpBox({ title = "How this works", tips, children, defaultOpen = false
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, dims, optsAll }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, isSuper, dims, optsAll }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const [mSeg, setMSeg] = useState("details");
@@ -11639,7 +11679,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   </>)}
                   {mSeg === "sales" && <EventSalesTab event={e} />}
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
-                  {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} />}
+                  {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} isSuper={isSuper} />}
                   {mSeg === "guests" && (<>
                     <GuestTickets event={e} />
                   </>)}
