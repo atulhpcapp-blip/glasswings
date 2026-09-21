@@ -360,6 +360,7 @@ function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
       {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: on ? W.teal : "transparent", color: on ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on ? 700 : 600, fontSize: 15 }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}{it.id === "meet" && meetBadge > 0 && <span style={{ marginLeft: "auto", background: "#EC4899", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{meetBadge}</span>}</button>; })}
+      <button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: "transparent", color: "#FF8D7A", fontWeight: 700, fontSize: 15 }}><LogOut size={20} />Log out</button>
     </div>
   );
 }
@@ -1869,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · credits-v18 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · pnl-v19 build</div>
       </div>
     </div>
   );
@@ -10926,6 +10927,79 @@ function EventDetailsEditor({ event, onUpdate }) {
     </div>
   );
 }
+function EventPnLTab({ event }) {
+  const [ticketIncome, setTicketIncome] = useState(null);
+  const [rows, setRows] = useState(null);
+  const [kind, setKind] = useState("income");
+  const [title, setTitle] = useState(""), [amount, setAmount] = useState(""), [busy, setBusy] = useState(false);
+  const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const loadRows = () => supabase.rpc("event_ledger_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setRows(data || []); else setRows([]); });
+  useEffect(() => {
+    supabase.rpc("event_ticket_analysis", { p_event: event.id }).then(({ data, error }) => setTicketIncome(error ? 0 : (Number(data?.paid_gross || 0) + Number(data?.door_cash || 0) + Number(data?.door_upi || 0))));
+    loadRows();
+  }, [event.id]);
+  const add = async () => {
+    if (!title.trim()) return alert("Add a title.");
+    setBusy(true);
+    const { error } = await supabase.rpc("event_ledger_add", { p_event: event.id, p_kind: kind, p_title: title.trim(), p_amount: Number(amount) || 0, p_note: null });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setTitle(""); setAmount(""); loadRows();
+  };
+  const del = async (id) => { const { error } = await supabase.rpc("event_ledger_del", { p_id: id }); if (error) return alert(error.message); loadRows(); };
+  const incomeRows = (rows || []).filter(r => r.kind === "income");
+  const expenseRows = (rows || []).filter(r => r.kind === "expense");
+  const manualIncome = incomeRows.reduce((a, r) => a + Number(r.amount || 0), 0);
+  const totalExpense = expenseRows.reduce((a, r) => a + Number(r.amount || 0), 0);
+  const totalIncome = Number(ticketIncome || 0) + manualIncome;
+  const net = totalIncome - totalExpense;
+  const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", background: "#fff", color: W.ink };
+  const lineRow = (r, color) => (
+    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
+      <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{r.title}</div></div>
+      <div style={{ fontWeight: 800, color, fontSize: 14.5 }}>{money(r.amount)}</div>
+      <Trash2 size={15} color="#C0392B" style={{ cursor: "pointer", flexShrink: 0 }} onClick={() => del(r.id)} />
+    </div>
+  );
+  return (
+    <div>
+      <div style={{ background: net >= 0 ? "linear-gradient(135deg,#0E7A5F,#04B08F)" : "linear-gradient(135deg,#B23B2E,#E05545)", color: "#fff", borderRadius: 14, padding: "16px 18px", marginBottom: 12 }}>
+        <div style={{ fontSize: 12, opacity: .9, fontWeight: 700 }}>Net profit for this event</div>
+        <div style={{ fontSize: 30, fontWeight: 900, margin: "2px 0 10px" }}>{net < 0 ? "− " : ""}{money(Math.abs(net))}</div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5 }}>
+          <span>▲ Income <b>{money(totalIncome)}</b></span>
+          <span>▼ Expenses <b>{money(totalExpense)}</b></span>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#0E7A5F", margin: "6px 0 4px" }}>▲ Income</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
+        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>🎟️ Ticket sales</div><div style={{ fontSize: 11.5, color: W.soft }}>Auto — online + door cash/UPI</div></div>
+        <div style={{ fontWeight: 800, color: "#0E7A5F", fontSize: 14.5 }}>{ticketIncome == null ? "…" : money(ticketIncome)}</div>
+      </div>
+      {incomeRows.map(r => lineRow(r, "#0E7A5F"))}
+
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#C0392B", margin: "16px 0 4px" }}>▼ Expenses</div>
+      {expenseRows.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, padding: "6px 0" }}>No expenses added yet.</div>}
+      {expenseRows.map(r => lineRow(r, "#C0392B"))}
+
+      <div style={{ marginTop: 16, background: W.bg, borderRadius: 12, padding: 12 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink, marginBottom: 8 }}>Add a line</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          {[["income", "▲ Income"], ["expense", "▼ Expense"]].map(([k, l]) => (
+            <button key={k} onClick={() => setKind(k)} style={{ flex: 1, padding: "9px", borderRadius: 10, border: `1.5px solid ${kind === k ? (k === "income" ? "#0E7A5F" : "#C0392B") : W.line}`, background: kind === k ? (k === "income" ? "#E3F7EF" : "#FBE9E7") : "#fff", color: kind === k ? (k === "income" ? "#0E7A5F" : "#C0392B") : W.soft, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{l}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder={kind === "income" ? "e.g. Sponsorship — Red Bull" : "e.g. DJ, decor, venue"} style={{ ...ip, flex: "1 1 150px", minWidth: 0 }} />
+          <input value={amount} onChange={e => setAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder="₹ amount" inputMode="decimal" style={{ ...ip, width: 110 }} />
+          <button onClick={add} disabled={busy} style={{ ...btn(W.teal, "#fff"), justifyContent: "center", opacity: busy ? .6 : 1 }}><Plus size={15} />Add</button>
+        </div>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, lineHeight: 1.5 }}>Ticket income updates automatically from sales. Add sponsorships and any other income, plus all expenses, to see your true net profit.</div>
+    </div>
+  );
+}
 function CreditCapEditor({ ev, onUpdate }) {
   const [v, setV] = useState(ev.credit_cap_pct == null ? "" : String(ev.credit_cap_pct));
   const [saved, setSaved] = useState(false);
@@ -11037,6 +11111,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     ["media", "🖼️", "Media & share", "#2563EB", "#EAF1FE"],
     ["tickets", "🎟️", "Tickets", "#7C3AED", "#F3EEFE"],
     ["sales", "💰", "Sales", "#059669", "#E3F7EF"],
+    ["pnl", "💹", "P&L", "#0E7A5F", "#E3F7EF"],
     ["guests", "🧑‍🤝‍🧑", "Guest list", "#D97706", "#FDF3E4"],
     ["terms", "📋", "Terms", "#E11D48", "#FDE9EF"],
   ];
@@ -11522,6 +11597,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <PromoPctEditor event={e} onUpdate={onUpdate} canApprove={canApprove} />
                   </>)}
                   {mSeg === "sales" && <EventSalesTab event={e} />}
+                  {mSeg === "pnl" && <EventPnLTab event={e} />}
                   {mSeg === "guests" && (<>
                     <GuestTickets event={e} />
                   </>)}
@@ -13523,7 +13599,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
   };
   return (
     <div>
-      <TopBar title="Profile" />
+      <TopBar title="Profile" right={<button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer", flexShrink: 0 }}><LogOut size={17} />Log out</button>} />
       <div style={{ padding: 16 }}>
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 20, display: "flex", alignItems: "center", gap: 16 }}>
           <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", flexShrink: 0 }}>
@@ -14000,7 +14076,7 @@ function TermsLink() {
 }
 
 /* ---------------- shared ---------------- */
-function TopBar({ title }) { return <div style={{ background: W.teal, color: "#fff", padding: "16px 18px", fontSize: 21, fontWeight: 700, position: "sticky", top: 0, zIndex: 10 }}>{title}</div>; }
+function TopBar({ title, right }) { return <div style={{ background: W.teal, color: "#fff", padding: "16px 18px", fontSize: 21, fontWeight: 700, position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>{right}</div>; }
 function Avatar({ room, size }) {
   if (room?.logo_url) return <img src={room.logo_url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />;
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, fontSize: size * .5, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#7AD6C0,#008069)" }}>{room?.emoji || "💬"}</div>;
