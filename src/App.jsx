@@ -1870,7 +1870,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v33 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v34 build</div>
       </div>
     </div>
   );
@@ -2850,7 +2850,7 @@ function Main({ user }) {
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} />}
+      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} onUpgrade={() => setSubPage({ highlight: null })} />}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -3467,8 +3467,9 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     </div>
   );
 }
-function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false }) {
+function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false, onUpgrade }) {
   const [mtab, setMtab] = useState("discover");
+  const [matchTab, setMatchTab] = useState("perfect");
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
   const [me, setMe] = useState({ area: "", city: "" });
@@ -3654,6 +3655,36 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
   const wavedYouList = (rows || []).filter(p => p.waved_me && !p.waved_by_me && oppOnly(p));
   const mCandidates = (rows || []).filter(p => !p.waved_by_me && !p.waved_me && p.avatar_url && oppOnly(p));
   const matchOfDay = mCandidates.length ? mCandidates[new Date().getDate() % mCandidates.length] : null;
+  const hasPlan = typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0;
+  const perfectList = mCandidates;
+  const goPlan = () => onUpgrade ? onUpgrade() : window.gwConfirm("💎 Take a plan from Profile → Plans to unlock this.", () => {});
+  const heroCard = (p) => (
+    <div style={{ background: "#fff", borderRadius: 16, marginBottom: 12, border: "1px solid #FDE68A", overflow: "hidden", boxShadow: "0 6px 18px rgba(245,158,11,.20)" }}>
+      <div onClick={() => openPeek(p)} style={{ position: "relative", width: "100%", aspectRatio: "4/5", background: W.bg, cursor: "pointer" }}>
+        {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 78 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
+        <div style={{ position: "absolute", top: 11, left: 11, background: "rgba(245,158,11,.96)", color: "#fff", fontSize: 11, fontWeight: 900, letterSpacing: .4, padding: "6px 11px", borderRadius: 999 }}>🔥 PERFECT MATCH</div>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "30px 15px 13px", background: "linear-gradient(transparent, rgba(0,0,0,.74))" }}>
+          <div style={{ fontWeight: 900, color: "#fff", fontSize: 22, lineHeight: 1.1 }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,.92)", marginTop: 3 }}>{p.area || p.city || "Say hi 👋"}</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, padding: 12 }}>
+        <button onClick={() => doPass(p)} disabled={waveBusy === p.id} title="Decline" style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 20, lineHeight: 1, cursor: "pointer" }}>✗</button>
+        <button onClick={() => doWave(p)} disabled={waveBusy === p.id} title="Like" style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(95deg,#EC4899,#F472B6)", color: "#fff", fontWeight: 900, fontSize: 15.5, cursor: "pointer", opacity: waveBusy === p.id ? .6 : 1 }}>{p.waved_me ? "✓ It's a match" : "✓ Like"}</button>
+      </div>
+    </div>
+  );
+  const lockedCard = (p) => (
+    <div onClick={goPlan} style={{ position: "relative", borderRadius: 16, marginBottom: 12, overflow: "hidden", cursor: "pointer", aspectRatio: "4/5", background: "#111" }}>
+      {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", filter: "blur(16px)", transform: "scale(1.1)" }} /> : <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg,#6D28D9,#EC4899)" }} />}
+      <div style={{ position: "absolute", inset: 0, background: "rgba(10,8,20,.5)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 18, color: "#fff" }}>
+        <div style={{ fontSize: 34 }}>🔒</div>
+        <div style={{ fontWeight: 900, fontSize: 16, marginTop: 6 }}>More perfect matches</div>
+        <div style={{ fontSize: 12.5, opacity: .9, marginTop: 4, lineHeight: 1.4 }}>Take a plan to see everyone we've picked for you 💘</div>
+        <div style={{ marginTop: 12, background: "rgba(255,255,255,.22)", padding: "9px 18px", borderRadius: 10, fontWeight: 800, fontSize: 13.5 }}>💎 Take a plan</div>
+      </div>
+    </div>
+  );
   const miniAv = (p, ring) => <div onClick={() => openPeek(p)} style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", margin: "0 auto", border: `2.5px solid ${ring}`, cursor: "pointer", background: "#fff" }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>;
   return (
     <div style={asTab ? { paddingBottom: 90 } : { position: "fixed", inset: 0, zIndex: 160, background: W.bg, overflowY: "auto" }}>
@@ -3694,50 +3725,51 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
             )}
           </div>
         )}
-        {(matchList.length > 0 || wavedYouList.length > 0 || matchOfDay) && (
-          <div style={{ margin: wide ? "12px 6px 0" : "12px 14px 0", background: "linear-gradient(120deg,#FDF2F8,#F5F3FF)", border: "1px solid #F3D9EE", borderRadius: 16, padding: "14px 14px 8px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}><span style={{ fontSize: 19 }}>💘</span><div style={{ fontWeight: 900, fontSize: 16, color: "#BE185D" }}>Your matches{matchList.length ? ` (${matchList.length})` : ""}</div></div>
-            {matchList.length > 0 ? (
-              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
-                {matchList.map(p => (
-                  <div key={p.id} style={{ flexShrink: 0, width: 88, textAlign: "center" }}>
-                    {miniAv(p, "#EC4899")}
-                    <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}</div>
-                    <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: "linear-gradient(95deg,#6D28D9,#EC4899)", color: "#fff" }}>💬 Chat</button>
-                  </div>
-                ))}
-              </div>
-            ) : <div style={{ fontSize: 12.5, color: W.soft, paddingBottom: 8, lineHeight: 1.5 }}>No mutual matches yet — when you both wave 👋 it's a match and chat unlocks 💬</div>}
-            {matchOfDay && (
-              <div style={{ background: "#fff", borderRadius: 16, margin: "6px 0 12px", border: "1px solid #FDE68A", overflow: "hidden", boxShadow: "0 6px 18px rgba(245,158,11,.20)" }}>
-                <div onClick={() => openPeek(matchOfDay)} style={{ position: "relative", width: "100%", aspectRatio: "4/5", background: W.bg, cursor: "pointer" }}>
-                  {matchOfDay.avatar_url
-                    ? <img src={matchOfDay.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 78 }}>{matchOfDay.gender === "female" ? "👩" : matchOfDay.gender === "male" ? "👨" : "🙂"}</div>}
-                  <div style={{ position: "absolute", top: 11, left: 11, background: "rgba(245,158,11,.96)", color: "#fff", fontSize: 11, fontWeight: 900, letterSpacing: .4, padding: "6px 11px", borderRadius: 999 }}>🔥 MATCH OF THE DAY</div>
-                  <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "30px 15px 13px", background: "linear-gradient(transparent, rgba(0,0,0,.74))" }}>
-                    <div style={{ fontWeight: 900, color: "#fff", fontSize: 22, lineHeight: 1.1 }}>{(matchOfDay.name || "Member").split(" ")[0]}{matchOfDay.age ? `, ${matchOfDay.age}` : ""}</div>
-                    <div style={{ fontSize: 13, color: "rgba(255,255,255,.92)", marginTop: 3 }}>{matchOfDay.area || matchOfDay.city || "Say hi 👋"}</div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 10, padding: 12 }}>
-                  <button onClick={() => doPass(matchOfDay)} disabled={waveBusy === matchOfDay.id} title="Decline" style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 20, lineHeight: 1, cursor: "pointer" }}>✗</button>
-                  <button onClick={() => doWave(matchOfDay)} disabled={waveBusy === matchOfDay.id} title="Like" style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(95deg,#EC4899,#F472B6)", color: "#fff", fontWeight: 900, fontSize: 15.5, cursor: "pointer", opacity: waveBusy === matchOfDay.id ? .6 : 1 }}>{matchOfDay.waved_me ? "✓ It's a match" : "✓ Like"}</button>
-                </div>
-              </div>
-            )}
-            {wavedYouList.length > 0 && (<>
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: "#DB2777", margin: "2px 0 8px" }}>👀 Waved at you ({wavedYouList.length}) — wave back to match!</div>
-              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8 }}>
-                {wavedYouList.map(p => (
-                  <div key={p.id} style={{ flexShrink: 0, width: 88, textAlign: "center" }}>
-                    {miniAv(p, "#DB2777")}
-                    <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
-                    <button onClick={() => doWave(p)} disabled={waveBusy === p.id || p.waved_by_me} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: "#EC4899", color: "#fff", opacity: waveBusy === p.id ? .6 : 1 }}>Wave back</button>
-                  </div>
-                ))}
-              </div>
-            </>)}
+        {(perfectList.length > 0 || matchList.length > 0 || wavedYouList.length > 0) && (
+          <div style={{ margin: wide ? "12px 6px 0" : "12px 14px 0", background: "linear-gradient(120deg,#FDF2F8,#F5F3FF)", border: "1px solid #F3D9EE", borderRadius: 16, padding: "12px 12px 12px" }}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              {[["perfect", "🔥 Perfect", perfectList.length], ["friends", "💬 Friends", matchList.length], ["waved", "👀 Liked you", wavedYouList.length]].map(([k, l, n]) => (
+                <button key={k} onClick={() => setMatchTab(k)} style={{ flex: 1, padding: "8px 2px", borderRadius: 9, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11.5, background: matchTab === k ? "#BE185D" : "#fff", color: matchTab === k ? "#fff" : "#9D174D" }}>{l}{n ? ` ${n}` : ""}</button>
+              ))}
+            </div>
+            {matchTab === "perfect" && (perfectList.length === 0
+              ? <div style={{ fontSize: 12.5, color: W.soft, padding: "4px 2px 8px", lineHeight: 1.5 }}>No new suggestions right now — check back soon 💫</div>
+              : (<>
+                  {heroCard(perfectList[0])}
+                  {perfectList[1] && (hasPlan ? heroCard(perfectList[1]) : lockedCard(perfectList[1]))}
+                </>))}
+            {matchTab === "friends" && (matchList.length === 0
+              ? <div style={{ fontSize: 12.5, color: W.soft, padding: "4px 2px 8px", lineHeight: 1.5 }}>No friends yet — when you <b>both tick ✓</b> you become friends and your chat opens 💬</div>
+              : (<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(84px,1fr))", gap: 12, paddingBottom: 4 }}>
+                  {matchList.map(p => (
+                    <div key={p.id} style={{ textAlign: "center" }}>
+                      {miniAv(p, "#EC4899")}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}</div>
+                      <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: "linear-gradient(95deg,#6D28D9,#EC4899)", color: "#fff" }}>💬 Chat</button>
+                    </div>
+                  ))}
+                </div>))}
+            {matchTab === "waved" && (hasPlan
+              ? (wavedYouList.length === 0
+                  ? <div style={{ fontSize: 12.5, color: W.soft, padding: "4px 2px 8px", lineHeight: 1.5 }}>No one's liked you yet — keep exploring 💫</div>
+                  : (<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(84px,1fr))", gap: 12, paddingBottom: 4 }}>
+                      {wavedYouList.map(p => (
+                        <div key={p.id} style={{ textAlign: "center" }}>
+                          {miniAv(p, "#DB2777")}
+                          <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
+                          <button onClick={() => doWave(p)} disabled={waveBusy === p.id || p.waved_by_me} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: "#EC4899", color: "#fff", opacity: waveBusy === p.id ? .6 : 1 }}>✓ Like back</button>
+                        </div>
+                      ))}
+                    </div>))
+              : (<div onClick={goPlan} style={{ background: "linear-gradient(100deg,#6D28D9,#EC4899)", borderRadius: 13, padding: "18px 14px", color: "#fff", cursor: "pointer", textAlign: "center" }}>
+                  <div style={{ fontSize: 30 }}>🔒</div>
+                  <div style={{ fontWeight: 900, fontSize: 15.5, marginTop: 5 }}>See who liked you</div>
+                  <div style={{ fontSize: 12.5, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{wavedYouList.length > 0 ? `${wavedYouList.length} ${wavedYouList.length === 1 ? "person has" : "people have"} already liked you 💘` : "Find out the moment someone likes you 💘"}</div>
+                  <div style={{ marginTop: 12, display: "inline-block", background: "rgba(255,255,255,.22)", padding: "9px 20px", borderRadius: 10, fontWeight: 800, fontSize: 13.5 }}>💎 Take a plan</div>
+                </div>))}
+            <div style={{ marginTop: 12, background: "#fff", border: "1px solid #F3D9EE", borderRadius: 11, padding: "10px 12px", fontSize: 12, color: W.ink, lineHeight: 1.55 }}>
+              💡 <b>How matching works:</b> when you <b style={{ color: "#0d6e58" }}>both tick ✓</b> each other, it's a <b style={{ color: "#BE185D" }}>match</b> — your <b>communication line opens</b> and you can chat. Tapping <b style={{ color: "#DC2626" }}>✗</b> quietly passes, and they're never told.
+            </div>
           </div>
         )}
         </div>
