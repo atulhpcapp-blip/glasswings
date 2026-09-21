@@ -1869,7 +1869,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · event-ui-v6 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · guest-tiers-v7 build</div>
       </div>
     </div>
   );
@@ -11391,12 +11391,59 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   );
 }
 function GuestTickets({ event }) {
-  const [q, setQ] = useState("");
-  const [list, setList] = useState([]);
-  const [given, setGiven] = useState({});
-  const [added, setAdded] = useState({});
-  const [msg, setMsg] = useState("");
-  useEffect(() => { supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, []);
+  const TIERS = [
+    ["guest", "🎟️", "Guest", "#008069", "#E7F6EF"],
+    ["vip", "💎", "VIP", "#B7791F", "#FBF3DC"],
+    ["team", "🛡️", "Team", "#475569", "#EDF1F6"],
+  ];
+  const tmeta = (k) => TIERS.find(t => t[0] === k) || TIERS[0];
+  const [mode, setMode] = useState("outsider");
+  const [tier, setTier] = useState("guest");
+  const [gName, setGName] = useState(""), [gPhone, setGPhone] = useState(""), [gEmail, setGEmail] = useState(""), [gQty, setGQty] = useState("1"), [gAge, setGAge] = useState(""), [gLoc, setGLoc] = useState("");
+  const [gBusy, setGBusy] = useState(false);
+  const [guests, setGuests] = useState([]);
+  const [q, setQ] = useState(""); const [list, setList] = useState([]); const [given, setGiven] = useState({}); const [added, setAdded] = useState({}); const [msg, setMsg] = useState("");
+  const loadGuests = () => supabase.rpc("guest_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setGuests(data || []); });
+  useEffect(() => { loadGuests(); supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, [event.id]);
+  const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", color: W.ink, background: "#fff" };
+  const label = (g) => g.guest_type === "vip" ? "VIP guest ticket" : g.guest_type === "team" ? "Team pass" : "Guest ticket";
+  const waLink = (g) => {
+    const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nOpen & show the QR at the door:\nhttps://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
+    const num = (g.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "");
+    return num ? `https://wa.me/${num}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+  };
+  const shareGuest = async (g) => {
+    const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nCode: ${g.code}\nTicket: https://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
+    try {
+      const blob = await makeTicketBlob({ emoji: tmeta(g.guest_type)[1], title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
+      const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: event.title, text }); return; }
+    } catch (e) {}
+    window.open(waLink(g), "_blank");
+  };
+  const emailGuest = async (g) => {
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      const r = await fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "guest", access_token: token, guest_id: g.id }) });
+      const out = await r.json();
+      alert(r.ok ? (out.skipped ? "Not sent: " + out.skipped : `Ticket emailed to ${g.email} ✅`) : (out.error || "Could not send."));
+    } catch (e) { alert("Could not send the email."); }
+  };
+  const addGuest = async () => {
+    if (!gName.trim()) return alert("Guest name is required.");
+    setGBusy(true);
+    const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc, p_type: tier });
+    setGBusy(false);
+    if (error) return alert(error.message);
+    if (gEmail.trim() && gNew?.id) { try { const token = (await supabase.auth.getSession()).data.session?.access_token; fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "guest", access_token: token, guest_id: gNew.id }) }); } catch (e) {} }
+    const { data: gl } = await supabase.rpc("guest_list", { p_event: event.id });
+    setGuests(gl || []);
+    const row = (gl || []).find(x => x.id === gNew?.id);
+    const tn = tmeta(tier)[2];
+    setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc("");
+    if (row?.code) window.gwConfirm(`✅ ${row.name} added as ${tn}.\n\nShare their ticket on WhatsApp now?`, () => shareGuest(row));
+  };
+  const changeTier = async (g, t) => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, guest_type: t } : x)); const { error } = await supabase.rpc("set_guest_type", { p_id: g.id, p_type: t }); if (error) { alert(error.message); loadGuests(); } };
   const matches = q.trim().length < 2 ? [] : list.filter(m => (m.full_name || "").toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6);
   const give = async (m) => {
     setMsg("");
@@ -11404,32 +11451,94 @@ function GuestTickets({ event }) {
     if (error) return setMsg(error.message);
     setGiven(g => ({ ...g, [m.id]: (g[m.id] || 0) + 1 }));
     setMsg(`✓ Free ticket issued to ${m.full_name} — they'll see it in their app and get it by email.`);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, event_id: event.id, for_user: m.id }) });
-    } catch {}
+    try { const { data: { session } } = await supabase.auth.getSession(); fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, event_id: event.id, for_user: m.id }) }); } catch (e) {}
   };
   const addGroup = async (m) => {
     setMsg("");
     const { error } = await supabase.rpc("add_event_group_member", { p_event: event.id, p_user: m.id });
     if (error) return setMsg(error.message);
     setAdded(a => ({ ...a, [m.id]: true }));
-    setMsg(`✓ ${m.full_name} added to the event group — no ticket created. They can now see and chat in the group.`);
+    setMsg(`✓ ${m.full_name} added to the event group — no ticket created.`);
   };
+  const count = (k) => guests.filter(g => (g.guest_type || "guest") === k).length;
+  const entries = guests.reduce((a, g) => a + (g.quantity || 1), 0);
   return (
-    <div style={{ marginTop: 16 }}>
-      <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Guest list — free tickets</label>
-      <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Quietly give free tickets to friends and special guests. Nothing is shown or sold on the portal — the guest just receives the ticket. (They need a free account first.) Or add someone to the event group chat only, with no ticket.</div>
-      <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member by name…" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", color: W.ink }} />
-      {matches.map(m => (
-        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: `1px solid ${W.line}`, flexWrap: "wrap" }}>
-          <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
-          <span style={{ flex: 1, minWidth: 90, fontSize: 13.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.full_name}</span>
-          <button onClick={() => addGroup(m)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "6px 11px", fontSize: 12.5 }}>{added[m.id] ? "In group ✓" : "Add to group"}</button>
-          <button onClick={() => give(m)} style={{ ...btn(W.teal, "#fff"), padding: "6px 11px", fontSize: 12.5 }}>{given[m.id] ? `Give again (${given[m.id]})` : "Give ticket"}</button>
+    <div style={{ marginTop: 4 }}>
+      <label style={{ fontSize: 14, fontWeight: 800, color: W.ink }}>Guest list — free invites</label>
+      <div style={{ fontSize: 12, color: W.soft, margin: "3px 0 10px", lineHeight: 1.5 }}>Give free entry to anyone — <b>members or outsiders</b> (no account needed). Pick a tier, then send the QR ticket by WhatsApp or email. Tick people in on the Check-in screen.</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {TIERS.map(([k, ic, lbl, col, bg]) => (
+          <div key={k} style={{ flex: "1 1 84px", background: bg, borderRadius: 11, padding: "9px 11px", textAlign: "center" }}>
+            <div style={{ fontSize: 19, fontWeight: 900, color: col }}>{count(k)}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: col }}>{ic} {lbl}</div>
+          </div>
+        ))}
+        <div style={{ flex: "1 1 84px", background: W.bg, borderRadius: 11, padding: "9px 11px", textAlign: "center" }}>
+          <div style={{ fontSize: 19, fontWeight: 900, color: W.ink }}>{entries}</div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: W.soft }}>🎫 Entries</div>
         </div>
-      ))}
-      {msg && <div style={{ fontSize: 12.5, color: msg.startsWith("✓") ? W.teal : "#C0392B", marginTop: 8 }}>{msg}</div>}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {[["outsider", "➕ Add outsider"], ["member", "🔎 Add member"]].map(([k, l]) => (
+          <button key={k} onClick={() => setMode(k)} style={{ flex: 1, padding: "10px 8px", borderRadius: 11, border: `1.5px solid ${mode === k ? W.teal : W.line}`, background: mode === k ? W.teal : "#fff", color: mode === k ? "#fff" : W.soft, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Tier</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {TIERS.map(([k, ic, lbl, col, bg]) => {
+          const on = tier === k;
+          return <button key={k} onClick={() => setTier(k)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 8px", borderRadius: 11, border: `2px solid ${on ? col : bg}`, background: on ? col : bg, color: on ? "#fff" : col, fontWeight: 800, fontSize: 13.5, cursor: "pointer", boxShadow: on ? `0 3px 10px ${col}44` : "none" }}><span style={{ fontSize: 16 }}>{ic}</span>{lbl}</button>;
+        })}
+      </div>
+      {mode === "outsider" ? (
+        <div style={{ background: W.bg, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7 }}>
+            <input value={gName} onChange={e => setGName(e.target.value)} placeholder="Full name *" style={{ ...ip, flex: "1 1 150px" }} />
+            <input value={gPhone} onChange={e => setGPhone(e.target.value)} placeholder="Phone (for WhatsApp)" inputMode="tel" style={{ ...ip, flex: "1 1 130px" }} />
+          </div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7 }}>
+            <input value={gEmail} onChange={e => setGEmail(e.target.value)} placeholder="Email (optional)" type="email" style={{ ...ip, flex: "1 1 160px" }} />
+            <input value={gAge} onChange={e => setGAge(e.target.value.replace(/\D/g, ""))} placeholder="Age" inputMode="numeric" style={{ ...ip, width: 60, textAlign: "center" }} />
+            <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ ...ip, width: 60, textAlign: "center" }} />
+          </div>
+          <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ ...ip, width: "100%", marginBottom: 9 }} />
+          <button onClick={addGuest} disabled={gBusy} style={{ ...btn(tmeta(tier)[3], "#fff"), width: "100%", justifyContent: "center", opacity: gBusy ? .6 : 1, fontSize: 14.5 }}>{gBusy ? "Adding…" : `${tmeta(tier)[1]} Add ${tmeta(tier)[2]} & send ticket`}</button>
+        </div>
+      ) : (
+        <div style={{ marginBottom: 14 }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search member by name…" style={{ ...ip, width: "100%" }} />
+          {matches.map(m => (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 2px", borderBottom: `1px solid ${W.line}`, flexWrap: "wrap" }}>
+              <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
+              <span style={{ flex: 1, minWidth: 90, fontSize: 13.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.full_name}</span>
+              <button onClick={() => addGroup(m)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "6px 11px", fontSize: 12.5 }}>{added[m.id] ? "In group ✓" : "Add to group"}</button>
+              <button onClick={() => give(m)} style={{ ...btn(W.teal, "#fff"), padding: "6px 11px", fontSize: 12.5 }}>{given[m.id] ? `Give again (${given[m.id]})` : "Give ticket"}</button>
+            </div>
+          ))}
+          {msg && <div style={{ fontSize: 12.5, color: msg.startsWith("✓") ? W.teal : "#C0392B", marginTop: 8 }}>{msg}</div>}
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8 }}>Members get a real in-app ticket. For a tiered VIP/Team pass, use “Add outsider” — it works for members too, just type their name.</div>
+        </div>
+      )}
+      {guests.length > 0 && <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink, margin: "6px 0 8px" }}>Invited ({guests.length})</div>}
+      {guests.map(g => { const tm = tmeta(g.guest_type || "guest"); return (
+        <div key={g.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 11px", marginBottom: 8, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${tm[3]}`, borderRadius: 11 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+              <span style={{ background: tm[4], color: tm[3], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 9 }}>{tm[1]} {tm[2]}</span>
+              <b style={{ fontSize: 14.5, color: W.ink }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</b>
+            </div>
+            <div style={{ fontSize: 11.5, color: W.soft, wordBreak: "break-all", marginTop: 3 }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
+            <select value={g.guest_type || "guest"} onChange={e => changeTier(g, e.target.value)} style={{ ...ip, marginTop: 6, padding: "5px 8px", fontSize: 12, width: "auto" }}>
+              {TIERS.map(([k, ic, lbl]) => <option key={k} value={k}>{ic} {lbl}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {g.email && <button onClick={() => emailGuest(g)} title="Email the ticket" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>}
+            <button onClick={() => shareGuest(g)} title="Send ticket on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12 }}><MessageCircle size={13} /></button>
+            <button onClick={() => { if (window.confirm(`Remove ${g.name}?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 9px", fontSize: 12 }}><Trash2 size={13} /></button>
+          </div>
+        </div>
+      ); })}
     </div>
   );
 }
