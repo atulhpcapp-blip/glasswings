@@ -2044,7 +2044,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v42 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v43 build</div>
       </div>
     </div>
   );
@@ -4019,34 +4019,36 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
             </div>
           </div>
         )}
-        <div style={{ margin: wide ? "14px 6px 2px" : "14px 14px 2px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 11 }}>
-            <span style={{ fontSize: 17 }}>🔎</span>
-            <div style={{ fontWeight: 900, fontSize: 15, color: W.ink, flex: 1 }}>Find people</div>
-            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all") && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); }} style={{ background: "transparent", border: "none", color: W.teal, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Clear all</button>}
+        <div style={{ margin: wide ? "14px 6px 2px" : "14px 14px 2px", background: "linear-gradient(135deg,#FFF7FB,#F3F0FF 55%,#EAF7F2)", border: "1px solid #EBD9F0", borderRadius: 18, padding: 15, boxShadow: "0 4px 16px rgba(124,58,237,.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 19 }}>🔎</span>
+            <div style={{ fontWeight: 900, fontSize: 16, flex: 1, background: "linear-gradient(95deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Find your people</div>
+            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all") && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            {[["all", "Everyone"], ["female", "👩 Women"], ["male", "👨 Men"], ["new", "🆕 Newbies"]].map(([k, l]) => (
-              <button key={k} onClick={() => setFlt(k)} style={{ padding: "9px 15px", borderRadius: 999, border: flt === k ? "none" : `1.5px solid ${W.line}`, background: flt === k ? W.teal : "#fff", color: flt === k ? "#fff" : W.soft, fontWeight: 800, fontSize: 13, cursor: "pointer" }}>{l}</button>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#0d6e58", marginBottom: 7 }}>👥 SHOW</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 13 }}>
+            {[["all", "Everyone", "linear-gradient(95deg,#008069,#00A884)"], ["female", "👩 Women", "linear-gradient(95deg,#EC4899,#F472B6)"], ["male", "👨 Men", "linear-gradient(95deg,#2563EB,#06B6D4)"], ["new", "🆕 Newbies", "linear-gradient(95deg,#7C3AED,#A78BFA)"]].map(([k, l, g]) => (
+              <button key={k} onClick={() => setFlt(k)} style={{ padding: "10px 16px", borderRadius: 999, border: flt === k ? "none" : "1.5px solid #E4DCEF", background: flt === k ? g : "#fff", color: flt === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: flt === k ? "0 3px 10px rgba(0,0,0,.15)" : "none" }}>{l}</button>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 11 }}>
-            <select value={cityFlt} onChange={e => { setCityFlt(e.target.value); setAreaFlt("all"); }} style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${cityFlt !== "all" ? W.teal : W.line}`, background: cityFlt !== "all" ? "#E7F6EF" : "#fff", color: W.ink, fontWeight: 700, fontSize: 13, outline: "none" }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#1E6FB8", marginBottom: 7 }}>📍 WHERE</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 13 }}>
+            <select value={cityFlt} onChange={e => { setCityFlt(e.target.value); setAreaFlt("all"); }} style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 11, border: `1.5px solid ${cityFlt !== "all" ? "#2563EB" : "#E4DCEF"}`, background: cityFlt !== "all" ? "#EAF1FE" : "#fff", color: W.ink, fontWeight: 700, fontSize: 13, outline: "none" }}>
               <option value="all">🏙️ All cities</option>
               {cityOpts.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <select value={areaFlt} onChange={e => setAreaFlt(e.target.value)} disabled={areaOpts.length === 0} style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${areaFlt !== "all" ? W.teal : W.line}`, background: areaFlt !== "all" ? "#E7F6EF" : "#fff", color: W.ink, fontWeight: 700, fontSize: 13, outline: "none", opacity: areaOpts.length === 0 ? .5 : 1 }}>
+            <select value={areaFlt} onChange={e => setAreaFlt(e.target.value)} disabled={areaOpts.length === 0} style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 11, border: `1.5px solid ${areaFlt !== "all" ? "#008069" : "#E4DCEF"}`, background: areaFlt !== "all" ? "#E7F6EF" : "#fff", color: W.ink, fontWeight: 700, fontSize: 13, outline: "none", opacity: areaOpts.length === 0 ? .5 : 1 }}>
               <option value="all">📍 All areas</option>
               {areaOpts.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#B45309", marginBottom: 7 }}>🎂 AGE</div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginRight: 2 }}>Age</span>
             {[["all", "Any"], ["18-24", "18–24"], ["25-34", "25–34"], ["35-44", "35–44"], ["45+", "45+"]].map(([k, l]) => (
-              <button key={k} onClick={() => setAgeFlt(k)} style={{ padding: "7px 13px", borderRadius: 999, border: ageFlt === k ? "none" : `1.5px solid ${W.line}`, background: ageFlt === k ? "#7C3AED" : "#fff", color: ageFlt === k ? "#fff" : W.soft, fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{l}</button>
+              <button key={k} onClick={() => setAgeFlt(k)} style={{ padding: "8px 14px", borderRadius: 999, border: ageFlt === k ? "none" : "1.5px solid #E4DCEF", background: ageFlt === k ? "linear-gradient(95deg,#D97706,#F59E0B)" : "#fff", color: ageFlt === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: ageFlt === k ? "0 3px 10px rgba(217,119,6,.25)" : "none" }}>{l}</button>
             ))}
           </div>
-          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 11, fontWeight: 600 }}>{filtered.length} {filtered.length === 1 ? "person" : "people"} match</div>
+          <div style={{ marginTop: 13, display: "inline-block", background: "#fff", border: "1px solid #EBD9F0", borderRadius: 999, padding: "5px 13px", fontSize: 12, fontWeight: 800, color: "#7C3AED" }}>✨ {filtered.length} {filtered.length === 1 ? "person" : "people"} match</div>
         </div>
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>
           {rows === null ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24 }}>Loading members…</div>
