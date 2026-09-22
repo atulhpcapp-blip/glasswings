@@ -1538,95 +1538,149 @@ function EventGoers({ eventId, onOpenDM }) {
   );
 }
 
-function purchaseTimeLabel(iso) {
-  if (!iso) return "recently";
-  const ms = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "just now";
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} min${min === 1 ? "" : "s"} ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr} hr${hr === 1 ? "" : "s"} ago`;
-  return "recently";
+function MiniBar({ pct, color = W.teal, bg = "#E8F2EF", height = 8 }) {
+  const safe = Math.max(0, Math.min(100, Number(pct) || 0));
+  return (
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={safe}
+      style={{ width: "100%", height, background: bg, borderRadius: 999, overflow: "hidden" }}
+    >
+      <div style={{ width: `${safe}%`, height: "100%", background: color, borderRadius: 999, transition: "width .45s ease" }} />
+    </div>
+  );
+}
+
+function bookingTimeLabel(at) {
+  const age = Date.now() - new Date(at || 0).getTime();
+  if (!Number.isFinite(age) || age < 120000) return "just now";
+  const mins = Math.floor(age / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function RecentBuyerToasts({ eventId, wide }) {
-  const [buyers, setBuyers] = useState([]);
   const [active, setActive] = useState(null);
-  const idxRef = useRef(0);
+  const [visible, setVisible] = useState(false);
+  const buyersRef = useRef([]);
+  const indexRef = useRef(0);
+  const hideRef = useRef(null);
 
-  const hydrateBuyer = useCallback(async (row) => {
-    if (!row) return null;
-    let name = "Someone";
-    let city = "";
-    if (row.user_id) {
-      const [{ data: p }, { data: m }] = await Promise.all([
-        supabase.from("profiles").select("full_name").eq("id", row.user_id).maybeSingle(),
-        supabase.from("member_details").select("city").eq("user_id", row.user_id).maybeSingle()
-      ]);
-      name = (p?.full_name || "Someone").trim();
-      city = (m?.city || "").trim();
-    }
-    return { id: row.id, name, city, at: row.purchased_at };
+  const showBuyer = useCallback((buyer) => {
+    if (!buyer) return;
+    if (hideRef.current) clearTimeout(hideRef.current);
+    setActive(buyer);
+    setVisible(true);
+    hideRef.current = setTimeout(() => setVisible(false), 4800);
   }, []);
 
-  const loadBuyers = useCallback(async () => {
-    if (!eventId) return;
-    const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-    const { data: rows } = await supabase
-      .from("event_tickets")
-      .select("id, user_id, purchased_at")
-      .eq("event_id", eventId)
-      .gte("purchased_at", since)
-      .order("purchased_at", { ascending: false })
-      .limit(10);
-
-    const fresh = (await Promise.all((rows || []).map(hydrateBuyer))).filter(Boolean);
-    setBuyers(fresh);
-    setActive(prev => prev || fresh[0] || null);
-  }, [eventId, hydrateBuyer]);
-
-  useEffect(() => { loadBuyers(); }, [loadBuyers]);
+  const getBuyerDetails = useCallback(async (userId) => {
+    if (!userId) return { name: "Someone", city: "" };
+    const [{ data: person }, { data: details }] = await Promise.all([
+      supabase.from("profiles").select("full_name").eq("id", userId).maybeSingle(),
+      supabase.from("member_details").select("city").eq("user_id", userId).maybeSingle(),
+    ]);
+    return { name: person?.full_name || "Someone", city: details?.city || "" };
+  }, []);
 
   useEffect(() => {
     if (!eventId) return;
+    let alive = true;
+    let firstTimer = null;
+    let rotateTimer = null;
+
+    (async () => {
+      const { data: rows } = await supabase
+        .from("event_tickets")
+        .select("id, user_id, quantity, purchased_at")
+        .eq("event_id", eventId)
+        .order("purchased_at", { ascending: false })
+        .limit(10);
+      if (!alive || !rows?.length) return;
+
+      const ids = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+      const [{ data: people }, { data: details }] = await Promise.all([
+        ids.length ? supabase.from("profiles").select("id, full_name").in("id", ids) : Promise.resolve({ data: [] }),
+        ids.length ? supabase.from("member_details").select("user_id, city").in("user_id", ids) : Promise.resolve({ data: [] }),
+      ]);
+      if (!alive) return;
+      const names = Object.fromEntries((people || []).map(p => [p.id, p.full_name]));
+      const cities = Object.fromEntries((details || []).map(p => [p.user_id, p.city]));
+      const mapped = rows.map(r => ({
+        id: r.id,
+        name: names[r.user_id] || "Someone",
+        city: cities[r.user_id] || "",
+        quantity: Math.max(1, Number(r.quantity) || 1),
+        at: r.purchased_at,
+      }));
+      buyersRef.current = mapped;
+      firstTimer = setTimeout(() => showBuyer(mapped[0]), 1200);
+    })();
+
+    rotateTimer = setInterval(() => {
+      const current = buyersRef.current;
+      if (!current.length) return;
+      indexRef.current = (indexRef.current + 1) % current.length;
+      showBuyer(current[indexRef.current]);
+    }, 12000);
+
     const channel = supabase
       .channel(`event-ticket-live-${eventId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "event_tickets", filter: `event_id=eq.${eventId}` },
-        async payload => {
-          const buyer = await hydrateBuyer(payload.new);
-          if (!buyer) return;
-          setBuyers(prev => [buyer, ...prev.filter(x => x.id !== buyer.id)].slice(0, 10));
-          setActive(buyer);
-          idxRef.current = 0;
-        }
-      )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_tickets", filter: `event_id=eq.${eventId}` }, async payload => {
+        const row = payload.new || {};
+        const who = await getBuyerDetails(row.user_id);
+        if (!alive) return;
+        const fresh = {
+          id: row.id || `${row.user_id}-${Date.now()}`,
+          name: who.name,
+          city: who.city,
+          quantity: Math.max(1, Number(row.quantity) || 1),
+          at: row.purchased_at || new Date().toISOString(),
+        };
+        buyersRef.current = [fresh, ...buyersRef.current.filter(x => x.id !== fresh.id)].slice(0, 10);
+        showBuyer(fresh);
+      })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [eventId, hydrateBuyer]);
 
-  useEffect(() => {
-    if (buyers.length < 2) return;
-    const t = setInterval(() => {
-      idxRef.current = (idxRef.current + 1) % buyers.length;
-      setActive(buyers[idxRef.current]);
-    }, 5200);
-    return () => clearInterval(t);
-  }, [buyers]);
+    return () => {
+      alive = false;
+      if (firstTimer) clearTimeout(firstTimer);
+      if (rotateTimer) clearInterval(rotateTimer);
+      if (hideRef.current) clearTimeout(hideRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, [eventId, getBuyerDetails, showBuyer]);
 
   if (!active) return null;
-  const firstName = (active.name || "Someone").split(/\s+/)[0] || "Someone";
+  const firstName = String(active.name || "Someone").trim().split(/\s+/)[0] || "Someone";
+  const qtyText = active.quantity > 1 ? `${active.quantity} tickets` : "a ticket";
+
   return (
-    <div style={{ position: "fixed", left: wide ? 18 : 12, right: wide ? "auto" : 12, bottom: wide ? 18 : 88, zIndex: 80, pointerEvents: "none" }}>
-      <div style={{ width: wide ? 330 : "100%", maxWidth: 360, background: "rgba(10,26,23,.96)", color: "#fff", border: "1px solid rgba(255,255,255,.1)", borderRadius: 16, padding: "12px 14px", boxShadow: "0 16px 42px rgba(0,0,0,.24)", backdropFilter: "blur(10px)", animation: "gwBuyerIn .28s ease" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#2FD4A8,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>🎟️</div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 900, color: "#8EF0D2", letterSpacing: .5, textTransform: "uppercase" }}>Live booking</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.4, marginTop: 2 }}><b>{firstName}</b> bought a ticket {purchaseTimeLabel(active.at)}{active.city ? <> from <b>{active.city}</b></> : null}</div>
+    <div
+      aria-live="polite"
+      style={{
+        position: "fixed",
+        left: wide ? 22 : 12,
+        bottom: wide ? 22 : 86,
+        zIndex: 90,
+        width: wide ? 330 : "calc(100% - 24px)",
+        maxWidth: 360,
+        pointerEvents: "none",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(14px)",
+        transition: "opacity .3s ease, transform .3s ease",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderRadius: 16, color: "#fff", background: "linear-gradient(135deg,rgba(8,28,24,.97),rgba(0,128,105,.97))", border: "1px solid rgba(255,255,255,.13)", boxShadow: "0 16px 42px rgba(0,0,0,.24)", backdropFilter: "blur(12px)" }}>
+        <div style={{ width: 38, height: 38, borderRadius: 12, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 19 }}>🎟️</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 900, color: "#8EF0D3", letterSpacing: .7, textTransform: "uppercase", marginBottom: 3 }}>Booking confirmed</div>
+          <div style={{ fontSize: 13.5, lineHeight: 1.42 }}>
+            <b>{firstName}</b> bought {qtyText}{active.city ? <> from <b>{active.city}</b></> : null} · {bookingTimeLabel(active.at)}
           </div>
         </div>
       </div>
@@ -1634,7 +1688,7 @@ function RecentBuyerToasts({ eventId, wide }) {
   );
 }
 
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart, isPlanMember, onViewPlans, onOpenDM }) {
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, isPlanMember, onViewPlans, onOpenDM }) {
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1663,6 +1717,17 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const selTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
   const menRemain = profile?.gender === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
+  const cappedTypes = visTypes.filter(t => t.capacity != null && t.capacity !== "" && Number(t.capacity) > 0);
+  const totalCapacity = cappedTypes.reduce((sum, t) => sum + Number(t.capacity), 0);
+  const soldAcrossTypes = cappedTypes.reduce((sum, t) => sum + Number((typeSold && typeSold[t.id]) || 0), 0);
+  const knownEventSold = eventSold != null
+    ? Number(eventSold) || 0
+    : stats?.[e.id]
+      ? Number(stats[e.id].male || 0) + Number(stats[e.id].female || 0)
+      : null;
+  const totalSold = Math.min(totalCapacity, soldAcrossTypes > 0 || knownEventSold == null ? soldAcrossTypes : knownEventSold);
+  const totalLeft = totalCapacity > 0 ? Math.max(0, totalCapacity - totalSold) : null;
+  const fillPct = totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : null;
   const stepper = (key, q, max) => (
     <div style={{ display: "flex", alignItems: "center", gap: 0, border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden" }}>
       <button onClick={() => setQ(key, q - 1)} style={{ width: 36, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: 20, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>−</button>
@@ -1709,6 +1774,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const soldOut = !st.ok && st.label === "Sold out";
         const left = leftFor(t);
         const fast = st.ok && left != null && left > 0 && left <= 5;
+        const sold = Number((typeSold && typeSold[t.id]) || 0);
+        const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
+        const typePct = cap && cap > 0 ? Math.min(100, Math.round((sold / cap) * 100)) : null;
         const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
         const q = qtyMap[t.id] || 0;
         const headroom = Math.min(MAX_TIX - selQty, menRemain == null ? Infinity : Math.max(0, menRemain - selQty));
@@ -1722,6 +1790,15 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             </div>
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
+            {typePct != null && (
+              <div style={{ maxWidth: 230, marginTop: 8 }}>
+                <MiniBar pct={typePct} color={typePct >= 90 ? "#E46B32" : typePct >= 70 ? "#D59B20" : W.teal} height={6} />
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10.5, color: W.soft, marginTop: 4 }}>
+                  <span>{sold} booked</span>
+                  <span>{Math.max(0, cap - sold)} left</span>
+                </div>
+              </div>
+            )}
           </div>
           {!st.ok
             ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : "Closed"}</button>
@@ -1736,13 +1813,36 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {(qtyMap.__base || 0) > 0 ? stepper("__base", qtyMap.__base, MAX_TIX) : addBtn("__base")}
         </div>
       )}
+      {fillPct != null && (
+        <div style={{ marginTop: 14, border: "1px solid #D9EAE4", background: "linear-gradient(145deg,#F8FCFA,#F1F8F5)", borderRadius: 15, padding: "14px 15px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, color: W.ink, fontWeight: 850, fontSize: 13.5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: totalLeft === 0 ? "#C0392B" : "#15A37D", boxShadow: `0 0 0 3px ${totalLeft === 0 ? "rgba(192,57,43,.12)" : "rgba(21,163,125,.14)"}` }} />
+                Live ticket availability
+              </div>
+              <div style={{ color: W.soft, fontSize: 11.5, marginTop: 4 }}>{totalSold} booked out of {totalCapacity}</div>
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 18, lineHeight: 1, fontWeight: 900, color: totalLeft === 0 ? "#C0392B" : W.teal }}>{totalLeft}</div>
+              <div style={{ color: W.soft, fontSize: 10.5, fontWeight: 700, marginTop: 3 }}>{totalLeft === 1 ? "ticket left" : "tickets left"}</div>
+            </div>
+          </div>
+          <MiniBar pct={fillPct} color={fillPct >= 90 ? "#E46B32" : fillPct >= 70 ? "#D59B20" : W.teal} height={9} />
+          <div style={{ display: "flex", justifyContent: "space-between", color: W.soft, fontSize: 10.5, fontWeight: 700, marginTop: 6 }}>
+            <span>{fillPct}% filled</span>
+            <span>{Math.max(0, 100 - fillPct)}% available</span>
+          </div>
+          {fillPct >= 80 && totalLeft > 0 && <div style={{ marginTop: 9, color: "#B45309", fontSize: 11.5, fontWeight: 800 }}>🔥 Filling fast — book before it sells out</div>}
+        </div>
+      )}
       <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}><Lock size={12} />Instant ticket · secure payment · sent to your email</div>
     </div>
   );
   return (
     <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif" }}>
       <RecentBuyerToasts eventId={e.id} wide={wide} />
-      <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}@keyframes gwBuyerIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
+      <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}`}</style>
       <div style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(8,18,24,.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "12px 7%" : "10px 14px" }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 7, background: "transparent", border: "none", color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: "pointer", padding: 0 }}><ArrowLeft size={19} />All events</button>
         <img src="/logo-white.png" alt="Glasswings" style={{ height: 26, objectFit: "contain" }} />
@@ -1969,7 +2069,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         </div>
         {wide && (
           <div style={{ width: 330, flexShrink: 0, position: "sticky", top: 76 }}>
-            <div style={{ border: "1px solid #E5ECEA", borderRadius: 18, padding: "10px 18px 18px", boxShadow: "0 18px 44px rgba(0,0,0,.08)", background: "linear-gradient(180deg,#FFFFFF 0%,#FCFDFC 100%)" }}>
+            <div style={{ border: "1px solid #E1EAE7", borderRadius: 18, padding: "8px 18px 18px", boxShadow: "0 18px 44px rgba(14,48,40,.10)", background: "linear-gradient(180deg,#FFFFFF 0%,#FCFEFD 100%)" }}>
               {isPlanMember ? (
                 (Number(e.member_discount_pct) || 0) > 0 && (
                   <div style={{ background: "linear-gradient(95deg,#F3E8FF,#FCE7F3)", border: "1px solid #E9D5FF", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#6D28D9" }}>
@@ -2053,6 +2153,7 @@ function PublicLanding() {
   const [citySheet, setCitySheet] = useState(false);
   const [custom, setCustom] = useState([]);
   const [pop, setPop] = useState({});
+  const [typeSoldL, setTypeSoldL] = useState({});
   const [addonsMap, setAddonsMap] = useState({});
   const [detail, setDetail] = useState(() => { try { return new URLSearchParams(window.location.search).get("event"); } catch { return null; } });
   const [optCats, setOptCats] = useState([]);
@@ -2064,6 +2165,7 @@ function PublicLanding() {
     supabase.from("event_ticket_types").select("*").then(({ data }) => { const m = {}; (data || []).forEach(t => { (m[t.event_id] = m[t.event_id] || []).push(t); }); setTypes(m); });
     supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || []));
     supabase.rpc("event_popularity").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.event_id] = Number(r.sold); }); setPop(m); });
+    supabase.rpc("ticket_type_sold").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.ticket_type_id] = Number(r.sold); }); setTypeSoldL(m); });
     supabase.from("event_addons").select("*").then(({ data }) => { const m = {}; (data || []).forEach(a => { (m[a.event_id] = m[a.event_id] || []).push(a); }); setAddonsMap(m); });
     supabase.from("event_options").select("*").order("name").then(({ data }) => { setOptCats((data || []).filter(o => o.kind === "category")); setOptsAllL(data || []); });
     supabase.from("filter_dimensions").select("*").order("name").then(({ data }) => setDimsL(data || []));
@@ -2102,7 +2204,7 @@ function PublicLanding() {
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
   if (detailEvent) {
     const popSetD = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
-    return <PublicEventPage e={detailEvent} types={types[detailEvent.id] || []} addons={addonsMap[detailEvent.id] || []} popular={popSetD.has(detailEvent.id)} events={events} wide={wide} onBack={closeDetail} onBuy={buyNow} onPick={(s) => openDetail(s.id)} />;
+    return <PublicEventPage e={detailEvent} types={types[detailEvent.id] || []} addons={addonsMap[detailEvent.id] || []} popular={popSetD.has(detailEvent.id)} events={events} wide={wide} typeSold={typeSoldL} eventSold={pop[detailEvent.id] || 0} onBack={closeDetail} onBuy={buyNow} onPick={(s) => openDetail(s.id)} />;
   }
   const cats = Array.from(new Set(events.map(e => e.category).filter(Boolean)));
   const cityList = Array.from(new Set(events.map(e => e.city).filter(Boolean)));
@@ -9540,6 +9642,111 @@ function SegmentsAdmin() {
     </div>
   );
 }
+function OrganiserApplicationsAdmin({ onReload }) {
+  const [rows, setRows] = useState(null);
+  const [filter, setFilter] = useState("pending");
+  const [busy, setBusy] = useState(null);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    setError("");
+    supabase.rpc("admin_organiser_applications").then(({ data, error: e }) => {
+      if (e) { setRows([]); setError(e.message || "Could not load applications."); }
+      else setRows(data || []);
+    });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const approve = async (row) => {
+    const raw = await window.gwPrompt(`Approve ${row.organisation_name}?\n\nEnter the Glasswings platform commission percentage for every ticket sold:`, row.commission_pct ?? "");
+    if (raw == null || String(raw).trim() === "") return;
+    const pct = Number(raw);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) return alert("Enter a commission percentage between 0 and 100.");
+    if (!window.confirm(`Approve ${row.organisation_name} with ${pct}% Glasswings commission?\n\nTheir Organiser dashboard will become active immediately.`)) return;
+    setBusy(row.id); setError("");
+    const { error: e } = await supabase.rpc("review_organiser_application", { p_application: row.id, p_status: "approved", p_note: null, p_commission_pct: pct });
+    setBusy(null);
+    if (e) return alert(e.message);
+    load(); onReload && onReload();
+  };
+
+  const reject = async (row) => {
+    const note = await window.gwPrompt(`Why is ${row.organisation_name}'s application being returned?\n\nThe applicant will see this and can correct it before reapplying.`);
+    if (!note || note.trim().length < 3) return;
+    setBusy(row.id); setError("");
+    const { error: e } = await supabase.rpc("review_organiser_application", { p_application: row.id, p_status: "rejected", p_note: note.trim(), p_commission_pct: null });
+    setBusy(null);
+    if (e) return alert(e.message);
+    load();
+  };
+
+  const visible = (rows || []).filter(r => filter === "all" || r.status === filter);
+  const pending = (rows || []).filter(r => r.status === "pending").length;
+  const statusStyle = s => s === "approved"
+    ? { bg: "#E7F6EF", c: "#08705D", label: "Approved" }
+    : s === "rejected"
+      ? { bg: "#FDECEC", c: "#B03A2E", label: "Returned" }
+      : { bg: "#FFF3D6", c: "#9A6500", label: "Pending review" };
+
+  return (
+    <div style={{ padding: 14, maxWidth: 920, margin: "0 auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#092E27,#008069)", color: "#fff", borderRadius: 18, padding: "18px 20px", marginBottom: 14, boxShadow: "0 12px 30px rgba(0,128,105,.18)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 23 }}>🏢</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 19, fontWeight: 900 }}>Organiser applications</div>
+            <div style={{ fontSize: 12.5, opacity: .9, marginTop: 3 }}>Review partners, set your commission, and activate their dashboard.</div>
+          </div>
+          <div style={{ textAlign: "center", background: "rgba(255,255,255,.14)", borderRadius: 12, padding: "8px 13px" }}><div style={{ fontSize: 20, fontWeight: 900 }}>{pending}</div><div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: .6 }}>PENDING</div></div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[["pending", `Pending (${pending})`], ["approved", "Approved"], ["rejected", "Returned"], ["all", "All"]].map(([k, label]) => (
+          <button key={k} onClick={() => setFilter(k)} style={{ padding: "8px 13px", borderRadius: 999, border: `1px solid ${filter === k ? W.teal : W.line}`, background: filter === k ? W.teal : "#fff", color: filter === k ? "#fff" : W.soft, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{label}</button>
+        ))}
+        <button onClick={load} style={{ marginLeft: "auto", ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 12px" }}>↻ Refresh</button>
+      </div>
+
+      {error && <div style={{ background: "#FDECEC", color: "#A33", border: "1px solid #F3C5C1", borderRadius: 12, padding: 12, fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>⚠️ {error}<div style={{ fontWeight: 500, marginTop: 4 }}>Run the organiser-onboarding SQL in Supabase if this is the first setup.</div></div>}
+      {rows === null ? <Center>Loading applications…</Center> : !visible.length ? <Center>No {filter === "all" ? "" : filter} organiser applications.</Center> : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {visible.map(row => { const st = statusStyle(row.status); return (
+            <div key={row.id} style={{ background: "#fff", border: `1px solid ${row.status === "pending" ? "#E8D39B" : W.line}`, borderRadius: 16, padding: 16, boxShadow: "0 6px 18px rgba(18,45,39,.05)" }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <div style={{ width: 42, height: 42, borderRadius: 13, background: "linear-gradient(135deg,#E7F6EF,#D8F1E8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, flexShrink: 0 }}>🎪</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 900, color: W.ink, fontSize: 16 }}>{row.organisation_name}</div>
+                    <span style={{ background: st.bg, color: st.c, fontSize: 10.5, fontWeight: 900, padding: "3px 8px", borderRadius: 999 }}>{st.label}</span>
+                  </div>
+                  <div style={{ color: W.soft, fontSize: 12.5, marginTop: 3 }}>{row.applicant_name || "Member"} · {row.city} · {row.contact_email} · {row.phone}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+                    {row.event_types && <span style={{ background: W.bg, color: W.ink, borderRadius: 999, padding: "4px 9px", fontSize: 11.5, fontWeight: 700 }}>🎟️ {row.event_types}</span>}
+                    {row.expected_events_monthly != null && <span style={{ background: W.bg, color: W.ink, borderRadius: 999, padding: "4px 9px", fontSize: 11.5, fontWeight: 700 }}>📅 {row.expected_events_monthly}/month</span>}
+                    {row.commission_pct != null && <span style={{ background: "#F2ECFF", color: "#6D28D9", borderRadius: 999, padding: "4px 9px", fontSize: 11.5, fontWeight: 800 }}>{row.commission_pct}% platform cut</span>}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, background: "#F8FAF9", borderRadius: 11, padding: "10px 12px", color: "#3D4D49", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{row.experience}</div>
+              {row.notes && <div style={{ marginTop: 8, color: W.soft, fontSize: 12.5, lineHeight: 1.45 }}><b style={{ color: W.ink }}>Note:</b> {row.notes}</div>}
+              {(row.instagram_url || row.website_url) && <div style={{ marginTop: 8, fontSize: 12, color: W.teal, wordBreak: "break-all" }}>{[row.instagram_url, row.website_url].filter(Boolean).join(" · ")}</div>}
+              {row.review_note && <div style={{ marginTop: 10, background: "#FFF5F3", color: "#9B3A31", borderRadius: 10, padding: "9px 11px", fontSize: 12.5 }}><b>Review note:</b> {row.review_note}</div>}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+                <div style={{ flex: 1, fontSize: 11.5, color: W.soft }}>Applied {new Date(row.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
+                {row.status === "pending" && <>
+                  <button disabled={busy === row.id} onClick={() => reject(row)} style={{ ...btn("#fff", "#B03A2E"), border: "1px solid #EEC5C0", padding: "8px 13px", opacity: busy === row.id ? .55 : 1 }}>Return</button>
+                  <button disabled={busy === row.id} onClick={() => approve(row)} style={{ ...btn(W.teal, "#fff"), padding: "8px 15px", opacity: busy === row.id ? .55 : 1 }}>{busy === row.id ? "Working…" : "✓ Approve"}</button>
+                </>}
+              </div>
+            </div>
+          ); })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
@@ -9560,6 +9767,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
     ...(isSuper ? [["emailmkt", "Email"]] : []),
     ...((canApprove || caps.host) ? [["settle", "Payouts"]] : []),
+    ...(isSuper ? [["orgapps", "🏢 Organisers"]] : []),
     ...(canApprove ? [["filters", "Filters"]] : []),
   ];
   const [seg, setSeg] = useState(tabs[0]?.[0] || "none");
@@ -9587,6 +9795,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <PayoutsPanel isSuper={isSuper} />
+        : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} />
         : seg === "events" ? <AdminEvents onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
@@ -14406,6 +14615,146 @@ function StreakBoard({ events }) {
     </div>
   );
 }
+function OrganiserApplicationCard({ user, profile, onApproved }) {
+  const isOrganiser = (profile?.roles || []).includes("organiser");
+  const [application, setApplication] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    organisation: "", email: user?.email || "", phone: "", city: "",
+    instagram: "", website: "", eventTypes: "", experience: "",
+    monthly: "", notes: "", accepted: false,
+  });
+
+  const load = useCallback(() => {
+    supabase.rpc("my_organiser_application").then(({ data, error: e }) => {
+      const row = Array.isArray(data) ? (data[0] || null) : (data || null);
+      if (!e) {
+        setApplication(row);
+        if (row) setForm({
+          organisation: row.organisation_name || "", email: row.contact_email || user?.email || "",
+          phone: row.phone || "", city: row.city || "", instagram: row.instagram_url || "",
+          website: row.website_url || "", eventTypes: row.event_types || "",
+          experience: row.experience || "", monthly: row.expected_events_monthly == null ? "" : String(row.expected_events_monthly),
+          notes: row.notes || "", accepted: !!row.terms_accepted,
+        });
+      }
+      setLoaded(true);
+    });
+  }, [user?.email]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (application?.status !== "pending") return;
+    const timer = setInterval(load, 30000);
+    return () => clearInterval(timer);
+  }, [application?.status, load]);
+  useEffect(() => {
+    if (application?.status === "approved" && !isOrganiser) onApproved && onApproved();
+  }, [application?.status, isOrganiser, onApproved]);
+
+  const update = (key, value) => setForm(f => ({ ...f, [key]: value }));
+  const submit = async () => {
+    setError("");
+    if (!form.organisation.trim()) return setError("Enter your organisation or brand name.");
+    if (!form.email.trim()) return setError("Enter your contact email.");
+    if (form.phone.replace(/\D/g, "").length < 10) return setError("Enter a valid phone number.");
+    if (!form.city.trim()) return setError("Enter your city.");
+    if (form.experience.trim().length < 15) return setError("Tell us briefly about the events you organise.");
+    if (!form.accepted) return setError("Please accept the organiser terms.");
+    setBusy(true);
+    const { data, error: e } = await supabase.rpc("submit_organiser_application", {
+      p_organisation_name: form.organisation.trim(),
+      p_contact_email: form.email.trim(),
+      p_phone: form.phone.trim(),
+      p_city: form.city.trim(),
+      p_instagram_url: form.instagram.trim() || null,
+      p_website_url: form.website.trim() || null,
+      p_event_types: form.eventTypes.trim() || null,
+      p_experience: form.experience.trim(),
+      p_expected_events_monthly: form.monthly === "" ? null : Number(form.monthly),
+      p_notes: form.notes.trim() || null,
+      p_terms_accepted: true,
+    });
+    setBusy(false);
+    if (e) return setError(e.message || "Could not submit your application.");
+    setApplication(Array.isArray(data) ? (data[0] || null) : data);
+    setOpen(false);
+  };
+
+  const field = (label, key, placeholder, type = "text") => (
+    <label style={{ display: "block" }}>
+      <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 5 }}>{label}</div>
+      <input type={type} value={form[key]} onChange={e => update(key, e.target.value)} placeholder={placeholder} style={{ width: "100%", padding: "11px 12px", border: `1px solid ${W.line}`, borderRadius: 10, outline: "none", fontSize: 14, color: W.ink }} />
+    </label>
+  );
+
+  if (!loaded) return null;
+  if (isOrganiser || application?.status === "approved") return (
+    <div style={{ marginTop: 16, padding: 16, borderRadius: 16, color: "#fff", background: "linear-gradient(135deg,#0B332B,#008069)", boxShadow: "0 10px 26px rgba(0,128,105,.18)" }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <div style={{ width: 42, height: 42, borderRadius: 13, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🎪</div>
+        <div><div style={{ fontWeight: 900, fontSize: 15.5 }}>Organiser account active</div><div style={{ fontSize: 12.5, opacity: .9, marginTop: 2 }}>Create events, manage entry, view sales and track payouts from your Staff panel.</div></div>
+      </div>
+    </div>
+  );
+
+  const pending = application?.status === "pending";
+  const rejected = application?.status === "rejected";
+  return (
+    <>
+      <div style={{ marginTop: 16, background: pending ? "#FFF8E8" : rejected ? "#FFF3F1" : "linear-gradient(145deg,#F7FBFA,#EDF8F4)", border: `1px solid ${pending ? "#EEDAA6" : rejected ? "#EFC8C2" : "#CFE8DE"}`, borderRadius: 16, padding: 16 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <div style={{ width: 42, height: 42, borderRadius: 13, background: pending ? "#FFEBC0" : rejected ? "#FDE1DD" : "#DDF3EA", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, flexShrink: 0 }}>{pending ? "⏳" : rejected ? "↻" : "🎪"}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 900, color: W.ink, fontSize: 15.5 }}>{pending ? "Organiser application under review" : rejected ? "Update your organiser application" : "Host events with Glasswings"}</div>
+            <div style={{ fontSize: 12.5, color: W.soft, lineHeight: 1.45, marginTop: 4 }}>{pending ? "The Glasswings team is reviewing your details. Your organiser dashboard will open automatically after approval." : rejected ? "We need a small correction before approval. Update your details and submit again." : "Sell tickets using Glasswings. We handle bookings and payments; you get your own event dashboard and payouts after commission."}</div>
+            {rejected && application.review_note && <div style={{ marginTop: 9, background: "#fff", color: "#A13F36", borderRadius: 9, padding: "8px 10px", fontSize: 12 }}><b>Team note:</b> {application.review_note}</div>}
+          </div>
+        </div>
+        {!pending && <button onClick={() => setOpen(true)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 13, padding: 11 }}>{rejected ? "Update and reapply" : "Apply to become an organiser"}</button>}
+      </div>
+
+      {open && (
+        <Sheet onClose={() => !busy && setOpen(false)}>
+          <div style={{ fontWeight: 900, color: W.ink, fontSize: 19 }}>Become a Glasswings organiser</div>
+          <div style={{ color: W.soft, fontSize: 12.5, lineHeight: 1.5, margin: "4px 0 15px" }}>Tell us about your event business. Approval gives you a private organiser dashboard; your attendees also join the wider Glasswings community.</div>
+          <div style={{ display: "grid", gap: 11 }}>
+            {field("Organisation / brand name *", "organisation", "e.g. Hyderabad Social Club")}
+            {field("Contact email *", "email", "you@example.com", "email")}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+              {field("Phone number *", "phone", "WhatsApp number", "tel")}
+              {field("City *", "city", "Hyderabad")}
+            </div>
+            {field("Instagram page", "instagram", "@yourpage or URL")}
+            {field("Website", "website", "https://...")}
+            {field("Events you organise", "eventTypes", "Parties, dinners, workshops...")}
+            {field("Expected events per month", "monthly", "e.g. 4", "number")}
+            <label>
+              <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 5 }}>Your event experience *</div>
+              <textarea value={form.experience} onChange={e => update("experience", e.target.value.slice(0, 2000))} placeholder="Tell us what you organise, your typical audience and any past events." rows={4} style={{ width: "100%", padding: "11px 12px", border: `1px solid ${W.line}`, borderRadius: 10, outline: "none", fontSize: 14, color: W.ink, resize: "vertical" }} />
+            </label>
+            <label>
+              <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 5 }}>Anything else</div>
+              <textarea value={form.notes} onChange={e => update("notes", e.target.value.slice(0, 2000))} placeholder="Upcoming event, audience size, special requirements..." rows={2} style={{ width: "100%", padding: "11px 12px", border: `1px solid ${W.line}`, borderRadius: 10, outline: "none", fontSize: 14, color: W.ink, resize: "vertical" }} />
+            </label>
+            <label style={{ display: "flex", gap: 9, alignItems: "flex-start", background: W.bg, borderRadius: 10, padding: "10px 11px", cursor: "pointer" }}>
+              <input type="checkbox" checked={form.accepted} onChange={e => update("accepted", e.target.checked)} style={{ marginTop: 2, width: 17, height: 17, accentColor: W.teal }} />
+              <span style={{ fontSize: 11.5, color: W.soft, lineHeight: 1.45 }}>I agree that Glasswings will collect ticket payments, deduct its agreed platform commission and applicable charges, and settle the organiser balance. Events remain subject to Glasswings approval and policies.</span>
+            </label>
+            {error && <div style={{ background: "#FDECEC", color: "#A33", borderRadius: 9, padding: "9px 11px", fontSize: 12.5, fontWeight: 700 }}>{error}</div>}
+            <div style={{ display: "flex", gap: 9 }}>
+              <button onClick={() => setOpen(false)} disabled={busy} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+              <button onClick={submit} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1.4, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Submitting…" : "Submit application"}</button>
+            </div>
+          </div>
+        </Sheet>
+      )}
+    </>
+  );
+}
+
 function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, events }) {
   const _roles = profile?.roles || [];
   const roleLabel = _roles.includes("superadmin") ? "Founder ⭐"
@@ -14449,6 +14798,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
         </div>
         <button onClick={() => setEdit(true)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}><Pencil size={15} />Edit profile</button>
         {edit && <EditProfileSheet user={user} profile={profile} onClose={() => setEdit(false)} reload={reload} />}
+        <OrganiserApplicationCard user={user} profile={profile} onApproved={reload} />
         {stamps !== null && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div>
