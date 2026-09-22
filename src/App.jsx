@@ -680,23 +680,34 @@ function FiltersPanel({ categories, cities, dims, optsAll, onAddOption, onDelOpt
     </div>
   );
 }
-function SettlementsPanel({ isSuper }) {
+function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }) {
   const [rows, setRows] = useState(null);
   const [draft, setDraft] = useState({});
   const [gwDraft, setGwDraft] = useState(null);
   const [saving, setSaving] = useState(null);
   const [payouts, setPayouts] = useState([]);
+  const [orgNames, setOrgNames] = useState({});
   const [payBusy, setPayBusy] = useState(null);
   const load = () => {
     supabase.rpc("organiser_settlements").then(({ data, error }) => setRows(error ? [] : (data || [])));
-    if (isSuper) supabase.rpc("payout_list", { p_kind: "organiser", p_event: null }).then(({ data, error }) => setPayouts(error ? [] : (data || [])));
+    if (isSuper) {
+      supabase.rpc("payout_list", { p_kind: "organiser", p_event: null }).then(({ data, error }) => setPayouts(error ? [] : (data || [])));
+      supabase.rpc("admin_organiser_applications").then(({ data, error }) => {
+        if (error) return;
+        const names = {};
+        (data || []).filter(a => a.status === "approved").forEach(a => { names[a.user_id] = a.organisation_name || a.applicant_name || "Organiser"; });
+        setOrgNames(names);
+      });
+    }
   };
   useEffect(() => { load(); }, []);
+  const organiserName = r => (focusHostId && r.host_id === focusHostId && organisationName) || orgNames[r.host_id] || r.organisation_name || r.host_name || "Organiser";
+  const displayRows = rows ? (focusHostId ? rows.filter(r => r.host_id === focusHostId) : rows) : null;
   const paidFor = (hid) => payouts.filter(p => p.payee_id === hid).reduce((a, p) => a + Number(p.amount || 0), 0);
   const markPaid = (r) => {
     const outstanding = Math.max(0, Math.round(Number(r.payable || 0) - paidFor(r.host_id)));
     if (outstanding <= 0) return;
-    window.gwConfirm(`Record a payout of ₹${outstanding.toLocaleString("en-IN")} to ${r.host_name || "this organiser"}?\n\nThis is for your records — it marks the current outstanding amount as paid.`, async () => {
+    window.gwConfirm(`Record a payout of ₹${outstanding.toLocaleString("en-IN")} to ${organiserName(r)}?\n\nThis is for your records — it marks the current outstanding amount as paid.`, async () => {
       setPayBusy(r.host_id);
       const { error } = await supabase.rpc("record_payout", { p_kind: "organiser", p_payee: r.host_id, p_event: null, p_amount: outstanding, p_note: null });
       setPayBusy(null);
@@ -731,7 +742,7 @@ function SettlementsPanel({ isSuper }) {
     const tot = k => subset.reduce((a, r) => a + (Number(r[k]) || 0), 0);
     const allOk = subset.every(r => r.pct != null && r.gateway_pct != null);
     const rowsHtml = subset.map((r, i2) => `<tr style="background:${i2 % 2 ? "#F4FAF8" : "#fff"}">
-      <td><b>${escapeHtml(r.host_name || "Organiser")}</b></td>
+      <td><b>${escapeHtml(organiserName(r))}</b></td>
       <td class="r">${r.events_count}</td><td class="r">${r.tickets_sold}</td>
       <td class="r"><b>${f(r.gross)}</b></td>
       <td class="r rz">${r.gateway_pct == null ? "—" : `${r.gateway_pct}%<br><b>− ${f(r.gateway_fee)}</b>`}</td>
@@ -786,7 +797,7 @@ function SettlementsPanel({ isSuper }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
         <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink }}>Organiser payouts</div>
-        {rows && rows.length > 0 && <button onClick={() => exportPdf(rows, isSuper ? "All organisers" : "Your settlement")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 13px", fontSize: 12.5 }}>📄 Export PDF</button>}
+        {displayRows && displayRows.length > 0 && <button onClick={() => exportPdf(displayRows, focusHostId ? (organisationName || organiserName(displayRows[0])) : isSuper ? "All organisers" : "Your settlement")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 13px", fontSize: 12.5 }}>📄 Export PDF</button>}
       </div>
       <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Gross = online + door sales (cash/UPI). Platform % and promotion % are charged on the full gross; the Razorpay fee only on online sales. Payable = Online gross − Razorpay fee − Platform cut − Promotion fees.</div>
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: "12px 14px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -804,14 +815,15 @@ function SettlementsPanel({ isSuper }) {
           <span style={{ fontWeight: 800, color: "#C0392B", fontSize: 14 }}>{gwPct == null ? "to be set" : `${gwPct}%`}</span>
         )}
       </div>
-      {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No organiser revenue yet.</Center> : (
+      {displayRows === null ? <Center>loading…</Center> : displayRows.length === 0 ? <Center>No organiser revenue yet.</Center> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {rows.map(r => (
+          {displayRows.map(r => (
             <div key={r.host_id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <span style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{r.host_name || "Organiser"}</span>
-                  <button onClick={() => exportPdf([r], r.host_name || "Organiser")} title="Export this organiser's statement" style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, padding: "4px 9px", fontSize: 11.5 }}>📄</button>
+                  <span style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>{organiserName(r)}</span>
+                  {organiserName(r) !== (r.host_name || "Organiser") && <span style={{ fontSize: 11.5, color: W.soft }}>· {r.host_name}</span>}
+                  <button onClick={() => exportPdf([r], organiserName(r))} title="Export this organiser's statement" style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, padding: "4px 9px", fontSize: 11.5 }}>📄</button>
                 </div>
                 {isSuper ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -938,7 +950,7 @@ function PromoterPayouts() {
     </div>
   );
 }
-function PayoutsPanel({ isSuper }) {
+function PayoutsPanel({ isSuper, focusHostId = null, organisationName = "" }) {
   const [tab, setTab] = useState("organiser");
   return (
     <div>
@@ -952,7 +964,7 @@ function PayoutsPanel({ isSuper }) {
           ))}
         </div>
       )}
-      {(!isSuper || tab === "organiser") && <SettlementsPanel isSuper={isSuper} />}
+      {(!isSuper || tab === "organiser") && <SettlementsPanel isSuper={isSuper} focusHostId={focusHostId} organisationName={organisationName} />}
       {isSuper && tab === "promoter" && <PromoterPayouts />}
     </div>
   );
@@ -8562,15 +8574,15 @@ function AnalyticsOverview({ events, myEventsOnly, meId }) {
     </div>
   );
 }
-function AnalyticsPanel({ events, myEventsOnly, meId }) {
+function AnalyticsPanel({ events, myEventsOnly, meId, initialEventId = "", initialMode = "single" }) {
   const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
-  const [evId, setEvId] = useState("");
+  const [evId, setEvId] = useState(initialEventId || "");
   const [a, setA] = useState(null);
   const [aErr, setAErr] = useState("");
   const [roster, setRoster] = useState(null);
   const [checkLog, setCheckLog] = useState(null);
   const ev = manageable.find(e => e.id === evId);
-  const [mode, setMode] = useState("single");
+  const [mode, setMode] = useState(initialMode);
   const loadAll = (eid) => {
     supabase.rpc("event_ticket_analysis", { p_event: eid }).then(({ data, error }) => { setA(error ? null : data); setAErr(error ? (error.message || "Could not load analytics.") : ""); });
     supabase.rpc("event_member_list", { p_event: eid }).then(({ data, error }) => { if (!error) setRoster(data || []); });
@@ -9730,11 +9742,123 @@ function OrganiserMembersPanel() {
   );
 }
 
-function OrganiserApplicationsAdmin({ onReload }) {
+function OrganiserAdminDashboard({ organiser, events, onClose }) {
+  const [tab, setTab] = useState("overview");
+  const [analyticsEvent, setAnalyticsEvent] = useState("");
+  const [summary, setSummary] = useState(null);
+  const [members, setMembers] = useState(null);
+  const [memberQuery, setMemberQuery] = useState("");
+  const orgEvents = (events || []).filter(e => e.host_id === organiser.user_id).sort((a, b) => new Date(b.event_at || 0) - new Date(a.event_at || 0));
+  const eventKey = orgEvents.map(e => e.id).join(",");
+  const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const shortDate = v => v ? new Date(v).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Date not set";
+
+  useEffect(() => {
+    let dead = false;
+    if (!orgEvents.length) { setSummary({ tickets: 0, revenue: 0, checked: 0, rows: [] }); setMembers([]); return () => { dead = true; }; }
+    setSummary(null); setMembers(null);
+    Promise.all(orgEvents.map(async ev => {
+      const [ar, mr] = await Promise.all([
+        supabase.rpc("event_ticket_analysis", { p_event: ev.id }),
+        supabase.rpc("event_member_list", { p_event: ev.id }),
+      ]);
+      return { event: ev, analytics: ar.error ? {} : (ar.data || {}), members: mr.error ? [] : (mr.data || []) };
+    })).then(results => {
+      if (dead) return;
+      const people = new Map();
+      let tickets = 0, revenue = 0, checked = 0;
+      const statRows = results.map(({ event, analytics, members: eventMembers }) => {
+        const eventRevenue = Number(analytics.paid_gross || 0) + Number(analytics.door_cash || 0) + Number(analytics.door_upi || 0);
+        tickets += Number(analytics.tickets || 0); revenue += eventRevenue; checked += Number(analytics.checked_in || 0);
+        eventMembers.forEach(m => {
+          const key = m.user_id || `${m.full_name || "Guest"}-${m.phone || ""}`;
+          const old = people.get(key) || { ...m, ticket_count: 0, event_names: [] };
+          old.ticket_count += Number(m.qty || 1);
+          if (!old.event_names.includes(event.title)) old.event_names.push(event.title);
+          people.set(key, old);
+        });
+        return { event, tickets: Number(analytics.tickets || 0), revenue: eventRevenue, checked: Number(analytics.checked_in || 0) };
+      });
+      setSummary({ tickets, revenue, checked, rows: statRows });
+      setMembers(Array.from(people.values()).sort((a, b) => Number(b.ticket_count || 0) - Number(a.ticket_count || 0)));
+    });
+    return () => { dead = true; };
+  }, [organiser.user_id, eventKey]);
+
+  const openAnalytics = id => { setAnalyticsEvent(id || ""); setTab("analytics"); };
+  const filteredMembers = (members || []).filter(m => !memberQuery.trim() || `${m.full_name || ""} ${m.phone || ""}`.toLowerCase().includes(memberQuery.trim().toLowerCase()));
+  const tabs = [["overview", "Overview"], ["events", `Events (${orgEvents.length})`], ["analytics", "Analytics"], ["members", `Members (${members?.length || 0})`], ["payouts", "Payouts"]];
+  const kpis = [
+    ["EVENTS", orgEvents.length, "#0B6B5B"],
+    ["TICKETS", summary?.tickets ?? "…", "#4F46E5"],
+    ["GROSS SALES", summary ? money(summary.revenue) : "…", "#008069"],
+    ["CHECKED IN", summary?.checked ?? "…", "#D97706"],
+  ];
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: W.bg, overflowY: "auto" }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 5, background: "linear-gradient(125deg,#092E27,#008069)", color: "#fff", boxShadow: "0 4px 18px rgba(0,55,45,.18)" }}>
+        <div style={{ maxWidth: 1120, margin: "0 auto", padding: "16px 18px 13px", display: "flex", alignItems: "center", gap: 13 }}>
+          <button onClick={onClose} aria-label="Back" style={{ width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.22)", background: "rgba(255,255,255,.12)", color: "#fff", fontSize: 20, cursor: "pointer" }}>←</button>
+          <div style={{ width: 46, height: 46, borderRadius: 14, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>🎪</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 20, fontWeight: 950, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{organiser.organisation_name || organiser.applicant_name || "Organiser"}</div>
+            <div style={{ fontSize: 12.5, opacity: .86, marginTop: 2 }}>{organiser.applicant_name || "Member"} · {organiser.city || "City not set"} · {organiser.commission_pct ?? "—"}% platform cut</div>
+          </div>
+          <span style={{ background: "rgba(255,255,255,.16)", padding: "6px 10px", borderRadius: 999, fontSize: 11, fontWeight: 900 }}>APPROVED</span>
+        </div>
+        <div style={{ maxWidth: 1120, margin: "0 auto", display: "flex", overflowX: "auto", padding: "0 12px" }}>
+          {tabs.map(([k, label]) => <button key={k} onClick={() => setTab(k)} style={{ flex: "1 0 auto", border: 0, borderBottom: `3px solid ${tab === k ? "#fff" : "transparent"}`, background: "transparent", color: tab === k ? "#fff" : "rgba(255,255,255,.72)", padding: "11px 13px", fontWeight: 850, fontSize: 13, cursor: "pointer" }}>{label}</button>)}
+        </div>
+      </div>
+      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "18px 16px 70px" }}>
+        {tab === "overview" && <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10 }}>
+            {kpis.map(([label, value, color]) => <div key={label} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 15, padding: "15px 16px", boxShadow: "0 5px 16px rgba(18,45,39,.04)" }}><div style={{ fontSize: 10.5, color: W.soft, fontWeight: 850, letterSpacing: .5 }}>{label}</div><div style={{ fontSize: 23, fontWeight: 950, color, marginTop: 4 }}>{value}</div></div>)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: 12, marginTop: 14 }}>
+            <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 15, padding: 16 }}>
+              <div style={{ fontWeight: 900, color: W.ink, marginBottom: 10 }}>Organiser details</div>
+              {[["Contact person", organiser.applicant_name], ["Email", organiser.contact_email], ["Phone", organiser.phone], ["City", organiser.city], ["Event types", organiser.event_types]].map(([l, v]) => v ? <div key={l} style={{ display: "flex", gap: 10, padding: "7px 0", borderTop: `1px solid ${W.line}`, fontSize: 13 }}><span style={{ width: 100, color: W.soft, flexShrink: 0 }}>{l}</span><span style={{ color: W.ink, fontWeight: 700, wordBreak: "break-word" }}>{v}</span></div> : null)}
+            </div>
+            <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 15, padding: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}><div style={{ fontWeight: 900, color: W.ink, flex: 1 }}>Event performance</div><button onClick={() => openAnalytics("")} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "6px 10px", fontSize: 11.5 }}>Full analytics →</button></div>
+              {!summary ? <div style={{ color: W.soft, fontSize: 13, padding: "18px 0" }}>Loading organiser performance…</div> : !summary.rows.length ? <div style={{ color: W.soft, fontSize: 13, padding: "18px 0" }}>No events created yet.</div> : summary.rows.slice(0, 5).map(s => <div key={s.event.id} onClick={() => openAnalytics(s.event.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}><div style={{ fontSize: 20 }}>{s.event.emoji || "🎟️"}</div><div style={{ flex: 1, minWidth: 0 }}><div style={{ color: W.ink, fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.event.title}</div><div style={{ color: W.soft, fontSize: 11.5 }}>{s.tickets} tickets · {s.checked} checked in</div></div><div style={{ color: W.teal, fontWeight: 900, fontSize: 13 }}>{money(s.revenue)}</div><span style={{ color: W.soft }}>›</span></div>)}
+            </div>
+          </div>
+        </>}
+
+        {tab === "events" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 }}>
+          {!orgEvents.length ? <Center>No events created by this organiser yet.</Center> : orgEvents.map(ev => {
+            const s = summary?.rows?.find(x => x.event.id === ev.id);
+            const past = ev.event_at && new Date(ev.event_at).getTime() < Date.now();
+            return <div key={ev.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 15, boxShadow: "0 5px 16px rgba(18,45,39,.04)" }}>
+              <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}><div style={{ width: 44, height: 44, borderRadius: 13, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>{ev.emoji || "🎟️"}</div><div style={{ flex: 1, minWidth: 0 }}><div style={{ color: W.ink, fontWeight: 900 }}>{ev.title}</div><div style={{ color: W.soft, fontSize: 12, marginTop: 3 }}>{ev.event_date || shortDate(ev.event_at)} · {ev.city || "City not set"}</div></div><span style={{ fontSize: 10.5, fontWeight: 850, borderRadius: 999, padding: "4px 8px", background: past ? "#F1F3F2" : "#E7F6EF", color: past ? W.soft : W.teal }}>{past ? "PAST" : "UPCOMING"}</span></div>
+              <div style={{ display: "flex", gap: 14, marginTop: 13, paddingTop: 11, borderTop: `1px solid ${W.line}`, fontSize: 12.5 }}><span><b>{s?.tickets ?? "—"}</b> tickets</span><span><b>{s?.checked ?? "—"}</b> in</span><span style={{ color: W.teal, fontWeight: 850 }}>{s ? money(s.revenue) : "Loading…"}</span></div>
+              <button onClick={() => openAnalytics(ev.id)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 12, padding: 9 }}>View event analytics →</button>
+            </div>;
+          })}
+        </div>}
+
+        {tab === "analytics" && <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 17, overflow: "hidden" }}><AnalyticsPanel key={`${organiser.user_id}-${analyticsEvent || "overview"}`} events={orgEvents} myEventsOnly={false} meId={organiser.user_id} initialEventId={analyticsEvent} initialMode={analyticsEvent ? "single" : "overview"} /></div>}
+
+        {tab === "members" && <div>
+          <div style={{ background: "#E7F6EF", color: "#0B6B5B", borderRadius: 13, padding: "11px 13px", fontSize: 12.5, fontWeight: 700, marginBottom: 12 }}>Only members who bought tickets for this organiser’s events are shown here. They also remain part of the wider Glasswings community.</div>
+          <input value={memberQuery} onChange={e => setMemberQuery(e.target.value)} placeholder="Search member or phone…" style={{ width: "100%", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 11, padding: "11px 13px", fontSize: 14, outline: "none", marginBottom: 12 }} />
+          {members === null ? <Center>Loading organiser members…</Center> : !filteredMembers.length ? <Center>No members found.</Center> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10 }}>{filteredMembers.map((m, i) => <div key={m.user_id || i} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 13 }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><PersonAvatar url={m.avatar_url} name={m.full_name} size={42} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ color: W.ink, fontWeight: 850 }}>{m.full_name || "Member"}</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>{m.phone || "Phone unavailable"}</div></div><div style={{ textAlign: "center", color: W.teal }}><div style={{ fontWeight: 950, fontSize: 18 }}>{m.ticket_count || 0}</div><div style={{ fontSize: 9.5, fontWeight: 800 }}>TICKETS</div></div></div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 9, lineHeight: 1.4 }}><b style={{ color: W.ink }}>Events:</b> {(m.event_names || []).join(" · ") || "—"}</div></div>)}</div>}
+        </div>}
+
+        {tab === "payouts" && <SettlementsPanel isSuper focusHostId={organiser.user_id} organisationName={organiser.organisation_name || organiser.applicant_name || "Organiser"} />}
+      </div>
+    </div>
+  );
+}
+
+function OrganiserApplicationsAdmin({ onReload, events = [] }) {
   const [rows, setRows] = useState(null);
   const [filter, setFilter] = useState("pending");
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState(null);
 
   const load = useCallback(() => {
     setError("");
@@ -9800,7 +9924,7 @@ function OrganiserApplicationsAdmin({ onReload }) {
       {rows === null ? <Center>Loading applications…</Center> : !visible.length ? <Center>No {filter === "all" ? "" : filter} organiser applications.</Center> : (
         <div style={{ display: "grid", gap: 12 }}>
           {visible.map(row => { const st = statusStyle(row.status); return (
-            <div key={row.id} style={{ background: "#fff", border: `1px solid ${row.status === "pending" ? "#E8D39B" : W.line}`, borderRadius: 16, padding: 16, boxShadow: "0 6px 18px rgba(18,45,39,.05)" }}>
+            <div key={row.id} onClick={() => row.status === "approved" && setSelected(row)} style={{ background: "#fff", border: `1px solid ${row.status === "pending" ? "#E8D39B" : W.line}`, borderRadius: 16, padding: 16, boxShadow: "0 6px 18px rgba(18,45,39,.05)", cursor: row.status === "approved" ? "pointer" : "default", transition: "transform .15s ease, box-shadow .15s ease" }}>
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ width: 42, height: 42, borderRadius: 13, background: "linear-gradient(135deg,#E7F6EF,#D8F1E8)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, flexShrink: 0 }}>🎪</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -9823,14 +9947,16 @@ function OrganiserApplicationsAdmin({ onReload }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
                 <div style={{ flex: 1, fontSize: 11.5, color: W.soft }}>Applied {new Date(row.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
                 {row.status === "pending" && <>
-                  <button disabled={busy === row.id} onClick={() => reject(row)} style={{ ...btn("#fff", "#B03A2E"), border: "1px solid #EEC5C0", padding: "8px 13px", opacity: busy === row.id ? .55 : 1 }}>Return</button>
-                  <button disabled={busy === row.id} onClick={() => approve(row)} style={{ ...btn(W.teal, "#fff"), padding: "8px 15px", opacity: busy === row.id ? .55 : 1 }}>{busy === row.id ? "Working…" : "✓ Approve"}</button>
+                  <button disabled={busy === row.id} onClick={e => { e.stopPropagation(); reject(row); }} style={{ ...btn("#fff", "#B03A2E"), border: "1px solid #EEC5C0", padding: "8px 13px", opacity: busy === row.id ? .55 : 1 }}>Return</button>
+                  <button disabled={busy === row.id} onClick={e => { e.stopPropagation(); approve(row); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 15px", opacity: busy === row.id ? .55 : 1 }}>{busy === row.id ? "Working…" : "✓ Approve"}</button>
                 </>}
+                {row.status === "approved" && <button onClick={e => { e.stopPropagation(); setSelected(row); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 14px" }}>Open dashboard →</button>}
               </div>
             </div>
           ); })}
         </div>
       )}
+      {selected && <OrganiserAdminDashboard organiser={selected} events={events} onClose={() => setSelected(null)} />}
     </div>
   );
 }
@@ -9884,7 +10010,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <PayoutsPanel isSuper={isSuper} />
-        : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} />
+        : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
         : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
