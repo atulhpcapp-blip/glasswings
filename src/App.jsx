@@ -1538,15 +1538,6 @@ function EventGoers({ eventId, onOpenDM }) {
   );
 }
 
-function MiniBar({ pct, color = W.teal, bg = "#EAF3EF", h = 8 }) {
-  const safe = Math.max(0, Math.min(100, Number(pct) || 0));
-  return (
-    <div style={{ width: "100%", height: h, background: bg, borderRadius: 999, overflow: "hidden" }}>
-      <div style={{ width: `${safe}%`, height: "100%", background: color, borderRadius: 999, transition: "width .35s ease" }} />
-    </div>
-  );
-}
-
 function purchaseTimeLabel(iso) {
   if (!iso) return "recently";
   const ms = Date.now() - new Date(iso).getTime();
@@ -1672,14 +1663,6 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const selTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
   const menRemain = profile?.gender === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
-  const balance = menBudget(e, stats);
-  const totalCapacity = visTypes.reduce((sum, t) => {
-    if (t.capacity == null || t.capacity === "") return sum;
-    return sum + Number(t.capacity || 0);
-  }, 0);
-  const totalSold = visTypes.reduce((sum, t) => sum + Number((typeSold && typeSold[t.id]) || 0), 0);
-  const totalLeft = totalCapacity > 0 ? Math.max(0, totalCapacity - totalSold) : null;
-  const fillPct = totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : null;
   const stepper = (key, q, max) => (
     <div style={{ display: "flex", alignItems: "center", gap: 0, border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden" }}>
       <button onClick={() => setQ(key, q - 1)} style={{ width: 36, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: 20, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>−</button>
@@ -1751,34 +1734,6 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{minPrice === 0 ? "Free" : `₹${minPrice}`}</div>
           </div>
           {(qtyMap.__base || 0) > 0 ? stepper("__base", qtyMap.__base, MAX_TIX) : addBtn("__base")}
-        </div>
-      )}
-      {(fillPct != null || balance) && (
-        <div style={{ marginTop: 14, border: "1px solid #DCEAE5", background: "linear-gradient(180deg,#FBFDFC,#F6FBF9)", borderRadius: 14, padding: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 900, color: W.ink }}>🔥 Live availability</div>
-            {fillPct != null && <span style={{ fontSize: 11, fontWeight: 900, color: fillPct >= 85 ? "#B45309" : W.teal, background: fillPct >= 85 ? "#FFF1E0" : "#E7F6EF", padding: "4px 8px", borderRadius: 999 }}>{fillPct}% full</span>}
-          </div>
-          {fillPct != null && (
-            <div style={{ marginBottom: balance ? 13 : 0 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, fontWeight: 700, color: W.ink, marginBottom: 6 }}>
-                <span>{totalSold} of {totalCapacity} booked</span><span>{totalLeft} left</span>
-              </div>
-              <MiniBar pct={fillPct} color={fillPct >= 85 ? "#D97706" : W.teal} h={9} />
-            </div>
-          )}
-          {balance && (
-            <div style={{ paddingTop: fillPct != null ? 12 : 0, borderTop: fillPct != null ? `1px solid ${W.line}` : "none" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink }}>⚖️ Men : women balance</div>
-                <div style={{ fontSize: 11.5, color: W.soft }}>{balance.male} men · {balance.female} women</div>
-              </div>
-              <MiniBar pct={balance.allowed > 0 ? Math.min(100, Math.round((balance.male / balance.allowed) * 100)) : 0} color={balance.remaining > 0 ? "#8B5CF6" : "#D97706"} bg="#F0EBFF" />
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: W.soft, marginTop: 6 }}>
-                <span>{balance.allowed} male slots open now</span><span>{balance.remaining} remaining</span>
-              </div>
-            </div>
-          )}
         </div>
       )}
       <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}><Lock size={12} />Instant ticket · secure payment · sent to your email</div>
