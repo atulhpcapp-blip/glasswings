@@ -680,7 +680,7 @@ function FiltersPanel({ categories, cities, dims, optsAll, onAddOption, onDelOpt
     </div>
   );
 }
-function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }) {
+function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "", defaultPlatformPct = null }) {
   const [rows, setRows] = useState(null);
   const [draft, setDraft] = useState({});
   const [gwDraft, setGwDraft] = useState(null);
@@ -688,6 +688,20 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }
   const [payouts, setPayouts] = useState([]);
   const [orgNames, setOrgNames] = useState({});
   const [payBusy, setPayBusy] = useState(null);
+  const [focusPct, setFocusPct] = useState(defaultPlatformPct);
+  const [fees, setFees] = useState(focusHostId ? null : []);
+  const [feeCategory, setFeeCategory] = useState("Promotion fee");
+  const [feeAmount, setFeeAmount] = useState("");
+  const [feeNote, setFeeNote] = useState("");
+  const [feeBusy, setFeeBusy] = useState(false);
+  const [feeError, setFeeError] = useState("");
+  const loadFees = () => {
+    if (!isSuper || !focusHostId) return;
+    supabase.rpc("admin_organiser_fees", { p_organiser: focusHostId }).then(({ data, error }) => {
+      if (error) { setFees([]); setFeeError(error.message || "Could not load fee categories."); }
+      else { setFees(data || []); setFeeError(""); }
+    });
+  };
   const load = () => {
     supabase.rpc("organiser_settlements").then(({ data, error }) => setRows(error ? [] : (data || [])));
     if (isSuper) {
@@ -701,11 +715,15 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }
     }
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => { setFocusPct(defaultPlatformPct); loadFees(); }, [focusHostId, defaultPlatformPct]);
   const organiserName = r => (focusHostId && r.host_id === focusHostId && organisationName) || orgNames[r.host_id] || r.organisation_name || r.host_name || "Organiser";
   const displayRows = rows ? (focusHostId ? rows.filter(r => r.host_id === focusHostId) : rows) : null;
+  const feeTotal = (fees || []).reduce((a, f) => a + Number(f.amount || 0), 0);
+  const feeTotalFor = hid => focusHostId && hid === focusHostId ? feeTotal : 0;
+  const netPayable = r => r.payable == null ? null : Math.max(0, Number(r.payable || 0) - feeTotalFor(r.host_id));
   const paidFor = (hid) => payouts.filter(p => p.payee_id === hid).reduce((a, p) => a + Number(p.amount || 0), 0);
   const markPaid = (r) => {
-    const outstanding = Math.max(0, Math.round(Number(r.payable || 0) - paidFor(r.host_id)));
+    const outstanding = Math.max(0, Math.round(Number(netPayable(r) || 0) - paidFor(r.host_id)));
     if (outstanding <= 0) return;
     window.gwConfirm(`Record a payout of ₹${outstanding.toLocaleString("en-IN")} to ${organiserName(r)}?\n\nThis is for your records — it marks the current outstanding amount as paid.`, async () => {
       setPayBusy(r.host_id);
@@ -720,13 +738,31 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }
   const inr = n => n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   const savePct = async (uid) => {
     setSaving(uid);
-    const v = (draft[uid] ?? "").toString().trim();
+    const current = uid === focusHostId ? focusPct : "";
+    const v = (draft[uid] ?? current ?? "").toString().trim();
     const { error } = await supabase.rpc("set_org_commission", { p_user: uid, p_pct: v === "" ? null : Number(v) });
     setSaving(null);
     if (error) return alert(error.message);
+    if (uid === focusHostId) setFocusPct(v === "" ? null : Number(v));
     setDraft(d => { const n = { ...d }; delete n[uid]; return n; });
     load();
   };
+  const addFee = async () => {
+    const category = feeCategory.trim();
+    const amount = Number(feeAmount);
+    if (!category) return alert("Enter a fee category.");
+    if (!Number.isFinite(amount) || amount <= 0) return alert("Enter a valid fee amount.");
+    setFeeBusy(true); setFeeError("");
+    const { error } = await supabase.rpc("add_organiser_fee", { p_organiser: focusHostId, p_category: category, p_amount: amount, p_note: feeNote.trim() || null });
+    setFeeBusy(false);
+    if (error) { setFeeError(error.message || "Could not add fee."); return; }
+    setFeeAmount(""); setFeeNote(""); loadFees();
+  };
+  const removeFee = id => window.gwConfirm("Remove this fee from the organiser settlement?", async () => {
+    const { error } = await supabase.rpc("delete_organiser_fee", { p_fee: id });
+    if (error) return alert(error.message);
+    loadFees();
+  });
   const saveGw = async () => {
     setSaving("gw");
     const v = (gwDraft ?? "").toString().trim();
@@ -735,28 +771,34 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }
     if (error) return alert(error.message);
     setGwDraft(null); load();
   };
+  const focusedRow = displayRows && displayRows.length ? displayRows[0] : null;
+  const focusedPct = focusedRow?.pct ?? focusPct;
+  const autoPromoFees = Number(focusedRow?.promo_fees || 0);
   const exportPdf = (subset, label) => {
     const w = window.open("", "_blank", "width=860,height=960"); if (!w) return;
+    const reportRows = subset.map(r => ({ ...r, extra_fees: feeTotalFor(r.host_id), payable: netPayable(r) }));
     const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
     const f = n => n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
-    const tot = k => subset.reduce((a, r) => a + (Number(r[k]) || 0), 0);
-    const allOk = subset.every(r => r.pct != null && r.gateway_pct != null);
-    const rowsHtml = subset.map((r, i2) => `<tr style="background:${i2 % 2 ? "#F4FAF8" : "#fff"}">
+    const tot = k => reportRows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    const allOk = reportRows.every(r => r.pct != null && r.gateway_pct != null);
+    const rowsHtml = reportRows.map((r, i2) => `<tr style="background:${i2 % 2 ? "#F4FAF8" : "#fff"}">
       <td><b>${escapeHtml(organiserName(r))}</b></td>
       <td class="r">${r.events_count}</td><td class="r">${r.tickets_sold}</td>
       <td class="r"><b>${f(r.gross)}</b></td>
       <td class="r rz">${r.gateway_pct == null ? "—" : `${r.gateway_pct}%<br><b>− ${f(r.gateway_fee)}</b>`}</td>
       <td class="r pf">${r.pct == null ? "—" : `${r.pct}%<br><b>− ${f(r.platform_cut)}</b>`}</td>
       <td class="r pm">${Number(r.promo_fees) > 0 ? `<b>− ${f(r.promo_fees)}</b>` : "—"}</td>
+      <td class="r pm">${Number(r.extra_fees) > 0 ? `<b>− ${f(r.extra_fees)}</b>` : "—"}</td>
       <td class="r pay"><b>${r.payable == null ? "—" : f(r.payable)}</b></td>
     </tr>`).join("");
-    const single = subset.length === 1 ? subset[0] : null;
+    const single = reportRows.length === 1 ? reportRows[0] : null;
     const sumBoxes = single ? `
       <div class="boxes">
         <div class="bx" style="background:#E8F2FB;color:#1B6FB8"><div class="bl">GROSS COLLECTED</div><div class="bv">${f(single.gross)}</div></div>
         <div class="bx" style="background:#FBE9E7;color:#C0392B"><div class="bl">RAZORPAY FEE ${single.gateway_pct == null ? "" : "(" + single.gateway_pct + "%)"}</div><div class="bv">${single.gateway_fee == null ? "—" : "− " + f(single.gateway_fee)}</div></div>
         <div class="bx" style="background:#FDF6EC;color:#B45309"><div class="bl">PLATFORM CUT ${single.pct == null ? "" : "(" + single.pct + "%)"}</div><div class="bv">${single.platform_cut == null ? "—" : "− " + f(single.platform_cut)}</div></div>
         ${Number(single.promo_fees) > 0 ? `<div class="bx" style="background:#EFEAFB;color:#7C3AED"><div class="bl">PROMOTION FEES</div><div class="bv">− ${f(single.promo_fees)}</div></div>` : ""}
+        ${Number(single.extra_fees) > 0 ? `<div class="bx" style="background:#FFF3E6;color:#C2410C"><div class="bl">OTHER FEES</div><div class="bv">− ${f(single.extra_fees)}</div></div>` : ""}
         <div class="bx" style="background:#E7F6EF;color:#008069"><div class="bl">PAYABLE TO ORGANISER</div><div class="bv">${single.payable == null ? "—" : f(single.payable)}</div></div>
       </div>` : "";
     w.document.write(`<!doctype html><html><head><title>Glasswings — Organiser settlement</title><style>
@@ -784,10 +826,11 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }
         <div class="sub">${escapeHtml(label)} · Generated on ${today} · Paid ticket revenue only</div></div>
       <div class="wrap">
         ${sumBoxes}
-        <table><thead><tr><th>Organiser</th><th class="r">Events</th><th class="r">Tickets</th><th class="r">Gross</th><th class="r">Razorpay fee</th><th class="r">Platform cut</th><th class="r">Promo fees</th><th class="r">Payable</th></tr></thead>
+        <table><thead><tr><th>Organiser</th><th class="r">Events</th><th class="r">Tickets</th><th class="r">Gross</th><th class="r">Razorpay fee</th><th class="r">Platform cut</th><th class="r">Promo fees</th><th class="r">Other fees</th><th class="r">Payable</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
-        <tfoot><tr><td>Total</td><td class="r">${tot("events_count")}</td><td class="r">${tot("tickets_sold")}</td><td class="r">${f(tot("gross"))}</td><td class="r rz">${allOk ? "− " + f(tot("gateway_fee")) : "—"}</td><td class="r pf">${allOk ? "− " + f(tot("platform_cut")) : "—"}</td><td class="r pm">${tot("promo_fees") > 0 ? "− " + f(tot("promo_fees")) : "—"}</td><td class="r pay">${allOk ? f(tot("payable")) : "—"}</td></tr></tfoot></table>
-        <div class="note"><b>How payable is calculated:</b> Payable = Online gross − Razorpay gateway fee − Glasswings platform cut − Promotion fees. The platform and promotion percentages apply on TOTAL sales (online + door cash/UPI); the Razorpay fee applies on online sales only. Door money is collected directly by the organiser, so its fees are recovered from the online payout.</div>
+        <tfoot><tr><td>Total</td><td class="r">${tot("events_count")}</td><td class="r">${tot("tickets_sold")}</td><td class="r">${f(tot("gross"))}</td><td class="r rz">${allOk ? "− " + f(tot("gateway_fee")) : "—"}</td><td class="r pf">${allOk ? "− " + f(tot("platform_cut")) : "—"}</td><td class="r pm">${tot("promo_fees") > 0 ? "− " + f(tot("promo_fees")) : "—"}</td><td class="r pm">${tot("extra_fees") > 0 ? "− " + f(tot("extra_fees")) : "—"}</td><td class="r pay">${allOk ? f(tot("payable")) : "—"}</td></tr></tfoot></table>
+        ${focusHostId && fees?.length ? `<div class="note"><b>Additional fee details:</b> ${fees.map(x => `${escapeHtml(x.category)}: ${f(x.amount)}${x.note ? ` (${escapeHtml(x.note)})` : ""}`).join(" · ")}</div>` : ""}
+        <div class="note"><b>How payable is calculated:</b> Payable = Online gross − Razorpay gateway fee − Glasswings platform cut − Promotion fees − additional fee categories. The platform and promotion percentages apply on TOTAL sales (online + door cash/UPI); the Razorpay fee applies on online sales only. Door money is collected directly by the organiser, so its fees are recovered from the online payout.</div>
         <div class="ft">Glasswings Events · glass-wings.com · This statement is generated from recorded payments and is subject to reconciliation.</div>
       </div>
       <script>window.onload=function(){setTimeout(function(){window.print()},380)}<\/script></body></html>`);
@@ -815,6 +858,49 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }
           <span style={{ fontWeight: 800, color: "#C0392B", fontSize: 14 }}>{gwPct == null ? "to be set" : `${gwPct}%`}</span>
         )}
       </div>
+      {focusHostId && isSuper && (
+        <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 15, marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: "#F2ECFF", color: "#6D28D9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19 }}>🧾</div>
+            <div><div style={{ fontWeight: 900, color: W.ink, fontSize: 15 }}>Fees and deductions</div><div style={{ fontSize: 11.5, color: W.soft, marginTop: 2 }}>These charges are deducted before the organiser’s final payout.</div></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+            <div style={{ background: "#FFF8EC", border: "1px solid #F2DEC0", borderRadius: 13, padding: 13 }}>
+              <div style={{ color: "#9A5B00", fontWeight: 900, fontSize: 13 }}>Glasswings platform fee</div>
+              <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>Percentage charged on total ticket sales.</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
+                <input value={draft[focusHostId] ?? (focusedPct ?? "")} onChange={ev => setDraft(d => ({ ...d, [focusHostId]: ev.target.value.replace(/[^\d.]/g, "") }))} placeholder="—" inputMode="decimal" style={{ width: 72, padding: "8px 9px", borderRadius: 9, border: "1px solid #E5C894", fontSize: 14, outline: "none", textAlign: "center", background: "#fff" }} />
+                <span style={{ color: "#9A5B00", fontWeight: 800 }}>%</span>
+                <button onClick={() => savePct(focusHostId)} disabled={saving === focusHostId} style={{ ...btn("#B45309", "#fff"), padding: "8px 13px", marginLeft: "auto" }}>{saving === focusHostId ? "…" : "Save"}</button>
+              </div>
+            </div>
+            <div style={{ background: "#F5F0FF", border: "1px solid #DDD0FA", borderRadius: 13, padding: 13 }}>
+              <div style={{ color: "#6D28D9", fontWeight: 900, fontSize: 13 }}>Automatic promotion fees</div>
+              <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>Promoter commissions already generated from ticket sales.</div>
+              <div style={{ color: "#6D28D9", fontWeight: 950, fontSize: 24, marginTop: 9 }}>{inr(autoPromoFees)}</div>
+            </div>
+            <div style={{ background: "#EEF8F5", border: "1px solid #CAE7DE", borderRadius: 13, padding: 13 }}>
+              <div style={{ color: W.teal, fontWeight: 900, fontSize: 13 }}>Additional fees</div>
+              <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>Manual categories added below.</div>
+              <div style={{ color: W.teal, fontWeight: 950, fontSize: 24, marginTop: 9 }}>{fees === null ? "…" : inr(feeTotal)}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 13, paddingTop: 13, borderTop: `1px solid ${W.line}` }}>
+            <div style={{ fontWeight: 850, color: W.ink, fontSize: 13.5, marginBottom: 8 }}>Add a fee category</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
+              {["Promotion fee", "Marketing", "Refund adjustment", "Venue support", "Service charge"].map(x => <button key={x} onClick={() => setFeeCategory(x)} style={{ border: `1px solid ${feeCategory === x ? W.teal : W.line}`, background: feeCategory === x ? "#E7F6EF" : "#fff", color: feeCategory === x ? W.teal : W.soft, borderRadius: 999, padding: "5px 9px", fontSize: 11, fontWeight: 750, cursor: "pointer" }}>{x}</button>)}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <input value={feeCategory} onChange={e => setFeeCategory(e.target.value)} placeholder="Fee category" style={{ flex: "1 1 150px", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 10px", fontSize: 13, outline: "none" }} />
+              <input value={feeAmount} onChange={e => setFeeAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder="₹ Amount" inputMode="decimal" style={{ flex: "1 1 95px", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 10px", fontSize: 13, outline: "none" }} />
+              <input value={feeNote} onChange={e => setFeeNote(e.target.value)} placeholder="Note (optional)" style={{ flex: "2 1 180px", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 10px", fontSize: 13, outline: "none" }} />
+              <button onClick={addFee} disabled={feeBusy} style={{ ...btn(W.teal, "#fff"), flex: "1 1 88px", justifyContent: "center", padding: "9px 14px" }}>{feeBusy ? "Adding…" : "+ Add"}</button>
+            </div>
+            {feeError && <div style={{ marginTop: 8, background: "#FDECEC", color: "#A33", borderRadius: 9, padding: "8px 10px", fontSize: 12 }}>{feeError}</div>}
+            {!!fees?.length && <div style={{ marginTop: 11, display: "flex", flexDirection: "column", gap: 6 }}>{fees.map(fee => <div key={fee.id} style={{ display: "flex", alignItems: "center", gap: 9, background: W.bg, borderRadius: 10, padding: "8px 10px" }}><div style={{ flex: 1, minWidth: 0 }}><div style={{ color: W.ink, fontWeight: 800, fontSize: 12.5 }}>{fee.category}</div>{fee.note && <div style={{ color: W.soft, fontSize: 11, marginTop: 1 }}>{fee.note}</div>}</div><div style={{ color: "#C2410C", fontWeight: 900 }}>− {inr(fee.amount)}</div><button onClick={() => removeFee(fee.id)} title="Remove fee" style={{ border: 0, background: "transparent", color: "#C0392B", fontWeight: 900, cursor: "pointer", padding: 5 }}>✕</button></div>)}</div>}
+          </div>
+        </div>
+      )}
       {displayRows === null ? <Center>loading…</Center> : displayRows.length === 0 ? <Center>No organiser revenue yet.</Center> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {displayRows.map(r => (
@@ -825,15 +911,15 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }
                   {organiserName(r) !== (r.host_name || "Organiser") && <span style={{ fontSize: 11.5, color: W.soft }}>· {r.host_name}</span>}
                   <button onClick={() => exportPdf([r], organiserName(r))} title="Export this organiser's statement" style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, padding: "4px 9px", fontSize: 11.5 }}>📄</button>
                 </div>
-                {isSuper ? (
+                {isSuper && !focusHostId ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 12, color: W.soft, fontWeight: 700 }}>Platform %</span>
                     <input value={draft[r.host_id] ?? (r.pct ?? "")} onChange={ev => setDraft(d => ({ ...d, [r.host_id]: ev.target.value.replace(/[^\d.]/g, "") }))} placeholder="—" inputMode="decimal" style={{ width: 58, padding: "7px 9px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 13.5, outline: "none", textAlign: "center" }} />
                     <button onClick={() => savePct(r.host_id)} disabled={saving === r.host_id} style={{ ...btn(W.teal, "#fff"), padding: "7px 13px", fontSize: 12.5 }}>{saving === r.host_id ? "…" : "Save"}</button>
                   </div>
-                ) : (
+                ) : !focusHostId ? (
                   <span style={{ fontSize: 12.5, color: W.soft, fontWeight: 700 }}>Platform cut: {r.pct == null ? "to be set" : `${r.pct}%`}</span>
-                )}
+                ) : null}
               </div>
               <div style={{ display: "flex", gap: 18, marginTop: 11, flexWrap: "wrap" }}>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>EVENTS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{r.events_count}</div></div>
@@ -841,12 +927,13 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "" }
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>GROSS (ALL)</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{inr(r.gross)}</div><div style={{ fontSize: 10.5, color: W.soft, marginTop: 1 }}>online {inr(r.online_gross)} · door {inr(r.door_gross)}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>RAZORPAY FEE</div><div style={{ fontWeight: 800, color: "#C0392B", fontSize: 16 }}>{r.gateway_pct == null ? "set % first" : "− " + inr(r.gateway_fee)}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PLATFORM CUT</div><div style={{ fontWeight: 800, color: "#B45309", fontSize: 16 }}>{r.pct == null ? "set % first" : "− " + inr(r.platform_cut)}</div></div>
-                {Number(r.promo_fees) > 0 && <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PROMO FEES</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>− {inr(r.promo_fees)}</div></div>}
-                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PAYABLE</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{r.payable == null ? "—" : inr(r.payable)}</div></div>
+                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PROMO FEES</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>− {inr(r.promo_fees || 0)}</div></div>
+                {feeTotalFor(r.host_id) > 0 && <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>OTHER FEES</div><div style={{ fontWeight: 800, color: "#C2410C", fontSize: 16 }}>− {inr(feeTotalFor(r.host_id))}</div></div>}
+                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>NET PAYABLE</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{netPayable(r) == null ? "—" : inr(netPayable(r))}</div></div>
               </div>
               {isSuper && r.payable != null && (() => {
                 const paid = paidFor(r.host_id);
-                const outstanding = Math.max(0, Math.round(Number(r.payable || 0) - paid));
+                const outstanding = Math.max(0, Math.round(Number(netPayable(r) || 0) - paid));
                 const hist = payouts.filter(p => p.payee_id === r.host_id);
                 return (
                   <div style={{ marginTop: 12, borderTop: `1px dashed ${W.line}`, paddingTop: 11 }}>
@@ -950,22 +1037,12 @@ function PromoterPayouts() {
     </div>
   );
 }
-function PayoutsPanel({ isSuper, focusHostId = null, organisationName = "" }) {
-  const [tab, setTab] = useState("organiser");
+function PromotersPanel() {
   return (
     <div>
-      <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 12 }}>💸 Payouts</div>
-      {isSuper && (
-        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-          {[["organiser", "🎪", "Organiser payouts"], ["promoter", "📣", "Promoter payouts"]].map(([k, ic, l]) => (
-            <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: "13px 0", borderRadius: 13, border: tab === k ? "2px solid #008069" : `1.5px solid ${W.line}`, background: tab === k ? "#E7F6EF" : "#fff", color: tab === k ? "#0d6e58" : W.soft, fontWeight: 800, fontSize: 13.5, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-              <span style={{ fontSize: 20 }}>{ic}</span><span>{l}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      {(!isSuper || tab === "organiser") && <SettlementsPanel isSuper={isSuper} focusHostId={focusHostId} organisationName={organisationName} />}
-      {isSuper && tab === "promoter" && <PromoterPayouts />}
+      <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 4 }}>📣 Promoters</div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 14 }}>Review promoter ticket commissions and record their payouts.</div>
+      <PromoterPayouts />
     </div>
   );
 }
@@ -9847,7 +9924,7 @@ function OrganiserAdminDashboard({ organiser, events, onClose }) {
           {members === null ? <Center>Loading organiser members…</Center> : !filteredMembers.length ? <Center>No members found.</Center> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10 }}>{filteredMembers.map((m, i) => <div key={m.user_id || i} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 13 }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><PersonAvatar url={m.avatar_url} name={m.full_name} size={42} /><div style={{ flex: 1, minWidth: 0 }}><div style={{ color: W.ink, fontWeight: 850 }}>{m.full_name || "Member"}</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>{m.phone || "Phone unavailable"}</div></div><div style={{ textAlign: "center", color: W.teal }}><div style={{ fontWeight: 950, fontSize: 18 }}>{m.ticket_count || 0}</div><div style={{ fontSize: 9.5, fontWeight: 800 }}>TICKETS</div></div></div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 9, lineHeight: 1.4 }}><b style={{ color: W.ink }}>Events:</b> {(m.event_names || []).join(" · ") || "—"}</div></div>)}</div>}
         </div>}
 
-        {tab === "payouts" && <SettlementsPanel isSuper focusHostId={organiser.user_id} organisationName={organiser.organisation_name || organiser.applicant_name || "Organiser"} />}
+        {tab === "payouts" && <SettlementsPanel isSuper focusHostId={organiser.user_id} organisationName={organiser.organisation_name || organiser.applicant_name || "Organiser"} defaultPlatformPct={organiser.commission_pct} />}
       </div>
     </div>
   );
@@ -9981,7 +10058,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
     ...(isSuper ? [["emailmkt", "Email"]] : []),
-    ...((canApprove || caps.host) ? [["settle", "Payouts"]] : []),
+    ...(isSuper ? [["settle", "📣 Promoters"]] : []),
     ...(isSuper ? [["orgapps", "🏢 Organisers"]] : []),
     ...(canApprove ? [["filters", "Filters"]] : []),
   ];
@@ -10009,7 +10086,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
-        : seg === "settle" ? <PayoutsPanel isSuper={isSuper} />
+        : seg === "settle" ? <PromotersPanel />
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
         : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
