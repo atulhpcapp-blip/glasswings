@@ -10009,7 +10009,7 @@ function OrganiserAdminDashboard({ organiser, events, onClose }) {
 
 function OrganiserApplicationsAdmin({ onReload, events = [] }) {
   const [rows, setRows] = useState(null);
-  const [filter, setFilter] = useState("pending");
+  const [filter, setFilter] = useState("approved");
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
@@ -10068,7 +10068,7 @@ function OrganiserApplicationsAdmin({ onReload, events = [] }) {
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {[["pending", `Pending (${pending})`], ["approved", "Approved"], ["rejected", "Returned"], ["all", "All"]].map(([k, label]) => (
+        {[["approved", "Approved"], ["pending", `Pending (${pending})`], ["rejected", "Returned"], ["all", "All"]].map(([k, label]) => (
           <button key={k} onClick={() => setFilter(k)} style={{ padding: "8px 13px", borderRadius: 999, border: `1px solid ${filter === k ? W.teal : W.line}`, background: filter === k ? W.teal : "#fff", color: filter === k ? "#fff" : W.soft, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{label}</button>
         ))}
         <button onClick={load} style={{ marginLeft: "auto", ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "8px 12px" }}>↻ Refresh</button>
