@@ -1565,6 +1565,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const selQty = cart.reduce((a, c) => a + c.qty, 0);
   const selTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
+  const menRemain = profile?.gender === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
   const stepper = (key, q, max) => (
     <div style={{ display: "flex", alignItems: "center", gap: 0, border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden" }}>
       <button onClick={() => setQ(key, q - 1)} style={{ width: 36, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: 20, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>−</button>
@@ -1599,6 +1600,13 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         <div style={{ padding: "14px 0", fontSize: 13.5, color: W.soft }}>These tickets aren't available for your profile.</div>
       ) : visTypes.length ? (<>
       <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order. Prices include processing fee.</div>
+      {menRemain != null && (
+        <div style={{ background: menRemain <= 0 ? "#FDECEC" : "#FEF5E7", border: `1px solid ${menRemain <= 0 ? "#F5B7B1" : "#F8D486"}`, color: menRemain <= 0 ? "#B03A2E" : "#9C6A0B", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, margin: "8px 0 2px", lineHeight: 1.45 }}>
+          {menRemain <= 0
+            ? "⚖️ Men's tickets aren't open yet — they release as more women join. Check back soon."
+            : `⚖️ Only ${menRemain} men's ticket${menRemain === 1 ? "" : "s"} open right now — more open as more women join.`}
+        </div>
+      )}
       {visTypes.map(t => {
         const st = ticketStatus(t, e, stats, typeSold, profile);
         const soldOut = !st.ok && st.label === "Sold out";
@@ -1606,7 +1614,8 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const fast = st.ok && left != null && left > 0 && left <= 5;
         const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
         const q = qtyMap[t.id] || 0;
-        const max = Math.min(q + (MAX_TIX - selQty), left == null ? MAX_TIX : left);
+        const headroom = Math.min(MAX_TIX - selQty, menRemain == null ? Infinity : Math.max(0, menRemain - selQty));
+        const max = Math.min(q + headroom, left == null ? MAX_TIX : left);
         return (
         <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}`, opacity: soldOut ? .5 : 1 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -2061,7 +2070,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · balancefix-v46 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · balancefix-v47 build</div>
       </div>
     </div>
   );
