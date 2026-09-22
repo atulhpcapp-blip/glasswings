@@ -26,10 +26,27 @@ function genderNet(t, subs, profile) {
   return n;
 }
 // Availability for a ticket type: capacity only
-function ticketStatus(t, e, stats, typeSold) {
+function menBudget(e, stats) {
+  // Men:Women balance — how many male-bought tickets are open right now.
+  // allowed = men_open_start + (women who've joined) * men_per_woman. null = no cap.
+  if (!e || e.balance_on === false) return null;
+  const per = Number(e.men_per_woman) || 0;
+  if (per <= 0) return null; // no positive ratio configured → feature is inert for this event
+  const open = Number(e.men_open_start) || 0;
+  const es = stats && stats[e.id];
+  const female = (es && Number(es.female)) || 0, male = (es && Number(es.male)) || 0;
+  const allowed = open + female * per;
+  return { allowed, male, female, remaining: Math.max(0, allowed - male) };
+}
+function ticketStatus(t, e, stats, typeSold, profile) {
   const sold = (typeSold && typeSold[t.id]) || 0;
   const hasCap = t.capacity != null && t.capacity !== "";
   if (hasCap && t.capacity - sold <= 0) return { ok: false, label: "Sold out" };
+  // Balance is by buyer gender: a man is capped no matter which ticket type. Women are never limited.
+  if (profile && profile.gender === "male") {
+    const mb = menBudget(e, stats);
+    if (mb && mb.remaining <= 0) return { ok: false, label: "Opens as women join" };
+  }
   return { ok: true, label: hasCap ? `${t.capacity - sold} left` : "" };
 }
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
@@ -1583,7 +1600,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       ) : visTypes.length ? (<>
       <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order. Prices include processing fee.</div>
       {visTypes.map(t => {
-        const st = ticketStatus(t, e, stats, typeSold);
+        const st = ticketStatus(t, e, stats, typeSold, profile);
         const soldOut = !st.ok && st.label === "Sold out";
         const left = leftFor(t);
         const fast = st.ok && left != null && left > 0 && left <= 5;
@@ -2044,7 +2061,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-v45 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · balancefix-v46 build</div>
       </div>
     </div>
   );
@@ -2779,9 +2796,16 @@ function Main({ user }) {
     }
     for (const c of cart) {
       if (c.type) {
-        const st = ticketStatus(c.type, e, eventStats, typeSold);
+        const st = ticketStatus(c.type, e, eventStats, typeSold, profile);
         if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? `"${c.type.name}" is sold out.` : "Men's tickets aren't open yet — they release as more women join."); }
       } else if ((ticketTypes[e.id] || []).length) { setBuyTarget(null); return setNotice("Please choose a ticket type for this event."); }
+    }
+    if (profile?.gender === "male") {
+      const mb = menBudget(e, eventStats);
+      if (mb) {
+        const wantQty = cart.reduce((a, c) => a + (c.qty || 0), 0);
+        if (wantQty > mb.remaining) { setBuyTarget(null); return setNotice(mb.remaining <= 0 ? "Men's tickets aren't open yet — they release as more women join." : `Only ${mb.remaining} men's ticket${mb.remaining === 1 ? "" : "s"} open right now — more open as women join.`); }
+      }
     }
     const chosen = sel.filter(a => (a.qty || 0) > 0);
     const addonTotal = chosen.reduce((s, a) => s + (a.price || 0) * a.qty, 0);
@@ -2822,8 +2846,15 @@ function Main({ user }) {
     const { event: e } = buyTarget;
     for (const c of cart) {
       if (c.type) {
-        const st = ticketStatus(c.type, e, eventStats, typeSold);
+        const st = ticketStatus(c.type, e, eventStats, typeSold, profile);
         if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? `"${c.type.name}" is sold out.` : "Men’s tickets aren’t open yet — they release as more women join."); }
+      }
+    }
+    if (profile?.gender === "male") {
+      const mb = menBudget(e, eventStats);
+      if (mb) {
+        const wantQty = cart.reduce((a, c) => a + (c.qty || 0), 0);
+        if (wantQty > mb.remaining) { setBuyTarget(null); return setNotice(mb.remaining <= 0 ? "Men’s tickets aren’t open yet — they release as more women join." : `Only ${mb.remaining} men’s ticket${mb.remaining === 1 ? "" : "s"} open right now — more open as women join.`); }
       }
     }
     const { data: phRow } = await supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle();
