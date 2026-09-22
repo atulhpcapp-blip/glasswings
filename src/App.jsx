@@ -3259,13 +3259,13 @@ function Main({ user }) {
         </div>
       )}
       {tab === "chats" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>)}
-      {tab === "explore" && <Explore rooms={rooms.filter(r => !r.segment_id || isStaff || mySegs.includes(r.segment_id))} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} onOpenDM={openDM} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
-      {tab === "games" && <GameZone meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
+      {tab === "explore" && <Explore user={user} rooms={rooms.filter(r => !r.segment_id || isStaff || mySegs.includes(r.segment_id))} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} onOpenDM={openDM} onOrganiserApproved={load} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
+      {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && <MeetPage meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} />}
+      {tab === "meet" && <MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} />}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -3882,7 +3882,7 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     </div>
   );
 }
-function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false, isMod = false, onUpgrade }) {
+function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false, isMod = false, onUpgrade }) {
   const [mtab, setMtab] = useState("discover");
   const [matchTab, setMatchTab] = useState("perfect");
   const [rows, setRows] = useState(null);
@@ -4133,6 +4133,9 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
         {[["discover", "✨ Discover"], ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]].map(([k, l]) => (
           <button key={k} onClick={() => setMtab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${mtab === k ? W.teal : W.line}`, background: mtab === k ? W.teal : "#fff", color: mtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>
         ))}
+      </div>
+      <div style={{ margin: "0 14px" }}>
+        <OrganiserApplicationCard user={user} profile={profile} onApproved={onOrganiserApproved} variant="banner" />
       </div>
       {mtab === "discover" && <div style={{ display: wide ? "flex" : "block", gap: 16, alignItems: "flex-start" }}>
         <div style={{ order: wide ? 2 : 0, width: wide ? 340 : "auto", flexShrink: 0, position: wide ? "sticky" : "static", top: 62, alignSelf: "flex-start" }}>
@@ -4403,7 +4406,7 @@ function MeetPage({ meId, onClose, asTab = false, onOpenDM, isAdmin = false, isS
     </div>
   );
 }
-function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom, isStaffUser = false, meId, onOpenDM }) {
+function Explore({ user, rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom, isStaffUser = false, meId, onOpenDM, onOrganiserApproved }) {
   const [meetOpen, setMeetOpen] = useState(false);
   const admin = ["admin", "superadmin"].includes(profile?.role);
   const [city, setCity] = useState("all");
@@ -4415,7 +4418,7 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
   return (
     <div>
       <TopBar title="Rooms" />
-      {meetOpen && <MeetPage meId={meId} onOpenDM={onOpenDM} isAdmin={isStaffUser} isSuper={profile?.role === "superadmin" || (profile?.roles || []).includes("superadmin")} isMod={["admin", "subadmin", "superadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "subadmin", "superadmin"].includes(r))} onClose={() => setMeetOpen(false)} />}
+      {meetOpen && <MeetPage user={user} profile={profile} onOrganiserApproved={onOrganiserApproved} meId={meId} onOpenDM={onOpenDM} isAdmin={isStaffUser} isSuper={profile?.role === "superadmin" || (profile?.roles || []).includes("superadmin")} isMod={["admin", "subadmin", "superadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "subadmin", "superadmin"].includes(r))} onClose={() => setMeetOpen(false)} />}
       <div onClick={() => setMeetOpen(true)} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 15, padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,128,105,.25)" }}>
         <span style={{ fontSize: 30 }}>👋</span>
         <div style={{ flex: 1 }}>
@@ -4423,6 +4426,9 @@ function Explore({ rooms, profile, counts, canAccess, freeForUser, onJoin, onOpe
           <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", marginTop: 2 }}>Wave 👋 · see who's new 🆕 · who viewed you 👀</div>
         </div>
         <span style={{ color: "#fff", fontWeight: 800, fontSize: 13, background: "rgba(255,255,255,.18)", padding: "8px 13px", borderRadius: 10 }}>Open →</span>
+      </div>
+      <div style={{ margin: "0 14px" }}>
+        <OrganiserApplicationCard user={user} profile={profile} onApproved={onOrganiserApproved} variant="banner" />
       </div>
       <AlbumsStrip isStaff={isStaffUser} meId={meId} />
       {cityList.length > 0 && <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>{chip("all", "All cities")}{cityList.map(c => chip(c, c))}</div>}
@@ -6381,7 +6387,7 @@ function ClashGame({ meId, isStaff, onClose }) {
     </div>
   );
 }
-function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onConsumedInitial, autoSpark = null, onConsumedSpark }) {
+function GameZone({ user, profile, onOrganiserApproved, meId, events, isStaff, onUpgrade, initialGame = null, onConsumedInitial, autoSpark = null, onConsumedSpark }) {
   const [playTrivia, setPlayTrivia] = useState(false);
   const [triviaDone, setTriviaDone] = useState(null);
   const [board, setBoard] = useState(null);
@@ -6446,6 +6452,9 @@ function GameZone({ meId, events, isStaff, onUpgrade, initialGame = null, onCons
         <div style={{ fontSize: 12.5, opacity: .9, marginTop: 3 }}>Play · compete on the leaderboard · win real perks 🎁</div>
       </div>
       <BattleBanner />
+      <div style={{ margin: "0 14px" }}>
+        <OrganiserApplicationCard user={user} profile={profile} onApproved={onOrganiserApproved} variant="banner" />
+      </div>
       <div style={{ padding: 14 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", margin: "2px 2px 11px" }}>
           <div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>Free games</div>
@@ -14708,7 +14717,7 @@ function StreakBoard({ events }) {
     </div>
   );
 }
-function OrganiserApplicationCard({ user, profile, onApproved }) {
+function OrganiserApplicationCard({ user, profile, onApproved, variant = "profile" }) {
   const isOrganiser = (profile?.roles || []).includes("organiser");
   const [application, setApplication] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -14784,6 +14793,7 @@ function OrganiserApplicationCard({ user, profile, onApproved }) {
   );
 
   if (!loaded) return null;
+  if ((isOrganiser || application?.status === "approved") && variant === "banner") return null;
   if (isOrganiser || application?.status === "approved") return (
     <div style={{ marginTop: 16, padding: 16, borderRadius: 16, color: "#fff", background: "linear-gradient(135deg,#0B332B,#008069)", boxShadow: "0 10px 26px rgba(0,128,105,.18)" }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -14797,7 +14807,26 @@ function OrganiserApplicationCard({ user, profile, onApproved }) {
   const rejected = application?.status === "rejected";
   return (
     <>
-      <div style={{ marginTop: 16, background: pending ? "#FFF8E8" : rejected ? "#FFF3F1" : "linear-gradient(145deg,#F7FBFA,#EDF8F4)", border: `1px solid ${pending ? "#EEDAA6" : rejected ? "#EFC8C2" : "#CFE8DE"}`, borderRadius: 16, padding: 16 }}>
+      {variant === "banner" && !pending && !rejected ? (
+        <div style={{ marginTop: 12, position: "relative", overflow: "hidden", borderRadius: 18, padding: "18px 17px", color: "#fff", background: "linear-gradient(125deg,#102A43 0%,#006B5B 58%,#00A884 100%)", boxShadow: "0 10px 24px rgba(0,107,91,.22)" }}>
+          <div style={{ position: "absolute", width: 130, height: 130, borderRadius: "50%", background: "rgba(255,255,255,.09)", right: -38, top: -60 }} />
+          <div style={{ position: "absolute", width: 80, height: 80, borderRadius: "50%", background: "rgba(255,203,107,.13)", right: 42, bottom: -48 }} />
+          <div style={{ position: "relative", zIndex: 1, display: "flex", gap: 14, alignItems: "center" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 8px", borderRadius: 20, background: "rgba(255,255,255,.14)", fontSize: 9.5, fontWeight: 900, letterSpacing: 1.1 }}>✨ FOR EVENT CREATORS</div>
+              <div style={{ fontWeight: 950, fontSize: 20, lineHeight: 1.08, marginTop: 9 }}>Host your own events</div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.45, opacity: .9, marginTop: 6 }}>Create experiences, sell tickets and grow your community — all from your own dashboard.</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 11 }}>
+                {["Ticketing", "Payments", "Event dashboard"].map(item => <span key={item} style={{ padding: "4px 8px", borderRadius: 8, background: "rgba(255,255,255,.12)", fontSize: 10.5, fontWeight: 750 }}>✓ {item}</span>)}
+              </div>
+            </div>
+            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 54, height: 54, borderRadius: 18, background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, transform: "rotate(3deg)" }}>🎪</div>
+              <button onClick={() => setOpen(true)} style={{ border: 0, borderRadius: 11, background: "#fff", color: "#006B5B", padding: "10px 13px", fontSize: 12, fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 5px 14px rgba(0,0,0,.14)" }}>Start hosting →</button>
+            </div>
+          </div>
+        </div>
+      ) : <div style={{ marginTop: 16, background: pending ? "#FFF8E8" : rejected ? "#FFF3F1" : "linear-gradient(145deg,#F7FBFA,#EDF8F4)", border: `1px solid ${pending ? "#EEDAA6" : rejected ? "#EFC8C2" : "#CFE8DE"}`, borderRadius: 16, padding: 16 }}>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
           <div style={{ width: 42, height: 42, borderRadius: 13, background: pending ? "#FFEBC0" : rejected ? "#FDE1DD" : "#DDF3EA", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, flexShrink: 0 }}>{pending ? "⏳" : rejected ? "↻" : "🎪"}</div>
           <div style={{ flex: 1 }}>
@@ -14807,7 +14836,7 @@ function OrganiserApplicationCard({ user, profile, onApproved }) {
           </div>
         </div>
         {!pending && <button onClick={() => setOpen(true)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 13, padding: 11 }}>{rejected ? "Update and reapply" : "Apply to become an organiser"}</button>}
-      </div>
+      </div>}
 
       {open && (
         <Sheet onClose={() => !busy && setOpen(false)}>
