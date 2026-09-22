@@ -1537,6 +1537,112 @@ function EventGoers({ eventId, onOpenDM }) {
     </div>
   );
 }
+
+function MiniBar({ pct, color = W.teal, bg = "#EAF3EF", h = 8 }) {
+  const safe = Math.max(0, Math.min(100, Number(pct) || 0));
+  return (
+    <div style={{ width: "100%", height: h, background: bg, borderRadius: 999, overflow: "hidden" }}>
+      <div style={{ width: `${safe}%`, height: "100%", background: color, borderRadius: 999, transition: "width .35s ease" }} />
+    </div>
+  );
+}
+
+function purchaseTimeLabel(iso) {
+  if (!iso) return "recently";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return "just now";
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min${min === 1 ? "" : "s"} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hr${hr === 1 ? "" : "s"} ago`;
+  return "recently";
+}
+
+function RecentBuyerToasts({ eventId, wide }) {
+  const [buyers, setBuyers] = useState([]);
+  const [active, setActive] = useState(null);
+  const idxRef = useRef(0);
+
+  const hydrateBuyer = useCallback(async (row) => {
+    if (!row) return null;
+    let name = "Someone";
+    let city = "";
+    if (row.user_id) {
+      const [{ data: p }, { data: m }] = await Promise.all([
+        supabase.from("profiles").select("full_name").eq("id", row.user_id).maybeSingle(),
+        supabase.from("member_details").select("city").eq("user_id", row.user_id).maybeSingle()
+      ]);
+      name = (p?.full_name || "Someone").trim();
+      city = (m?.city || "").trim();
+    }
+    return { id: row.id, name, city, at: row.purchased_at };
+  }, []);
+
+  const loadBuyers = useCallback(async () => {
+    if (!eventId) return;
+    const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    const { data: rows } = await supabase
+      .from("event_tickets")
+      .select("id, user_id, purchased_at")
+      .eq("event_id", eventId)
+      .gte("purchased_at", since)
+      .order("purchased_at", { ascending: false })
+      .limit(10);
+
+    const fresh = (await Promise.all((rows || []).map(hydrateBuyer))).filter(Boolean);
+    setBuyers(fresh);
+    setActive(prev => prev || fresh[0] || null);
+  }, [eventId, hydrateBuyer]);
+
+  useEffect(() => { loadBuyers(); }, [loadBuyers]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    const channel = supabase
+      .channel(`event-ticket-live-${eventId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "event_tickets", filter: `event_id=eq.${eventId}` },
+        async payload => {
+          const buyer = await hydrateBuyer(payload.new);
+          if (!buyer) return;
+          setBuyers(prev => [buyer, ...prev.filter(x => x.id !== buyer.id)].slice(0, 10));
+          setActive(buyer);
+          idxRef.current = 0;
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [eventId, hydrateBuyer]);
+
+  useEffect(() => {
+    if (buyers.length < 2) return;
+    const t = setInterval(() => {
+      idxRef.current = (idxRef.current + 1) % buyers.length;
+      setActive(buyers[idxRef.current]);
+    }, 5200);
+    return () => clearInterval(t);
+  }, [buyers]);
+
+  if (!active) return null;
+  const firstName = (active.name || "Someone").split(/\s+/)[0] || "Someone";
+  return (
+    <div style={{ position: "fixed", left: wide ? 18 : 12, right: wide ? "auto" : 12, bottom: wide ? 18 : 88, zIndex: 80, pointerEvents: "none" }}>
+      <div style={{ width: wide ? 330 : "100%", maxWidth: 360, background: "rgba(10,26,23,.96)", color: "#fff", border: "1px solid rgba(255,255,255,.1)", borderRadius: 16, padding: "12px 14px", boxShadow: "0 16px 42px rgba(0,0,0,.24)", backdropFilter: "blur(10px)", animation: "gwBuyerIn .28s ease" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#2FD4A8,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>🎟️</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 900, color: "#8EF0D2", letterSpacing: .5, textTransform: "uppercase" }}>Live booking</div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.4, marginTop: 2 }}><b>{firstName}</b> bought a ticket {purchaseTimeLabel(active.at)}{active.city ? <> from <b>{active.city}</b></> : null}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, initialCart, isPlanMember, onViewPlans, onOpenDM }) {
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
@@ -1566,6 +1672,14 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const selTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
   const menRemain = profile?.gender === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
+  const balance = menBudget(e, stats);
+  const totalCapacity = visTypes.reduce((sum, t) => {
+    if (t.capacity == null || t.capacity === "") return sum;
+    return sum + Number(t.capacity || 0);
+  }, 0);
+  const totalSold = visTypes.reduce((sum, t) => sum + Number((typeSold && typeSold[t.id]) || 0), 0);
+  const totalLeft = totalCapacity > 0 ? Math.max(0, totalCapacity - totalSold) : null;
+  const fillPct = totalCapacity > 0 ? Math.min(100, Math.round((totalSold / totalCapacity) * 100)) : null;
   const stepper = (key, q, max) => (
     <div style={{ display: "flex", alignItems: "center", gap: 0, border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden" }}>
       <button onClick={() => setQ(key, q - 1)} style={{ width: 36, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: 20, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>−</button>
@@ -1611,6 +1725,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const st = ticketStatus(t, e, stats, typeSold, profile);
         const soldOut = !st.ok && st.label === "Sold out";
         const left = leftFor(t);
+        const sold = Number((typeSold && typeSold[t.id]) || 0);
+        const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
+        const typePct = cap && cap > 0 ? Math.min(100, Math.round((sold / cap) * 100)) : null;
         const fast = st.ok && left != null && left > 0 && left <= 5;
         const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
         const q = qtyMap[t.id] || 0;
@@ -1625,6 +1742,14 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             </div>
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
+            {typePct != null && (
+              <div style={{ marginTop: 8, maxWidth: 230 }}>
+                <MiniBar pct={typePct} color={typePct >= 85 ? "#D97706" : W.teal} />
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: W.soft, marginTop: 4 }}>
+                  <span>{sold} sold</span><span>{Math.max(0, cap - sold)} left</span>
+                </div>
+              </div>
+            )}
           </div>
           {!st.ok
             ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : "Closed"}</button>
@@ -1639,12 +1764,41 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {(qtyMap.__base || 0) > 0 ? stepper("__base", qtyMap.__base, MAX_TIX) : addBtn("__base")}
         </div>
       )}
+      {(fillPct != null || balance) && (
+        <div style={{ marginTop: 14, border: "1px solid #DCEAE5", background: "linear-gradient(180deg,#FBFDFC,#F6FBF9)", borderRadius: 14, padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 900, color: W.ink }}>🔥 Live availability</div>
+            {fillPct != null && <span style={{ fontSize: 11, fontWeight: 900, color: fillPct >= 85 ? "#B45309" : W.teal, background: fillPct >= 85 ? "#FFF1E0" : "#E7F6EF", padding: "4px 8px", borderRadius: 999 }}>{fillPct}% full</span>}
+          </div>
+          {fillPct != null && (
+            <div style={{ marginBottom: balance ? 13 : 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, fontWeight: 700, color: W.ink, marginBottom: 6 }}>
+                <span>{totalSold} of {totalCapacity} booked</span><span>{totalLeft} left</span>
+              </div>
+              <MiniBar pct={fillPct} color={fillPct >= 85 ? "#D97706" : W.teal} h={9} />
+            </div>
+          )}
+          {balance && (
+            <div style={{ paddingTop: fillPct != null ? 12 : 0, borderTop: fillPct != null ? `1px solid ${W.line}` : "none" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink }}>⚖️ Men : women balance</div>
+                <div style={{ fontSize: 11.5, color: W.soft }}>{balance.male} men · {balance.female} women</div>
+              </div>
+              <MiniBar pct={balance.allowed > 0 ? Math.min(100, Math.round((balance.male / balance.allowed) * 100)) : 0} color={balance.remaining > 0 ? "#8B5CF6" : "#D97706"} bg="#F0EBFF" />
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: W.soft, marginTop: 6 }}>
+                <span>{balance.allowed} male slots open now</span><span>{balance.remaining} remaining</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}><Lock size={12} />Instant ticket · secure payment · sent to your email</div>
     </div>
   );
   return (
     <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif" }}>
-      <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}`}</style>
+      <RecentBuyerToasts eventId={e.id} wide={wide} />
+      <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}@keyframes gwBuyerIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
       <div style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(8,18,24,.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "12px 7%" : "10px 14px" }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 7, background: "transparent", border: "none", color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: "pointer", padding: 0 }}><ArrowLeft size={19} />All events</button>
         <img src="/logo-white.png" alt="Glasswings" style={{ height: 26, objectFit: "contain" }} />
@@ -1871,7 +2025,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         </div>
         {wide && (
           <div style={{ width: 330, flexShrink: 0, position: "sticky", top: 76 }}>
-            <div style={{ border: `1px solid ${W.line}`, borderRadius: 16, padding: "8px 18px 16px", boxShadow: "0 8px 28px rgba(0,0,0,.07)" }}>
+            <div style={{ border: "1px solid #E5ECEA", borderRadius: 18, padding: "10px 18px 18px", boxShadow: "0 18px 44px rgba(0,0,0,.08)", background: "linear-gradient(180deg,#FFFFFF 0%,#FCFDFC 100%)" }}>
               {isPlanMember ? (
                 (Number(e.member_discount_pct) || 0) > 0 && (
                   <div style={{ background: "linear-gradient(95deg,#F3E8FF,#FCE7F3)", border: "1px solid #E9D5FF", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#6D28D9" }}>
