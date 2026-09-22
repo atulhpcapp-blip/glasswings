@@ -2544,6 +2544,7 @@ function Main({ user }) {
   const [subs, setSubs] = useState([]);
   const [settings, setSettings] = useState({ admin_can_add: true, admin_can_remove: true, show_age: true, show_area: true, show_city: true, show_profession: true });
   const [perms, setPerms] = useState([]);
+  const [organiserStaff, setOrganiserStaff] = useState(null);
   const [perksList, setPerksList] = useState([]);
   const [addons, setAddons] = useState({});
   const [subRows, setSubRows] = useState([]);
@@ -2808,7 +2809,7 @@ function Main({ user }) {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
-    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }, { data: ad }, { data: egm }, { data: sgm }] = await Promise.all([
+    const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }, { data: ad }, { data: egm }, { data: sgm }, { data: osc }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
@@ -2829,6 +2830,7 @@ function Main({ user }) {
       supabase.from("event_addons").select("*"),
       supabase.from("event_group_members").select("event_id").eq("user_id", user.id),
       supabase.from("segment_members").select("segment_id").eq("user_id", user.id),
+      supabase.rpc("my_organiser_staff_context"),
     ]);
     setProfile(prof); setRooms(rm || []); setEvents(ev || []);
     const sbLive = (sb || []).filter(x => !x.expires_at || new Date(x.expires_at).getTime() > Date.now());
@@ -2841,6 +2843,7 @@ function Main({ user }) {
     const ts = {}; (tsold || []).forEach(x => { ts[x.ticket_type_id] = Number(x.sold); }); setTypeSold(ts);
     if (stg) setSettings(stg);
     if (rp) setPerms(rp);
+    setOrganiserStaff((osc || [])[0] || null);
     setPerksList(pk || []);
     const am = {}; (ad || []).forEach(a => { if (!am[a.event_id]) am[a.event_id] = []; am[a.event_id].push(a); }); setAddons(am);
     setCategories((opts || []).filter(o => o.kind === "category"));
@@ -2859,7 +2862,9 @@ function Main({ user }) {
   const capOf = (k) => isSuper || perms.some(p => myRoles.includes(p.role) && p[k]);
   const isAdmin = isSuper || myRoles.includes("admin");
   const isMod = isSuper || myRoles.some(r => ["admin", "subadmin"].includes(r));
-  const isStaff = isSuper || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
+  const isOrganiserOwner = myRoles.includes("organiser");
+  const organiserScopeId = organiserStaff?.organiser_id || user.id;
+  const isStaff = isSuper || !!organiserStaff || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
   useEffect(() => {
     if (!isStaff) { try { window.__gwSubs = null; } catch {} return; }
     supabase.from("member_plans").select("user_id, expires_at").then(({ data }) => {
@@ -2871,7 +2876,7 @@ function Main({ user }) {
       } catch {}
     });
   }, [isStaff]);
-  const caps = { rooms: capOf("can_rooms"), host: capOf("can_host"), broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics"), editMembers: capOf("can_edit_members"), stamps: capOf("can_stamps") };
+  const caps = { rooms: capOf("can_rooms"), host: capOf("can_host") || !!organiserStaff?.can_events, door: capOf("can_host") || !!organiserStaff?.can_door, privateMembers: isOrganiserOwner || !!organiserStaff?.can_members, broadcast: capOf("can_broadcast"), members: capOf("can_view_members"), add: capOf("can_add"), remove: capOf("can_remove"), analytics: capOf("can_analytics") || !!organiserStaff?.can_analytics, editMembers: capOf("can_edit_members"), stamps: capOf("can_stamps") };
   const canAccess = (r) => isAdmin || subs.includes(r.id) || mods.includes(r.id) || planRoomIds.includes(r.id);
   const canAccessEvent = (e) => isAdmin || tickets.includes(e.id) || eventMods.includes(e.id) || eventGroups.includes(e.id);
   const freeForUser = (r) => {
@@ -3189,7 +3194,12 @@ function Main({ user }) {
     const sid = list.length > 1 ? (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())) : null;
     let firstId = null; const ids = [];
     for (const dt of list) {
-      const { data: ins, error } = await supabase.from("events").insert({ ...d, event_date: dt.label, event_at: dt.iso || null, host_id: user.id, series_id: sid }).select("id").single();
+      const payload = { ...d, event_date: dt.label, event_at: dt.iso || null, host_id: organiserScopeId, series_id: sid };
+      const result = organiserStaff?.can_events
+        ? await supabase.rpc("organiser_staff_create_event", { p_event: payload })
+        : await supabase.from("events").insert(payload).select("id").single();
+      const error = result.error;
+      const ins = organiserStaff?.can_events ? { id: result.data } : result.data;
       if (error) return setNotice(error.message);
       if (!firstId) firstId = ins?.id;
       if (ins?.id) ids.push(ins.id);
@@ -3233,13 +3243,14 @@ function Main({ user }) {
     if (error) return setNotice(error.message);
     setNotice(`Event sent privately to ${target.length} member${target.length === 1 ? "" : "s"}.`);
   };
-  const updateEvent = async (id, p) => { const { error } = await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
+  const updateEvent = async (id, p) => { const { error } = organiserStaff?.can_events ? await supabase.rpc("organiser_staff_update_event", { p_event: id, p_patch: p }) : await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
   const duplicateEvent = async (e) => {
     const { id, created_at, ...rest } = e;
     rest.title = (e.title || "Event") + " (copy)";
     rest.approved = false;
-    rest.host_id = user.id;
-    const { data: ne, error } = await supabase.from("events").insert(rest).select("id").single();
+    rest.host_id = organiserScopeId;
+    const result = organiserStaff?.can_events ? await supabase.rpc("organiser_staff_create_event", { p_event: rest }) : await supabase.from("events").insert(rest).select("id").single();
+    const error = result.error; const ne = organiserStaff?.can_events ? { id: result.data } : result.data;
     if (error) return setNotice(error.message);
     const { data: tts } = await supabase.from("event_ticket_types").select("*").eq("event_id", id);
     for (const t of (tts || [])) { const { id: _i, created_at: _c, ...tr } = t; tr.event_id = ne.id; await supabase.from("event_ticket_types").insert(tr); }
@@ -3248,7 +3259,7 @@ function Main({ user }) {
     await load();
     setNotice("📋 Event duplicated as a draft — edit it and approve when ready.");
   };
-  const deleteEvent = async (id) => { const { error } = await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
+  const deleteEvent = async (id) => { const { error } = organiserStaff?.can_events ? await supabase.rpc("organiser_staff_delete_event", { p_event: id }) : await supabase.from("events").delete().eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.filter(e => e.id !== id)); setOpen(null); };
   const addOption = async (kind, name) => { const n = name.trim(); if (!n) return; const { error } = await supabase.from("event_options").insert({ kind, name: n }); if (error) return setNotice(error.message); await load(); };
   const delOption = async (id) => { const { error } = await supabase.from("event_options").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
   const setOptionImage = async (id, url) => { const { error } = await supabase.from("event_options").update({ image_url: url }).eq("id", id); if (error) return setNotice(error.message); await load(); };
@@ -3352,7 +3363,7 @@ function Main({ user }) {
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
-      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={user.id} canApprove={isAdmin || (profile?.roles || []).includes("admin")} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && <MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} />}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
@@ -10104,14 +10115,123 @@ function OrganiserApplicationsAdmin({ onReload, events = [] }) {
   );
 }
 
-function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload }) {
+function OrganiserStaffPanel() {
+  const [rows, setRows] = useState(null);
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState(null);
+  const [job, setJob] = useState("Event staff");
+  const [access, setAccess] = useState({ can_events: false, can_door: true, can_analytics: false, can_members: false });
+  const [drafts, setDrafts] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const load = useCallback(() => {
+    supabase.rpc("organiser_staff_list").then(({ data, error }) => {
+      if (error) { setRows([]); setMessage(error.message); }
+      else { setRows(data || []); setMessage(""); }
+    });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const findMember = async () => {
+    if (!query.trim()) return;
+    setBusy(true); setMessage(""); setFound(null);
+    const { data, error } = await supabase.rpc("organiser_find_staff", { p_query: query.trim() });
+    setBusy(false);
+    if (error) return setMessage(error.message);
+    const member = (data || [])[0];
+    if (!member) return setMessage("No Glasswings member found. Ask them to create a Glasswings account first, then search again.");
+    if ((rows || []).some(r => r.staff_id === member.staff_id)) return setMessage("This member is already on your staff. You can edit their job below.");
+    setFound(member);
+  };
+  const save = async (member, values) => {
+    setBusy(true); setMessage("");
+    const { error } = await supabase.rpc("organiser_upsert_staff", {
+      p_staff: member.staff_id, p_job_title: values.job_title,
+      p_can_events: !!values.can_events, p_can_door: !!values.can_door,
+      p_can_analytics: !!values.can_analytics, p_can_members: !!values.can_members,
+    });
+    setBusy(false);
+    if (error) return setMessage(error.message);
+    setFound(null); setQuery(""); setJob("Event staff");
+    setAccess({ can_events: false, can_door: true, can_analytics: false, can_members: false });
+    setDrafts({}); load(); setMessage("Staff access saved ✓");
+  };
+  const remove = async row => {
+    if (!window.confirm(`Remove ${row.full_name || "this member"} from your staff? Their organiser access will stop immediately.`)) return;
+    setBusy(true);
+    const { error } = await supabase.rpc("organiser_remove_staff", { p_staff: row.staff_id });
+    setBusy(false);
+    if (error) return setMessage(error.message);
+    load();
+  };
+  const perm = (values, setValues, key, label, sub, emoji) => (
+    <button type="button" onClick={() => setValues(v => ({ ...v, [key]: !v[key] }))} style={{ textAlign: "left", border: `1.5px solid ${values[key] ? W.teal : W.line}`, background: values[key] ? "#E7F6EF" : "#fff", borderRadius: 12, padding: "10px 11px", cursor: "pointer", color: values[key] ? W.teal : W.ink }}>
+      <div style={{ fontSize: 13, fontWeight: 850 }}>{values[key] ? "✓ " : ""}{emoji} {label}</div>
+      <div style={{ fontSize: 10.5, color: W.soft, marginTop: 3, lineHeight: 1.3 }}>{sub}</div>
+    </button>
+  );
+  const permissionGrid = (values, setValues) => (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+      {perm(values, setValues, "can_events", "Events", "Create and manage events", "🎟️")}
+      {perm(values, setValues, "can_door", "Event door", "Scan tickets and door sales", "🚪")}
+      {perm(values, setValues, "can_analytics", "Analytics", "See event performance", "📊")}
+      {perm(values, setValues, "can_members", "Members", "See only your ticket buyers", "👥")}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: 14, maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#102E29,#008069)", color: "#fff", borderRadius: 18, padding: "18px 20px", boxShadow: "0 12px 30px rgba(0,128,105,.18)" }}>
+        <div style={{ fontSize: 21, fontWeight: 900 }}>🧑‍💼 My Staff</div>
+        <div style={{ fontSize: 12.5, opacity: .9, marginTop: 4, lineHeight: 1.45 }}>Add trusted team members and choose exactly which organiser jobs they can do.</div>
+      </div>
+      <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 15, padding: 14, marginTop: 12 }}>
+        <div style={{ fontWeight: 850, color: W.ink, marginBottom: 5 }}>Add a Glasswings member</div>
+        <div style={{ color: W.soft, fontSize: 12, lineHeight: 1.45, marginBottom: 10 }}>For privacy, enter their exact Glasswings email address or phone number.</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={query} onChange={e => { setQuery(e.target.value); setFound(null); }} onKeyDown={e => e.key === "Enter" && findMember()} placeholder="Email address or phone number" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none" }} />
+          <button onClick={findMember} disabled={busy} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px", opacity: busy ? .6 : 1 }}>{busy ? "…" : "Find"}</button>
+        </div>
+        {found && <div style={{ marginTop: 12, background: W.bg, borderRadius: 13, padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 11 }}>
+            <PersonAvatar url={found.avatar_url} name={found.full_name} size={42} />
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 850, color: W.ink }}>{found.full_name || "Member"}</div><div style={{ fontSize: 11.5, color: W.soft, overflow: "hidden", textOverflow: "ellipsis" }}>{found.email || found.phone}</div></div>
+          </div>
+          <input value={job} onChange={e => setJob(e.target.value)} placeholder="Job title — e.g. Door manager" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none", marginBottom: 9 }} />
+          {permissionGrid(access, setAccess)}
+          <button onClick={() => save(found, { job_title: job, ...access })} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 10, opacity: busy ? .6 : 1 }}>Add to my staff</button>
+        </div>}
+      </div>
+      {message && <div style={{ marginTop: 10, background: message.includes("✓") ? "#E7F6EF" : "#FFF3F0", color: message.includes("✓") ? W.teal : "#A33", borderRadius: 10, padding: "9px 11px", fontSize: 12.5, fontWeight: 700 }}>{message}</div>}
+      <div style={{ fontWeight: 850, color: W.ink, margin: "18px 2px 9px" }}>Your team ({rows?.length || 0})</div>
+      {rows === null ? <Center>Loading staff…</Center> : rows.length === 0 ? <Center>No staff added yet.</Center> : rows.map(row => {
+        const values = drafts[row.staff_id] || { job_title: row.job_title, can_events: row.can_events, can_door: row.can_door, can_analytics: row.can_analytics, can_members: row.can_members };
+        const setValues = updater => setDrafts(d => ({ ...d, [row.staff_id]: typeof updater === "function" ? updater(values) : updater }));
+        return <div key={row.staff_id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 15, padding: 14, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <PersonAvatar url={row.avatar_url} name={row.full_name} size={44} />
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 850, color: W.ink }}>{row.full_name || "Member"}</div><div style={{ fontSize: 11.5, color: W.soft, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.email || row.phone}</div></div>
+            <button onClick={() => remove(row)} disabled={busy} title="Remove staff" style={{ border: "none", background: "none", color: "#C0392B", cursor: "pointer", padding: 5 }}><Trash2 size={17} /></button>
+          </div>
+          <input value={values.job_title} onChange={e => setValues(v => ({ ...v, job_title: e.target.value }))} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 11px", fontSize: 13, outline: "none", margin: "11px 0 9px" }} />
+          {permissionGrid(values, setValues)}
+          <button onClick={() => save(row, values)} disabled={busy} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, width: "100%", justifyContent: "center", marginTop: 10, opacity: busy ? .6 : 1 }}>Save job & access</button>
+        </div>;
+      })}
+      <div style={{ background: "#F2F7F5", border: "1px solid #DCEAE5", borderRadius: 12, padding: "10px 12px", color: "#53645F", fontSize: 12, lineHeight: 1.5, marginTop: 12 }}>🔒 Staff see only your organiser events and the ticket buyers from those events. They never receive access to the full Glasswings community.</div>
+    </div>
+  );
+}
+
+function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
-    ...((myEventsOnly && caps.host) ? [["orgmembers", "👥 My Members"]] : []),
-    ...((canApprove || caps.host) ? [["door", "🚪 EVENT DOOR"]] : []),
+    ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
+    ...((myEventsOnly && caps.privateMembers) ? [["orgmembers", "👥 My Members"]] : []),
+    ...((canApprove || caps.door) ? [["door", "🚪 EVENT DOOR"]] : []),
     ...((caps.broadcast && !myEventsOnly) ? [["broadcast", "Send"]] : []),
     ...((caps.members && !myEventsOnly) ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
@@ -10122,7 +10242,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["segments", "🎯 Segments"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
-    ...((canApprove || caps.host) ? [["analytics", "Analytics"]] : []),
+    ...((canApprove || caps.analytics) ? [["analytics", "Analytics"]] : []),
     ...(isSuper ? [["emailmkt", "Email"]] : []),
     ...(isSuper ? [["settle", "📣 Promoters"]] : []),
     ...(isSuper ? [["orgapps", "🏢 Organisers"]] : []),
@@ -10132,7 +10252,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
   if (!tabs.length) return <div><TopBar title="Staff" /><Center>You don't have any staff tools enabled yet.</Center></div>;
   return (
     <div>
-      <TopBar title={isSuper ? "Superadmin Panel" : "Staff Panel"} />
+      <TopBar title={isSuper ? "Superadmin Panel" : organiserStaff ? `${organiserStaff.organiser_name} · ${organiserStaff.job_title}` : "Organiser Panel"} />
       {myCity && !isSuper && <div style={{ background: "#FEF3C7", color: "#92400E", fontSize: 12.5, fontWeight: 600, padding: "7px 14px", textAlign: "center" }}>Scoped to {myCity}</div>}
       <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9, overflowX: "auto" }}>
         {tabs.map(([v, l]) => (
@@ -10154,6 +10274,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <PromotersPanel />
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
+        : seg === "orgstaff" ? <OrganiserStaffPanel />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
         : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
