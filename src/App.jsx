@@ -8365,19 +8365,85 @@ function SliderManager() {
     </div>
   );
 }
-function Dashboard() {
+function Dashboard({ isSuper = false, myEventsOnly = false, meId, events = [] }) {
   const [sum, setSum] = useState(null), [staff, setStaff] = useState([]), [evts, setEvts] = useState([]), [promos, setPromos] = useState([]);
+  const [privateStats, setPrivateStats] = useState(null);
+  const privateMode = myEventsOnly && !isSuper;
+  const ownEvents = (events || []).filter(e => e.host_id === meId);
+  const ownKey = ownEvents.map(e => e.id).join(",");
   useEffect(() => {
+    if (privateMode) {
+      let dead = false;
+      setPrivateStats(null);
+      if (!ownEvents.length) { setPrivateStats({ revenue: 0, tickets: 0, checked: 0, members: 0, upcoming: 0, rows: [] }); return () => { dead = true; }; }
+      Promise.all(ownEvents.map(e => supabase.rpc("event_ticket_analysis", { p_event: e.id }).then(({ data, error }) => ({ event: e, data: error ? {} : (data || {}) })).catch(() => ({ event: e, data: {} }))))
+        .then(async results => {
+          if (dead) return;
+          const rows = results.map(({ event, data }) => ({
+            event,
+            tickets: Number(data.tickets || 0),
+            checked: Number(data.checked_in || 0),
+            revenue: Number(data.paid_gross || 0) + Number(data.door_cash || 0) + Number(data.door_upi || 0),
+          })).sort((a, b) => new Date(b.event.event_at || 0) - new Date(a.event.event_at || 0));
+          const memberResult = await supabase.rpc("organiser_member_list");
+          if (dead) return;
+          setPrivateStats({
+            revenue: rows.reduce((a, r) => a + r.revenue, 0),
+            tickets: rows.reduce((a, r) => a + r.tickets, 0),
+            checked: rows.reduce((a, r) => a + r.checked, 0),
+            members: memberResult.error ? 0 : (memberResult.data || []).length,
+            upcoming: ownEvents.filter(e => !e.event_at || new Date(e.event_at).getTime() >= Date.now()).length,
+            rows,
+          });
+        });
+      return () => { dead = true; };
+    }
     supabase.rpc("income_summary").then(({ data }) => setSum(data?.[0] || null));
     supabase.rpc("staff_stats").then(({ data }) => setStaff(data || []));
     supabase.rpc("event_analytics").then(({ data }) => setEvts(data || []));
     supabase.rpc("promoter_stats").then(({ data }) => setPromos(data || []));
-  }, []);
+  }, [privateMode, meId, ownKey]);
   const rupees = p => "₹" + Math.round((p || 0) / 100).toLocaleString("en-IN");
+  const privateRupees = p => "₹" + Math.round(Number(p || 0)).toLocaleString("en-IN");
   const card = (label, value, accent) => (
     <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: "14px 16px", flex: "1 1 140px" }}>
       <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: accent || W.ink }}>{value}</div>
+    </div>
+  );
+  if (privateMode) return (
+    <div style={{ padding: 14, maxWidth: 1060, margin: "0 auto" }}>
+      <div style={{ background: "linear-gradient(125deg,#092E27,#008069)", color: "#fff", borderRadius: 18, padding: "18px 20px", marginBottom: 14, boxShadow: "0 10px 26px rgba(0,128,105,.16)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 14, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 23 }}>🎪</div>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 19, fontWeight: 900 }}>My organiser dashboard</div><div style={{ fontSize: 12.5, opacity: .88, marginTop: 3 }}>Only your events, buyers, ticket sales and check-ins are shown here.</div></div>
+          <span style={{ background: "rgba(255,255,255,.14)", borderRadius: 999, padding: "6px 10px", fontSize: 10.5, fontWeight: 900 }}>PRIVATE</span>
+        </div>
+      </div>
+      <div style={{ fontWeight: 850, fontSize: 16, color: W.ink, marginBottom: 10 }}>My performance</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(145px,1fr))", gap: 10, marginBottom: 18 }}>
+        {[
+          ["TICKET REVENUE", privateStats ? privateRupees(privateStats.revenue) : "…", W.teal],
+          ["TICKETS SOLD", privateStats?.tickets ?? "…", "#4F46E5"],
+          ["MY MEMBERS", privateStats?.members ?? "…", "#7C3AED"],
+          ["CHECKED IN", privateStats?.checked ?? "…", "#D97706"],
+          ["MY EVENTS", ownEvents.length, W.ink],
+          ["UPCOMING", privateStats?.upcoming ?? "…", "#0EA5E9"],
+        ].map(([label, value, color]) => <div key={label} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "14px 15px", boxShadow: "0 4px 14px rgba(18,45,39,.035)" }}><div style={{ color: W.soft, fontSize: 10.5, fontWeight: 850, letterSpacing: .45 }}>{label}</div><div style={{ color, fontSize: 22, fontWeight: 950, marginTop: 4 }}>{value}</div></div>)}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}><div style={{ fontWeight: 850, fontSize: 16, color: W.ink, flex: 1 }}>My event performance</div><div style={{ color: W.soft, fontSize: 11.5 }}>Latest 8 events</div></div>
+      {!privateStats ? <Center>Loading your event dashboard…</Center> : !privateStats.rows.length ? <Center>You have no events yet. Create your first event from the Events tab.</Center> : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: 10 }}>
+          {privateStats.rows.slice(0, 8).map(r => {
+            const past = r.event.event_at && new Date(r.event.event_at).getTime() < Date.now();
+            return <div key={r.event.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 15, padding: 14 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}><div style={{ width: 40, height: 40, borderRadius: 12, background: "#E7F6EF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{r.event.emoji || "🎟️"}</div><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 850, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.event.title}</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>{[r.event.event_date, r.event.city].filter(Boolean).join(" · ") || "Date to be announced"}</div></div><span style={{ background: past ? "#F1F3F2" : "#E7F6EF", color: past ? W.soft : W.teal, borderRadius: 999, padding: "3px 7px", fontSize: 9.5, fontWeight: 850 }}>{past ? "PAST" : "UPCOMING"}</span></div>
+              <div style={{ display: "flex", gap: 14, paddingTop: 10, marginTop: 10, borderTop: `1px solid ${W.line}`, fontSize: 12.5 }}><span><b>{r.tickets}</b> tickets</span><span><b>{r.checked}</b> checked in</span><span style={{ marginLeft: "auto", color: W.teal, fontWeight: 900 }}>{privateRupees(r.revenue)}</span></div>
+            </div>;
+          })}
+        </div>
+      )}
+      {privateStats?.rows?.length > 8 && <div style={{ textAlign: "center", color: W.soft, fontSize: 12, marginTop: 11 }}>Open Events or Analytics to view all {privateStats.rows.length} events.</div>}
     </div>
   );
   return (
@@ -10081,7 +10147,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "segments" ? <SegmentsAdmin />
         : seg === "coupons" ? <CouponsAdmin events={events} />
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
-        : seg === "dash" ? <Dashboard />
+        : seg === "dash" ? <Dashboard isSuper={isSuper} myEventsOnly={myEventsOnly} meId={meId} events={events} />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
