@@ -1725,9 +1725,6 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const st = ticketStatus(t, e, stats, typeSold, profile);
         const soldOut = !st.ok && st.label === "Sold out";
         const left = leftFor(t);
-        const sold = Number((typeSold && typeSold[t.id]) || 0);
-        const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
-        const typePct = cap && cap > 0 ? Math.min(100, Math.round((sold / cap) * 100)) : null;
         const fast = st.ok && left != null && left > 0 && left <= 5;
         const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
         const q = qtyMap[t.id] || 0;
@@ -1742,14 +1739,6 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             </div>
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
-            {typePct != null && (
-              <div style={{ marginTop: 8, maxWidth: 230 }}>
-                <MiniBar pct={typePct} color={typePct >= 85 ? "#D97706" : W.teal} />
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: W.soft, marginTop: 4 }}>
-                  <span>{sold} sold</span><span>{Math.max(0, cap - sold)} left</span>
-                </div>
-              </div>
-            )}
           </div>
           {!st.ok
             ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : "Closed"}</button>
