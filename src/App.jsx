@@ -9642,6 +9642,85 @@ function SegmentsAdmin() {
     </div>
   );
 }
+function OrganiserMembersPanel() {
+  const [rows, setRows] = useState(null);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+  const wide = useWide(720);
+
+  const load = useCallback(() => {
+    setError("");
+    supabase.rpc("organiser_member_list").then(({ data, error: e }) => {
+      if (e) { setRows([]); setError(e.message || "Could not load your members."); }
+      else setRows(data || []);
+    });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const q = query.trim().toLowerCase();
+  const visible = (rows || []).filter(r => !q || [r.full_name, r.phone, r.city, r.area, ...(r.event_names || [])].some(v => String(v || "").toLowerCase().includes(q)));
+  const totalTickets = (rows || []).reduce((sum, r) => sum + Number(r.ticket_count || 0), 0);
+  const totalEvents = new Set((rows || []).flatMap(r => r.event_names || [])).size;
+  const displayDate = value => value ? new Date(value).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+  const exportCsv = () => {
+    if (!rows?.length) return;
+    const clean = v => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+    const body = [
+      ["Name", "Phone", "Gender", "City", "Area", "Tickets", "Events", "Last booking", "Event names"],
+      ...rows.map(r => [r.full_name, r.phone, r.gender, r.city, r.area, r.ticket_count, r.event_count, displayDate(r.last_booked_at), (r.event_names || []).join(" | ")]),
+    ].map(line => line.map(clean).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + body], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url; a.download = "my-glasswings-event-members.csv"; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  return (
+    <div style={{ padding: 14, maxWidth: 960, margin: "0 auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#102E29,#008069)", borderRadius: 18, padding: "18px 20px", color: "#fff", boxShadow: "0 12px 30px rgba(0,128,105,.18)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 45, height: 45, borderRadius: 14, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 23 }}>👥</div>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 19, fontWeight: 900 }}>My Members</div><div style={{ fontSize: 12.5, opacity: .9, marginTop: 3 }}>Only people who booked your events are visible here.</div></div>
+          <button onClick={exportCsv} disabled={!rows?.length} style={{ ...btn("rgba(255,255,255,.16)", "#fff"), border: "1px solid rgba(255,255,255,.25)", padding: "8px 11px", opacity: rows?.length ? 1 : .55 }}>↓ CSV</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginTop: 15 }}>
+          {[[rows?.length || 0, "MEMBERS"], [totalTickets, "TICKETS"], [totalEvents, "EVENTS"]].map(([n, label]) => <div key={label} style={{ background: "rgba(255,255,255,.12)", borderRadius: 11, padding: "9px 10px", textAlign: "center" }}><div style={{ fontSize: 20, fontWeight: 900 }}>{n}</div><div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: .7, opacity: .8 }}>{label}</div></div>)}
+        </div>
+      </div>
+
+      <div style={{ margin: "12px 0", background: "#F2F7F5", border: "1px solid #DCEAE5", borderRadius: 12, padding: "10px 12px", color: "#53645F", fontSize: 12, lineHeight: 1.45 }}>
+        🔒 Your dashboard is restricted to your own ticket buyers. The wider Glasswings community and other organisers' members are never included.
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, phone, city or event…" style={{ flex: 1, minWidth: 0, padding: "11px 13px", border: `1px solid ${W.line}`, borderRadius: 11, fontSize: 14, outline: "none", color: W.ink }} />
+        <button onClick={load} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, padding: "9px 12px" }}>↻</button>
+      </div>
+      {error && <div style={{ background: "#FDECEC", color: "#A33", border: "1px solid #F1C8C3", borderRadius: 11, padding: 11, fontSize: 12.5, fontWeight: 700, marginBottom: 11 }}>⚠️ {error}<div style={{ fontWeight: 500, marginTop: 4 }}>Run the latest organiser-onboarding SQL in Supabase.</div></div>}
+      {rows === null ? <Center>Loading your members…</Center> : !visible.length ? <Center>{query ? "No matching members." : "Your ticket buyers will appear here automatically."}</Center> : (
+        <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(2,minmax(0,1fr))" : "1fr", gap: 10 }}>
+          {visible.map(member => (
+            <div key={member.user_id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 15, padding: 14, boxShadow: "0 5px 16px rgba(18,45,39,.04)" }}>
+              <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+                <PersonAvatar url={member.avatar_url} name={member.full_name} size={46} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 850, color: W.ink, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{member.full_name || "Member"}</div>
+                  <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>{[member.city || member.area, member.gender].filter(Boolean).join(" · ") || "Event member"}</div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ color: W.teal, fontWeight: 900, fontSize: 17 }}>{member.ticket_count || 0}</div><div style={{ color: W.soft, fontSize: 9.5, fontWeight: 700 }}>TICKETS</div></div>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+                {member.phone ? <a href={`tel:${member.phone}`} style={{ flex: 1, textDecoration: "none", background: "#E7F6EF", color: W.teal, borderRadius: 9, padding: "8px 9px", textAlign: "center", fontSize: 12, fontWeight: 800 }}>☎ {member.phone}</a> : <div style={{ flex: 1, background: W.bg, color: W.soft, borderRadius: 9, padding: "8px 9px", textAlign: "center", fontSize: 12 }}>Phone unavailable</div>}
+                <div style={{ background: W.bg, color: W.soft, borderRadius: 9, padding: "8px 9px", fontSize: 11.5, whiteSpace: "nowrap" }}>Last: {displayDate(member.last_booked_at)}</div>
+              </div>
+              {!!member.event_names?.length && <div style={{ marginTop: 9, color: W.soft, fontSize: 11.5, lineHeight: 1.4 }}><b style={{ color: W.ink }}>Booked:</b> {member.event_names.join(" · ")}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrganiserApplicationsAdmin({ onReload }) {
   const [rows, setRows] = useState(null);
   const [filter, setFilter] = useState("pending");
@@ -9753,9 +9832,10 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
+    ...((myEventsOnly && caps.host) ? [["orgmembers", "👥 My Members"]] : []),
     ...((canApprove || caps.host) ? [["door", "🚪 EVENT DOOR"]] : []),
-    ...(caps.broadcast ? [["broadcast", "Send"]] : []),
-    ...(caps.members ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
+    ...((caps.broadcast && !myEventsOnly) ? [["broadcast", "Send"]] : []),
+    ...((caps.members && !myEventsOnly) ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
@@ -9796,7 +9876,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <PayoutsPanel isSuper={isSuper} />
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} />
-        : seg === "events" ? <AdminEvents onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "orgmembers" ? <OrganiserMembersPanel />
+        : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -12128,7 +12209,7 @@ function HelpBox({ title = "How this works", tips, children, defaultOpen = false
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, isSuper, dims, optsAll }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, isSuper, dims, optsAll, memberScope = "all" }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const [mSeg, setMSeg] = useState("details");
@@ -12202,7 +12283,19 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
   const [members, setMembers] = useState([]); const [sendFor, setSendFor] = useState(null); const [checkIn, setCheckIn] = useState(null);
-  useEffect(() => { supabase.from("profiles").select("id, gender, member_details(age, profession, city)").then(({ data }) => setMembers(data || [])); }, []);
+  useEffect(() => {
+    if (memberScope === "organiser") {
+      supabase.rpc("organiser_member_list").then(({ data }) => {
+        setMembers((data || []).map(m => ({
+          id: m.user_id,
+          gender: m.gender,
+          member_details: { age: null, profession: null, city: m.city },
+        })));
+      });
+    } else {
+      supabase.from("profiles").select("id, gender, member_details(age, profession, city)").then(({ data }) => setMembers(data || []));
+    }
+  }, [memberScope]);
   const reset = () => setF(blankF);
   const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const pRef = useRef(null);
