@@ -2080,13 +2080,11 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
                     <div style={{ color: W.ink, fontWeight: 700 }}>{a.name}</div>
                     <div style={{ color: W.teal, fontWeight: 800, fontSize: 12.5, marginTop: 2 }}>{(a.price || 0) === 0 ? "Free" : `+₹${a.price} each`}</div>
                   </div>
-                  {q > 0 ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 0, border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
-                      <button onClick={() => setAddonQ(a.id, q - 1)} style={{ width: 34, height: 34, border: "none", background: "#fff", color: W.teal, fontSize: 19, fontWeight: 800, cursor: "pointer" }}>−</button>
-                      <span style={{ minWidth: 25, textAlign: "center", color: W.teal, fontWeight: 900 }}>{q}</span>
-                      <button onClick={() => setAddonQ(a.id, q + 1)} style={{ width: 34, height: 34, border: "none", background: "#fff", color: W.teal, fontSize: 19, fontWeight: 800, cursor: "pointer" }}>+</button>
-                    </div>
-                  ) : <button onClick={() => setAddonQ(a.id, 1)} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "8px 15px", fontWeight: 900, flexShrink: 0 }}>+ Add</button>}
+                  <div style={{ width: 108, height: 38, display: "grid", gridTemplateColumns: "34px 40px 34px", alignItems: "stretch", border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden", flexShrink: 0, background: "#fff" }}>
+                    <button type="button" aria-label={`Remove ${a.name}`} disabled={q <= 0} onMouseDown={ev => ev.preventDefault()} onClick={() => setAddonQ(a.id, q - 1)} style={{ width: 34, height: 36, border: "none", background: "#fff", color: q > 0 ? W.teal : "transparent", fontSize: 19, fontWeight: 800, cursor: q > 0 ? "pointer" : "default", visibility: q > 0 ? "visible" : "hidden" }}>−</button>
+                    <button type="button" aria-label={q > 0 ? `${q} ${a.name} selected` : `Add ${a.name}`} onMouseDown={ev => ev.preventDefault()} onClick={() => q <= 0 && setAddonQ(a.id, 1)} style={{ width: 40, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: q > 0 ? 14 : 12, fontWeight: 900, cursor: q > 0 ? "default" : "pointer", padding: 0 }}>{q > 0 ? q : "Add"}</button>
+                    <button type="button" aria-label={`Add another ${a.name}`} onMouseDown={ev => ev.preventDefault()} onClick={() => setAddonQ(a.id, q + 1)} style={{ width: 34, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: 19, fontWeight: 800, cursor: "pointer" }}>+</button>
+                  </div>
                 </div>
               );})}
               <div style={{ fontSize: 12, color: W.soft, marginTop: 8 }}>Selected add-ons are carried into checkout. You can still change them before payment.</div>
