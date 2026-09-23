@@ -1787,7 +1787,7 @@ function RecentBuyerToasts({ eventId, wide }) {
   );
 }
 
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, isPlanMember, onViewPlans, onOpenDM }) {
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM }) {
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1802,6 +1802,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const minPrice = Math.min(...prices);
   const MAX_TIX = 10;
   const [qtyMap, setQtyMap] = useState(() => initialCart || {});
+  const [addonQtyMap, setAddonQtyMap] = useState(() => initialAddons || {});
   const totalQty = m => Object.values(m).reduce((a, q) => a + q, 0);
   const setQ = (key, q) => setQtyMap(m => {
     const n = { ...m };
@@ -1813,7 +1814,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     .map(([k, q]) => ({ type: k === "__base" ? null : visTypes.find(t => t.id === k), qty: q }))
     .filter(c => c.type !== undefined || c.type === null);
   const selQty = cart.reduce((a, c) => a + c.qty, 0);
-  const selTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
+  const ticketTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
+  const addonTotal = realAddons.reduce((sum, a) => sum + (Number(a.price) || 0) * (addonQtyMap[a.id] || 0), 0);
+  const selTotal = ticketTotal + addonTotal;
+  const setAddonQ = (id, q) => setAddonQtyMap(m => ({ ...m, [id]: Math.max(0, q) }));
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
   const menRemain = profile?.gender === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
   const cappedTypes = visTypes.filter(t => t.capacity != null && t.capacity !== "" && Number(t.capacity) > 0);
@@ -2068,13 +2072,24 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           )}
           {realAddons.length > 0 && (
             <Sec title="Optional add-ons">
-              {realAddons.map(a => (
-                <div key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "9px 0", borderBottom: `1px solid ${W.line}`, fontSize: 14.5 }}>
-                  <span style={{ color: W.ink, fontWeight: 600 }}>{a.name}</span>
-                  <span style={{ color: W.teal, fontWeight: 800 }}>{(a.price || 0) === 0 ? "Free" : `+₹${a.price}`}</span>
+              {realAddons.map(a => {
+                const q = addonQtyMap[a.id] || 0;
+                return (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: `1px solid ${W.line}`, fontSize: 14.5 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ color: W.ink, fontWeight: 700 }}>{a.name}</div>
+                    <div style={{ color: W.teal, fontWeight: 800, fontSize: 12.5, marginTop: 2 }}>{(a.price || 0) === 0 ? "Free" : `+₹${a.price} each`}</div>
+                  </div>
+                  {q > 0 ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 0, border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 }}>
+                      <button onClick={() => setAddonQ(a.id, q - 1)} style={{ width: 34, height: 34, border: "none", background: "#fff", color: W.teal, fontSize: 19, fontWeight: 800, cursor: "pointer" }}>−</button>
+                      <span style={{ minWidth: 25, textAlign: "center", color: W.teal, fontWeight: 900 }}>{q}</span>
+                      <button onClick={() => setAddonQ(a.id, q + 1)} style={{ width: 34, height: 34, border: "none", background: "#fff", color: W.teal, fontSize: 19, fontWeight: 800, cursor: "pointer" }}>+</button>
+                    </div>
+                  ) : <button onClick={() => setAddonQ(a.id, 1)} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "8px 15px", fontWeight: 900, flexShrink: 0 }}>+ Add</button>}
                 </div>
-              ))}
-              <div style={{ fontSize: 12, color: W.soft, marginTop: 8 }}>Choose add-ons while booking.</div>
+              );})}
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 8 }}>Selected add-ons are carried into checkout. You can still change them before payment.</div>
             </Sec>
           )}
           {excl.length > 0 && (
@@ -2186,7 +2201,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               )}
               <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>Tickets</div>
               {ticketList}
-              {selQty > 0 && <button onClick={() => onBuy(e, cart)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 12, fontSize: 15 }}>{selTotal === 0 ? `Get ${selQty} ticket${selQty > 1 ? "s" : ""}` : `Proceed · ₹${selTotal}`}</button>}
+              {selQty > 0 && <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 12, fontSize: 15 }}>{selTotal === 0 ? `Get ${selQty} ticket${selQty > 1 ? "s" : ""}` : `Proceed · ₹${selTotal}`}</button>}
             </div>
           </div>
         )}
@@ -2198,8 +2213,8 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontSize: 19, fontWeight: 800, color: W.ink }}>{(selQty > 0 ? selTotal : minPrice) === 0 ? "Free" : `₹${selQty > 0 ? selTotal : minPrice}`}</div>
           </div>
           {selQty > 0
-            ? <button onClick={() => onBuy(e, cart)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Proceed</button>
-            : <button onClick={() => onBuy(e, visTypes.length === 1 ? [{ type: visTypes[0], qty: 1 }] : null)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Get tickets</button>}
+            ? <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Proceed</button>
+            : <button onClick={() => onBuy(e, visTypes.length === 1 ? [{ type: visTypes[0], qty: 1 }] : null, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Get tickets</button>}
         </div>
       )}
     </div>
@@ -2274,11 +2289,13 @@ function PublicLanding() {
   useEffect(() => { if (detail && events.length && !events.find(x => x.id === detail)) setDetail(null); }, [events, detail]);
   const openDetail = (id) => { setDetail(id); try { history.replaceState(null, "", `/?event=${id}`); } catch {} window.scrollTo(0, 0); };
   const closeDetail = () => { setDetail(null); try { history.replaceState(null, "", "/"); } catch {} };
-  const buyNow = (ev, cart) => {
+  const buyNow = (ev, cart, _qty = 1, initialAddons = {}) => {
     try {
       localStorage.setItem("gw_buy", ev.id); localStorage.setItem("gw_event", ev.id); localStorage.setItem("gw_lite", "1");
       if (cart && cart.length) { const m = {}; cart.forEach(c => { m[c.type ? c.type.id : "__base"] = c.qty || 1; }); localStorage.setItem("gw_buy_cart", JSON.stringify(m)); }
       else localStorage.removeItem("gw_buy_cart");
+      if (initialAddons && Object.values(initialAddons).some(q => Number(q) > 0)) localStorage.setItem("gw_buy_addons", JSON.stringify(initialAddons));
+      else localStorage.removeItem("gw_buy_addons");
     } catch {}
     setAuthMode("signup");
   };
@@ -2826,7 +2843,7 @@ function Main({ user }) {
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
       supabase.from("events").select("*").order("created_at", { ascending: true }),
       supabase.from("room_subscriptions").select("room_id, status, razorpay_subscription_id, expires_at").eq("user_id", user.id),
-      supabase.from("event_tickets").select("id, event_id, quantity, ticket_type_id, purchased_at").eq("user_id", user.id),
+      supabase.from("event_tickets").select("*").eq("user_id", user.id),
       supabase.from("room_moderators").select("room_id").eq("user_id", user.id),
       supabase.from("event_moderators").select("event_id").eq("user_id", user.id),
       supabase.rpc("room_member_counts"),
@@ -3027,7 +3044,7 @@ function Main({ user }) {
     if (r.gender_restrict === "couple") return setCoupleFor(r);
     return finishJoin(r);
   };
-  const buyTicket = (e, cartOrType = null, qty = 1) => {
+  const buyTicket = (e, cartOrType = null, qty = 1, initialAddons = {}) => {
     if (gwIsPrivateEvent(e) && !isStaff && !gwInInvitedSegments(e, mySegs) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segments.");
     let cart = Array.isArray(cartOrType) ? cartOrType.filter(c => c && c.qty > 0)
       : [{ type: cartOrType, qty: Math.max(1, qty || 1) }];
@@ -3038,7 +3055,7 @@ function Main({ user }) {
         return setNotice("Please choose a ticket type for this event.");
       }
     }
-    setBuyTarget({ event: e, cart });
+    setBuyTarget({ event: e, cart, initialAddons });
   };
   const joinEvent = (e, type = null) => {
     if (gwIsPrivateEvent(e) && !isStaff && !gwInInvitedSegments(e, mySegs) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segments.");
@@ -3050,14 +3067,16 @@ function Main({ user }) {
     setBuyTarget({ event: e, type });
   };
   const [resumeCart, setResumeCart] = useState(null);
+  const [resumeAddons, setResumeAddons] = useState(null);
   useEffect(() => {
     if (!events.length) return;
-    let buy = null, cartRaw = null; try { buy = localStorage.getItem("gw_buy"); cartRaw = localStorage.getItem("gw_buy_cart"); } catch {}
+    let buy = null, cartRaw = null, addonsRaw = null; try { buy = localStorage.getItem("gw_buy"); cartRaw = localStorage.getItem("gw_buy_cart"); addonsRaw = localStorage.getItem("gw_buy_addons"); } catch {}
     if (!buy) return;
     const e = events.find(x => x.id === buy);
     if (e) {
-      try { localStorage.removeItem("gw_buy"); localStorage.removeItem("gw_buy_cart"); } catch {}
+      try { localStorage.removeItem("gw_buy"); localStorage.removeItem("gw_buy_cart"); localStorage.removeItem("gw_buy_addons"); } catch {}
       if (cartRaw) { try { setResumeCart(JSON.parse(cartRaw)); } catch {} }
+      if (addonsRaw) { try { setResumeAddons(JSON.parse(addonsRaw)); } catch {} }
       setTab(gwIsPrivateEvent(e) ? "private" : "events"); setEventPage(e.id);
     }
   }, [events]);
@@ -3433,10 +3452,10 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
-                onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
+                onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
                 onPick={(s) => setEventPage(s.id)}
                 onViewTicket={() => setTicketView(ev)}
                 onOpenChat={() => { setEventPage(null); setOpen({ id: ev.id, type: "event" }); }}
@@ -3502,10 +3521,10 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
-                onBuy={(e2, c, q) => buyTicket(e2, c || null, q || 1)}
+                onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
                 onPick={(s) => setEventPage(s.id)}
                 onViewTicket={() => setTicketView(ev)}
                 onOpenChat={() => { setEventPage(null); setOpen({ id: ev.id, type: "event" }); }}
@@ -10885,7 +10904,7 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
   const { event: e } = target;
   const [cart, setCart] = useState((target.cart || [{ type: target.type || null, qty: target.qty || 1 }]).map(c => ({ ...c })));
   const [agree, setAgree] = useState(false);
-  const [addQ, setAddQ] = useState({});
+  const [addQ, setAddQ] = useState(() => target.initialAddons || {});
   const MAX_TIX = 10;
   const needAgree = !!(e.terms && e.terms.trim());
   const realAddons = addons.filter(a => (a.name || "").trim());
@@ -11086,9 +11105,24 @@ function MyTicket({ event: e, profile, rows, types = [], onClose }) {
   const summary = `🎟️ Glasswings Ticket\n${e.title}\n${e.event_date || ""}${place ? `\n${place}` : ""}\nName: ${name}\nTickets: ${qty}\nCode: ${code}`;
   const wa = "https://wa.me/?text=" + encodeURIComponent(summary);
   const purchasedTypeIds = new Set((rows || []).map(r => r.ticket_type_id).filter(Boolean));
-  const purchasedTypes = (types || []).filter(t => purchasedTypeIds.has(t.id));
+  const exactPurchasedTypes = (types || []).filter(t => purchasedTypeIds.has(t.id));
+  const purchasedTypeLabels = new Set((rows || []).flatMap(r => [r.ticket_type, r.ticket_type_name, r.type_name]).filter(Boolean).map(x => String(x).trim().toLowerCase()));
+  const namedPurchasedTypes = (types || []).filter(t => purchasedTypeLabels.has(String(t.name || "").trim().toLowerCase()));
+  const purchasedTypes = exactPurchasedTypes.length ? exactPurchasedTypes : namedPurchasedTypes;
+  const commonValue = key => {
+    const vals = (types || []).map(t => String(t?.[key] || "").trim()).filter(Boolean);
+    return vals.length && vals.every(v => v === vals[0]) ? vals[0] : "";
+  };
+  const commonTicketDetails = purchasedTypes.length ? null : {
+    id: "common-ticket-details",
+    name: "Ticket details",
+    inclusions: commonValue("inclusions"),
+    exclusions: commonValue("exclusions"),
+    notes: commonValue("notes"),
+  };
+  const displayTicketTypes = purchasedTypes.length ? purchasedTypes : (commonTicketDetails && (commonTicketDetails.inclusions || commonTicketDetails.exclusions || commonTicketDetails.notes) ? [commonTicketDetails] : []);
   const purchasedTypeNames = purchasedTypes.map(t => t.name).filter(Boolean).join(", ");
-  const printDetailHtml = purchasedTypes.map(t => {
+  const printDetailHtml = displayTicketTypes.map(t => {
     const blocks = [
       ["What's included", t.inclusions, "good"],
       ["Not included", t.exclusions, "bad"],
@@ -11099,6 +11133,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose }) {
     }).join("");
     return blocks ? `<div class="type"><div class="type-name">${escapeHtml(t.name || "Ticket")}</div>${blocks}</div>` : "";
   }).join("");
+  const printTermsHtml = String(e.terms || "").trim() ? `<div class="terms"><b>Terms &amp; conditions</b><div>${escapeHtml(e.terms).replace(/\n/g, "<br>")}</div></div>` : "";
   const print = () => {
     const w = window.open("", "_blank", "width=460,height=720"); if (!w) return;
     w.document.write(`<!doctype html><html><head><title>Glasswings Ticket</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>
@@ -11119,6 +11154,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose }) {
       .type{max-width:420px;margin:14px auto 0;background:#fff;color:#13221e;border-radius:16px;padding:16px;box-shadow:0 8px 22px rgba(0,0,0,.1)}
       .type-name{font-size:16px;font-weight:900;margin-bottom:9px}.info{border-radius:10px;padding:9px 11px;margin-top:7px;font-size:12px;line-height:1.5}.info b{display:block;margin-bottom:3px}
       .good{background:#EAF8F3;border:1px solid #BFE8D9}.bad{background:#FFF1F1;border:1px solid #F3CBCB}.note{background:#FFF8E7;border:1px solid #F1DCA7}
+      .terms{max-width:420px;margin:10px auto 0;background:#F7F7F7;color:#34413e;border:1px solid #DDE5E2;border-radius:14px;padding:14px;font-size:12px;line-height:1.55}.terms b{display:block;color:#13221e;font-size:13px;margin-bottom:6px}
     </style></head><body><div class="t">
       <div class="hd"><div class="br">G L A S S W I N G S</div><div class="ti">${escapeHtml((e.emoji || "🎟️") + " " + e.title)}</div>${e.event_date ? `<div class="mt">📅 ${escapeHtml(e.event_date)}</div>` : ""}${place ? `<div class="mt">📍 ${escapeHtml(place)}</div>` : ""}</div>
       <div class="bd"><div class="tear"></div>
@@ -11128,7 +11164,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose }) {
           <div class="lbl">Ticket code</div><div class="code">${code}</div>
         </div></div>
         <div class="ft">Show this ticket at entry · Glasswings community</div>
-      </div></div>${printDetailHtml}
+      </div></div>${printDetailHtml}${printTermsHtml}
       <script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`);
     w.document.close();
   };
@@ -11189,20 +11225,18 @@ function MyTicket({ event: e, profile, rows, types = [], onClose }) {
             </div>
           </div>
         </div>
-        <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>Show this ticket at entry</div>
+        <div style={{ background: "#08130F", color: "rgba(255,255,255,.68)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .4 }}>Show this ticket at entry · Ticket details &amp; terms below</div>
       </div>
-      {purchasedTypes.length > 0 && (
+      {displayTicketTypes.length > 0 && (
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginTop: 12 }}>
-          <div style={{ fontSize: 12, letterSpacing: 1.1, textTransform: "uppercase", color: W.soft, fontWeight: 900, marginBottom: 4 }}>Your ticket details</div>
-          {purchasedTypes.map(t => <div key={t.id} style={{ paddingTop: 8 }}><div style={{ fontSize: 15, color: W.ink, fontWeight: 900 }}>{t.name}</div><TicketTypeDetails ticket={t} /></div>)}
+          <div style={{ fontSize: 12, letterSpacing: 1.1, textTransform: "uppercase", color: W.teal, fontWeight: 900, marginBottom: 4 }}>✓ Your ticket includes</div>
+          {displayTicketTypes.map(t => <div key={t.id} style={{ paddingTop: 8 }}><div style={{ fontSize: 15, color: W.ink, fontWeight: 900 }}>{t.name}</div><TicketTypeDetails ticket={t} /></div>)}
         </div>
       )}
       {(e.terms || "").trim() && (
-        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, marginTop: 12, overflow: "hidden" }}>
-          <button onClick={() => setShowT(v => !v)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 800, fontSize: 13.5, color: W.ink }}>
-            <span>📋 Terms &amp; conditions</span><span style={{ color: W.soft }}>{showT ? "▴" : "▾"}</span>
-          </button>
-          {showT && <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: W.soft, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{e.terms}</div>}
+        <div style={{ background: "#F7F8F8", border: `1px solid ${W.line}`, borderLeft: `5px solid ${W.teal}`, borderRadius: 12, marginTop: 12, padding: "13px 14px" }}>
+          <div style={{ fontWeight: 900, fontSize: 13.5, color: W.ink, marginBottom: 7 }}>📋 Terms &amp; conditions</div>
+          <div style={{ fontSize: 12.5, color: W.soft, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{e.terms}</div>
         </div>
       )}
       {rideRow}
@@ -11234,6 +11268,13 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   const [dRoom, setDRoom] = useState(""); const [dKind, setDKind] = useState("percent"); const [dVal, setDVal] = useState("");
   const gl = { any: "Anyone", male: "Men", female: "Women" };
   const roomName = id => ((rooms || []).find(r => r.id === id) || {}).name || "room";
+  const previousType = types.length ? types[types.length - 1] : null;
+  const repeatPrevious = () => {
+    if (!previousType) return;
+    setInclusions(previousType.inclusions || "");
+    setExclusions(previousType.exclusions || "");
+    setNotes(previousType.notes || "");
+  };
   const add = async () => {
     if (!name.trim()) return;
     await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null });
@@ -11250,7 +11291,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
       <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
-        {types.map(t => <EditableTicketRow key={t.id} t={t} plansList={plansList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
+        {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
         {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 9px", color: "#7C3AED", fontWeight: 800, fontSize: 14.5, letterSpacing: .3, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}><Plus size={17} />CREATE NEW TICKET TYPE</div>
@@ -11262,7 +11303,10 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
       </div>
       <div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink, marginBottom: 3 }}>Ticket-specific details</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink }}>Ticket-specific details</div>
+          <button type="button" onClick={repeatPrevious} disabled={!previousType} title={previousType ? `Copy from ${previousType.name}` : "Create the first ticket type before repeating details"} style={{ ...btn(previousType ? "#EDE9FE" : "#F2F2F2", previousType ? "#6D28D9" : "#999"), border: `1px solid ${previousType ? "#C4B5FD" : "#DDD"}`, padding: "6px 10px", fontSize: 11.5, cursor: previousType ? "pointer" : "not-allowed" }}>↻ {previousType ? "Repeat previous details" : "No previous ticket"}</button>
+        </div>
         <div style={{ fontSize: 11.5, color: W.soft, lineHeight: 1.45, marginBottom: 9 }}>Add one item per line. These appear professionally on this ticket only. General paid add-ons stay separate.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>
           <label style={{ fontSize: 11.5, fontWeight: 800, color: "#08765F" }}>✓ What's included<textarea value={inclusions} onChange={e => setInclusions(e.target.value)} rows={3} placeholder={"Entry\nWelcome drink\nReserved seating"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
@@ -11289,7 +11333,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
     </div>
   );
 }
-function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onDel }) {
+function EditableTicketRow({ t, previous, plansList, roomName, audBadge, ip, onUpdate, onDel }) {
   const [ed, setEd] = useState(false);
   const [name, setName] = useState(t.name || "");
   const [price, setPrice] = useState(t.price == null ? "" : String(t.price));
@@ -11304,6 +11348,12 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
   const [dKind, setDKind] = useState(t.discount_kind || "percent");
   const [dVal, setDVal] = useState(t.discount_value == null ? "" : String(t.discount_value));
   const [busy, setBusy] = useState(false);
+  const repeatPrevious = () => {
+    if (!previous) return;
+    setInclusions(previous.inclusions || "");
+    setExclusions(previous.exclusions || "");
+    setNotes(previous.notes || "");
+  };
   const save = async () => {
     if (!name.trim() || !onUpdate) return;
     setBusy(true);
@@ -11327,6 +11377,7 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
           </div>
           {(t.inclusions || t.exclusions || t.notes) && <TicketTypeDetails ticket={t} compact />}
         </div>
+        {previous && onUpdate && <button onClick={() => onUpdate(t.id, { inclusions: previous.inclusions || null, exclusions: previous.exclusions || null, notes: previous.notes || null })} title={`Copy inclusions, exclusions and notes from ${previous.name}`} style={{ ...btn("#EDE9FE", "#6D28D9"), border: "1px solid #C4B5FD", padding: "9px 12px", fontSize: 12.5, fontWeight: 900, flexShrink: 0 }}>↻ Repeat</button>}
         {onUpdate && <button onClick={() => setEd(true)} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, fontWeight: 800, flexShrink: 0 }}>✏️ Edit</button>}
         <button onClick={() => onDel(t.id)} title="Delete ticket type" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "9px 11px", flexShrink: 0 }}><Trash2 size={15} /></button>
       </div>
@@ -11343,7 +11394,10 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 82 }} />
       </div>
       <div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink, marginBottom: 3 }}>Ticket-specific details</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink }}>Ticket-specific details</div>
+          <button type="button" onClick={repeatPrevious} disabled={!previous} title={previous ? `Copy from ${previous.name}` : "This is the first ticket type"} style={{ ...btn(previous ? "#EDE9FE" : "#F2F2F2", previous ? "#6D28D9" : "#999"), border: `1px solid ${previous ? "#C4B5FD" : "#DDD"}`, padding: "6px 10px", fontSize: 11.5, cursor: previous ? "pointer" : "not-allowed" }}>↻ {previous ? "Repeat previous details" : "No previous ticket"}</button>
+        </div>
         <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9 }}>One item per line. General paid add-ons remain separate.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>
           <label style={{ fontSize: 11.5, fontWeight: 800, color: "#08765F" }}>✓ What's included<textarea value={inclusions} onChange={e => setInclusions(e.target.value)} rows={3} placeholder={"Entry\nWelcome drink\nReserved seating"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
