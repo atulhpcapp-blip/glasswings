@@ -1235,6 +1235,16 @@ function gwEventLive(e) {
   if (e.event_at) return Date.now() <= new Date(e.event_at).getTime() + 6 * 3600000;
   return true; // date-TBD events stay listed until dated
 }
+function gwPrivateSegmentIds(e) {
+  const ids = Array.isArray(e?.private_segment_ids) ? e.private_segment_ids.filter(Boolean) : [];
+  if (ids.length) return [...new Set(ids)];
+  return e?.private_segment_id ? [e.private_segment_id] : [];
+}
+function gwIsPrivateEvent(e) { return gwPrivateSegmentIds(e).length > 0; }
+function gwInInvitedSegments(e, memberSegmentIds) {
+  const mine = new Set(memberSegmentIds || []);
+  return gwPrivateSegmentIds(e).some(id => mine.has(id));
+}
 async function exportGuestListPdf(ev) {
   try {
     const [{ data: tix }, gres] = await Promise.all([
@@ -1951,7 +1961,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: wide ? "28px 24px 60px" : "20px 16px 110px", display: "flex", gap: 36, alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            {e.private_segment_id && <span style={{ background: "linear-gradient(135deg,#6D28D9,#DB2777)", color: "#fff", fontSize: 12, fontWeight: 900, padding: "4px 11px", borderRadius: 14 }}>🔒 Private invitation</span>}
+            {gwIsPrivateEvent(e) && <span style={{ background: "linear-gradient(135deg,#6D28D9,#DB2777)", color: "#fff", fontSize: 12, fontWeight: 900, padding: "4px 11px", borderRadius: 14 }}>🔒 Private invitation</span>}
             {popular && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 12, fontWeight: 800, padding: "4px 11px", borderRadius: 14 }}>🔥 Popular</span>}
             {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.category}</span>}
             {e.city && <span style={{ background: W.bg, color: W.soft, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.city}</span>}
@@ -2570,7 +2580,7 @@ function Main({ user }) {
   const [ticketView, setTicketView] = useState(null);
   const [hasDM, setHasDM] = useState(false);
   const [focusEvent, setFocusEvent] = useState(null);
-  const openEvent = (id) => { const ev = events.find(x => x.id === id); setOpen(null); setTab(ev?.private_segment_id ? "private" : "events"); setEventPage(id); };
+  const openEvent = (id) => { const ev = events.find(x => x.id === id); setOpen(null); setTab(gwIsPrivateEvent(ev) ? "private" : "events"); setEventPage(id); };
   const openDM = async (id, name) => {
     const { data: ok } = await supabase.rpc("can_dm", { p_other: id });
     if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, matched with a mutual wave \ud83d\udc4b, or whom an admin has connected you with.");
@@ -3017,7 +3027,7 @@ function Main({ user }) {
     return finishJoin(r);
   };
   const buyTicket = (e, cartOrType = null, qty = 1) => {
-    if (e.private_segment_id && !isStaff && !mySegs.includes(e.private_segment_id) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segment.");
+    if (gwIsPrivateEvent(e) && !isStaff && !gwInInvitedSegments(e, mySegs) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segments.");
     let cart = Array.isArray(cartOrType) ? cartOrType.filter(c => c && c.qty > 0)
       : [{ type: cartOrType, qty: Math.max(1, qty || 1) }];
     if (!cart.length) cart = [{ type: null, qty: 1 }];
@@ -3030,7 +3040,7 @@ function Main({ user }) {
     setBuyTarget({ event: e, cart });
   };
   const joinEvent = (e, type = null) => {
-    if (e.private_segment_id && !isStaff && !mySegs.includes(e.private_segment_id) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segment.");
+    if (gwIsPrivateEvent(e) && !isStaff && !gwInInvitedSegments(e, mySegs) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segments.");
     if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
     if (type) {
     } else if ((ticketTypes[e.id] || []).length) {
@@ -3047,7 +3057,7 @@ function Main({ user }) {
     if (e) {
       try { localStorage.removeItem("gw_buy"); localStorage.removeItem("gw_buy_cart"); } catch {}
       if (cartRaw) { try { setResumeCart(JSON.parse(cartRaw)); } catch {} }
-      setTab(e.private_segment_id ? "private" : "events"); setEventPage(e.id);
+      setTab(gwIsPrivateEvent(e) ? "private" : "events"); setEventPage(e.id);
     }
   }, [events]);
   const grantRoom = async (userId, roomId, months = null) => {
@@ -3190,11 +3200,13 @@ function Main({ user }) {
     const rows = rooms.map(r => ({ group_type: "room", group_id: r.id, sender_id: user.id, body, media_type, ...extra }));
     await supabase.from("messages").insert(rows);
   };
-  const privateSegmentMemberIds = async (segmentId) => {
-    if (!segmentId) return [];
-    const { data, error } = await supabase.rpc("segment_member_list", { p_segment: segmentId });
-    if (error) { setNotice(error.message); return []; }
-    return (data || []).map(m => m.user_id).filter(Boolean);
+  const privateSegmentMemberIds = async (segmentIds) => {
+    const ids = [...new Set((Array.isArray(segmentIds) ? segmentIds : [segmentIds]).filter(Boolean))];
+    if (!ids.length) return [];
+    const results = await Promise.all(ids.map(segmentId => supabase.rpc("segment_member_list", { p_segment: segmentId })));
+    const failed = results.find(r => r.error);
+    if (failed?.error) { setNotice(failed.error.message); return []; }
+    return [...new Set(results.flatMap(r => (r.data || []).map(m => m.user_id).filter(Boolean)))];
   };
   const createEvent = async (d, dates, addonsList) => {
     let list = (dates && dates.length) ? dates : [{ label: d.event_date || "", iso: d.event_at || null }];
@@ -3219,7 +3231,7 @@ function Main({ user }) {
       if (rows.length) await supabase.from("event_addons").insert(rows);
     }
     const line = [list[0].label, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-    if (d.private_segment_id) {
+    if (gwIsPrivateEvent(d)) {
       await sendEventDM({ ...d, id: firstId, event_date: list[0].label });
     } else {
       await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${list.length > 1 ? ` (${list.length} dates)` : ""}${line ? "\n" + line : ""}`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image", event_ref: firstId });
@@ -3233,7 +3245,7 @@ function Main({ user }) {
     setNotice("Broadcast sent to all group chats.");
   };
   const broadcastEvent = async (e) => {
-    if (e.private_segment_id) { await sendEventDM(e); return; }
+    if (gwIsPrivateEvent(e)) { await sendEventDM(e); return; }
     const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
     await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}`, "event", { media_url: e.landscape_video_url || e.banner_url || null, file_name: e.landscape_video_url ? "video" : (e.banner_type || "image"), event_ref: e.id });
     setNotice("Event sent to all group chats.");
@@ -3247,8 +3259,8 @@ function Main({ user }) {
   };
   const sendEventDM = async (e, ids = null) => {
     let target = ids;
-    if (e.private_segment_id) {
-      const allowed = await privateSegmentMemberIds(e.private_segment_id);
+    if (gwIsPrivateEvent(e)) {
+      const allowed = await privateSegmentMemberIds(gwPrivateSegmentIds(e));
       const allowSet = new Set(allowed);
       target = target ? target.filter(id => allowSet.has(id)) : allowed;
     } else if (!target) { const { data } = await supabase.from("profiles").select("id"); target = (data || []).map(p => p.id); }
@@ -3259,7 +3271,7 @@ function Main({ user }) {
     const rows = target.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body, media_type: "event", media_url: e.landscape_video_url || e.banner_url || null, file_name: e.landscape_video_url ? "video" : (e.banner_type || "image"), event_ref: e.id }));
     const { error } = await supabase.from("messages").insert(rows);
     if (error) return setNotice(error.message);
-    setNotice(`${e.private_segment_id ? "Private party" : "Event"} sent privately to ${target.length} invited member${target.length === 1 ? "" : "s"}.`);
+    setNotice(`${gwIsPrivateEvent(e) ? "Private party" : "Event"} sent privately to ${target.length} invited member${target.length === 1 ? "" : "s"}.`);
   };
   const updateEvent = async (id, p) => { const { error } = organiserStaff?.can_events ? await supabase.rpc("organiser_staff_update_event", { p_event: id, p_patch: p }) : await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
   const duplicateEvent = async (e) => {
@@ -3379,8 +3391,8 @@ function Main({ user }) {
       {tab === "chats" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>)}
       {tab === "explore" && <Explore user={user} rooms={rooms.filter(r => !r.segment_id || isStaff || mySegs.includes(r.segment_id))} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} onOpenDM={openDM} onOrganiserApproved={load} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
-      {tab === "events" && <Events events={events.filter(e => !e.private_segment_id && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
-      {tab === "private" && <Events privateMode events={events.filter(e => !!e.private_segment_id && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
+      {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
@@ -9813,7 +9825,7 @@ function SegmentsAdmin({ organiserScoped = false }) {
           {openSeg === s.id && (
             <div style={{ marginTop: 10, background: W.bg, borderRadius: 10, padding: 11 }}>
               {panel === "members" && (<>
-                {!s.rule && <>
+                <>
                   <div style={{ position: "relative" }}><input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search by name, email or phone…" style={{ ...inp, paddingRight: 42 }} />{searchBusy && <span style={{ position: "absolute", right: 13, top: 10, fontSize: 13, color: "#6D28D9" }}>●●●</span>}</div>
                   {sq.trim().length > 0 && sq.trim().length < 2 && <div style={{ color: W.soft, fontSize: 11.5, marginTop: 5 }}>Type at least 2 letters or numbers.</div>}
                   {sMatches.map(m => (
@@ -9824,14 +9836,14 @@ function SegmentsAdmin({ organiserScoped = false }) {
                     </div>
                   ))}
                   {!searchBusy && sq.trim().length >= 2 && sMatches.length === 0 && <div style={{ color: W.soft, fontSize: 12, marginTop: 8 }}>No eligible member found. {organiserScoped ? "Only people who bought through your events can be added." : "Try another name, email or phone."}</div>}
-                </>}
-                {s.rule && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700 }}>🤖 Computed automatically — tap ↻ to recompute. Manual adds would be overwritten.</div>}
+                </>
+                {s.rule && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700, marginTop: 7 }}>🤖 Auto members are refreshed by the rule. Members you add manually are kept.</div>}
                 <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft, marginTop: 8 }}>In this segment ({members.length})</div>
                 {members.map(m => (
                   <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 2px", borderBottom: `1px solid ${W.line}` }}>
                     <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
                     <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: W.ink }}><b>{m.full_name || "Member"}</b><span style={{ display: "block", color: W.soft, fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{[m.email, m.phone, m.city].filter(Boolean).join(" · ")}</span></span>
-                    {!s.rule && <span onClick={async () => { const { error } = await supabase.rpc("segment_remove_member", { p_segment: s.id, p_user: m.id }); if (error) return alert(error.message); loadMembers(s.id); load(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
+                    <span onClick={async () => { const { error } = await supabase.rpc("segment_remove_member", { p_segment: s.id, p_user: m.id }); if (error) return alert(error.message); loadMembers(s.id); load(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>
                   </div>
                 ))}
                 {members.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No members yet.</div>}
@@ -10400,8 +10412,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
         : seg === "orgstaff" ? <OrganiserStaffPanel />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
-        : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => !ev.private_segment_id)} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
-          : seg === "private" ? <AdminEvents privateOnly memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => !!ev.private_segment_id)} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => !gwIsPrivateEvent(ev))} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+          : seg === "private" ? <AdminEvents privateOnly memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => gwIsPrivateEvent(ev))} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -12813,9 +12825,21 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
   const upCount = events.filter(e => (!e.event_at || e.event_at >= todayISO)).length;
   const pastCount = events.filter(e => (e.event_at && e.event_at < todayISO)).length;
-  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentId: "" };
+  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentIds: [] };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
+  const draftPrivateSegmentIds = Array.isArray(f.segmentIds)
+    ? f.segmentIds
+    : (f.segmentId ? [f.segmentId] : []);
+  const toggleDraftPrivateSegment = (segmentId) => setF(prev => {
+    const current = Array.isArray(prev.segmentIds)
+      ? prev.segmentIds
+      : (prev.segmentId ? [prev.segmentId] : []);
+    const next = current.includes(segmentId)
+      ? current.filter(id => id !== segmentId)
+      : [...current, segmentId];
+    return { ...prev, segmentIds: [...new Set(next)], segmentId: undefined };
+  });
   const [newBadge, setNewBadge] = useState("");
   const [up, setUp] = useState(false);
   const bRef = useRef(null);
@@ -12865,7 +12889,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   };
   const create = async () => {
     if (!f.title) return;
-    if (privateOnly && !f.segmentId) { setStep(0); alert("Choose the invited segment for this private party."); return; }
+    if (privateOnly && !draftPrivateSegmentIds.length) { setStep(0); alert("Choose at least one invited segment for this private party."); return; }
     const dates = buildDates();
     if (!f.dateTbd && !(f.endTime || "").trim()) { setStep(2); alert("Please set the event END time (end date optional — same day assumed). This is required so the event auto-closes after it finishes."); return; }
     let label0 = f.dateTbd ? "📅 To be decided" : (dates[0]?.label || "");
@@ -12878,7 +12902,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ private_segment_id: privateOnly ? f.segmentId : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
+    await onCreate({ private_segment_ids: privateOnly ? draftPrivateSegmentIds : [], private_segment_id: privateOnly ? (draftPrivateSegmentIds[0] || null) : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
     reset(); setCreating(false); setStep(0);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -12887,7 +12911,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
       {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
       {checkIn && <CheckInSheet event={checkIn} onClose={() => setCheckIn(null)} />}
       {membersFor && <EventMembersSheet event={membersFor} onClose={() => setMembersFor(null)} />}
-      {!creating && <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: privateOnly ? "#F5F0FF" : "#EEF6FF", border: `1px solid ${privateOnly ? "#E0D4FF" : "#CFE2FA"}`, color: privateOnly ? "#6D28D9" : "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 12 }}>{privateOnly ? "🔒 Private parties are shown only to the chosen segment" : "📖 Organiser guide — how event bookings work"}</a>}
+      {!creating && <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: privateOnly ? "#F5F0FF" : "#EEF6FF", border: `1px solid ${privateOnly ? "#E0D4FF" : "#CFE2FA"}`, color: privateOnly ? "#6D28D9" : "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 12 }}>{privateOnly ? "🔒 Private parties are shown only to the selected segments" : "📖 Organiser guide — how event bookings work"}</a>}
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -12912,11 +12936,12 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           </div>
           {privateOnly && (
             <div style={{ background: "linear-gradient(135deg,#21113F,#6D28D9)", color: "#fff", borderRadius: 15, padding: 14, marginBottom: 12, boxShadow: "0 8px 20px rgba(109,40,217,.18)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9 }}><div style={{ width: 36, height: 36, borderRadius: 11, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center" }}><Lock size={18} /></div><div><div style={{ fontWeight: 900, fontSize: 14.5 }}>Who can see and buy this party?</div><div style={{ fontSize: 11.5, opacity: .82, marginTop: 2 }}>Only members currently inside the selected segment.</div></div></div>
-              <select value={f.segmentId} onChange={e => setF({ ...f, segmentId: e.target.value })} style={{ width: "100%", border: "1px solid rgba(255,255,255,.28)", borderRadius: 10, padding: "11px 12px", fontSize: 14, fontWeight: 750, outline: "none", background: "#fff", color: W.ink }}>
-                <option value="">Choose invited segment…</option>
-                {privateSegments.map(s => <option key={s.segment_id} value={s.segment_id}>{s.emoji || "🎯"} {s.name} · {Number(s.member_count || 0)} members</option>)}
-              </select>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9 }}><div style={{ width: 36, height: 36, borderRadius: 11, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center" }}><Lock size={18} /></div><div><div style={{ fontWeight: 900, fontSize: 14.5 }}>Who can see and buy this party?</div><div style={{ fontSize: 11.5, opacity: .82, marginTop: 2 }}>Select one or more segments. Only their members get access.</div></div></div>
+              {!!privateSegments.length && <div style={{ display: "flex", gap: 8, marginBottom: 9 }}><button type="button" onClick={() => setF(x => ({ ...x, segmentIds: privateSegments.map(s => s.segment_id), segmentId: undefined }))} style={{ border: "1px solid rgba(255,255,255,.5)", background: "rgba(255,255,255,.13)", color: "#fff", borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>✓ Select all</button><button type="button" onClick={() => setF(x => ({ ...x, segmentIds: [], segmentId: undefined }))} style={{ border: "1px solid rgba(255,255,255,.35)", background: "transparent", color: "#fff", borderRadius: 8, padding: "6px 10px", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}>Clear</button></div>}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 8 }}>
+                {privateSegments.map(s => { const selected = draftPrivateSegmentIds.includes(s.segment_id); return <label key={s.segment_id} style={{ display: "flex", alignItems: "center", gap: 9, border: `1px solid ${selected ? "#fff" : "rgba(255,255,255,.34)"}`, background: selected ? "#fff" : "rgba(255,255,255,.1)", color: selected ? "#6D28D9" : "#fff", borderRadius: 10, padding: "9px 11px", fontSize: 12.5, fontWeight: 850, cursor: "pointer" }}><input type="checkbox" checked={selected} onChange={() => toggleDraftPrivateSegment(s.segment_id)} style={{ width: 17, height: 17, accentColor: "#6D28D9", cursor: "pointer", flexShrink: 0 }} /><span style={{ flex: 1 }}>{s.emoji || "🎯"} {s.name}</span><span style={{ opacity: .75, fontSize: 11 }}>{Number(s.member_count || 0)}</span></label>; })}
+              </div>
+              {!!draftPrivateSegmentIds.length && <div style={{ marginTop: 9, fontSize: 11.5, color: "#EDE9FE", fontWeight: 750 }}>✓ {draftPrivateSegmentIds.length} segment{draftPrivateSegmentIds.length === 1 ? "" : "s"} selected</div>}
               {!privateSegments.length && <div style={{ marginTop: 8, fontSize: 11.5, color: "#FDE68A", lineHeight: 1.4 }}>Create a segment first in the Segments tab, then return here.</div>}
             </div>
           )}
@@ -13192,7 +13217,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         </div>
       )}
       {!creating && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {visEvents.map((e, ei) => { const ec = EVCOLORS[ei % EVCOLORS.length]; const privateSeg = privateSegments.find(s => s.segment_id === e.private_segment_id); return (
+        {visEvents.map((e, ei) => { const ec = EVCOLORS[ei % EVCOLORS.length]; const privateSegIds = gwPrivateSegmentIds(e); const invitedSegs = privateSegments.filter(s => privateSegIds.includes(s.segment_id)); return (
           <div key={e.id} style={{ background: ec.bg, borderRadius: 14, border: `1px solid ${ec.bar}33`, borderLeft: `6px solid ${ec.bar}`, padding: 14, boxShadow: `0 2px 10px ${ec.bar}1f` }}>
             <div onClick={() => { setMSeg("details"); setManage(manage === e.id ? null : e.id); }} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
@@ -13200,7 +13225,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
                 <div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(() => { const tt = (ticketTypes && ticketTypes[e.id]) || []; if (tt.length) { const min = Math.min(...tt.map(t => t.price || 0)); return min === 0 ? "Free" : `From ₹${min}`; } return (e.ticket_price || 0) === 0 ? "Free" : `₹${e.ticket_price}/ticket`; })()}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div>
                 {e.host_id && hosts[e.host_id] && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700, marginTop: 2 }}>👤 {hosts[e.host_id].name}{topRole(hosts[e.host_id].roles) ? ` · ${roleLabel[topRole(hosts[e.host_id].roles)]}` : ""}</div>}
-                {e.private_segment_id && <div style={{ marginTop: 4 }}><span style={{ background: "#F3E8FF", color: "#6D28D9", border: "1px solid #E4D5FB", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>🔒 {privateSeg?.name || "Private segment"} · {Number(privateSeg?.member_count || 0)} invited</span></div>}
+                {privateSegIds.length > 0 && <div style={{ marginTop: 4, display: "flex", gap: 5, flexWrap: "wrap" }}>{invitedSegs.length ? invitedSegs.map(s => <span key={s.segment_id} style={{ background: "#F3E8FF", color: "#6D28D9", border: "1px solid #E4D5FB", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>🔒 {s.name}</span>) : <span style={{ background: "#F3E8FF", color: "#6D28D9", border: "1px solid #E4D5FB", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>🔒 {privateSegIds.length} private segment{privateSegIds.length === 1 ? "" : "s"}</span>}</div>}
                 <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>{e.promo_pct != null && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>📣 Promo {e.promo_pct}%</span>}{e.approved
                   ? <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>● Live</span>
                   : <span style={{ background: "#FDF6EC", color: "#B45309", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>⏳ Pending approval{canApprove ? "" : " — visible only to you"}</span>}</div>
@@ -13215,7 +13240,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <button onClick={() => onBroadcastEvent(e)} title={privateOnly ? "Notify only the invited segment" : "Post to all group chats"} style={{ ...btn(privateOnly ? "#6D28D9" : W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />{privateOnly ? "Notify segment" : "Post"}</button>
+              <button onClick={() => onBroadcastEvent(e)} title={privateOnly ? "Notify only the invited segments" : "Post to all group chats"} style={{ ...btn(privateOnly ? "#6D28D9" : W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />{privateOnly ? "Notify segments" : "Post"}</button>
               <button onClick={() => setMembersFor(e)} title="Who's coming — list, contact, withdraw" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Members</button>
               <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Check-in</button>
               {!privateOnly && <button onClick={() => setSendFor(e)} title="Message members" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Send size={14} />Notify</button>}
@@ -13236,7 +13261,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   {mSeg === "details" && (<>
                     <EventDetailsEditor event={e} onUpdate={onUpdate} />
-                    {privateOnly && <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 12, padding: 12 }}><label style={{ fontSize: 13, fontWeight: 850, color: "#6D28D9" }}>🔒 Invited segment</label><select value={e.private_segment_id || ""} onChange={ev => { if (ev.target.value) onUpdate(e.id, { private_segment_id: ev.target.value }); }} style={{ width: "100%", marginTop: 7, padding: "10px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" }}><option value="" disabled>Choose segment…</option>{privateSegments.map(s => <option key={s.segment_id} value={s.segment_id}>{s.emoji || "🎯"} {s.name} · {Number(s.member_count || 0)} members</option>)}</select><div style={{ color: W.soft, fontSize: 11.5, marginTop: 6 }}>Changing this immediately changes who can discover and buy tickets.</div></div>}
+                    {privateOnly && <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 12, padding: 12 }}><label style={{ fontSize: 13, fontWeight: 850, color: "#6D28D9" }}>🔒 Invited segments</label><div style={{ display: "flex", gap: 7, marginTop: 8, marginBottom: 8 }}><button type="button" onClick={() => { const next = privateSegments.map(s => s.segment_id); if (next.length) onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] }); }} style={{ ...btn("#6D28D9", "#fff"), padding: "6px 10px", fontSize: 11.5 }}>✓ Select all</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 7 }}>{privateSegments.map(s => { const selected = privateSegIds.includes(s.segment_id); return <label key={s.segment_id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${selected ? "#6D28D9" : W.line}`, background: selected ? "#F3E8FF" : "#fff", color: selected ? "#6D28D9" : W.ink, borderRadius: 9, padding: "8px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}><input type="checkbox" checked={selected} onChange={() => { const next = selected ? privateSegIds.filter(id => id !== s.segment_id) : [...privateSegIds, s.segment_id]; if (!next.length) return alert("A private party must have at least one invited segment."); onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] || null }); }} style={{ width: 16, height: 16, accentColor: "#6D28D9", cursor: "pointer" }} /><span>{s.emoji || "🎯"} {s.name}</span></label>; })}</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 7 }}>✓ {privateSegIds.length} selected. Only members in at least one selected segment can discover and buy tickets.</div></div>}
                     <div style={{ marginTop: 4 }}>
                       <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Category &amp; city</label>
                       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
