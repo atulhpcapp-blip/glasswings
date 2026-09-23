@@ -1817,7 +1817,29 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const ticketTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
   const addonTotal = realAddons.reduce((sum, a) => sum + (Number(a.price) || 0) * (addonQtyMap[a.id] || 0), 0);
   const selTotal = ticketTotal + addonTotal;
-  const setAddonQ = (id, q) => setAddonQtyMap(m => ({ ...m, [id]: Math.max(0, q) }));
+  const setAddonQ = (ev, id, q) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const button = ev.currentTarget;
+    let scroller = button.parentElement;
+    while (scroller) {
+      const css = window.getComputedStyle(scroller);
+      if (/(auto|scroll)/.test(css.overflowY) && scroller.scrollHeight > scroller.clientHeight) break;
+      scroller = scroller.parentElement;
+    }
+    const top = scroller ? scroller.scrollTop : window.scrollY;
+    const left = scroller ? scroller.scrollLeft : window.scrollX;
+    setAddonQtyMap(m => ({ ...m, [id]: Math.max(0, q) }));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (scroller) {
+        scroller.scrollTop = top;
+        scroller.scrollLeft = left;
+      } else {
+        window.scrollTo(left, top);
+      }
+      button.blur();
+    }));
+  };
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
   const menRemain = profile?.gender === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
   const cappedTypes = visTypes.filter(t => t.capacity != null && t.capacity !== "" && Number(t.capacity) > 0);
@@ -1944,7 +1966,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     </div>
   );
   return (
-    <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", overflowAnchor: "none" }}>
       <RecentBuyerToasts eventId={e.id} wide={wide} />
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}`}</style>
       <div style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(8,18,24,.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "12px 7%" : "10px 14px" }}>
@@ -2072,22 +2094,24 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           )}
           {realAddons.length > 0 && (
             <Sec title="Optional add-ons">
+              <div style={{ overflowAnchor: "none" }}>
               {realAddons.map(a => {
                 const q = addonQtyMap[a.id] || 0;
                 return (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: `1px solid ${W.line}`, fontSize: 14.5 }}>
+                <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: `1px solid ${W.line}`, fontSize: 14.5, overflowAnchor: "none" }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ color: W.ink, fontWeight: 700 }}>{a.name}</div>
                     <div style={{ color: W.teal, fontWeight: 800, fontSize: 12.5, marginTop: 2 }}>{(a.price || 0) === 0 ? "Free" : `+₹${a.price} each`}</div>
                   </div>
                   <div style={{ width: 108, height: 38, display: "grid", gridTemplateColumns: "34px 40px 34px", alignItems: "stretch", border: `1.5px solid ${W.teal}`, borderRadius: 10, overflow: "hidden", flexShrink: 0, background: "#fff" }}>
-                    <button type="button" aria-label={`Remove ${a.name}`} disabled={q <= 0} onMouseDown={ev => ev.preventDefault()} onClick={() => setAddonQ(a.id, q - 1)} style={{ width: 34, height: 36, border: "none", background: "#fff", color: q > 0 ? W.teal : "transparent", fontSize: 19, fontWeight: 800, cursor: q > 0 ? "pointer" : "default", visibility: q > 0 ? "visible" : "hidden" }}>−</button>
-                    <button type="button" aria-label={q > 0 ? `${q} ${a.name} selected` : `Add ${a.name}`} onMouseDown={ev => ev.preventDefault()} onClick={() => q <= 0 && setAddonQ(a.id, 1)} style={{ width: 40, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: q > 0 ? 14 : 12, fontWeight: 900, cursor: q > 0 ? "default" : "pointer", padding: 0 }}>{q > 0 ? q : "Add"}</button>
-                    <button type="button" aria-label={`Add another ${a.name}`} onMouseDown={ev => ev.preventDefault()} onClick={() => setAddonQ(a.id, q + 1)} style={{ width: 34, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: 19, fontWeight: 800, cursor: "pointer" }}>+</button>
+                    <button type="button" aria-label={`Remove ${a.name}`} disabled={q <= 0} onMouseDown={ev => ev.preventDefault()} onClick={ev => setAddonQ(ev, a.id, q - 1)} style={{ width: 34, height: 36, border: "none", background: "#fff", color: q > 0 ? W.teal : "transparent", fontSize: 19, fontWeight: 800, cursor: q > 0 ? "pointer" : "default", visibility: q > 0 ? "visible" : "hidden" }}>−</button>
+                    <button type="button" aria-label={q > 0 ? `${q} ${a.name} selected` : `Add ${a.name}`} onMouseDown={ev => ev.preventDefault()} onClick={ev => q <= 0 && setAddonQ(ev, a.id, 1)} style={{ width: 40, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: q > 0 ? 14 : 12, fontWeight: 900, cursor: q > 0 ? "default" : "pointer", padding: 0 }}>{q > 0 ? q : "Add"}</button>
+                    <button type="button" aria-label={`Add another ${a.name}`} onMouseDown={ev => ev.preventDefault()} onClick={ev => setAddonQ(ev, a.id, q + 1)} style={{ width: 34, height: 36, border: "none", background: "#fff", color: W.teal, fontSize: 19, fontWeight: 800, cursor: "pointer" }}>+</button>
                   </div>
                 </div>
               );})}
               <div style={{ fontSize: 12, color: W.soft, marginTop: 8 }}>Selected add-ons are carried into checkout. You can still change them before payment.</div>
+              </div>
             </Sec>
           )}
           {excl.length > 0 && (
