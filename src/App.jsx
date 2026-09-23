@@ -372,7 +372,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, { id: "meet", icon: Users, label: "Meet" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, { id: "meet", icon: Users, label: "Meet" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -664,7 +664,7 @@ function FiltersPanel({ categories, cities, dims, optsAll, onAddOption, onDelOpt
       </div>
       <div style={{ fontWeight: 800, fontSize: 15.5, color: W.ink, margin: "20px 0 4px" }}>Custom filter dimensions</div>
       <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>Add your own filter — e.g. Language, Age group, Vibe. It appears in the create-event form and as filter chips on the browse pages.</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <input value={newDim} onChange={ev => setNewDim(ev.target.value)} placeholder="New dimension name… e.g. Language" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 12px", fontSize: 14, outline: "none" }} />
         <button onClick={addDim} style={btn(W.teal, "#fff")}>Add</button>
       </div>
@@ -1951,6 +1951,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: wide ? "28px 24px 60px" : "20px 16px 110px", display: "flex", gap: 36, alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            {e.private_segment_id && <span style={{ background: "linear-gradient(135deg,#6D28D9,#DB2777)", color: "#fff", fontSize: 12, fontWeight: 900, padding: "4px 11px", borderRadius: 14 }}>🔒 Private invitation</span>}
             {popular && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 12, fontWeight: 800, padding: "4px 11px", borderRadius: 14 }}>🔥 Popular</span>}
             {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.category}</span>}
             {e.city && <span style={{ background: W.bg, color: W.soft, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.city}</span>}
@@ -2569,7 +2570,7 @@ function Main({ user }) {
   const [ticketView, setTicketView] = useState(null);
   const [hasDM, setHasDM] = useState(false);
   const [focusEvent, setFocusEvent] = useState(null);
-  const openEvent = (id) => { setOpen(null); setTab("events"); setEventPage(id); };
+  const openEvent = (id) => { const ev = events.find(x => x.id === id); setOpen(null); setTab(ev?.private_segment_id ? "private" : "events"); setEventPage(id); };
   const openDM = async (id, name) => {
     const { data: ok } = await supabase.rpc("can_dm", { p_other: id });
     if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, matched with a mutual wave \ud83d\udc4b, or whom an admin has connected you with.");
@@ -2836,7 +2837,7 @@ function Main({ user }) {
     const sbLive = (sb || []).filter(x => !x.expires_at || new Date(x.expires_at).getTime() > Date.now());
     setSubs(sbLive.map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
     const mt = {}; (tk || []).forEach(r => { if (!mt[r.event_id]) mt[r.event_id] = []; mt[r.event_id].push(r); }); setMyTickets(mt);
-    setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id)); setEventGroups((egm || []).map(x => x.event_id)); setMySegs((sgm || []).map(x => x.segment_id)); setMySegs((sgm || []).map(x => x.segment_id));
+    setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id)); setEventGroups((egm || []).map(x => x.event_id)); setMySegs((sgm || []).map(x => x.segment_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
     const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
     const es = {}; (estat || []).forEach(x => { es[x.event_id] = { male: Number(x.male_sold), female: Number(x.female_sold) }; }); setEventStats(es);
@@ -3016,6 +3017,7 @@ function Main({ user }) {
     return finishJoin(r);
   };
   const buyTicket = (e, cartOrType = null, qty = 1) => {
+    if (e.private_segment_id && !isStaff && !mySegs.includes(e.private_segment_id) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segment.");
     let cart = Array.isArray(cartOrType) ? cartOrType.filter(c => c && c.qty > 0)
       : [{ type: cartOrType, qty: Math.max(1, qty || 1) }];
     if (!cart.length) cart = [{ type: null, qty: 1 }];
@@ -3028,6 +3030,7 @@ function Main({ user }) {
     setBuyTarget({ event: e, cart });
   };
   const joinEvent = (e, type = null) => {
+    if (e.private_segment_id && !isStaff && !mySegs.includes(e.private_segment_id) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segment.");
     if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
     if (type) {
     } else if ((ticketTypes[e.id] || []).length) {
@@ -3044,7 +3047,7 @@ function Main({ user }) {
     if (e) {
       try { localStorage.removeItem("gw_buy"); localStorage.removeItem("gw_buy_cart"); } catch {}
       if (cartRaw) { try { setResumeCart(JSON.parse(cartRaw)); } catch {} }
-      setTab("events"); setEventPage(e.id);
+      setTab(e.private_segment_id ? "private" : "events"); setEventPage(e.id);
     }
   }, [events]);
   const grantRoom = async (userId, roomId, months = null) => {
@@ -3187,6 +3190,12 @@ function Main({ user }) {
     const rows = rooms.map(r => ({ group_type: "room", group_id: r.id, sender_id: user.id, body, media_type, ...extra }));
     await supabase.from("messages").insert(rows);
   };
+  const privateSegmentMemberIds = async (segmentId) => {
+    if (!segmentId) return [];
+    const { data, error } = await supabase.rpc("segment_member_list", { p_segment: segmentId });
+    if (error) { setNotice(error.message); return []; }
+    return (data || []).map(m => m.user_id).filter(Boolean);
+  };
   const createEvent = async (d, dates, addonsList) => {
     let list = (dates && dates.length) ? dates : [{ label: d.event_date || "", iso: d.event_at || null }];
     list = list.map(x => typeof x === "string" ? { label: x, iso: null } : x);
@@ -3210,7 +3219,11 @@ function Main({ user }) {
       if (rows.length) await supabase.from("event_addons").insert(rows);
     }
     const line = [list[0].label, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-    await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${list.length > 1 ? ` (${list.length} dates)` : ""}${line ? "\n" + line : ""}`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image", event_ref: firstId });
+    if (d.private_segment_id) {
+      await sendEventDM({ ...d, id: firstId, event_date: list[0].label });
+    } else {
+      await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${list.length > 1 ? ` (${list.length} dates)` : ""}${line ? "\n" + line : ""}`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image", event_ref: firstId });
+    }
     await load();
     if (!(isAdmin || (profile?.roles || []).includes("admin"))) setNotice("Event submitted ✅ — it will appear publicly once an admin reviews and approves it.");
   };
@@ -3220,6 +3233,7 @@ function Main({ user }) {
     setNotice("Broadcast sent to all group chats.");
   };
   const broadcastEvent = async (e) => {
+    if (e.private_segment_id) { await sendEventDM(e); return; }
     const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
     await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}`, "event", { media_url: e.landscape_video_url || e.banner_url || null, file_name: e.landscape_video_url ? "video" : (e.banner_type || "image"), event_ref: e.id });
     setNotice("Event sent to all group chats.");
@@ -3233,7 +3247,11 @@ function Main({ user }) {
   };
   const sendEventDM = async (e, ids = null) => {
     let target = ids;
-    if (!target) { const { data } = await supabase.from("profiles").select("id"); target = (data || []).map(p => p.id); }
+    if (e.private_segment_id) {
+      const allowed = await privateSegmentMemberIds(e.private_segment_id);
+      const allowSet = new Set(allowed);
+      target = target ? target.filter(id => allowSet.has(id)) : allowed;
+    } else if (!target) { const { data } = await supabase.from("profiles").select("id"); target = (data || []).map(p => p.id); }
     target = target.filter(id => id !== user.id);
     if (!target.length) return setNotice("No members to send to.");
     const line = [e.event_date, [e.venue, e.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
@@ -3241,7 +3259,7 @@ function Main({ user }) {
     const rows = target.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body, media_type: "event", media_url: e.landscape_video_url || e.banner_url || null, file_name: e.landscape_video_url ? "video" : (e.banner_type || "image"), event_ref: e.id }));
     const { error } = await supabase.from("messages").insert(rows);
     if (error) return setNotice(error.message);
-    setNotice(`Event sent privately to ${target.length} member${target.length === 1 ? "" : "s"}.`);
+    setNotice(`${e.private_segment_id ? "Private party" : "Event"} sent privately to ${target.length} invited member${target.length === 1 ? "" : "s"}.`);
   };
   const updateEvent = async (id, p) => { const { error } = organiserStaff?.can_events ? await supabase.rpc("organiser_staff_update_event", { p_event: id, p_patch: p }) : await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
   const duplicateEvent = async (e) => {
@@ -3361,7 +3379,8 @@ function Main({ user }) {
       {tab === "chats" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>)}
       {tab === "explore" && <Explore user={user} rooms={rooms.filter(r => !r.segment_id || isStaff || mySegs.includes(r.segment_id))} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} onOpenDM={openDM} onOrganiserApproved={load} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
-      {tab === "events" && <Events events={events.filter(eventLive)} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "events" && <Events events={events.filter(e => !e.private_segment_id && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "private" && <Events privateMode events={events.filter(e => !!e.private_segment_id && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
@@ -3603,7 +3622,7 @@ function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremiu
 }
 
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll, privateMode = false }) {
   const popSet = (() => {
     const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
     return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
@@ -3634,7 +3653,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     .filter(x => x.img)
     .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
     .map(evSlide);
-  const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
+  const customSlides = privateMode ? [] : custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
   const autoSlides = events
     .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
     .filter(x => x.img && x.e.approved !== false && gwEventLive(x.e))
@@ -3647,11 +3666,18 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const heroSlides = [...promoSlides, ...cust2, ...auto2].slice(0, 8);
   return (
     <div>
-      <TopBar title="Events" />
-      <div style={{ padding: "14px 16px 4px", background: "#fff" }}>
-        <div style={{ fontWeight: 800, fontSize: 21.5, color: W.ink, letterSpacing: -0.3 }}>Your city. Your people. ✨</div>
-        <div onClick={() => setCitySheet(true)} style={{ color: W.teal, fontWeight: 800, fontSize: 14, marginTop: 3, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>{flt.city.length === 1 ? flt.city[0] : "All cities"}&nbsp;{"\u203a"}</div>
-      </div>
+      <TopBar title={privateMode ? "Private Parties" : "Events"} />
+      {privateMode ? (
+        <div style={{ margin: "14px 14px 4px", padding: "18px 17px", borderRadius: 18, color: "#fff", background: "linear-gradient(135deg,#21113F,#7C3AED 62%,#DB2777)", boxShadow: "0 12px 28px rgba(124,58,237,.22)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 13 }}><div style={{ width: 48, height: 48, borderRadius: 15, background: "rgba(255,255,255,.16)", display: "flex", alignItems: "center", justifyContent: "center" }}><Lock size={24} /></div><div><div style={{ fontWeight: 950, fontSize: 21 }}>Your private invitations</div><div style={{ fontSize: 12.5, opacity: .9, marginTop: 3, lineHeight: 1.4 }}>Only parties created for your VIP, subscriber or special member segments appear here.</div></div></div>
+          <div onClick={() => setCitySheet(true)} style={{ marginTop: 13, display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.14)", borderRadius: 999, padding: "6px 11px", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>📍 {flt.city.length === 1 ? flt.city[0] : "All cities"} ›</div>
+        </div>
+      ) : (
+        <div style={{ padding: "14px 16px 4px", background: "#fff" }}>
+          <div style={{ fontWeight: 800, fontSize: 21.5, color: W.ink, letterSpacing: -0.3 }}>Your city. Your people. ✨</div>
+          <div onClick={() => setCitySheet(true)} style={{ color: W.teal, fontWeight: 800, fontSize: 14, marginTop: 3, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>{flt.city.length === 1 ? flt.city[0] : "All cities"}&nbsp;{"\u203a"}</div>
+        </div>
+      )}
       <CategoryTiles cats={catTiles} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
       <div style={{ display: "flex", gap: 10, padding: "10px 14px", overflowX: "auto", borderBottom: `1px solid ${W.line}`, background: "#fff", position: "sticky", top: 0, zIndex: 5 }}>
         <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
@@ -3662,7 +3688,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
       </div>
       {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
-        {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events here yet.</Center></div>}
+        {list.length === 0 && <div style={{ gridColumn: "1/-1", background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 10 }}><Center>{privateMode ? "No private invitations are available for your segments right now." : "No events here yet."}</Center></div>}
         {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
       </div>
       {fsheet && <FilterSheet events={events} dims={dims} opts={optsAll} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
@@ -9618,15 +9644,20 @@ function CouponsAdmin({ events }) {
     </div>
   );
 }
-function SegmentsAdmin() {
+function SegmentsAdmin({ organiserScoped = false }) {
   const [segs, setSegs] = useState(null);
   const [counts, setCounts] = useState({});
   const [segName, setSegName] = useState("");
+  const [segDescription, setSegDescription] = useState("");
+  const [segEmoji, setSegEmoji] = useState("🎯");
+  const [segColor, setSegColor] = useState("#7C3AED");
+  const [createOpen, setCreateOpen] = useState(false);
   const [openSeg, setOpenSeg] = useState(null);   // segment id with panel open
   const [panel, setPanel] = useState("members");   // members | credits | message | email
   const [members, setMembers] = useState([]);
-  const [dir, setDir] = useState([]);
   const [sq, setSq] = useState("");
+  const [candidates, setCandidates] = useState([]);
+  const [searchBusy, setSearchBusy] = useState(false);
   const [credAmt, setCredAmt] = useState("");
   const [msgBody, setMsgBody] = useState("");
   const [emSub, setEmSub] = useState("");
@@ -9662,27 +9693,29 @@ function SegmentsAdmin() {
     setBusy(false);
   };
   const load = () => {
-    supabase.from("segments").select("*").order("created_at").then(({ data }) => setSegs(data || []));
-    supabase.from("segment_members").select("segment_id").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.segment_id] = (m[r.segment_id] || 0) + 1; }); setCounts(m); });
+    supabase.rpc("segment_directory").then(({ data, error }) => {
+      if (error) { setSegs([]); return; }
+      const rows = (data || []).map(s => ({ ...s, id: s.segment_id, rule: s.rule && s.rule !== "null" ? s.rule : null }));
+      const m = {}; rows.forEach(s => { m[s.id] = Number(s.member_count || 0); });
+      setSegs(rows); setCounts(m);
+    });
   };
-  useEffect(() => { load(); supabase.rpc("staff_directory").then(({ data }) => setDir(data || [])); }, []);
+  useEffect(() => { load(); }, []);
   const loadMembers = async (sid) => {
-    const { data } = await supabase.from("segment_members").select("user_id").eq("segment_id", sid);
-    const ids = (data || []).map(x => x.user_id);
-    if (!ids.length) return setMembers([]);
-    const { data: profs } = await supabase.from("profiles").select("id, full_name, avatar_url").in("id", ids);
-    setMembers(profs || []);
+    const { data, error } = await supabase.rpc("segment_member_list", { p_segment: sid });
+    if (error) { setMembers([]); return; }
+    setMembers((data || []).map(m => ({ ...m, id: m.user_id })));
   };
-  const openPanel = (sid, p) => { setOpenSeg(sid); setPanel(p); if (p === "members") loadMembers(sid); };
+  const openPanel = (sid, p) => { setOpenSeg(sid); setPanel(p); setSq(""); setCandidates([]); if (p === "members") loadMembers(sid); };
   const addSeg = async () => {
     if (!segName.trim()) return;
-    const { error } = await supabase.from("segments").insert({ name: segName.trim() });
+    const { error } = await supabase.rpc("segment_create", { p_name: segName.trim(), p_description: segDescription.trim() || null, p_emoji: segEmoji || "🎯", p_color: segColor || "#7C3AED" });
     if (error) return alert(error.message);
-    setSegName(""); load();
+    setSegName(""); setSegDescription(""); setSegEmoji("🎯"); setSegColor("#7C3AED"); setCreateOpen(false); load();
   };
   const delSeg = async (s) => {
-    if (!window.confirm(`Delete "${s.name}"? Rooms restricted to it become visible to everyone.`)) return;
-    const { error } = await supabase.from("segments").delete().eq("id", s.id);
+    if (!window.confirm(`Delete "${s.name}"? This works only when no private party is using it.`)) return;
+    const { error } = await supabase.rpc("segment_delete", { p_segment: s.id });
     if (error) return alert(error.message);
     if (openSeg === s.id) setOpenSeg(null);
     load();
@@ -9728,21 +9761,43 @@ function SegmentsAdmin() {
     } catch (e) { alert(e.message); }
     setBusy(false);
   };
-  const sMatches = sq.trim().length < 2 ? [] : dir.filter(m => (m.full_name || "").toLowerCase().includes(sq.trim().toLowerCase()) && !members.some(x => x.id === m.id)).slice(0, 6);
+  useEffect(() => {
+    if (panel !== "members" || !openSeg || sq.trim().length < 2) { setCandidates([]); return; }
+    let live = true;
+    const timer = setTimeout(async () => {
+      setSearchBusy(true);
+      const { data, error } = await supabase.rpc("segment_candidate_search", { p_segment: openSeg, p_query: sq.trim() });
+      if (!live) return;
+      setSearchBusy(false);
+      if (error) { setCandidates([]); return; }
+      setCandidates((data || []).map(m => ({ ...m, id: m.user_id })).filter(m => !m.already_member));
+    }, 300);
+    return () => { live = false; clearTimeout(timer); };
+  }, [sq, openSeg, panel]);
+  const sMatches = candidates.filter(m => !members.some(x => x.id === m.id)).slice(0, 12);
   const inp = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" };
   const tabBtn = (s, key, label) => <button onClick={() => openPanel(s.id, key)} style={{ ...btn(openSeg === s.id && panel === key ? W.teal : "#fff", openSeg === s.id && panel === key ? "#fff" : W.teal), border: `1px solid ${W.teal}`, padding: "5px 10px", fontSize: 12 }}>{label}</button>;
   return (
-    <div style={{ padding: 14 }}>
-      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12, lineHeight: 1.5 }}>Segments are member groups. 🤖 AUTO segments compute themselves from live data; manual ones you curate. For each segment you can grant credits, send an in-app message, or run an email campaign — and restrict rooms to it in Admin → Rooms.</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        <input value={segName} onChange={e => setSegName(e.target.value)} placeholder="New segment name (e.g. VIP Founders)" style={{ ...inp, flex: 1 }} />
-        <button onClick={addSeg} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px" }}>Add</button>
+    <div style={{ padding: 14, maxWidth: 980, margin: "0 auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#21113F,#6D28D9 58%,#DB2777)", color: "#fff", borderRadius: 19, padding: "19px 20px", marginBottom: 13, boxShadow: "0 12px 30px rgba(109,40,217,.22)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}><div style={{ width: 46, height: 46, borderRadius: 14, background: "rgba(255,255,255,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 23 }}>🎯</div><div style={{ flex: 1 }}><div style={{ fontSize: 20, fontWeight: 950 }}>Member Segments</div><div style={{ fontSize: 12.5, opacity: .88, marginTop: 3 }}>{organiserScoped ? "Build private audiences from members who bought through your events." : "Create VIP, Instagram Subscriber, Girls and custom invitation groups."}</div></div><div style={{ textAlign: "center", background: "rgba(255,255,255,.13)", borderRadius: 12, padding: "8px 12px" }}><div style={{ fontSize: 20, fontWeight: 950 }}>{(segs || []).length}</div><div style={{ fontSize: 9.5, fontWeight: 850, letterSpacing: .6 }}>SEGMENTS</div></div></div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginTop: 14 }}>{[["🔒", "Private parties"], ["🔎", "Easy member search"], ["🎟️", "Ticket visibility"]].map(([ic, t]) => <div key={t} style={{ background: "rgba(255,255,255,.11)", borderRadius: 10, padding: "8px 7px", textAlign: "center", fontSize: 10.5, fontWeight: 750 }}><div style={{ fontSize: 16 }}>{ic}</div>{t}</div>)}</div>
       </div>
+      <button onClick={() => setCreateOpen(v => !v)} style={{ ...btn(createOpen ? "#21113F" : "#6D28D9", "#fff"), width: "100%", justifyContent: "center", padding: 12, marginBottom: 10, fontSize: 14.5 }}><Plus size={18} />{createOpen ? "Close creator" : "Create a new segment"}</button>
+      {createOpen && <div style={{ background: "#fff", border: "1px solid #E0D4FF", borderRadius: 15, padding: 13, marginBottom: 12, boxShadow: "0 7px 20px rgba(109,40,217,.08)" }}>
+        <div style={{ fontWeight: 900, color: W.ink, marginBottom: 9 }}>Design your segment</div>
+        <div style={{ display: "flex", gap: 7, overflowX: "auto", marginBottom: 9 }}>{[["💎", "VIPs", "#B7791F"], ["📸", "Instagram Subscribers", "#C13584"], ["👩", "Girls", "#DB2777"]].map(([ic, name, color]) => <button key={name} onClick={() => { setSegEmoji(ic); setSegName(name); setSegColor(color); setSegDescription(`${name} invited to exclusive Glasswings private parties.`); }} style={{ flexShrink: 0, border: `1px solid ${color}44`, background: `${color}12`, color, borderRadius: 999, padding: "7px 11px", fontSize: 11.5, fontWeight: 850, cursor: "pointer" }}>{ic} {name}</button>)}</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}><input value={segEmoji} onChange={e => setSegEmoji(e.target.value)} maxLength={2} style={{ ...inp, width: 58, textAlign: "center", fontSize: 21 }} /><input value={segName} onChange={e => setSegName(e.target.value)} placeholder="Segment name — e.g. Instagram Subscribers" style={{ ...inp, flex: 1 }} /><input type="color" value={segColor} onChange={e => setSegColor(e.target.value)} title="Segment colour" style={{ width: 48, minHeight: 42, border: `1px solid ${W.line}`, borderRadius: 9, padding: 4, background: "#fff" }} /></div>
+        <textarea value={segDescription} onChange={e => setSegDescription(e.target.value)} rows={2} placeholder="Short description — who belongs in this segment?" style={{ ...inp, resize: "vertical" }} />
+        <button onClick={addSeg} disabled={!segName.trim()} style={{ ...btn(segColor, "#fff"), width: "100%", justifyContent: "center", marginTop: 9, opacity: segName.trim() ? 1 : .55 }}>✓ Create segment</button>
+      </div>}
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12, lineHeight: 1.5 }}>{organiserScoped ? "Only your own ticket buyers appear in search. Other organisers and the wider Glasswings community stay private." : "Members can be added by name, email or phone. Use any segment as the invitation list for a Private Party."}</div>
       {(segs || []).some(s => s.rule) && <button onClick={async () => { const { error } = await supabase.rpc("segments_refresh_all"); if (error) return alert(error.message); alert("🤖 All auto-segments recomputed ✓"); load(); if (openSeg && panel === "members") loadMembers(openSeg); }} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", width: "100%", justifyContent: "center", fontSize: 12.5, marginBottom: 12 }}>🤖 Refresh all auto-segments now</button>}
       {(segs || []).map(s => (
-        <div key={s.id} style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 13, marginBottom: 10 }}>
+        <div key={s.id} style={{ background: "#fff", borderRadius: 15, border: `1px solid ${s.color || "#7C3AED"}33`, borderLeft: `6px solid ${s.color || "#7C3AED"}`, padding: 14, marginBottom: 11, boxShadow: `0 5px 17px ${s.color || "#7C3AED"}12` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ flex: 1, minWidth: 130, fontWeight: 800, fontSize: 14.5, color: W.ink }}>🎯 {s.name} {s.rule && <span style={{ background: "#F3EBFF", color: "#6D28D9", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10, verticalAlign: "middle" }}>🤖 AUTO</span>}</span>
+            <span style={{ width: 38, height: 38, borderRadius: 11, background: `${s.color || "#7C3AED"}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{s.emoji || "🎯"}</span>
+            <span style={{ flex: 1, minWidth: 130, fontWeight: 850, fontSize: 15, color: W.ink }}>{s.name} {s.rule && <span style={{ background: "#F3EBFF", color: "#6D28D9", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10, verticalAlign: "middle" }}>🤖 AUTO</span>}{s.description && <span style={{ display: "block", color: W.soft, fontSize: 11.5, lineHeight: 1.35, fontWeight: 550, marginTop: 2 }}>{s.description}</span>}</span>
             <span style={{ fontSize: 12.5, color: W.soft, fontWeight: 700 }}>{counts[s.id] || 0} 👥</span>
             {s.rule && <button onClick={() => refreshSeg(s)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", padding: "5px 9px", fontSize: 12 }}>↻</button>}
             <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => delSeg(s)} />
@@ -9750,31 +9805,33 @@ function SegmentsAdmin() {
           {s.rule && s.auto_updated_at && <div style={{ fontSize: 11, color: W.soft, marginTop: 3 }}>last refreshed {new Date(s.auto_updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</div>}
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 9 }}>
             {tabBtn(s, "members", "👥 Members")}
-            {tabBtn(s, "credits", "🎁 Credits")}
-            {tabBtn(s, "message", "💬 In-app")}
-            {tabBtn(s, "email", "✉️ Email")}
-            {tabBtn(s, "whatsapp", "📱 WhatsApp")}
+            {!organiserScoped && tabBtn(s, "credits", "🎁 Credits")}
+            {!organiserScoped && tabBtn(s, "message", "💬 In-app")}
+            {!organiserScoped && tabBtn(s, "email", "✉️ Email")}
+            {!organiserScoped && tabBtn(s, "whatsapp", "📱 WhatsApp")}
           </div>
           {openSeg === s.id && (
             <div style={{ marginTop: 10, background: W.bg, borderRadius: 10, padding: 11 }}>
               {panel === "members" && (<>
                 {!s.rule && <>
-                  <input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search member to add…" style={inp} />
+                  <div style={{ position: "relative" }}><input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search by name, email or phone…" style={{ ...inp, paddingRight: 42 }} />{searchBusy && <span style={{ position: "absolute", right: 13, top: 10, fontSize: 13, color: "#6D28D9" }}>●●●</span>}</div>
+                  {sq.trim().length > 0 && sq.trim().length < 2 && <div style={{ color: W.soft, fontSize: 11.5, marginTop: 5 }}>Type at least 2 letters or numbers.</div>}
                   {sMatches.map(m => (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
-                      <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
-                      <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
-                      <button onClick={async () => { const { error } = await supabase.from("segment_members").insert({ segment_id: s.id, user_id: m.id }); if (error && error.code !== "23505") return alert(error.message); setSq(""); loadMembers(s.id); load(); }} style={{ ...btn(W.teal, "#fff"), padding: "5px 10px", fontSize: 12 }}>Add</button>
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 8px", marginTop: 6, border: `1px solid ${W.line}`, borderRadius: 10, background: "#fff" }}>
+                      <PersonAvatar url={m.avatar_url} name={m.full_name} size={34} />
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: W.ink }}><b>{m.full_name || "Member"}</b><span style={{ display: "block", color: W.soft, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>{[m.email, m.phone, m.city].filter(Boolean).join(" · ")}</span></span>
+                      <button onClick={async () => { const { error } = await supabase.rpc("segment_add_member", { p_segment: s.id, p_user: m.id }); if (error) return alert(error.message); setSq(""); setCandidates([]); loadMembers(s.id); load(); }} style={{ ...btn(s.color || W.teal, "#fff"), padding: "6px 11px", fontSize: 12 }}>+ Add</button>
                     </div>
                   ))}
+                  {!searchBusy && sq.trim().length >= 2 && sMatches.length === 0 && <div style={{ color: W.soft, fontSize: 12, marginTop: 8 }}>No eligible member found. {organiserScoped ? "Only people who bought through your events can be added." : "Try another name, email or phone."}</div>}
                 </>}
                 {s.rule && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700 }}>🤖 Computed automatically — tap ↻ to recompute. Manual adds would be overwritten.</div>}
                 <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft, marginTop: 8 }}>In this segment ({members.length})</div>
                 {members.map(m => (
-                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 2px" }}>
-                    <PersonAvatar url={m.avatar_url} name={m.full_name} size={26} />
-                    <span style={{ flex: 1, fontSize: 13, color: W.ink }}>{m.full_name}</span>
-                    {!s.rule && <span onClick={async () => { const { error } = await supabase.from("segment_members").delete().eq("segment_id", s.id).eq("user_id", m.id); if (error) return alert(error.message); loadMembers(s.id); load(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 2px", borderBottom: `1px solid ${W.line}` }}>
+                    <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: W.ink }}><b>{m.full_name || "Member"}</b><span style={{ display: "block", color: W.soft, fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{[m.email, m.phone, m.city].filter(Boolean).join(" · ")}</span></span>
+                    {!s.rule && <span onClick={async () => { const { error } = await supabase.rpc("segment_remove_member", { p_segment: s.id, p_user: m.id }); if (error) return alert(error.message); loadMembers(s.id); load(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
                   </div>
                 ))}
                 {members.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No members yet.</div>}
@@ -10013,6 +10070,13 @@ function OrganiserApplicationsAdmin({ onReload, events = [] }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualQuery, setManualQuery] = useState("");
+  const [manualResults, setManualResults] = useState([]);
+  const [manualMember, setManualMember] = useState(null);
+  const [manualName, setManualName] = useState("");
+  const [manualPct, setManualPct] = useState("");
+  const [manualBusy, setManualBusy] = useState(false);
 
   const load = useCallback(() => {
     setError("");
@@ -10046,6 +10110,35 @@ function OrganiserApplicationsAdmin({ onReload, events = [] }) {
     load();
   };
 
+  const searchMember = async () => {
+    if (manualQuery.trim().length < 2) return alert("Enter at least 2 letters of the member's name, email or phone number.");
+    setManualBusy(true); setError(""); setManualMember(null);
+    const { data, error: e } = await supabase.rpc("admin_find_organiser_candidate", { p_query: manualQuery.trim() });
+    setManualBusy(false);
+    if (e) { setManualResults([]); return setError(e.message); }
+    setManualResults(data || []);
+  };
+
+  const pickManualMember = member => {
+    setManualMember(member);
+    setManualName(member.full_name || "");
+    setManualResults([]);
+  };
+
+  const approveManualMember = async () => {
+    if (!manualMember) return alert("Select a Glasswings member first.");
+    if (manualName.trim().length < 2) return alert("Enter the organiser or business name.");
+    const pct = Number(manualPct);
+    if (manualPct === "" || !Number.isFinite(pct) || pct < 0 || pct > 100) return alert("Enter a commission percentage between 0 and 100.");
+    if (!window.confirm(`Approve ${manualMember.full_name || "this member"} as organiser for ${manualName.trim()} with ${pct}% Glasswings commission?`)) return;
+    setManualBusy(true); setError("");
+    const { error: e } = await supabase.rpc("admin_approve_organiser_member", { p_user: manualMember.user_id, p_organisation_name: manualName.trim(), p_commission_pct: pct });
+    setManualBusy(false);
+    if (e) return setError(e.message);
+    setManualOpen(false); setManualQuery(""); setManualResults([]); setManualMember(null); setManualName(""); setManualPct(""); setFilter("approved");
+    load(); onReload && onReload();
+  };
+
   const visible = (rows || []).filter(r => filter === "all" || r.status === filter);
   const pending = (rows || []).filter(r => r.status === "pending").length;
   const statusStyle = s => s === "approved"
@@ -10065,6 +10158,36 @@ function OrganiserApplicationsAdmin({ onReload, events = [] }) {
           </div>
           <div style={{ textAlign: "center", background: "rgba(255,255,255,.14)", borderRadius: 12, padding: "8px 13px" }}><div style={{ fontSize: 20, fontWeight: 900 }}>{pending}</div><div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: .6 }}>PENDING</div></div>
         </div>
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${manualOpen ? W.teal : W.line}`, borderRadius: 15, padding: 13, marginBottom: 14, boxShadow: "0 5px 16px rgba(18,45,39,.04)" }}>
+        <button onClick={() => { setManualOpen(v => !v); setManualResults([]); setError(""); }} style={{ width: "100%", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 11, padding: 0, color: W.ink, textAlign: "left" }}>
+          <div style={{ width: 39, height: 39, borderRadius: 12, background: "#E7F6EF", color: W.teal, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>＋</div>
+          <div style={{ flex: 1 }}><div style={{ fontWeight: 900, fontSize: 14.5 }}>Manually approve an organiser</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>Search an existing Glasswings member and activate their organiser dashboard.</div></div>
+          <span style={{ color: W.teal, fontWeight: 900 }}>{manualOpen ? "Hide" : "Open"}</span>
+        </button>
+        {manualOpen && <div style={{ marginTop: 13, paddingTop: 13, borderTop: `1px solid ${W.line}` }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={manualQuery} onChange={e => { setManualQuery(e.target.value); setManualMember(null); }} onKeyDown={e => e.key === "Enter" && searchMember()} placeholder="Search member by name, email or phone" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none" }} />
+            <button onClick={searchMember} disabled={manualBusy} style={{ ...btn(W.teal, "#fff"), padding: "9px 15px", opacity: manualBusy ? .6 : 1 }}>{manualBusy ? "…" : "Search"}</button>
+          </div>
+          {manualResults.length > 0 && <div style={{ border: `1px solid ${W.line}`, borderRadius: 11, overflow: "hidden", marginTop: 8 }}>
+            {manualResults.map(member => <div key={member.user_id} onClick={() => pickManualMember(member)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderTop: `1px solid ${W.line}`, cursor: "pointer", background: "#fff" }}>
+              <PersonAvatar url={member.avatar_url} name={member.full_name} size={35} />
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 800, color: W.ink }}>{member.full_name || "Member"}</div><div style={{ color: W.soft, fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{[member.email, member.phone, member.city].filter(Boolean).join(" · ")}</div></div>
+              {member.already_organiser ? <span style={{ background: "#E7F6EF", color: W.teal, borderRadius: 999, padding: "3px 8px", fontSize: 10, fontWeight: 850 }}>Already organiser</span> : <span style={{ color: W.teal, fontWeight: 900 }}>Select →</span>}
+            </div>)}
+          </div>}
+          {!manualBusy && manualQuery.trim().length >= 2 && manualResults.length === 0 && !manualMember && <div style={{ color: W.soft, fontSize: 12, marginTop: 8 }}>No result shown yet. Tap Search, or ask the person to create a Glasswings member account first.</div>}
+          {manualMember && <div style={{ marginTop: 10, background: W.bg, borderRadius: 12, padding: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}><PersonAvatar url={manualMember.avatar_url} name={manualMember.full_name} size={40} /><div style={{ flex: 1 }}><div style={{ fontWeight: 850, color: W.ink }}>{manualMember.full_name || "Member"}</div><div style={{ color: W.soft, fontSize: 11.5 }}>{manualMember.email || manualMember.phone || "Glasswings member"}</div></div></div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Organiser / business name" style={{ flex: "2 1 220px", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flex: "1 1 135px" }}><input value={manualPct} onChange={e => setManualPct(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="Commission" style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 13.5, outline: "none" }} /><b style={{ color: W.soft }}>%</b></div>
+            </div>
+            <button onClick={approveManualMember} disabled={manualBusy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 10, padding: 11, opacity: manualBusy ? .6 : 1 }}>{manualBusy ? "Approving…" : "✓ Approve organiser & activate dashboard"}</button>
+          </div>}
+        </div>}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -10229,6 +10352,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
+    ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
     ...((myEventsOnly && caps.privateMembers) ? [["orgmembers", "👥 My Members"]] : []),
     ...((canApprove || caps.door) ? [["door", "🚪 EVENT DOOR"]] : []),
@@ -10239,7 +10363,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
     ...(isSuper ? [["accounts", "📊 Accounts"]] : []),
     ...(isSuper ? [["subcoupons", "🏷️ Sub coupons"]] : []),
-    ...(isSuper ? [["segments", "🎯 Segments"]] : []),
+    ...((isSuper || caps.host) ? [["segments", "🎯 Segments"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.analytics) ? [["analytics", "Analytics"]] : []),
@@ -10264,7 +10388,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "accounts" ? <AccountsAdmin />
         : seg === "subscribers" ? <SubscribersAdmin />
         : seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
-        : seg === "segments" ? <SegmentsAdmin />
+        : seg === "segments" ? <SegmentsAdmin organiserScoped={myEventsOnly} />
         : seg === "coupons" ? <CouponsAdmin events={events} />
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard isSuper={isSuper} myEventsOnly={myEventsOnly} meId={meId} events={events} />
@@ -10276,7 +10400,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
         : seg === "orgstaff" ? <OrganiserStaffPanel />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
-        : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => !ev.private_segment_id)} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+          : seg === "private" ? <AdminEvents privateOnly memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => !!ev.private_segment_id)} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -11658,6 +11783,10 @@ function EventMembersSheet({ event, onClose }) {
     </div>
   );
 }
+const GW_INSTAGRAM_GUEST_TAG = "__GW_INSTAGRAM_SUBSCRIBER__";
+const gwGuestTier = g => String(g?.note || "").startsWith(GW_INSTAGRAM_GUEST_TAG) ? "instagram" : (g?.guest_type || "guest");
+const gwGuestNote = g => String(g?.note || "").startsWith(GW_INSTAGRAM_GUEST_TAG) ? String(g.note).slice(GW_INSTAGRAM_GUEST_TAG.length).replace(/^\s*\n?\s*/, "") : (g?.note || "");
+const gwStoredGuestNote = (tier, note) => tier === "instagram" ? `${GW_INSTAGRAM_GUEST_TAG}${String(note || "").trim() ? "\n" + String(note).trim() : ""}` : (String(note || "").trim() || null);
 function CheckInSheet({ event, onClose }) {
   const [list, setList] = useState(null);
   const [err, setErr] = useState("");
@@ -11665,9 +11794,9 @@ function CheckInSheet({ event, onClose }) {
   const [gName, setGName] = useState(""); const [gPhone, setGPhone] = useState(""); const [gEmail, setGEmail] = useState(""); const [gQty, setGQty] = useState("1");
   const [gAge, setGAge] = useState(""); const [gLoc, setGLoc] = useState("");
   const [gBusy, setGBusy] = useState(false);
-  const TMETA = { guest: ["🎟️", "Guest", "#008069", "#E7F6EF"], vip: ["💎", "VIP", "#B7791F", "#FBF3DC"], team: ["🛡️", "Team", "#475569", "#EDF1F6"] };
-  const gtm = (g) => TMETA[g.guest_type || "guest"] || TMETA.guest;
-  const gcount = (k) => guests.filter(g => (g.guest_type || "guest") === k).length;
+  const TMETA = { guest: ["🎟️", "Guest", "#008069", "#E7F6EF"], vip: ["💎", "VIP", "#B7791F", "#FBF3DC"], team: ["🛡️", "Team", "#475569", "#EDF1F6"], instagram: ["📸", "Instagram Subscriber", "#C13584", "#FCE7F3"] };
+  const gtm = (g) => TMETA[gwGuestTier(g)] || TMETA.guest;
+  const gcount = (k) => guests.filter(g => gwGuestTier(g) === k).length;
   const loadGuests = () => supabase.rpc("guest_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setGuests(data || []); });
   const load = () => { supabase.rpc("event_attendees", { p_event: event.id }).then(({ data, error }) => { setErr(error ? (error.message || "Could not load attendees.") : ""); setList(data || []); }); loadGuests(); };
   useEffect(() => { load(); }, [event.id]);
@@ -11745,12 +11874,12 @@ function CheckInSheet({ event, onClose }) {
         )}
         <div style={{ marginTop: 18, borderTop: `2px solid ${W.line}`, paddingTop: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest list {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guests.filter(g => g.checked_in).length}/{guests.length} in · 🎟️{gcount("guest")} 💎{gcount("vip")} 🛡️{gcount("team")}</span>}</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest list {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guests.filter(g => g.checked_in).length}/{guests.length} in · 🎟️{gcount("guest")} 💎{gcount("vip")} 🛡️{gcount("team")} 📸{gcount("instagram")}</span>}</div>
             {guests.length > 0 && <button onClick={() => {
               const w = window.open("", "_blank", "width=800,height=940"); if (!w) return;
               const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-              const tierLabel = { guest: "Guest", vip: "VIP", team: "Team" };
-              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${escapeHtml(tierLabel[g.guest_type || "guest"] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml([g.location, g.note].filter(Boolean).join(" — ") || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
+              const tierLabel = { guest: "Guest", vip: "VIP", team: "Team", instagram: "Instagram Subscriber" };
+              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${escapeHtml(tierLabel[gwGuestTier(g)] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml([g.location, gwGuestNote(g)].filter(Boolean).join(" — ") || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
               w.document.write(`<!doctype html><html><head><title>Guest checklist — ${escapeHtml(event.title)}</title><style>
                 body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:30px}
                 .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#008069}
@@ -11791,7 +11920,7 @@ function CheckInSheet({ event, onClose }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span><span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
                 <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
-                {g.note && <div style={{ fontSize: 12, color: tm[2], fontWeight: 700, marginTop: 2 }}>📌 {g.note}</div>}
+                {gwGuestNote(g) && <div style={{ fontSize: 12, color: tm[2], fontWeight: 700, marginTop: 2 }}>📌 {gwGuestNote(g)}</div>}
               </div>
               {g.email && <button onClick={async () => {
                 try {
@@ -12258,7 +12387,7 @@ function EventAnalyticsTab({ event }) {
     supabase.rpc("event_promoters", { p_event: event.id }).then(({ data }) => setProms(data || []));
   }, [event.id]);
   const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
-  const tier = k => guests.filter(g => (g.guest_type || "guest") === k).length;
+  const tier = k => guests.filter(g => gwGuestTier(g) === k).length;
   const methodCount = k => holders.filter(h => h.method === k).length;
   const online = a ? Number(a.paid_gross || 0) : 0, dCash = a ? Number(a.door_cash || 0) : 0, dUpi = a ? Number(a.door_upi || 0) : 0;
   const totalCollected = online + dCash + dUpi;
@@ -12342,7 +12471,7 @@ function EventAnalyticsTab({ event }) {
 
       <h2>🎟️ Guest tiers &amp; how they got in</h2>
       <div class="cols">
-        <div><table><tr><td>🎟️ Guest</td><td class="r">${tier("guest")}</td></tr><tr><td>💎 VIP</td><td class="r">${tier("vip")}</td></tr><tr><td>🛡️ Team</td><td class="r">${tier("team")}</td></tr></table></div>
+        <div><table><tr><td>🎟️ Guest</td><td class="r">${tier("guest")}</td></tr><tr><td>💎 VIP</td><td class="r">${tier("vip")}</td></tr><tr><td>🛡️ Team</td><td class="r">${tier("team")}</td></tr><tr><td>📸 Instagram Subscribers</td><td class="r">${tier("instagram")}</td></tr></table></div>
         <div><table>${acqRows}</table></div>
       </div>
 
@@ -12383,6 +12512,7 @@ function EventAnalyticsTab({ event }) {
           <Tile label="🎟️ GUEST" val={tier("guest")} color="#008069" />
           <Tile label="💎 VIP" val={tier("vip")} color="#B7791F" />
           <Tile label="🛡️ TEAM" val={tier("team")} color="#475569" />
+          <Tile label="📸 INSTAGRAM" val={tier("instagram")} color="#C13584" />
         </div>
       </Section>
       <Section title="🎫 How they got in">
@@ -12608,7 +12738,7 @@ function HelpBox({ title = "How this works", tips, children, defaultOpen = false
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, isSuper, dims, optsAll, memberScope = "all" }) {
+function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, isSuper, dims, optsAll, memberScope = "all", privateOnly = false }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const [mSeg, setMSeg] = useState("details");
@@ -12653,6 +12783,14 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const sel = { padding: "9px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" };
   const [fCat, setFCat] = useState("all"), [fCity, setFCity] = useState("all"), [fOrg, setFOrg] = useState("all"), [fRole, setFRole] = useState("all");
   const [hosts, setHosts] = useState({});
+  const [privateSegments, setPrivateSegments] = useState([]);
+  const loadPrivateSegments = useCallback(() => {
+    if (!privateOnly) return;
+    supabase.rpc("segment_directory").then(({ data, error }) => {
+      if (!error) setPrivateSegments(data || []);
+    });
+  }, [privateOnly]);
+  useEffect(() => { loadPrivateSegments(); }, [loadPrivateSegments]);
   useEffect(() => {
     const ids = Array.from(new Set((events || []).map(e => e.host_id).filter(Boolean)));
     if (!ids.length) { setHosts({}); return; }
@@ -12675,7 +12813,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
   const upCount = events.filter(e => (!e.event_at || e.event_at >= todayISO)).length;
   const pastCount = events.filter(e => (e.event_at && e.event_at < todayISO)).length;
-  const blankF = { emoji: "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "" };
+  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentId: "" };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const [newBadge, setNewBadge] = useState("");
@@ -12727,6 +12865,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   };
   const create = async () => {
     if (!f.title) return;
+    if (privateOnly && !f.segmentId) { setStep(0); alert("Choose the invited segment for this private party."); return; }
     const dates = buildDates();
     if (!f.dateTbd && !(f.endTime || "").trim()) { setStep(2); alert("Please set the event END time (end date optional — same day assumed). This is required so the event auto-closes after it finishes."); return; }
     let label0 = f.dateTbd ? "📅 To be decided" : (dates[0]?.label || "");
@@ -12739,7 +12878,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || "🎟️", ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
+    await onCreate({ private_segment_id: privateOnly ? f.segmentId : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
     reset(); setCreating(false); setStep(0);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -12748,11 +12887,11 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
       {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
       {checkIn && <CheckInSheet event={checkIn} onClose={() => setCheckIn(null)} />}
       {membersFor && <EventMembersSheet event={membersFor} onClose={() => setMembersFor(null)} />}
-      {!creating && <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: "#EEF6FF", border: "1px solid #CFE2FA", color: "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 12 }}>📖 Organiser guide — how event bookings work</a>}
+      {!creating && <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: privateOnly ? "#F5F0FF" : "#EEF6FF", border: `1px solid ${privateOnly ? "#E0D4FF" : "#CFE2FA"}`, color: privateOnly ? "#6D28D9" : "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 12 }}>{privateOnly ? "🔒 Private parties are shown only to the chosen segment" : "📖 Organiser guide — how event bookings work"}</a>}
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <div style={{ fontWeight: 800, fontSize: 16, color: W.ink }}>New ticketed event</div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: W.ink }}>{privateOnly ? "New private party" : "New ticketed event"}</div>
             <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 800, background: W.bg, borderRadius: 20, padding: "3px 10px" }}>Step {step + 1} of {STEPS.length}</div>
           </div>
           <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
@@ -12769,8 +12908,18 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           {step === 0 && (<>
           <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
-            <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Event title" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
+            <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder={privateOnly ? "Private party title" : "Event title"} style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
           </div>
+          {privateOnly && (
+            <div style={{ background: "linear-gradient(135deg,#21113F,#6D28D9)", color: "#fff", borderRadius: 15, padding: 14, marginBottom: 12, boxShadow: "0 8px 20px rgba(109,40,217,.18)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9 }}><div style={{ width: 36, height: 36, borderRadius: 11, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center" }}><Lock size={18} /></div><div><div style={{ fontWeight: 900, fontSize: 14.5 }}>Who can see and buy this party?</div><div style={{ fontSize: 11.5, opacity: .82, marginTop: 2 }}>Only members currently inside the selected segment.</div></div></div>
+              <select value={f.segmentId} onChange={e => setF({ ...f, segmentId: e.target.value })} style={{ width: "100%", border: "1px solid rgba(255,255,255,.28)", borderRadius: 10, padding: "11px 12px", fontSize: 14, fontWeight: 750, outline: "none", background: "#fff", color: W.ink }}>
+                <option value="">Choose invited segment…</option>
+                {privateSegments.map(s => <option key={s.segment_id} value={s.segment_id}>{s.emoji || "🎯"} {s.name} · {Number(s.member_count || 0)} members</option>)}
+              </select>
+              {!privateSegments.length && <div style={{ marginTop: 8, fontSize: 11.5, color: "#FDE68A", lineHeight: 1.4 }}>Create a segment first in the Segments tab, then return here.</div>}
+            </div>
+          )}
           <select value={f.hostType} onChange={e => setF({ ...f, hostType: e.target.value })} style={{ width: "100%", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none", background: "#fff", color: W.ink, marginBottom: 12 }}>
             <option value="glasswings">🏠 Glasswings Original — hosted by us</option>
             <option value="partner">🤝 Partner event — external organiser</option>
@@ -12987,19 +13136,19 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             <button onClick={() => { if (step === 0) { setCreating(false); reset(); setStep(0); } else { setStep(step - 1); } }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>{step === 0 ? "Cancel" : "← Back"}</button>
             {step < STEPS.length - 1
               ? <button onClick={() => { if (step === 0 && !f.title.trim()) { alert("Please add an event title first."); return; } setStep(step + 1); }} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Next →</button>
-              : <button onClick={create} disabled={up} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: up ? .6 : 1 }}>✓ Create event</button>}
+              : <button onClick={create} disabled={up} style={{ ...btn(privateOnly ? "#6D28D9" : W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: up ? .6 : 1 }}>✓ {privateOnly ? "Create private party" : "Create event"}</button>}
           </div>
         </div>
       ) : (
-        <div style={{ background: "linear-gradient(125deg,#008069,#00A884)", borderRadius: 18, padding: wide ? "20px 22px" : "17px 16px", marginBottom: 14, color: "#fff", boxShadow: "0 8px 22px rgba(0,128,105,.28)" }}>
+        <div style={{ background: privateOnly ? "linear-gradient(125deg,#21113F,#7C3AED,#DB2777)" : "linear-gradient(125deg,#008069,#00A884)", borderRadius: 18, padding: wide ? "20px 22px" : "17px 16px", marginBottom: 14, color: "#fff", boxShadow: privateOnly ? "0 10px 26px rgba(124,58,237,.25)" : "0 8px 22px rgba(0,128,105,.28)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(255,255,255,.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>🎟️</div>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(255,255,255,.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0 }}>{privateOnly ? "🔒" : "🎟️"}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 900, fontSize: wide ? 24 : 20, lineHeight: 1.05 }}>Events</div>
-              <div style={{ fontSize: 12.5, opacity: .92, marginTop: 3 }}>Create, manage tickets, sales & guests</div>
+              <div style={{ fontWeight: 900, fontSize: wide ? 24 : 20, lineHeight: 1.05 }}>{privateOnly ? "Private Parties" : "Events"}</div>
+              <div style={{ fontSize: 12.5, opacity: .92, marginTop: 3 }}>{privateOnly ? "Segment-only invitations with the complete event toolkit" : "Create, manage tickets, sales & guests"}</div>
             </div>
           </div>
-          <button onClick={() => { setStep(0); setCreating(true); }} style={{ width: "100%", marginTop: 15, padding: "15px 0", borderRadius: 13, border: "none", background: "#fff", color: "#008069", fontWeight: 900, fontSize: 15.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, boxShadow: "0 4px 12px rgba(0,0,0,.14)" }}><Plus size={20} />Create ticketed event</button>
+          <button onClick={() => { setStep(0); setCreating(true); }} style={{ width: "100%", marginTop: 15, padding: "15px 0", borderRadius: 13, border: "none", background: "#fff", color: privateOnly ? "#6D28D9" : "#008069", fontWeight: 900, fontSize: 15.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, boxShadow: "0 4px 12px rgba(0,0,0,.14)" }}><Plus size={20} />{privateOnly ? "Create a private party" : "Create ticketed event"}</button>
         </div>
       )}
       {!creating && (
@@ -13043,7 +13192,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         </div>
       )}
       {!creating && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {visEvents.map((e, ei) => { const ec = EVCOLORS[ei % EVCOLORS.length]; return (
+        {visEvents.map((e, ei) => { const ec = EVCOLORS[ei % EVCOLORS.length]; const privateSeg = privateSegments.find(s => s.segment_id === e.private_segment_id); return (
           <div key={e.id} style={{ background: ec.bg, borderRadius: 14, border: `1px solid ${ec.bar}33`, borderLeft: `6px solid ${ec.bar}`, padding: 14, boxShadow: `0 2px 10px ${ec.bar}1f` }}>
             <div onClick={() => { setMSeg("details"); setManage(manage === e.id ? null : e.id); }} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
               <Avatar room={{ emoji: e.emoji }} size={44} />
@@ -13051,6 +13200,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
                 <div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(() => { const tt = (ticketTypes && ticketTypes[e.id]) || []; if (tt.length) { const min = Math.min(...tt.map(t => t.price || 0)); return min === 0 ? "Free" : `From ₹${min}`; } return (e.ticket_price || 0) === 0 ? "Free" : `₹${e.ticket_price}/ticket`; })()}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div>
                 {e.host_id && hosts[e.host_id] && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700, marginTop: 2 }}>👤 {hosts[e.host_id].name}{topRole(hosts[e.host_id].roles) ? ` · ${roleLabel[topRole(hosts[e.host_id].roles)]}` : ""}</div>}
+                {e.private_segment_id && <div style={{ marginTop: 4 }}><span style={{ background: "#F3E8FF", color: "#6D28D9", border: "1px solid #E4D5FB", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>🔒 {privateSeg?.name || "Private segment"} · {Number(privateSeg?.member_count || 0)} invited</span></div>}
                 <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>{e.promo_pct != null && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>📣 Promo {e.promo_pct}%</span>}{e.approved
                   ? <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>● Live</span>
                   : <span style={{ background: "#FDF6EC", color: "#B45309", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>⏳ Pending approval{canApprove ? "" : " — visible only to you"}</span>}</div>
@@ -13065,10 +13215,10 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <button onClick={() => onBroadcastEvent(e)} title="Post to all group chats" style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />Post</button>
+              <button onClick={() => onBroadcastEvent(e)} title={privateOnly ? "Notify only the invited segment" : "Post to all group chats"} style={{ ...btn(privateOnly ? "#6D28D9" : W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />{privateOnly ? "Notify segment" : "Post"}</button>
               <button onClick={() => setMembersFor(e)} title="Who's coming — list, contact, withdraw" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Members</button>
               <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Check-in</button>
-              <button onClick={() => setSendFor(e)} title="Message members" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Send size={14} />Notify</button>
+              {!privateOnly && <button onClick={() => setSendFor(e)} title="Message members" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Send size={14} />Notify</button>}
               <button onClick={() => exportGuestListPdf(e)} title="Export guest list as PDF for organisers" style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5, fontWeight: 800 }}>📄 List</button>
             </div>
             {manage === e.id && (
@@ -13086,6 +13236,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   {mSeg === "details" && (<>
                     <EventDetailsEditor event={e} onUpdate={onUpdate} />
+                    {privateOnly && <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 12, padding: 12 }}><label style={{ fontSize: 13, fontWeight: 850, color: "#6D28D9" }}>🔒 Invited segment</label><select value={e.private_segment_id || ""} onChange={ev => { if (ev.target.value) onUpdate(e.id, { private_segment_id: ev.target.value }); }} style={{ width: "100%", marginTop: 7, padding: "10px 11px", borderRadius: 9, border: `1px solid ${W.line}`, background: "#fff", fontSize: 13.5, color: W.ink, outline: "none" }}><option value="" disabled>Choose segment…</option>{privateSegments.map(s => <option key={s.segment_id} value={s.segment_id}>{s.emoji || "🎯"} {s.name} · {Number(s.member_count || 0)} members</option>)}</select><div style={{ color: W.soft, fontSize: 11.5, marginTop: 6 }}>Changing this immediately changes who can discover and buy tickets.</div></div>}
                     <div style={{ marginTop: 4 }}>
                       <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Category &amp; city</label>
                       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
@@ -13150,7 +13301,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             )}
           </div>
         ); })}
-        {visEvents.length === 0 && <Center>{view === "past" ? "No past events." : "No upcoming events — create one!"}</Center>}
+        {visEvents.length === 0 && <Center>{view === "past" ? `No past ${privateOnly ? "private parties" : "events"}.` : `No upcoming ${privateOnly ? "private parties" : "events"} — create one!`}</Center>}
       </div>}
     </div>
   );
@@ -13160,6 +13311,7 @@ function GuestTickets({ event }) {
     ["guest", "🎟️", "Guest", "#008069", "#E7F6EF"],
     ["vip", "💎", "VIP", "#B7791F", "#FBF3DC"],
     ["team", "🛡️", "Team", "#475569", "#EDF1F6"],
+    ["instagram", "📸", "Instagram Subscriber", "#C13584", "#FCE7F3"],
   ];
   const tmeta = (k) => TIERS.find(t => t[0] === k) || TIERS[0];
   const [mode, setMode] = useState("outsider");
@@ -13172,8 +13324,8 @@ function GuestTickets({ event }) {
   const loadGuests = () => supabase.rpc("guest_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setGuests(data || []); });
   useEffect(() => { loadGuests(); supabase.rpc("staff_directory").then(({ data }) => setList(data || [])); }, [event.id]);
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", color: W.ink, background: "#fff" };
-  const label = (g) => g.guest_type === "vip" ? "VIP guest ticket" : g.guest_type === "team" ? "Team pass" : "Guest ticket";
-  const noteLine = (g) => g.note ? `\n📌 ${g.note}` : "";
+  const label = (g) => gwGuestTier(g) === "vip" ? "VIP guest ticket" : gwGuestTier(g) === "team" ? "Team pass" : gwGuestTier(g) === "instagram" ? "Instagram Subscriber pass" : "Guest ticket";
+  const noteLine = (g) => gwGuestNote(g) ? `\n📌 ${gwGuestNote(g)}` : "";
   const waLink = (g) => {
     const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}${noteLine(g)}\nOpen & show the QR at the door:\nhttps://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
     const num = (g.phone || "").replace(/[^\d]/g, "").replace(/^0+/, "");
@@ -13182,7 +13334,7 @@ function GuestTickets({ event }) {
   const shareGuest = async (g) => {
     const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}${noteLine(g)}\nCode: ${g.code}\nTicket: https://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
     try {
-      const blob = await makeTicketBlob({ emoji: tmeta(g.guest_type)[1], title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
+      const blob = await makeTicketBlob({ emoji: tmeta(gwGuestTier(g))[1], title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
       const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: event.title, text }); return; }
     } catch (e) {}
@@ -13199,7 +13351,7 @@ function GuestTickets({ event }) {
   const addGuest = async () => {
     if (!gName.trim()) return alert("Guest name is required.");
     setGBusy(true);
-    const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc, p_type: tier, p_note: gNote });
+    const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc, p_type: tier === "instagram" ? "guest" : tier, p_note: gwStoredGuestNote(tier, gNote) });
     setGBusy(false);
     if (error) return alert(error.message);
     if (gEmail.trim() && gNew?.id) { try { const token = (await supabase.auth.getSession()).data.session?.access_token; fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "guest", access_token: token, guest_id: gNew.id }) }); } catch (e) {} }
@@ -13210,8 +13362,8 @@ function GuestTickets({ event }) {
     setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc(""); setGNote("");
     if (row?.code) window.gwConfirm(`✅ ${row.name} added as ${tn}.\n\nShare their ticket on WhatsApp now?`, () => shareGuest(row));
   };
-  const changeTier = async (g, t) => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, guest_type: t } : x)); const { error } = await supabase.rpc("set_guest_type", { p_id: g.id, p_type: t }); if (error) { alert(error.message); loadGuests(); } };
-  const editNote = async (g) => { const n = window.prompt("Reserved table / note for " + g.name + ":", g.note || ""); if (n === null) return; setGuests(gs => gs.map(x => x.id === g.id ? { ...x, note: n.trim() || null } : x)); const { error } = await supabase.rpc("set_guest_note", { p_id: g.id, p_note: n }); if (error) { alert(error.message); loadGuests(); } };
+  const changeTier = async (g, t) => { const storedNote = gwStoredGuestNote(t, gwGuestNote(g)); const baseType = t === "instagram" ? "guest" : t; setGuests(gs => gs.map(x => x.id === g.id ? { ...x, guest_type: baseType, note: storedNote } : x)); const [{ error: typeError }, { error: noteError }] = await Promise.all([supabase.rpc("set_guest_type", { p_id: g.id, p_type: baseType }), supabase.rpc("set_guest_note", { p_id: g.id, p_note: storedNote })]); if (typeError || noteError) { alert((typeError || noteError).message); loadGuests(); } };
+  const editNote = async (g) => { const n = window.prompt("Reserved table / note for " + g.name + ":", gwGuestNote(g)); if (n === null) return; const storedNote = gwStoredGuestNote(gwGuestTier(g), n); setGuests(gs => gs.map(x => x.id === g.id ? { ...x, note: storedNote } : x)); const { error } = await supabase.rpc("set_guest_note", { p_id: g.id, p_note: storedNote }); if (error) { alert(error.message); loadGuests(); } };
   const addBulk = async () => {
     const lines = bulkText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     if (!lines.length) return;
@@ -13224,7 +13376,7 @@ function GuestTickets({ event }) {
       const rest = parts.slice(1);
       const email = rest.find(x => x.includes("@")) || "";
       const phone = rest.find(x => !x.includes("@")) || "";
-      const { error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: name, p_phone: phone, p_email: email, p_qty: 1, p_age: null, p_location: null, p_type: tier, p_note: null });
+      const { error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: name, p_phone: phone, p_email: email, p_qty: 1, p_age: null, p_location: null, p_type: tier === "instagram" ? "guest" : tier, p_note: gwStoredGuestNote(tier, null) });
       if (error) fail++; else ok++;
       setBulkMsg(`Adding… ${ok + fail}/${lines.length}`);
     }
@@ -13249,13 +13401,13 @@ function GuestTickets({ event }) {
     setAdded(a => ({ ...a, [m.id]: true }));
     setMsg(`✓ ${m.full_name} added to the event group — no ticket created.`);
   };
-  const count = (k) => guests.filter(g => (g.guest_type || "guest") === k).length;
+  const count = (k) => guests.filter(g => gwGuestTier(g) === k).length;
   const entries = guests.reduce((a, g) => a + (g.quantity || 1), 0);
   return (
     <div style={{ marginTop: 4 }}>
       <label style={{ fontSize: 14, fontWeight: 800, color: W.ink }}>Guest list — free invites</label>
       <div style={{ fontSize: 12, color: W.soft, margin: "3px 0 10px", lineHeight: 1.5 }}>Give free entry to anyone — <b>members or outsiders</b> (no account needed). Pick a tier, then send the QR ticket by WhatsApp or email. Tick people in on the Check-in screen.</div>
-      <HelpBox title="How guest invites work" tips={["Choose a tier first: 🎟️ Guest (friends/plus-ones), 💎 VIP (special guests — add a reserved-table note), 🛡️ Team (crew/artists/security).", "One = add a single person; Bulk = paste a whole list at once; Member = search existing members.", "No account needed for outsiders — just a name. Add a phone to send on WhatsApp, or an email to send automatically.", "After adding, tap WhatsApp or ✉️ to send their QR ticket. Change tier or note anytime from the list.", "At the event, check them in from EVENT DOOR (scan) or the Check-in screen."]} />
+      <HelpBox title="How guest invites work" tips={["Choose a tier first: 🎟️ Guest, 💎 VIP, 🛡️ Team, or 📸 Instagram Subscriber.", "One = add a single person; Bulk = paste a whole list at once; Member = search existing members.", "No account needed for outsiders — just a name. Add a phone to send on WhatsApp, or an email to send automatically.", "After adding, tap WhatsApp or ✉️ to send their QR ticket. Change tier or note anytime from the list.", "At the event, check them in from EVENT DOOR (scan) or the Check-in screen."]} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {TIERS.map(([k, ic, lbl, col, bg]) => (
           <div key={k} style={{ flex: "1 1 84px", background: bg, borderRadius: 11, padding: "9px 11px", textAlign: "center" }}>
@@ -13274,10 +13426,10 @@ function GuestTickets({ event }) {
         ))}
       </div>
       <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Tier</div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {TIERS.map(([k, ic, lbl, col, bg]) => {
           const on = tier === k;
-          return <button key={k} onClick={() => setTier(k)} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 8px", borderRadius: 11, border: `2px solid ${on ? col : bg}`, background: on ? col : bg, color: on ? "#fff" : col, fontWeight: 800, fontSize: 13.5, cursor: "pointer", boxShadow: on ? `0 3px 10px ${col}44` : "none" }}><span style={{ fontSize: 16 }}>{ic}</span>{lbl}</button>;
+          return <button key={k} onClick={() => setTier(k)} style={{ flex: "1 1 135px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 8px", borderRadius: 11, border: `2px solid ${on ? col : bg}`, background: on ? col : bg, color: on ? "#fff" : col, fontWeight: 800, fontSize: 13.5, cursor: "pointer", boxShadow: on ? `0 3px 10px ${col}44` : "none" }}><span style={{ fontSize: 16 }}>{ic}</span>{lbl}</button>;
         })}
       </div>
       {mode === "outsider" && (
@@ -13317,11 +13469,11 @@ function GuestTickets({ event }) {
             </div>
           ))}
           {msg && <div style={{ fontSize: 12.5, color: msg.startsWith("✓") ? W.teal : "#C0392B", marginTop: 8 }}>{msg}</div>}
-          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8 }}>Members get a real in-app ticket. For a tiered VIP/Team pass, use “Add outsider” — it works for members too, just type their name.</div>
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8 }}>Members get a real in-app ticket. For a VIP, Team or Instagram Subscriber pass, use “Add outsider” — it works for members too, just type their name.</div>
         </div>
       )}
       {guests.length > 0 && <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink, margin: "6px 0 8px" }}>Invited ({guests.length})</div>}
-      {guests.map(g => { const tm = tmeta(g.guest_type || "guest"); return (
+      {guests.map(g => { const tm = tmeta(gwGuestTier(g)); return (
         <div key={g.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 11px", marginBottom: 8, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${tm[3]}`, borderRadius: 11 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
@@ -13329,8 +13481,8 @@ function GuestTickets({ event }) {
               <b style={{ fontSize: 14.5, color: W.ink }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</b>
             </div>
             <div style={{ fontSize: 11.5, color: W.soft, wordBreak: "break-all", marginTop: 3 }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
-            <div onClick={() => editNote(g)} title="Tap to edit note" style={{ fontSize: 12, marginTop: 5, cursor: "pointer", color: g.note ? tm[3] : W.soft, fontWeight: g.note ? 700 : 500 }}>{g.note ? `📌 ${g.note}` : "＋ Add reserved table / note"}</div>
-            <select value={g.guest_type || "guest"} onChange={e => changeTier(g, e.target.value)} style={{ ...ip, marginTop: 6, padding: "5px 8px", fontSize: 12, width: "auto" }}>
+            <div onClick={() => editNote(g)} title="Tap to edit note" style={{ fontSize: 12, marginTop: 5, cursor: "pointer", color: gwGuestNote(g) ? tm[3] : W.soft, fontWeight: gwGuestNote(g) ? 700 : 500 }}>{gwGuestNote(g) ? `📌 ${gwGuestNote(g)}` : "＋ Add reserved table / note"}</div>
+            <select value={gwGuestTier(g)} onChange={e => changeTier(g, e.target.value)} style={{ ...ip, marginTop: 6, padding: "5px 8px", fontSize: 12, width: "auto" }}>
               {TIERS.map(([k, ic, lbl]) => <option key={k} value={k}>{ic} {lbl}</option>)}
             </select>
           </div>
@@ -15798,11 +15950,11 @@ function lastSeenStr(ts) {
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
-  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, { id: "meet", icon: Users, label: "Meet" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, { id: "meet", icon: Users, label: "Meet" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
-    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", padding: "8px 0 11px" }}>
+    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", overflowX: "auto", padding: "8px 0 11px" }}>
       {items.map((it) => { const on = tab === it.id; const I = it.icon; return (
-        <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: 1, background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft, position: "relative" }}>
+        <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: "0 0 61px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft, position: "relative" }}>
           {it.id === "meet" && meetBadge > 0 && <span style={{ position: "absolute", top: -4, right: "50%", transform: "translateX(16px)", background: "#EC4899", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 6px", minWidth: 16 }}>{meetBadge}</span>}
           <I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span>
         </button>
