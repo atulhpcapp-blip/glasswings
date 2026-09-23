@@ -1889,6 +1889,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             </div>
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
+            <TicketTypeDetails ticket={t} compact />
             {typePct != null && (
               <div style={{ maxWidth: 230, marginTop: 8 }}>
                 <MiniBar pct={typePct} color={typePct >= 90 ? "#E46B32" : typePct >= 70 ? "#D59B20" : W.teal} height={6} />
@@ -3424,7 +3425,7 @@ function Main({ user }) {
           </div>
         )}
         {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onConfirmCredits={confirmPurchaseWithCredits} meId={user.id} onClose={() => setBuyTarget(null)} />}
-        {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
+        {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} types={ticketTypes[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
         {eventPage && (() => {
           const ev = events.find(x => x.id === eventPage);
@@ -3493,7 +3494,7 @@ function Main({ user }) {
           </div>
         )}
       {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onConfirmCredits={confirmPurchaseWithCredits} meId={user.id} onClose={() => setBuyTarget(null)} />}
-      {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} onClose={() => setTicketView(null)} />}
+      {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} types={ticketTypes[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
         {eventPage && (() => {
           const ev = events.find(x => x.id === eventPage);
@@ -10943,12 +10944,13 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
       {cart.map((c, idx) => {
         const unit = unitOf(c), gross = grossOf(c);
         return (
-          <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
-            <div style={{ minWidth: 0 }}>
+          <div key={idx} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, padding: "12px 0", borderTop: `1px solid ${W.line}` }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontWeight: 700, color: W.ink, fontSize: 14.5 }}>{c.type ? c.type.name : "Standard ticket"}</div>
               <div style={{ fontSize: 12.5, color: W.teal, fontWeight: 700 }}>{unit === 0 ? "Free" : `₹${unit} each`}{unit < gross ? <span style={{ color: W.soft, fontWeight: 500 }}> (room offer — was ₹{gross})</span> : null}</div>
+              {c.type && <TicketTypeDetails ticket={c.type} compact />}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 11, flexShrink: 0, marginTop: 2 }}>
               <button onClick={() => setLine(idx, c.qty - 1)} style={miniBtn}>−</button>
               <span style={{ fontWeight: 800, minWidth: 20, textAlign: "center" }}>{c.qty}</span>
               <button onClick={() => totalQty < MAX_TIX ? setLine(idx, c.qty + 1) : null} disabled={totalQty >= MAX_TIX} style={{ ...miniBtn, color: totalQty >= MAX_TIX ? "#bbb" : W.ink, cursor: totalQty >= MAX_TIX ? "default" : "pointer" }}>+</button>
@@ -11047,7 +11049,32 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
     </Sheet>
   );
 }
-function MyTicket({ event: e, profile, rows, onClose }) {
+function TicketTypeDetails({ ticket, compact = false }) {
+  if (!ticket) return null;
+  const clean = value => String(value || "").split(/\n|•/).map(x => x.trim().replace(/^[-✓✕!]+\s*/, "")).filter(Boolean);
+  const sections = [
+    { key: "inclusions", title: "What's included", icon: "✓", color: "#08765F", bg: "#EAF8F3", border: "#BFE8D9", items: clean(ticket.inclusions) },
+    { key: "exclusions", title: "Not included", icon: "✕", color: "#B33A3A", bg: "#FFF1F1", border: "#F3CBCB", items: clean(ticket.exclusions) },
+    { key: "notes", title: "Important notes", icon: "!", color: "#9A6500", bg: "#FFF8E7", border: "#F1DCA7", items: clean(ticket.notes) },
+  ].filter(s => s.items.length);
+  if (!sections.length) return null;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: compact ? 5 : 8, marginTop: compact ? 8 : 12 }}>
+      {sections.map(s => (
+        <div key={s.key} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: compact ? 9 : 12, padding: compact ? "7px 9px" : "10px 12px" }}>
+          <div style={{ color: s.color, fontSize: compact ? 11 : 12, fontWeight: 900, display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+            <span style={{ width: compact ? 16 : 19, height: compact ? 16 : 19, borderRadius: "50%", color: "#fff", background: s.color, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: compact ? 10 : 11, flexShrink: 0 }}>{s.icon}</span>
+            {s.title}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {s.items.map((item, i) => <div key={i} style={{ color: W.ink, fontSize: compact ? 11.5 : 12.5, lineHeight: 1.4, paddingLeft: compact ? 22 : 25 }}>• {item}</div>)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+function MyTicket({ event: e, profile, rows, types = [], onClose }) {
   const [busy, setBusy] = useState(false);
   const [showT, setShowT] = useState(false);
   const name = profile?.full_name || profile?.name || "Member";
@@ -11058,6 +11085,20 @@ function MyTicket({ event: e, profile, rows, onClose }) {
   const qr = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=" + encodeURIComponent(code);
   const summary = `🎟️ Glasswings Ticket\n${e.title}\n${e.event_date || ""}${place ? `\n${place}` : ""}\nName: ${name}\nTickets: ${qty}\nCode: ${code}`;
   const wa = "https://wa.me/?text=" + encodeURIComponent(summary);
+  const purchasedTypeIds = new Set((rows || []).map(r => r.ticket_type_id).filter(Boolean));
+  const purchasedTypes = (types || []).filter(t => purchasedTypeIds.has(t.id));
+  const purchasedTypeNames = purchasedTypes.map(t => t.name).filter(Boolean).join(", ");
+  const printDetailHtml = purchasedTypes.map(t => {
+    const blocks = [
+      ["What's included", t.inclusions, "good"],
+      ["Not included", t.exclusions, "bad"],
+      ["Important notes", t.notes, "note"],
+    ].filter(([, value]) => String(value || "").trim()).map(([label, value, cls]) => {
+      const items = String(value || "").split(/\n|•/).map(x => x.trim().replace(/^[-✓✕!]+\s*/, "")).filter(Boolean);
+      return `<div class="info ${cls}"><b>${escapeHtml(label)}</b>${items.map(x => `<div>• ${escapeHtml(x)}</div>`).join("")}</div>`;
+    }).join("");
+    return blocks ? `<div class="type"><div class="type-name">${escapeHtml(t.name || "Ticket")}</div>${blocks}</div>` : "";
+  }).join("");
   const print = () => {
     const w = window.open("", "_blank", "width=460,height=720"); if (!w) return;
     w.document.write(`<!doctype html><html><head><title>Glasswings Ticket</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>
@@ -11075,6 +11116,9 @@ function MyTicket({ event: e, profile, rows, onClose }) {
       .code{font-size:20px;font-weight:800;letter-spacing:2px;color:#2FD4A8;font-family:ui-monospace,monospace}
       .qr{width:128px;height:128px;border-radius:12px;background:#fff;padding:7px}
       .ft{text-align:center;font-size:12px;color:rgba(255,255,255,.55);margin-top:18px}
+      .type{max-width:420px;margin:14px auto 0;background:#fff;color:#13221e;border-radius:16px;padding:16px;box-shadow:0 8px 22px rgba(0,0,0,.1)}
+      .type-name{font-size:16px;font-weight:900;margin-bottom:9px}.info{border-radius:10px;padding:9px 11px;margin-top:7px;font-size:12px;line-height:1.5}.info b{display:block;margin-bottom:3px}
+      .good{background:#EAF8F3;border:1px solid #BFE8D9}.bad{background:#FFF1F1;border:1px solid #F3CBCB}.note{background:#FFF8E7;border:1px solid #F1DCA7}
     </style></head><body><div class="t">
       <div class="hd"><div class="br">G L A S S W I N G S</div><div class="ti">${escapeHtml((e.emoji || "🎟️") + " " + e.title)}</div>${e.event_date ? `<div class="mt">📅 ${escapeHtml(e.event_date)}</div>` : ""}${place ? `<div class="mt">📍 ${escapeHtml(place)}</div>` : ""}</div>
       <div class="bd"><div class="tear"></div>
@@ -11084,7 +11128,7 @@ function MyTicket({ event: e, profile, rows, onClose }) {
           <div class="lbl">Ticket code</div><div class="code">${code}</div>
         </div></div>
         <div class="ft">Show this ticket at entry · Glasswings community</div>
-      </div></div>
+      </div></div>${printDetailHtml}
       <script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`);
     w.document.close();
   };
@@ -11138,6 +11182,7 @@ function MyTicket({ event: e, profile, rows, onClose }) {
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 10, letterSpacing: 1.5, color: "#2FD4A8", textTransform: "uppercase", fontWeight: 800 }}>Attendee</div>
             <div style={{ fontSize: 19, fontWeight: 800, color: "#fff", marginTop: 2, marginBottom: 14 }}>{name}</div>
+            {purchasedTypeNames && <div style={{ marginBottom: 14 }}><div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", textTransform: "uppercase", fontWeight: 700 }}>Ticket type</div><div style={{ color: "#2FD4A8", fontSize: 14, fontWeight: 800, marginTop: 3 }}>{purchasedTypeNames}</div></div>}
             <div style={{ display: "flex", gap: 32 }}>
               <div><div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", textTransform: "uppercase", fontWeight: 700 }}>Tickets</div><div style={{ fontSize: 24, fontWeight: 800, color: "#fff" }}>{qty}</div></div>
               <div style={{ minWidth: 0 }}><div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", textTransform: "uppercase", fontWeight: 700 }}>Code</div><div style={{ display: "inline-block", marginTop: 4, fontSize: 17, fontWeight: 800, color: "#08130F", background: "#2FD4A8", fontFamily: "ui-monospace,monospace", letterSpacing: 1, padding: "5px 12px", borderRadius: 8 }}>{code}</div></div>
@@ -11146,6 +11191,12 @@ function MyTicket({ event: e, profile, rows, onClose }) {
         </div>
         <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>Show this ticket at entry</div>
       </div>
+      {purchasedTypes.length > 0 && (
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginTop: 12 }}>
+          <div style={{ fontSize: 12, letterSpacing: 1.1, textTransform: "uppercase", color: W.soft, fontWeight: 900, marginBottom: 4 }}>Your ticket details</div>
+          {purchasedTypes.map(t => <div key={t.id} style={{ paddingTop: 8 }}><div style={{ fontSize: 15, color: W.ink, fontWeight: 900 }}>{t.name}</div><TicketTypeDetails ticket={t} /></div>)}
+        </div>
+      )}
       {(e.terms || "").trim() && (
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, marginTop: 12, overflow: "hidden" }}>
           <button onClick={() => setShowT(v => !v)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 800, fontSize: 13.5, color: W.ink }}>
@@ -11177,13 +11228,16 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [cap, setCap] = useState("");
   const [wf, setWf] = useState(""); const [wm, setWm] = useState("");
   const [credit, setCredit] = useState("");
+  const [inclusions, setInclusions] = useState("");
+  const [exclusions, setExclusions] = useState("");
+  const [notes, setNotes] = useState("");
   const [dRoom, setDRoom] = useState(""); const [dKind, setDKind] = useState("percent"); const [dVal, setDVal] = useState("");
   const gl = { any: "Anyone", male: "Men", female: "Women" };
   const roomName = id => ((rooms || []).find(r => r.id === id) || {}).name || "room";
   const add = async () => {
     if (!name.trim()) return;
-    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit) });
-    setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setCredit(""); setDRoom(""); setDKind("percent"); setDVal("");
+    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null });
+    setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setCredit(""); setInclusions(""); setExclusions(""); setNotes(""); setDRoom(""); setDKind("percent"); setDVal("");
   };
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
   const audBadge = (gr) => {
@@ -11194,7 +11248,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
-      <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity.", "‘cr’ = credit price: how many in-app credits it costs (leave blank for cash-only).", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change price or discounts later — no need to delete and recreate."]} />
+      <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map(t => <EditableTicketRow key={t.id} t={t} plansList={plansList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
         {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
@@ -11206,6 +11260,15 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
         <input value={wf} onChange={e => setWf(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♀ % off" title="Optional discount for women, e.g. 20" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Optional discount for men" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
+      </div>
+      <div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink, marginBottom: 3 }}>Ticket-specific details</div>
+        <div style={{ fontSize: 11.5, color: W.soft, lineHeight: 1.45, marginBottom: 9 }}>Add one item per line. These appear professionally on this ticket only. General paid add-ons stay separate.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>
+          <label style={{ fontSize: 11.5, fontWeight: 800, color: "#08765F" }}>✓ What's included<textarea value={inclusions} onChange={e => setInclusions(e.target.value)} rows={3} placeholder={"Entry\nWelcome drink\nReserved seating"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
+          <label style={{ fontSize: 11.5, fontWeight: 800, color: "#B33A3A" }}>✕ Not included<textarea value={exclusions} onChange={e => setExclusions(e.target.value)} rows={3} placeholder={"Food\nParking\nTransport"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
+          <label style={{ fontSize: 11.5, fontWeight: 800, color: "#9A6500" }}>! Important notes<textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder={"Valid for one person\nCarry a photo ID"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
+        </div>
       </div>
       <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>💎 Discount for plan members (optional)</div>
@@ -11234,6 +11297,9 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
   const [wf, setWf] = useState(t.disc_female_pct == null ? "" : String(t.disc_female_pct));
   const [wm, setWm] = useState(t.disc_male_pct == null ? "" : String(t.disc_male_pct));
   const [cap, setCap] = useState(t.capacity == null ? "" : String(t.capacity));
+  const [inclusions, setInclusions] = useState(t.inclusions || "");
+  const [exclusions, setExclusions] = useState(t.exclusions || "");
+  const [notes, setNotes] = useState(t.notes || "");
   const [dRoom, setDRoom] = useState(t.discount_plan_id ? "plan:" + t.discount_plan_id : (t.discount_room_id || ""));
   const [dKind, setDKind] = useState(t.discount_kind || "percent");
   const [dVal, setDVal] = useState(t.discount_value == null ? "" : String(t.discount_value));
@@ -11241,7 +11307,7 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
   const save = async () => {
     if (!name.trim() || !onUpdate) return;
     setBusy(true);
-    await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit) });
+    await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null });
     setBusy(false); setEd(false);
   };
   if (!ed) {
@@ -11259,6 +11325,7 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
             {t.capacity != null && <span style={{ color: W.soft, fontWeight: 700 }}>cap {t.capacity}</span>}
             {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal, fontWeight: 700 }}>{t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
           </div>
+          {(t.inclusions || t.exclusions || t.notes) && <TicketTypeDetails ticket={t} compact />}
         </div>
         {onUpdate && <button onClick={() => setEd(true)} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, fontWeight: 800, flexShrink: 0 }}>✏️ Edit</button>}
         <button onClick={() => onDel(t.id)} title="Delete ticket type" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "9px 11px", flexShrink: 0 }}><Trash2 size={15} /></button>
@@ -11274,6 +11341,15 @@ function EditableTicketRow({ t, plansList, roomName, audBadge, ip, onUpdate, onD
         <input value={wf} onChange={e => setWf(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♀ % off" title="Discount for women" inputMode="decimal" style={{ ...ip, width: 86 }} />
         <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Discount for men" inputMode="decimal" style={{ ...ip, width: 86 }} />
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 82 }} />
+      </div>
+      <div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink, marginBottom: 3 }}>Ticket-specific details</div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9 }}>One item per line. General paid add-ons remain separate.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>
+          <label style={{ fontSize: 11.5, fontWeight: 800, color: "#08765F" }}>✓ What's included<textarea value={inclusions} onChange={e => setInclusions(e.target.value)} rows={3} placeholder={"Entry\nWelcome drink\nReserved seating"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
+          <label style={{ fontSize: 11.5, fontWeight: 800, color: "#B33A3A" }}>✕ Not included<textarea value={exclusions} onChange={e => setExclusions(e.target.value)} rows={3} placeholder={"Food\nParking\nTransport"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
+          <label style={{ fontSize: 11.5, fontWeight: 800, color: "#9A6500" }}>! Important notes<textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder={"Valid for one person\nCarry a photo ID"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
+        </div>
       </div>
       <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>💎 Discount for plan members (optional)</div>
