@@ -1787,7 +1787,9 @@ function RecentBuyerToasts({ eventId, wide }) {
   );
 }
 
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM }) {
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM, mySegs = [], isStaff = false, segList = [] }) {
+  const segName = (id) => (segList.find(s => s.id === id) || {}).name || "invited members";
+  const canBuyType = (t) => !t.segment_id || isStaff || (mySegs || []).includes(t.segment_id);
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1876,9 +1878,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     <div>
       {hasTicket && (
         <div style={{ background: "#E7F6EF", borderRadius: 12, padding: "12px 14px", margin: "10px 0 4px" }}>
-          <div style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>🎟️ You're going!</div>
+          <div style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>✅ Tickets taken — you're going!</div>
+          <div style={{ fontSize: 12, color: "#0d6e58", marginTop: 3, lineHeight: 1.4 }}>Need more? You can buy extra tickets for friends below.</div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            {onViewTicket && <button onClick={onViewTicket} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>View my ticket</button>}
+            {onViewTicket && <button onClick={onViewTicket} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>🎟️ My tickets</button>}
             {onOpenChat && <button onClick={onOpenChat} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>Event chat</button>}
           </div>
         </div>
@@ -1912,9 +1915,11 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>{t.name}
               {Number(t.disc_female_pct) > 0 && <span style={{ background: "#FCE7F1", color: "#D6618F", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_female_pct}% off for women</span>}
               {Number(t.disc_male_pct) > 0 && <span style={{ background: "#E8F2FB", color: "#1B6FB8", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_male_pct}% off for men</span>}
+              {t.segment_id && <span style={{ background: "#F3E8FF", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>⭐ {segName(t.segment_id)} only</span>}
             </div>
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
+            {!canBuyType(t) && <div style={{ fontSize: 11.5, color: "#7C3AED", fontWeight: 800, marginTop: 3 }}>🔒 This ticket is restricted — {segName(t.segment_id)} members only</div>}
             <TicketTypeDetails ticket={t} compact />
             {typePct != null && (
               <div style={{ maxWidth: 230, marginTop: 8 }}>
@@ -1926,7 +1931,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             )}
           </div>
-          {!st.ok
+          {!canBuyType(t)
+            ? <button disabled title="Restricted ticket" style={{ ...btn("#F3E8FF", "#7C3AED"), padding: "9px 15px", cursor: "not-allowed", fontWeight: 800 }}>🔒 Restricted</button>
+            : !st.ok
             ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : "Closed"}</button>
             : q > 0 ? stepper(t.id, q, max) : addBtn(t.id)}
         </div>
@@ -2028,7 +2035,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               <span style={{ background: "#fff", color: W.teal, fontWeight: 800, fontSize: 12.5, padding: "8px 12px", borderRadius: 9, whiteSpace: "nowrap", flexShrink: 0 }}>View plans</span>
             </div>
           )}
-          {!wide && <Sec title="Tickets"><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
+          {!wide && <Sec title={hasTicket ? "Buy more tickets" : "Tickets"}><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
           {onOpenDM && hasTicket && <EventJoinNudge eventId={e.id} eventTitle={e.title} />}
           {onOpenDM && <SelfCheckin eventId={e.id} hasTicket={hasTicket} />}
           {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
@@ -2094,6 +2101,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           )}
           {realAddons.length > 0 && (
             <Sec title="Optional add-ons">
+              {selQty === 0 ? (
+                <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", color: "#B45309", borderRadius: 12, padding: "12px 14px", fontSize: 13.5, fontWeight: 800 }}>🎟️ Please select your ticket first.</div>
+              ) : (
               <div style={{ overflowAnchor: "none" }}>
               {realAddons.map(a => {
                 const q = addonQtyMap[a.id] || 0;
@@ -2112,6 +2122,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               );})}
               <div style={{ fontSize: 12, color: W.soft, marginTop: 8 }}>Selected add-ons are carried into checkout. You can still change them before payment.</div>
               </div>
+              )}
             </Sec>
           )}
           {excl.length > 0 && (
@@ -2221,9 +2232,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
                     : "💎 Go Premium — perks, all rooms & ticket discounts → "}
                 </div>
               )}
-              <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>Tickets</div>
+              <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>{hasTicket ? "Buy more tickets" : "Tickets"}</div>
               {ticketList}
-              {selQty > 0 && <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 12, fontSize: 15 }}>{selTotal === 0 ? `Get ${selQty} ticket${selQty > 1 ? "s" : ""}` : `Proceed · ₹${selTotal}`}</button>}
+              {selQty > 0 && <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 12, fontSize: 15 }}>{hasTicket ? `Buy ${selQty} more${selTotal > 0 ? ` · ₹${selTotal}` : ""}` : (selTotal === 0 ? `Get ${selQty} ticket${selQty > 1 ? "s" : ""}` : `Proceed · ₹${selTotal}`)}</button>}
             </div>
           </div>
         )}
@@ -2410,7 +2421,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · balancefix-v47 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · tickets-v48 build</div>
       </div>
     </div>
   );
@@ -2604,6 +2615,8 @@ function Main({ user }) {
   const [eventMods, setEventMods] = useState([]);
   const [eventGroups, setEventGroups] = useState([]);
   const [mySegs, setMySegs] = useState([]);
+  const [segList, setSegList] = useState([]);
+  useEffect(() => { supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegList(data || [])); }, []);
   const [payBusy, setPayBusy] = useState(false);
   const [eventPage, setEventPage] = useState(null);
   const [roomPage, setRoomPage] = useState(null);
@@ -2916,6 +2929,8 @@ function Main({ user }) {
   const isOrganiserOwner = myRoles.includes("organiser");
   const organiserScopeId = organiserStaff?.organiser_id || user.id;
   const isStaff = isSuper || !!organiserStaff || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
+  const vipSeg = segList.find(s => (s.name || "").trim().toLowerCase() === "vip");
+  const isVIP = !!vipSeg && mySegs.includes(vipSeg.id);
   useEffect(() => {
     if (!isStaff) { try { window.__gwSubs = null; } catch {} return; }
     supabase.from("member_plans").select("user_id, expires_at").then(({ data }) => {
@@ -3073,6 +3088,7 @@ function Main({ user }) {
     if (!cart.length) cart = [{ type: null, qty: 1 }];
     for (const c of cart) {
       if (c.type) {
+        if (c.type.segment_id && !isStaff && !mySegs.includes(c.type.segment_id)) return setNotice("🔒 This ticket is restricted — it can only be bought by invited members.");
       } else if ((ticketTypes[e.id] || []).length) {
         return setNotice("Please choose a ticket type for this event.");
       }
@@ -3448,7 +3464,7 @@ function Main({ user }) {
           loadPlans();
         });
       }} />}
-      {tab === "profile" && <Profile user={user} profile={profile} reload={load} streak={streakInfo} events={events} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
+      {tab === "profile" && <Profile user={user} profile={profile} isVIP={isVIP} reload={load} streak={streakInfo} events={events} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
   );
 
@@ -3474,7 +3490,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isStaff} segList={segList} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
@@ -3543,7 +3559,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isStaff} segList={segList} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
@@ -4136,6 +4152,9 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [allMatches, setAllMatches] = useState(null); // superadmin: null=hidden, []=loading/empty
   const [showAllMatches, setShowAllMatches] = useState(false);
   const loadAllMatches = () => { setShowAllMatches(true); setAllMatches(null); supabase.rpc("admin_all_matches").then(({ data }) => setAllMatches(data || [])); };
+  const [vipSet, setVipSet] = useState(new Set());
+  const isVip = (id) => vipSet.has(id);
+  const vipBadge = <span title="VIP" style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "linear-gradient(95deg,#7C3AED,#C026D3)", color: "#fff", fontSize: 9.5, fontWeight: 900, padding: "1px 6px", borderRadius: 8, marginLeft: 4, flexShrink: 0, verticalAlign: "middle", letterSpacing: .3 }}>⭐ VIP</span>;
   const load = () => {
     Promise.all([supabase.rpc("meet_list"), supabase.rpc("meet_hidden_ids")]).then(([r, h]) => {
       const hide = new Set(h.error ? [] : (h.data || []));
@@ -4143,6 +4162,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     });
     supabase.rpc("waves_inbox").then(({ data }) => setInbox(data || []));
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
+    supabase.rpc("vip_ids").then(({ data, error }) => setVipSet(new Set(error ? [] : (data || []))));
   };
   useEffect(load, []);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
@@ -4253,7 +4273,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         {p.waved_me && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
       </div>
       <div style={{ padding: "9px 11px" }}>
-        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVip(p.id) ? vipBadge : null}</div>
         <div style={{ fontSize: 11, color: W.soft, marginTop: 1, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
         {p.waved_by_me && p.waved_me ? (
           <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff" }}>💬 Message</button>
@@ -4523,7 +4543,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
               {peek.avatar_url ? <img src={peek.avatar_url} alt="" onClick={() => setPhotoZoom(peek.avatar_url)} style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "pointer" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 70 }}>{peek.gender === "female" ? "👩" : peek.gender === "male" ? "👨" : "🙂"}</div>}
             </div>
             <div style={{ padding: "14px 16px 20px" }}>
-              <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}</div>
+              <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}{isVip(peek.id) ? vipBadge : null}</div>
               <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
               {peekInfo?.photos?.length > 0 && (
                 <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 12 }}>
@@ -11292,6 +11312,9 @@ function MyTicket({ event: e, profile, rows, types = [], onClose }) {
 function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   const [plansList, setPlansList] = useState([]);
   useEffect(() => { supabase.from("plans").select("id, name, emoji").eq("active", true).then(({ data }) => setPlansList(data || [])); }, []);
+  const [segsList, setSegsList] = useState([]);
+  useEffect(() => { supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegsList(data || [])); }, []);
+  const [seg, setSeg] = useState("");
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [cap, setCap] = useState("");
   const [wf, setWf] = useState(""); const [wm, setWm] = useState("");
   const [credit, setCredit] = useState("");
@@ -11310,8 +11333,8 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   };
   const add = async () => {
     if (!name.trim()) return;
-    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null });
-    setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setCredit(""); setInclusions(""); setExclusions(""); setNotes(""); setDRoom(""); setDKind("percent"); setDVal("");
+    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null });
+    setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setCredit(""); setInclusions(""); setExclusions(""); setNotes(""); setDRoom(""); setDKind("percent"); setDVal(""); setSeg("");
   };
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
   const audBadge = (gr) => {
@@ -11324,7 +11347,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
       <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
-        {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
+        {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
         {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 9px", color: "#7C3AED", fontWeight: 800, fontSize: 14.5, letterSpacing: .3, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}><Plus size={17} />CREATE NEW TICKET TYPE</div>
@@ -11362,12 +11385,21 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
         </div>
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Plan members get this off. 100% (or ₹ ≥ price) makes the ticket free for them.</div>
       </div>
+      <div style={{ marginTop: 8, background: "#F5F0FF", border: "1px solid #E4D3F5", borderRadius: 10, padding: 10 }}>
+        <div style={{ fontSize: 12, color: "#7C3AED", fontWeight: 800, marginBottom: 6 }}>⭐ Restrict to a segment (e.g. VIP)</div>
+        <select value={seg} onChange={e => setSeg(e.target.value)} style={{ ...ip, width: "100%" }}>
+          <option value="">Anyone can buy</option>
+          {segsList.map(s => <option key={s.id} value={s.id}>{s.name} only</option>)}
+        </select>
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6, lineHeight: 1.45 }}>Only members of the chosen segment can buy this ticket. Everyone else sees "This ticket is restricted". Leave as "Anyone" for a normal/general ticket.</div>
+      </div>
       <button onClick={add} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}><Plus size={15} />Add ticket type</button>
     </div>
   );
 }
-function EditableTicketRow({ t, previous, plansList, roomName, audBadge, ip, onUpdate, onDel }) {
+function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, audBadge, ip, onUpdate, onDel }) {
   const [ed, setEd] = useState(false);
+  const [seg, setSeg] = useState(t.segment_id || "");
   const [name, setName] = useState(t.name || "");
   const [price, setPrice] = useState(t.price == null ? "" : String(t.price));
   const [credit, setCredit] = useState(t.credit_price == null ? "" : String(t.credit_price));
@@ -11390,7 +11422,7 @@ function EditableTicketRow({ t, previous, plansList, roomName, audBadge, ip, onU
   const save = async () => {
     if (!name.trim() || !onUpdate) return;
     setBusy(true);
-    await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null });
+    await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null });
     setBusy(false); setEd(false);
   };
   if (!ed) {
@@ -11406,6 +11438,7 @@ function EditableTicketRow({ t, previous, plansList, roomName, audBadge, ip, onU
             {t.disc_female_pct != null && <span style={{ color: "#C0246E", fontWeight: 800, background: "#FBE9F2", padding: "2px 9px", borderRadius: 9 }}>♀ {t.disc_female_pct}% off</span>}
             {t.disc_male_pct != null && <span style={{ color: "#1B6FB8", fontWeight: 800, background: "#E8F2FB", padding: "2px 9px", borderRadius: 9 }}>♂ {t.disc_male_pct}% off</span>}
             {t.capacity != null && <span style={{ color: W.soft, fontWeight: 700 }}>cap {t.capacity}</span>}
+            {t.segment_id && <span style={{ color: "#7C3AED", fontWeight: 800, background: "#F3E8FF", padding: "2px 9px", borderRadius: 9 }}>⭐ {(segsList.find(s => s.id === t.segment_id) || {}).name || "segment"} only</span>}
             {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal, fontWeight: 700 }}>{t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
           </div>
           {(t.inclusions || t.exclusions || t.notes) && <TicketTypeDetails ticket={t} compact />}
@@ -11451,6 +11484,13 @@ function EditableTicketRow({ t, previous, plansList, roomName, audBadge, ip, onU
           </select>
           <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
         </div>
+      </div>
+      <div style={{ marginTop: 8, background: "#F5F0FF", border: "1px solid #E4D3F5", borderRadius: 10, padding: 10 }}>
+        <div style={{ fontSize: 12, color: "#7C3AED", fontWeight: 800, marginBottom: 6 }}>⭐ Restrict to a segment (e.g. VIP)</div>
+        <select value={seg} onChange={e => setSeg(e.target.value)} style={{ ...ip, width: "100%" }}>
+          <option value="">Anyone can buy</option>
+          {segsList.map(s => <option key={s.id} value={s.id}>{s.name} only</option>)}
+        </select>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button onClick={() => setEd(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
@@ -15607,7 +15647,7 @@ function OrganiserApplicationCard({ user, profile, onApproved, variant = "profil
   );
 }
 
-function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, events }) {
+function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, events, isVIP = false }) {
   const _roles = profile?.roles || [];
   const roleLabel = _roles.includes("superadmin") ? "Founder ⭐"
     : _roles.includes("admin") ? "Admin"
@@ -15645,7 +15685,10 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <div>
             <div style={{ fontSize: 21, fontWeight: 700, color: W.ink }}>{profile?.full_name || "—"}</div>
             <div style={{ color: W.soft, fontSize: 14 }}>{user.email}</div>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 7, background: "#E7F6EF", color: W.teal, fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{_isStaffey && <Crown size={13} />}{roleLabel}</span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#E7F6EF", color: W.teal, fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{_isStaffey && <Crown size={13} />}{roleLabel}</span>
+              {isVIP && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "linear-gradient(95deg,#7C3AED,#C026D3)", color: "#fff", fontSize: 12.5, fontWeight: 800, padding: "4px 11px", borderRadius: 20 }}>⭐ VIP</span>}
+            </div>
           </div>
         </div>
         <button onClick={() => setEdit(true)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}><Pencil size={15} />Edit profile</button>
