@@ -11094,21 +11094,32 @@ function TicketTypeDetails({ ticket, compact = false }) {
   if (!ticket) return null;
   const clean = value => String(value || "").split(/\n|•/).map(x => x.trim().replace(/^[-✓✕!]+\s*/, "")).filter(Boolean);
   const sections = [
-    { key: "inclusions", title: "What's included", icon: "✓", color: "#08765F", bg: "#EAF8F3", border: "#BFE8D9", items: clean(ticket.inclusions) },
-    { key: "exclusions", title: "Not included", icon: "✕", color: "#B33A3A", bg: "#FFF1F1", border: "#F3CBCB", items: clean(ticket.exclusions) },
-    { key: "notes", title: "Important notes", icon: "!", color: "#9A6500", bg: "#FFF8E7", border: "#F1DCA7", items: clean(ticket.notes) },
+    { key: "inclusions", title: "Inclusions", fullTitle: "What's included", icon: "✓", color: "#08765F", bg: "#EAF8F3", border: "#BFE8D9", items: clean(ticket.inclusions) },
+    { key: "exclusions", title: "Exclusions", fullTitle: "Not included", icon: "✕", color: "#B33A3A", bg: "#FFF1F1", border: "#F3CBCB", items: clean(ticket.exclusions) },
+    { key: "notes", title: "Notes", fullTitle: "Important notes", icon: "!", color: "#9A6500", bg: "#FFF8E7", border: "#F1DCA7", items: clean(ticket.notes) },
   ].filter(s => s.items.length);
   if (!sections.length) return null;
+  if (compact) return (
+    <div style={{ marginTop: 7, fontSize: 11.5, lineHeight: 1.55, color: "#42534E", display: "flex", flexWrap: "wrap", columnGap: 6, rowGap: 2 }}>
+      {sections.map((s, i) => (
+        <span key={s.key} style={{ display: "inline" }}>
+          {i > 0 && <span aria-hidden="true" style={{ color: "#B7C2BE", marginRight: 6 }}>·</span>}
+          <strong style={{ color: s.color, fontWeight: 900 }}>{s.icon} {s.title}:</strong>{" "}
+          <span>{s.items.join(", ")}</span>
+        </span>
+      ))}
+    </div>
+  );
   return (
-    <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(auto-fit,minmax(150px,1fr))", gap: compact ? 5 : 8, marginTop: compact ? 8 : 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginTop: 12 }}>
       {sections.map(s => (
-        <div key={s.key} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: compact ? 9 : 12, padding: compact ? "7px 9px" : "10px 12px" }}>
-          <div style={{ color: s.color, fontSize: compact ? 11 : 12, fontWeight: 900, display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-            <span style={{ width: compact ? 16 : 19, height: compact ? 16 : 19, borderRadius: "50%", color: "#fff", background: s.color, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: compact ? 10 : 11, flexShrink: 0 }}>{s.icon}</span>
-            {s.title}
+        <div key={s.key} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 12, padding: "10px 12px" }}>
+          <div style={{ color: s.color, fontSize: 12, fontWeight: 900, display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+            <span style={{ width: 19, height: 19, borderRadius: "50%", color: "#fff", background: s.color, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, flexShrink: 0 }}>{s.icon}</span>
+            {s.fullTitle}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {s.items.map((item, i) => <div key={i} style={{ color: W.ink, fontSize: compact ? 11.5 : 12.5, lineHeight: 1.4, paddingLeft: compact ? 22 : 25 }}>• {item}</div>)}
+            {s.items.map((item, i) => <div key={i} style={{ color: W.ink, fontSize: 12.5, lineHeight: 1.4, paddingLeft: 25 }}>• {item}</div>)}
           </div>
         </div>
       ))}
