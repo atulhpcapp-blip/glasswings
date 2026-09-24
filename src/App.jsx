@@ -1992,7 +1992,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           <img src={(e.banner_type !== "video" && e.banner_url) || e.poster_url} alt={e.title} decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
       )) : null}
-      <div style={{ maxWidth: 1080, margin: "0 auto", padding: wide ? "28px 24px 60px" : "20px 16px 110px", display: "flex", gap: 36, alignItems: "flex-start" }}>
+      <div style={{ maxWidth: 1080, margin: "0 auto", padding: wide ? "28px 24px 110px" : "20px 16px 120px", display: "flex", gap: 36, alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
             {gwIsPrivateEvent(e) && <span style={{ background: "linear-gradient(135deg,#6D28D9,#DB2777)", color: "#fff", fontSize: 12, fontWeight: 900, padding: "4px 11px", borderRadius: 14 }}>🔒 Private invitation</span>}
@@ -2234,20 +2234,30 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               )}
               <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>{hasTicket ? "Buy more tickets" : "Tickets"}</div>
               {ticketList}
-              {selQty > 0 && <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 12, fontSize: 15 }}>{hasTicket ? `Buy ${selQty} more${selTotal > 0 ? ` · ₹${selTotal}` : ""}` : (selTotal === 0 ? `Get ${selQty} ticket${selQty > 1 ? "s" : ""}` : `Proceed · ₹${selTotal}`)}</button>}
+              {selQty > 0 && (
+                <div style={{ marginTop: 12, background: "#F4FBF8", border: "1px solid #D9EAE4", borderRadius: 12, padding: "11px 13px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontSize: 13, color: W.soft, fontWeight: 700 }}>{selQty} ticket{selQty > 1 ? "s" : ""}{addonTotal > 0 ? " + add-ons" : ""}</span>
+                    <span style={{ fontSize: 20, fontWeight: 900, color: W.ink }}>{selTotal === 0 ? "Free" : `₹${selTotal}`}</span>
+                  </div>
+                  <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, marginTop: 10, fontSize: 15, borderRadius: 11 }}>{hasTicket ? "Buy more →" : "Proceed to checkout →"}</button>
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
-      {!wide && (
-        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 30, background: "#fff", borderTop: `1px solid ${W.line}`, padding: "12px 16px calc(12px + env(safe-area-inset-bottom))", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
-          <div>
-            <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{selQty > 0 ? `${selQty} ticket${selQty > 1 ? "s" : ""}` : types.length > 1 ? "From" : "Price"}</div>
-            <div style={{ fontSize: 19, fontWeight: 800, color: W.ink }}>{(selQty > 0 ? selTotal : minPrice) === 0 ? "Free" : `₹${selQty > 0 ? selTotal : minPrice}`}</div>
+      {(selQty > 0 || !wide) && (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -8px 28px rgba(14,48,40,.13)", padding: "11px 16px calc(11px + env(safe-area-inset-bottom))" }}>
+          <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selQty > 0 ? `${selQty} ticket${selQty > 1 ? "s" : ""}${addonTotal > 0 ? " + add-ons" : ""}` : types.length > 1 ? "Starts from" : "Price"}</div>
+              <div style={{ fontSize: 21, fontWeight: 900, color: W.ink, lineHeight: 1.1 }}>{(selQty > 0 ? selTotal : minPrice) === 0 ? "Free" : `₹${selQty > 0 ? selTotal : minPrice}`}</div>
+            </div>
+            {selQty > 0
+              ? <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "14px 28px", fontSize: 15.5, borderRadius: 12, flexShrink: 0, boxShadow: "0 6px 16px rgba(0,128,105,.28)" }}><Ticket size={18} />{hasTicket ? "Buy more →" : "Proceed to checkout →"}</button>
+              : <button onClick={() => onBuy(e, visTypes.length === 1 ? [{ type: visTypes[0], qty: 1 }] : null, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "14px 26px", fontSize: 15.5, borderRadius: 12, flexShrink: 0 }}><Ticket size={18} />Get tickets</button>}
           </div>
-          {selQty > 0
-            ? <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Proceed</button>
-            : <button onClick={() => onBuy(e, visTypes.length === 1 ? [{ type: visTypes[0], qty: 1 }] : null, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "13px 26px", fontSize: 15.5 }}><Ticket size={17} />Get tickets</button>}
         </div>
       )}
     </div>
@@ -2421,7 +2431,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · tickets-v48 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · tickets-v49 build</div>
       </div>
     </div>
   );
