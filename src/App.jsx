@@ -1920,6 +1920,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
             {!canBuyType(t) && <div style={{ fontSize: 11.5, color: "#7C3AED", fontWeight: 800, marginTop: 3 }}>🔒 This ticket is restricted — {segName(t.segment_id)} members only</div>}
+            {t.segment_id && isStaff && !(mySegs || []).includes(t.segment_id) && <div style={{ fontSize: 11.5, color: "#7C3AED", fontWeight: 800, marginTop: 3 }}>🔒 Restricted for members outside {segName(t.segment_id)} — you can buy only because you're an admin</div>}
             <TicketTypeDetails ticket={t} compact />
           </div>
           {!canBuyType(t)
@@ -2399,7 +2400,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · tickets-v50 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · tickets-v51 build</div>
       </div>
     </div>
   );
@@ -3066,7 +3067,7 @@ function Main({ user }) {
     if (!cart.length) cart = [{ type: null, qty: 1 }];
     for (const c of cart) {
       if (c.type) {
-        if (c.type.segment_id && !isStaff && !mySegs.includes(c.type.segment_id)) return setNotice("🔒 This ticket is restricted — it can only be bought by invited members.");
+        if (c.type.segment_id && !isAdmin && !mySegs.includes(c.type.segment_id)) return setNotice("🔒 This ticket is restricted — it can only be bought by invited members.");
       } else if ((ticketTypes[e.id] || []).length) {
         return setNotice("Please choose a ticket type for this event.");
       }
@@ -3468,7 +3469,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isStaff} segList={segList} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
@@ -3537,7 +3538,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isStaff} segList={segList} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
