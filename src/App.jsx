@@ -1921,15 +1921,6 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
             {!canBuyType(t) && <div style={{ fontSize: 11.5, color: "#7C3AED", fontWeight: 800, marginTop: 3 }}>🔒 This ticket is restricted — {segName(t.segment_id)} members only</div>}
             <TicketTypeDetails ticket={t} compact />
-            {typePct != null && (
-              <div style={{ maxWidth: 230, marginTop: 8 }}>
-                <MiniBar pct={typePct} color={typePct >= 90 ? "#E46B32" : typePct >= 70 ? "#D59B20" : W.teal} height={6} />
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10.5, color: W.soft, marginTop: 4 }}>
-                  <span>{sold} booked</span>
-                  <span>{Math.max(0, cap - sold)} left</span>
-                </div>
-              </div>
-            )}
           </div>
           {!canBuyType(t)
             ? <button disabled title="Restricted ticket" style={{ ...btn("#F3E8FF", "#7C3AED"), padding: "9px 15px", cursor: "not-allowed", fontWeight: 800 }}>🔒 Restricted</button>
@@ -1944,29 +1935,6 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{minPrice === 0 ? "Free" : `₹${minPrice}`}</div>
           </div>
           {(qtyMap.__base || 0) > 0 ? stepper("__base", qtyMap.__base, MAX_TIX) : addBtn("__base")}
-        </div>
-      )}
-      {fillPct != null && (
-        <div style={{ marginTop: 14, border: "1px solid #D9EAE4", background: "linear-gradient(145deg,#F8FCFA,#F1F8F5)", borderRadius: 15, padding: "14px 15px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 10 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, color: W.ink, fontWeight: 850, fontSize: 13.5 }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: totalLeft === 0 ? "#C0392B" : "#15A37D", boxShadow: `0 0 0 3px ${totalLeft === 0 ? "rgba(192,57,43,.12)" : "rgba(21,163,125,.14)"}` }} />
-                Live ticket availability
-              </div>
-              <div style={{ color: W.soft, fontSize: 11.5, marginTop: 4 }}>{totalSold} booked out of {totalCapacity}</div>
-            </div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <div style={{ fontSize: 18, lineHeight: 1, fontWeight: 900, color: totalLeft === 0 ? "#C0392B" : W.teal }}>{totalLeft}</div>
-              <div style={{ color: W.soft, fontSize: 10.5, fontWeight: 700, marginTop: 3 }}>{totalLeft === 1 ? "ticket left" : "tickets left"}</div>
-            </div>
-          </div>
-          <MiniBar pct={fillPct} color={fillPct >= 90 ? "#E46B32" : fillPct >= 70 ? "#D59B20" : W.teal} height={9} />
-          <div style={{ display: "flex", justifyContent: "space-between", color: W.soft, fontSize: 10.5, fontWeight: 700, marginTop: 6 }}>
-            <span>{fillPct}% filled</span>
-            <span>{Math.max(0, 100 - fillPct)}% available</span>
-          </div>
-          {fillPct >= 80 && totalLeft > 0 && <div style={{ marginTop: 9, color: "#B45309", fontSize: 11.5, fontWeight: 800 }}>🔥 Filling fast — book before it sells out</div>}
         </div>
       )}
       <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}><Lock size={12} />Instant ticket · secure payment · sent to your email</div>
@@ -2431,7 +2399,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · tickets-v49 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · tickets-v50 build</div>
       </div>
     </div>
   );
