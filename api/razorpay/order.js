@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     const { data: ures } = await sb.auth.getUser(access_token);
     const uid = ures?.user?.id;
     if (!uid) return res.status(401).json({ error: "Please log in again." });
-    const { data: me } = await sb.from("profiles").select("gender, founding_member").eq("id", uid).single();
+    const { data: me } = await sb.from("profiles").select("gender, founding_member, role, roles").eq("id", uid).single();
 
     let amount = 0;          // paise
     let creditsGrant = 0;    // credits to grant when purpose==="credits"
@@ -76,6 +76,19 @@ export default async function handler(req, res) {
         resolveAddons(),
       ]);
       const typeMap = {}; (typeRows || []).forEach(t => { typeMap[t.id] = t; });
+
+      // 🔒 segment-restricted ticket types — only members of that segment (or admins) may buy
+      const segIds = [...new Set((typeRows || []).map(t => t.segment_id).filter(Boolean))];
+      if (segIds.length) {
+        const myRoles = [...(Array.isArray(me?.roles) ? me.roles : []), me?.role].filter(Boolean);
+        const isAdminUser = myRoles.some(r => r === "superadmin" || r === "admin");
+        if (!isAdminUser) {
+          const { data: segRows } = await sb.from("segment_members").select("segment_id").eq("user_id", uid).in("segment_id", segIds);
+          const mine = new Set((segRows || []).map(r => r.segment_id));
+          const blocked = (typeRows || []).find(t => t.segment_id && !mine.has(t.segment_id));
+          if (blocked) return res.status(403).json({ error: `🔒 "${blocked.name}" is restricted to invited members only.` });
+        }
+      }
 
       // room-discount memberships for any discounted types, in one query
       const discRooms = [...new Set((typeRows || []).filter(t => t.discount_room_id && t.discount_value).map(t => t.discount_room_id))];
