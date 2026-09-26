@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v75 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v76 build</div>
       </div>
     </div>
   );
@@ -4562,6 +4562,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     for (let i = 0; i < Math.max(girls.length, boys.length); i++) { if (girls[i]) mixed.push(girls[i]); if (boys[i]) mixed.push(boys[i]); }
     return [...mixed, ...other].slice(0, 10);
   })();
+  const onlineNow = (rows || []).filter(p => p.avatar_url && p.last_seen && (Date.now() - new Date(p.last_seen).getTime()) < 30 * 60000).sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen)).slice(0, 14);
   const hasPlan = typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0;
   const unlocked = hasPlan || isAdmin || isSuper; // admins/superadmins are never paywalled
   const perfectList = mCandidates;
@@ -4756,6 +4757,28 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
         {viewers === "locked" && <div style={{ margin: "10px 14px 0", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "13px 14px", fontSize: 13, color: W.ink }}>🔒 Seeing <b>who</b> viewed you is a <b>💎 Premium perk</b> — subscribe from your Profile → Plans and this unlocks instantly.</div>}
         {Array.isArray(viewers) && <div style={{ margin: "10px 14px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>{viewers.map(v => card({ ...v, joined: null, last_seen: v.viewed_at }, "👋 Wave"))}{viewers.length === 0 && <div style={{ gridColumn: "1/-1", color: W.soft, fontSize: 13, textAlign: "center", padding: 10 }}>No views yet — go wave at some people! 👋</div>}</div>}
+        {onlineNow.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 14px 9px" }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 8px #22C55E" }} />
+              <div style={{ fontWeight: 900, fontSize: 15.5, color: W.ink }}>Online now</div>
+              <span style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>· {onlineNow.length} active</span>
+            </div>
+            <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "0 14px 4px", WebkitOverflowScrolling: "touch" }}>
+              {onlineNow.map(p => (
+                <div key={p.id} style={{ flexShrink: 0, width: 72, textAlign: "center" }}>
+                  <div onClick={() => openPeek(p)} style={{ position: "relative", width: 66, height: 66, margin: "0 auto", cursor: "pointer" }}>
+                    <div style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", background: "#fff", border: "2.5px solid #22C55E", boxShadow: "0 0 0 2px #fff, 0 2px 8px rgba(34,197,94,.35)" }}>
+                      {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
+                    </div>
+                    <span style={{ position: "absolute", bottom: 2, right: 2, width: 13, height: 13, borderRadius: "50%", background: "#22C55E", border: "2px solid #fff" }} />
+                  </div>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {mixer.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 14px 9px" }}>
