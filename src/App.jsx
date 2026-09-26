@@ -372,7 +372,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, { id: "meet", icon: Users, label: "Meet" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -1098,6 +1098,21 @@ function MediaSlider({ imgs, wide }) {
     </div>
   );
 }
+function WaCommunityBanner({ url }) {
+  if (!url) return null;
+  return (
+    <div style={{ margin: "12px 14px 0" }}>
+      <a href={url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 12, textDecoration: "none", background: "linear-gradient(100deg,#25D366,#128C7E)", color: "#fff", borderRadius: 14, padding: "13px 15px", boxShadow: "0 6px 16px rgba(18,140,126,.25)" }}>
+        <span style={{ fontSize: 26 }}>💬</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 14.5 }}>Join our WhatsApp community</div>
+          <div style={{ fontSize: 12.5, opacity: .95, marginTop: 2 }}>All event updates, plans &amp; chat happen on WhatsApp — tap to join 👋</div>
+        </div>
+        <span style={{ background: "#fff", color: "#128C7E", fontWeight: 800, fontSize: 12.5, padding: "8px 13px", borderRadius: 9, whiteSpace: "nowrap", flexShrink: 0 }}>Join →</span>
+      </a>
+    </div>
+  );
+}
 let _gwDialogSet = null;
 function GwDialogHost() {
   const [d, setD] = useState(null); // {msg, onOk?} | {msg, input:true, resolve}
@@ -1787,7 +1802,8 @@ function RecentBuyerToasts({ eventId, wide }) {
   );
 }
 
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM, mySegs = [], isStaff = false, segList = [] }) {
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM, mySegs = [], isStaff = false, segList = [], waGroup = "" }) {
+  const waJoin = (e.whatsapp_url || waGroup || "").trim();
   const segName = (id) => (segList.find(s => s.id === id) || {}).name || "invited members";
   const canBuyType = (t) => !t.segment_id || isStaff || (mySegs || []).includes(t.segment_id);
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
@@ -1880,9 +1896,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         <div style={{ background: "#E7F6EF", borderRadius: 12, padding: "12px 14px", margin: "10px 0 4px" }}>
           <div style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>✅ Tickets taken — you're going!</div>
           <div style={{ fontSize: 12, color: "#0d6e58", marginTop: 3, lineHeight: 1.4 }}>Need more? You can buy extra tickets for friends below.</div>
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            {onViewTicket && <button onClick={onViewTicket} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>🎟️ My tickets</button>}
-            {onOpenChat && <button onClick={onOpenChat} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>Event chat</button>}
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            {onViewTicket && <button onClick={onViewTicket} style={{ ...btn(W.teal, "#fff"), flex: "1 1 30%", justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>🎟️ My tickets</button>}
+            {waJoin && <a href={waJoin} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), flex: "1 1 30%", justifyContent: "center", padding: "9px 8px", fontSize: 13, textDecoration: "none" }}>💬 WhatsApp group</a>}
+            {onOpenChat && <button onClick={onOpenChat} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: "1 1 30%", justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>Event chat</button>}
           </div>
         </div>
       )}
@@ -2400,7 +2417,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · tickets-v52 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · whatsapp-v53 build</div>
       </div>
     </div>
   );
@@ -2596,6 +2613,8 @@ function Main({ user }) {
   const [mySegs, setMySegs] = useState([]);
   const [segList, setSegList] = useState([]);
   useEffect(() => { supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegList(data || [])); }, []);
+  const [waGroup, setWaGroup] = useState("");
+  useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
   const [payBusy, setPayBusy] = useState(false);
   const [eventPage, setEventPage] = useState(null);
   const [roomPage, setRoomPage] = useState(null);
@@ -2618,7 +2637,7 @@ function Main({ user }) {
     if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, matched with a mutual wave \ud83d\udc4b, or whom an admin has connected you with.");
     const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id });
     if (error) return setNotice(error.message);
-    setTab("chats"); setOpen({ id: tid, type: "p2p", title: name });
+    setOpen({ id: tid, type: "p2p", title: name });
   };
   const [meetBadge, setMeetBadge] = useState(0);
   useEffect(() => {
@@ -2631,7 +2650,7 @@ function Main({ user }) {
   useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setEventPage(ev); } } catch {} }, []);
   useEffect(() => { loadRazorpay(); }, []);
   const [tab, setTab] = useState(() => {
-    try { if (localStorage.getItem("gw_open_explore") === "1") { localStorage.removeItem("gw_open_explore"); return "explore"; } } catch {}
+    try { if (localStorage.getItem("gw_open_explore") === "1") { localStorage.removeItem("gw_open_explore"); return "events"; } } catch {}
     return "meet";
   });
   const [open, setOpen] = useState(null); // { id, type }
@@ -3356,7 +3375,7 @@ function Main({ user }) {
   // member opens community chats or event groups (see the chats tab / chat-open gates).
 
   const listW = 340;
-  const twoPane = wide && (tab === "chats" || !!open);
+  const twoPane = wide && !!open;
   const convoLeft = wide ? (twoPane ? SW + listW : SW) : 0;
 
   let chatEl = null;
@@ -3425,15 +3444,13 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
-      {tab === "chats" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><TriviaPill meId={user.id} />{/* streaks */}<StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><Chats chats={orderedChats} previews={previews} onOpen={setOpen} onExplore={() => setTab("explore")} streaks={dmStreaks} isPremium={myPlans.length > 0} onUpgrade={() => setSubPage({ highlight: null })} meId={user.id} onStartDM={async (id, name) => { try { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) { alert("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); return; } const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) { alert("Couldn't open chat: " + error.message); return; } if (!tid) { alert("Couldn't open this chat \u2014 no conversation thread was returned."); return; } setOpen({ id: tid, type: "p2p", title: name }); } catch (e2) { alert("Couldn't open chat: " + (e2 && e2.message ? e2.message : e2)); } }} /></>)}
-      {tab === "explore" && <Explore user={user} rooms={rooms.filter(r => !r.segment_id || isStaff || mySegs.includes(r.segment_id))} profile={profile} counts={counts} canAccess={canAccess} freeForUser={freeForUser} onJoin={joinRoom} onOpenRoom={setRoomPage} onOpenDM={openDM} onOrganiserApproved={load} isStaffUser={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} meId={user.id} />}
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
-      {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "events" && <><WaCommunityBanner url={waGroup} /><Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} /></>}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && <MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} />}
+      {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -3469,7 +3486,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} waGroup={waGroup} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
@@ -3494,13 +3511,10 @@ function Main({ user }) {
           );
         })()}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
-          <DesktopSidebar tab={open ? "chats" : tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} meetBadge={meetBadge} />
+          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} meetBadge={meetBadge} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
             {twoPane ? (
-              <>
-                <ChatListPane chats={myChats} open={open} onOpen={setOpen} width={listW} />
-                <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
-              </>
+              <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
             ) : (
               <div style={{ maxWidth: tab === "admin" ? "none" : 1100, margin: "0 auto", width: "100%", padding: tab === "admin" ? "0 24px" : 0, boxSizing: "border-box" }}>{screen}</div>
             )}
@@ -3538,7 +3552,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} waGroup={waGroup} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
@@ -9374,6 +9388,8 @@ function CreditsAdmin() {
   const [welcome, setWelcome] = useState({ male: "", female: "" });
   const [wBusy, setWBusy] = useState(false);
   const [rate, setRate] = useState(""); const [rBusy, setRBusy] = useState(false);
+  const [waLink, setWaLink] = useState(""); const [waBusy, setWaBusy] = useState(false);
+  const saveWa = async () => { setWaBusy(true); const { error } = await supabase.rpc("set_gw_text", { p_key: "whatsapp_group", p_val: waLink.trim() }); setWaBusy(false); if (error) return window.alert(error.message); window.alert("WhatsApp community link saved ✓ It now shows across the app."); };
   const [bulkAmt, setBulkAmt] = useState("");
   const [bulkAud, setBulkAud] = useState("all");
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -9384,6 +9400,7 @@ function CreditsAdmin() {
     supabase.from("welcome_credits").select("*").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.gender] = String(r.amount); }); setWelcome({ male: m.male ?? "", female: m.female ?? "" }); });
     supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegList(data || []));
     supabase.from("gw_settings").select("num").eq("key", "credit_inr").maybeSingle().then(({ data }) => setRate(data?.num != null ? String(data.num) : "1"));
+    supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaLink(data?.txt || ""));
   };
   const saveRate = async () => {
     setRBusy(true);
@@ -9490,6 +9507,14 @@ function CreditsAdmin() {
   };
   return (
     <div style={{ padding: 14 }}>
+      <div style={{ background: "linear-gradient(135deg,#128C7E,#25D366)", borderRadius: 16, padding: "18px 20px", marginBottom: 18, boxShadow: "0 8px 24px rgba(18,140,126,.28)" }}>
+        <div style={{ fontWeight: 900, color: "#fff", fontSize: 19, letterSpacing: .2 }}>💬 WhatsApp community link</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,.92)", marginTop: 4, lineHeight: 1.5, fontWeight: 500 }}>Paste your Glasswings WhatsApp group invite link. It shows as a “Join our WhatsApp community” banner on Events and to ticket buyers. Superadmin only.</div>
+        <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap", alignItems: "center", background: "rgba(255,255,255,.16)", borderRadius: 12, padding: "12px 14px" }}>
+          <input value={waLink} onChange={e => setWaLink(e.target.value)} placeholder="https://chat.whatsapp.com/…" style={{ flex: "1 1 220px", minWidth: 0, border: "none", borderRadius: 10, padding: "12px 14px", fontSize: 14.5, fontWeight: 700, outline: "none", color: "#0d6e58", background: "#fff" }} />
+          <button onClick={saveWa} disabled={waBusy} style={{ background: "#fff", color: "#128C7E", border: "none", borderRadius: 11, padding: "12px 22px", fontSize: 15, fontWeight: 900, cursor: "pointer", opacity: waBusy ? .6 : 1 }}>{waBusy ? "Saving…" : "Save"}</button>
+        </div>
+      </div>
       <div style={{ background: "linear-gradient(135deg,#6D28D9,#9333EA)", borderRadius: 16, padding: "18px 20px", marginBottom: 18, boxShadow: "0 8px 24px rgba(109,40,217,.28)" }}>
         <div style={{ fontWeight: 900, color: "#fff", fontSize: 19, letterSpacing: .2 }}>💳 Credit value</div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,.9)", marginTop: 4, lineHeight: 1.5, fontWeight: 500 }}>How much <b>1 credit</b> is worth as a discount at ticket checkout. Members pay the rest by card, up to each event's cap %. Superadmin only.</div>
@@ -12304,6 +12329,7 @@ function EventDetailsEditor({ event, onUpdate }) {
       member_discount_pct: event.member_discount_pct ? String(event.member_discount_pct) : "",
       host_type: event.host_type || "glasswings", host_name: event.host_name || "", host_logo: event.host_logo || "",
       photos_url: event.photos_url || "",
+      whatsapp_url: event.whatsapp_url || "",
       about_media: Array.isArray(event.about_media) ? event.about_media : []
     });
     setOpen(true);
@@ -12319,6 +12345,7 @@ function EventDetailsEditor({ event, onUpdate }) {
       member_discount_pct: d.member_discount_pct ? Math.min(100, Math.max(0, Number(d.member_discount_pct) || 0)) : 0,
       host_type: d.host_type || "glasswings", host_name: d.host_type === "partner" ? (d.host_name || null) : null, host_logo: d.host_type === "partner" ? (d.host_logo || null) : null,
       photos_url: d.photos_url?.trim() || null,
+      whatsapp_url: d.whatsapp_url?.trim() || null,
       about_media: d.about_media
     };
     if (d.date_mode !== "tbd" && !d.end_time && !d.end_date && !event.end_at) {
@@ -12388,6 +12415,11 @@ function EventDetailsEditor({ event, onUpdate }) {
         <label style={{ fontSize: 12.5, fontWeight: 800, color: W.teal }}>📸 Event photos album link</label>
         <input value={d.photos_url} onChange={e => setD({ ...d, photos_url: e.target.value })} placeholder="Paste Google Photos / Drive shared album link" style={{ ...ip, marginBottom: 2, marginTop: 5 }} />
         <div style={{ fontSize: 11, color: W.soft }}>Members see a "📸 View event photos" button on this event. Leave blank if no album yet.</div>
+      </div>
+      <div style={{ marginBottom: 9 }}>
+        <label style={{ fontSize: 12.5, fontWeight: 800, color: "#128C7E" }}>💬 Event WhatsApp group link</label>
+        <input value={d.whatsapp_url || ""} onChange={e => setD({ ...d, whatsapp_url: e.target.value })} placeholder="https://chat.whatsapp.com/… (optional)" style={{ ...ip, marginBottom: 2, marginTop: 5 }} />
+        <div style={{ fontSize: 11, color: W.soft }}>Ticket buyers see a "💬 WhatsApp group" button on this event. Leave blank to use the community group.</div>
       </div>
       <textarea value={d.schedule} onChange={e => setD({ ...d, schedule: e.target.value })} rows={3} placeholder={"Schedule — one item per line"} style={ta} />
       <textarea value={d.food_dining} onChange={e => setD({ ...d, food_dining: e.target.value })} rows={2} placeholder={"Food & dining — one item per line"} style={ta} />
@@ -16160,7 +16192,7 @@ function lastSeenStr(ts) {
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
-  const items = [{ id: "chats", icon: MessageCircle, label: "Chats" }, { id: "explore", icon: Compass, label: "Explore" }, { id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, { id: "meet", icon: Users, label: "Meet" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private" }, { id: "meet", icon: Users, label: "Meet" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", overflowX: "auto", padding: "8px 0 11px" }}>
       {items.map((it) => { const on = tab === it.id; const I = it.icon; return (
