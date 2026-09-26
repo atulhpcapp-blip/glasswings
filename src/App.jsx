@@ -1806,6 +1806,32 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const [rBusy, setRBusy] = useState(false);
   const [rDone, setRDone] = useState(false);
   const submitRating = async () => { if (!rStars || !onRate) return; setRBusy(true); const ok = await onRate(e.id, rStars, rReview); setRBusy(false); if (ok) setRDone(true); };
+  const [ephotos, setEphotos] = useState([]);
+  const [upBusy, setUpBusy] = useState(false);
+  const photoInputRef = useRef(null);
+  const loadEphotos = async () => {
+    const { data } = await supabase.from("event_photos").select("id,url,approved,user_id").eq("event_id", e.id).order("created_at", { ascending: false });
+    setEphotos(data || []);
+  };
+  useEffect(() => { loadEphotos(); }, [e.id]);
+  const addPhotos = async (ev) => {
+    const files = Array.from(ev.target.files || []); ev.target.value = "";
+    if (!files.length || !profile?.id) return;
+    setUpBusy(true);
+    try {
+      for (const f of files.slice(0, 8)) {
+        const url = await uploadPhoto(profile.id, f);
+        const { error } = await supabase.from("event_photos").insert({ event_id: e.id, user_id: profile.id, url, approved: isStaff });
+        if (error) throw error;
+      }
+      await loadEphotos();
+    } catch (x) { alert("Upload failed: " + (x.message || x)); }
+    setUpBusy(false);
+  };
+  const approvePhoto = async (id, on) => { await supabase.from("event_photos").update({ approved: on }).eq("id", id); await loadEphotos(); };
+  const delPhoto = async (id) => { if (!window.confirm("Remove this photo?")) return; await supabase.from("event_photos").delete().eq("id", id); await loadEphotos(); };
+  const visiblePhotos = ephotos.filter(p => p.approved || p.user_id === profile?.id || isStaff);
+  const pendingCount = ephotos.filter(p => !p.approved).length;
   const [showMini, setShowMini] = useState(false);
   const heroRef = useRef(null);
   const ticketRef = useRef(null);
@@ -2209,6 +2235,37 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             </Sec>
           )}
+          {(eventPast || visiblePhotos.length > 0) && (
+            <Sec title="Community photos">
+              <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: visiblePhotos.length ? 12 : 0 }}>
+                  <div style={{ fontSize: 13, color: W.soft, fontWeight: 600, lineHeight: 1.4 }}>
+                    {visiblePhotos.length ? "Snaps shared by people who were there 📸" : "Were you there? Share your photos with everyone 📸"}
+                    {isStaff && pendingCount > 0 && <span style={{ color: "#B4690E", fontWeight: 800 }}>{"  ·  " + pendingCount + " awaiting approval"}</span>}
+                  </div>
+                  {hasTicket && (
+                    <>
+                      <input ref={photoInputRef} type="file" accept="image/*" multiple onChange={addPhotos} style={{ display: "none" }} />
+                      <button onClick={() => photoInputRef.current && photoInputRef.current.click()} disabled={upBusy} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px", fontSize: 13, flexShrink: 0, opacity: upBusy ? .6 : 1 }}>{upBusy ? "Uploading…" : "＋ Add photos"}</button>
+                    </>
+                  )}
+                </div>
+                {visiblePhotos.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(96px,1fr))", gap: 8 }}>
+                    {visiblePhotos.map(p => (
+                      <div key={p.id} style={{ position: "relative", paddingTop: "100%", borderRadius: 10, overflow: "hidden", background: W.bg }}>
+                        <img src={p.url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                        {!p.approved && <div style={{ position: "absolute", top: 5, left: 5, background: "rgba(180,105,14,.92)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6 }}>Pending</div>}
+                        {isStaff && !p.approved && <button onClick={() => approvePhoto(p.id, true)} style={{ position: "absolute", bottom: 5, left: 5, background: "rgba(0,128,105,.95)", color: "#fff", border: "none", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 6, cursor: "pointer" }}>✓ Approve</button>}
+                        {(isStaff || p.user_id === profile?.id) && <button onClick={() => delPhoto(p.id)} style={{ position: "absolute", top: 5, right: 5, background: "rgba(0,0,0,.55)", color: "#fff", border: "none", width: 22, height: 22, borderRadius: "50%", fontSize: 13, cursor: "pointer", lineHeight: 1 }}>×</button>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!hasTicket && !visiblePhotos.length && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 8 }}>Only attendees can add photos here.</div>}
+              </div>
+            </Sec>
+          )}
           {similar.length > 0 && (
             <Sec title="You may also like">
               <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
@@ -2478,7 +2535,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v61 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v62 build</div>
       </div>
     </div>
   );
