@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v72 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v73 build</div>
       </div>
     </div>
   );
@@ -2680,7 +2680,8 @@ function ProfileGate({ user, profile, reload }) {
           <div><LocPick icon="🏙️" placeholder="City" value={city} options={cityOptsP} accent="#2563EB" canon={canonCity} onPick={v => { setCity(v === "all" ? "" : v); setArea(""); }} /></div>
           <div><LocPick icon="📍" placeholder="Area / locality" value={area} options={areaOptsP} accent="#008069" onPick={v => setArea(v === "all" ? "" : v)} /></div>
           <div>
-            <div style={{ fontSize: 12.5, color: "#7A7390", margin: "2px 0 7px", fontWeight: 700 }}>💫 I'm here for (shown on your Meet card)</div>
+            <div style={{ fontSize: 12.5, color: "#7A7390", margin: "2px 0 3px", fontWeight: 700 }}>💫 I'm here for</div>
+            <div style={{ fontSize: 11.5, color: "#9A93A8", marginBottom: 7, lineHeight: 1.4 }}>Adds a colourful tag to your Meet card. People can filter by vibe, and sharing a vibe boosts your match score.</div>
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
               {MOODS.map(([k, l, c, b]) => { const on = lookingFor === k; return (
                 <button key={k} type="button" onClick={() => setLookingFor(on ? "" : k)} style={{ padding: "8px 13px", borderRadius: 999, border: on ? "none" : `1.5px solid ${W.line}`, background: on ? b : "#fff", color: on ? c : W.soft, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
@@ -4618,6 +4619,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                 <button key={k} onClick={() => setMyMood(k)} style={{ padding: "8px 13px", borderRadius: 999, border: on ? "none" : `1.5px solid ${W.line}`, background: on ? b : "#fff", color: on ? c : W.soft, fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: on ? `0 2px 8px ${b}` : "none" }}>{l}</button>
               ); })}
             </div>
+            <div style={{ fontSize: 11, color: W.soft, marginTop: 8, lineHeight: 1.45 }}>{me.mood ? "✅ Shown as a tag on your Meet card. Others can filter by vibe to find you, and matching the same vibe boosts your match score. Tap again to remove." : "Pick one to add a colourful tag to your card — people can filter by vibe, and sharing a vibe boosts your match score 💞"}</div>
           </div>
         </div>
       )}
