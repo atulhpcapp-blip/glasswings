@@ -2387,7 +2387,7 @@ function HeroSlider({ slides, wide, onSlide }) {
       {slides.map((sl, idx) => (
         <div key={idx} style={{ position: "absolute", inset: 0, opacity: idx === i ? 1 : 0, transition: "opacity .6s ease" }}>
           <img src={sl.url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(26px) brightness(.62)", transform: "scale(1.15)" }} />
-          <img src={sl.url} alt="" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+          <img src={sl.url} alt="" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: wide ? "cover" : "contain", objectPosition: "center" }} />
         </div>
       ))}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(rgba(6,18,26,.04) 38%, rgba(6,14,22,.8))" }} />
@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · banner-v68 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · banner-v69 build</div>
       </div>
     </div>
   );
