@@ -2032,7 +2032,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       ) : (
         <div style={{ position: "relative", height: wide ? 420 : 235, background: "#0b1f1c", overflow: "hidden" }}>
           <img src={(e.banner_type !== "video" && e.banner_url) || e.poster_url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(26px) brightness(.62)", transform: "scale(1.15)" }} />
-          <img src={(e.banner_type !== "video" && e.banner_url) || e.poster_url} alt={e.title} decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+          <img src={(e.banner_type !== "video" && e.banner_url) || e.poster_url} alt={e.title} decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: wide ? "cover" : "contain", objectPosition: "center" }} />
         </div>
       )) : null}
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: wide ? "28px 24px 110px" : "20px 16px 120px", display: "flex", gap: 36, alignItems: "flex-start" }}>
@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · slider-v67 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · banner-v68 build</div>
       </div>
     </div>
   );
