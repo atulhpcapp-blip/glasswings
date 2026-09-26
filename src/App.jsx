@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · banner-v70 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v71 build</div>
       </div>
     </div>
   );
@@ -2611,6 +2611,7 @@ function LegalLinks({ dark }) {
 function ProfileGate({ user, profile, reload }) {
   const [name, setName] = useState(profile.full_name || "");
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");  const [avatar, setAvatar] = useState(profile.avatar_url || "");
+  const [lookingFor, setLookingFor] = useState("");
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const [waGroup, setWaGroup] = useState("");
   useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
@@ -2619,7 +2620,7 @@ function ProfileGate({ user, profile, reload }) {
   const areaOptsP = curatedAreas(city).slice().sort((a, b) => a.localeCompare(b));
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); });
+      .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); setLookingFor(data?.looking_for || ""); });
     supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { if (data?.phone) setPhone(data.phone); });
   }, [user.id]);
@@ -2640,7 +2641,7 @@ function ProfileGate({ user, profile, reload }) {
     if (miss) return setErr(`${miss[0]} is required${buyLite ? "" : " to become a member"}.`);
     if (!buyLite && !avatar) return setErr("Please add a profile photo.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: canonCity(city) });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: canonCity(city), looking_for: lookingFor || null });
     await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
@@ -2678,6 +2679,14 @@ function ProfileGate({ user, profile, reload }) {
           {inp("Age", age, setAge, "number", !buyLite)}
           <div><LocPick icon="🏙️" placeholder="City" value={city} options={cityOptsP} accent="#2563EB" canon={canonCity} onPick={v => { setCity(v === "all" ? "" : v); setArea(""); }} /></div>
           <div><LocPick icon="📍" placeholder="Area / locality" value={area} options={areaOptsP} accent="#008069" onPick={v => setArea(v === "all" ? "" : v)} /></div>
+          <div>
+            <div style={{ fontSize: 12.5, color: "#7A7390", margin: "2px 0 7px", fontWeight: 700 }}>💫 I'm here for (shown on your Meet card)</div>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {MOODS.map(([k, l, c, b]) => { const on = lookingFor === k; return (
+                <button key={k} type="button" onClick={() => setLookingFor(on ? "" : k)} style={{ padding: "8px 13px", borderRadius: 999, border: on ? "none" : `1.5px solid ${W.line}`, background: on ? b : "#fff", color: on ? c : W.soft, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
+              ); })}
+            </div>
+          </div>
           {inp("Profession", prof, setProf, "text", !buyLite)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
           <button onClick={save} disabled={busy || uploading} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: (busy || uploading) ? .6 : 1 }}>{busy ? "Saving…" : "Save & continue"}</button>
@@ -4189,6 +4198,14 @@ const IN_AREAS = {
 };
 const _tcase = s => String(s || "").trim().replace(/\s+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 const _norm = s => String(s || "").trim().toLowerCase();
+// Meet "Looking for" vibes: [key, label, text-colour, background]
+const MOODS = [
+  ["coffee", "☕ Coffee", "#B45309", "#FEF3C7"],
+  ["party", "🎉 Party", "#BE185D", "#FCE7F3"],
+  ["friendship", "🤝 Friendship", "#0d6e58", "#E7F6EF"],
+  ["networking", "🥂 Networking", "#1E40AF", "#DBEAFE"],
+];
+const moodOf = (key) => MOODS.find(m => m[0] === key);
 // Fold the many "Hyderabad" variants (Secunderabad, Hyd, Cyberabad, and Hyderabad
 // localities people type as their city) into a single canonical "Hyderabad".
 const _HYD_AREAS = new Set([...(IN_AREAS["Hyderabad"] || []), ...(IN_AREAS["Secunderabad"] || [])].map(_norm));
@@ -4246,6 +4263,29 @@ function LocPick({ icon, placeholder, value, options, accent, onPick, canon = _t
           </div>
         </div>
       )}
+    </div>
+  );
+}
+function MatchCelebration({ me, p, onSayHi, onClose }) {
+  const bits = ["💖", "💚", "💛", "💜", "✨", "🎉", "💕", "🌟"];
+  const confetti = Array.from({ length: 26 }).map((_, i) => ({ left: Math.random() * 100, delay: (Math.random() * 0.8).toFixed(2), dur: (2.2 + Math.random() * 1.8).toFixed(2), em: bits[i % bits.length], size: 16 + Math.round(Math.random() * 16) }));
+  const av = (src, gender) => <div style={{ width: 92, height: 92, borderRadius: "50%", overflow: "hidden", border: "3px solid #fff", boxShadow: "0 4px 16px rgba(0,0,0,.3)", background: "#eee" }}>{src ? <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>{gender === "female" ? "👩" : gender === "male" ? "👨" : "🙂"}</div>}</div>;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "linear-gradient(150deg,rgba(109,40,217,.96),rgba(219,39,119,.96))", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+      <style>{`@keyframes gwfall{0%{transform:translateY(-40px) rotate(0);opacity:0}10%{opacity:1}100%{transform:translateY(105vh) rotate(360deg);opacity:.9}}@keyframes gwpop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}`}</style>
+      {confetti.map((c, i) => <div key={i} style={{ position: "absolute", top: 0, left: c.left + "%", fontSize: c.size, animation: `gwfall ${c.dur}s linear ${c.delay}s infinite` }}>{c.em}</div>)}
+      <div onClick={e => e.stopPropagation()} style={{ position: "relative", textAlign: "center", color: "#fff", padding: "0 26px", animation: "gwpop .5s ease both" }}>
+        <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: 2, opacity: .95 }}>✨ IT'S A MATCH ✨</div>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 14, margin: "18px 0 10px" }}>
+          {av(me?.avatar_url, me?.gender)}
+          <div style={{ fontSize: 30 }}>💖</div>
+          {av(p?.avatar_url, p?.gender)}
+        </div>
+        <div style={{ fontSize: 24, fontWeight: 900 }}>You & {(p?.name || "them").split(" ")[0]} liked each other!</div>
+        <div style={{ fontSize: 13.5, opacity: .92, marginTop: 6, lineHeight: 1.5 }}>Your chat is open now — break the ice and make a plan 💬</div>
+        <button onClick={onSayHi} style={{ marginTop: 20, width: "100%", maxWidth: 300, padding: "14px", borderRadius: 13, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 16, background: "#fff", color: "#BE185D", boxShadow: "0 6px 18px rgba(0,0,0,.25)" }}>💬 Say hi</button>
+        <div onClick={onClose} style={{ marginTop: 12, fontSize: 13.5, fontWeight: 700, opacity: .9, cursor: "pointer" }}>Keep browsing</div>
+      </div>
     </div>
   );
 }
@@ -4324,7 +4364,27 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [showAllMatches, setShowAllMatches] = useState(false);
   const loadAllMatches = () => { setShowAllMatches(true); setAllMatches(null); supabase.rpc("admin_all_matches").then(({ data }) => setAllMatches(data || [])); };
   const [vipSet, setVipSet] = useState(new Set());
+  const [verSet, setVerSet] = useState(new Set());
+  const [moodMap, setMoodMap] = useState({});
+  const [matchCel, setMatchCel] = useState(null);
   const isVip = (id) => vipSet.has(id);
+  const isVerified = (id) => verSet.has(id);
+  const compat = (p) => {
+    let s = 55;
+    const pa = _norm(p.area), pc = canonCity(p.city), ma = _norm(me.area), mc = canonCity(me.city);
+    if (ma && pa && pa === ma) s += 30; else if (mc && pc && pc === mc) s += 16;
+    const a1 = Number(p.age), a2 = Number(me.age || 0);
+    if (a1 && a2) { const d = Math.abs(a1 - a2); s += d <= 2 ? 12 : d <= 5 ? 8 : d <= 9 ? 4 : 0; }
+    if (me.mood && moodMap[p.id] && me.mood === moodMap[p.id]) s += 8;
+    return Math.max(52, Math.min(99, s));
+  };
+  const isOnline = (ts) => ts && (Date.now() - new Date(ts).getTime()) < 6 * 3600 * 1000;
+  const setMyMood = async (key) => {
+    const next = me.mood === key ? "" : key;
+    setMe(m => ({ ...m, mood: next }));
+    setMoodMap(mm => ({ ...mm, [meId]: next }));
+    try { await supabase.from("member_details").upsert({ user_id: meId, looking_for: next || null }); } catch {}
+  };
   const vipBadge = <span title="VIP" style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "linear-gradient(95deg,#7C3AED,#C026D3)", color: "#fff", fontSize: 9.5, fontWeight: 900, padding: "1px 6px", borderRadius: 8, marginLeft: 4, flexShrink: 0, verticalAlign: "middle", letterSpacing: .3 }}>⭐ VIP</span>;
   const load = () => {
     Promise.all([supabase.rpc("meet_list"), supabase.rpc("meet_hidden_ids")]).then(([r, h]) => {
@@ -4334,10 +4394,12 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("waves_inbox").then(({ data }) => setInbox(data || []));
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
     supabase.rpc("vip_ids").then(({ data, error }) => setVipSet(new Set(error ? [] : (data || []))));
+    supabase.rpc("verified_ids").then(({ data, error }) => setVerSet(new Set(error ? [] : (data || []))));
+    supabase.rpc("meet_looking_for").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { m[r.user_id] = r.looking_for; }); setMoodMap(m); } });
   };
   useEffect(load, []);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
-  useEffect(() => { supabase.from("member_details").select("area, city").eq("user_id", meId).maybeSingle().then(({ data }) => setMe({ area: (data?.area || "").trim(), city: (data?.city || "").trim() })); supabase.from("profiles").select("gender").eq("id", meId).maybeSingle().then(({ data }) => setMyGender(data?.gender || null)); }, [meId]);
+  useEffect(() => { supabase.from("member_details").select("area, city, age, looking_for").eq("user_id", meId).maybeSingle().then(({ data }) => setMe({ area: (data?.area || "").trim(), city: (data?.city || "").trim(), age: data?.age || "", mood: data?.looking_for || "" })); supabase.from("profiles").select("gender").eq("id", meId).maybeSingle().then(({ data }) => setMyGender(data?.gender || null)); }, [meId]);
   useEffect(() => { if (mtab !== "waves") return; supabase.rpc("waves_mark_seen").then(() => { try { window.dispatchEvent(new Event("gwmeet")); } catch {} }); }, [mtab]);
   const lastActive = (ts) => {
     if (!ts) return "";
@@ -4361,7 +4423,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     }
     setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
     setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
-    if (data.mutual) window.gwConfirm(`💚 It's a match! You and ${p.name?.split(" ")[0] || "they"} both said yes ✓\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, p.name); });
+    if (data.mutual) setMatchCel(p);
   };
   const doPass = async (p) => {
     setWaveBusy(p.id);
@@ -4443,20 +4505,29 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     && (cityFlt === "all" || canonCity(p.city) === canonCity(cityFlt))
     && inAge(p.age)
     && (!nq || (p.name || "").toLowerCase().includes(nq)));
-  const card = (p, waveLbl) => (
-    <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: p.spotlighted ? "2px solid #F59E0B" : `1px solid ${W.line}`, overflow: "hidden", boxShadow: p.spotlighted ? "0 0 14px rgba(245,158,11,.4)" : "none" }}>
+  const card = (p, waveLbl) => {
+    const online = isOnline(p.last_seen);
+    const cm = compat(p);
+    const cmColor = cm >= 85 ? "#0d6e58" : cm >= 70 ? "#008069" : "#B45309";
+    const cmBg = cm >= 85 ? "#E7F6EF" : cm >= 70 ? "#E7F6EF" : "#FEF3C7";
+    const mood = moodOf(moodMap[p.id]);
+    return (
+    <div key={p.id} style={{ background: "#fff", borderRadius: 14, border: p.spotlighted ? "2px solid #F59E0B" : `1px solid ${W.line}`, overflow: "hidden", boxShadow: p.spotlighted ? "0 0 14px rgba(245,158,11,.4)" : "0 1px 5px rgba(17,27,33,.05)" }}>
       <div onClick={() => openPeek(p)} style={{ cursor: "pointer", position: "relative" }}>
         <div style={{ width: "100%", aspectRatio: "1", background: W.bg }}>
           {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 42 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
         </div>
+        {p.avatar_url && <span style={{ position: "absolute", top: 8, left: 8, display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(8,18,24,.62)", color: "#fff", fontSize: 10.5, fontWeight: 900, padding: "3px 8px", borderRadius: 20, backdropFilter: "blur(2px)" }}>💞 {cm}%</span>}
         {p.spotlighted && <span style={{ position: "absolute", bottom: 8, left: 8, background: "rgba(245,158,11,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>✨ Spotlight</span>}
         {isAdmin && p.review_flag && <span style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(192,57,43,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🚩 {p.review_flag}</span>}
-        {isNewbie(p.joined) && <span style={{ position: "absolute", top: 8, left: 8, background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🆕 NEW</span>}
+        {online && <span style={{ position: "absolute", bottom: 8, right: 8, display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(8,18,24,.62)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 20 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 6px #22C55E" }} />online</span>}
+        {isNewbie(p.joined) && !online && <span style={{ position: "absolute", bottom: 8, right: 8, background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🆕 NEW</span>}
         {p.waved_me && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
       </div>
       <div style={{ padding: "9px 11px" }}>
-        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVip(p.id) ? vipBadge : null}</div>
-        <div style={{ fontSize: 11, color: W.soft, marginTop: 1, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVerified(p.id) ? <span title="Verified" style={{ color: "#2563EB", marginLeft: 3 }}>✓</span> : null}{isVip(p.id) ? vipBadge : null}</div>
+        {mood && <div style={{ display: "inline-block", marginTop: 5, background: mood[3], color: mood[2], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{mood[1]}</div>}
+        <div style={{ fontSize: 11, color: W.soft, marginTop: 4, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
         {p.waved_by_me && p.waved_me ? (
           <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff" }}>💬 Message</button>
         ) : p.waved_by_me ? (
@@ -4466,7 +4537,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         )}
       </div>
     </div>
-  );
+    );
+  };
   const oppG = myGender === "male" ? "female" : myGender === "female" ? "male" : null;
   const oppOnly = p => !oppG || p.gender === oppG;
   const matchList = (rows || []).filter(p => p.waved_by_me && p.waved_me && oppOnly(p));
@@ -4505,17 +4577,42 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     </div>
   );
   const miniAv = (p, ring) => <div onClick={() => openPeek(p)} style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", margin: "0 auto", border: `2.5px solid ${ring}`, cursor: "pointer", background: "#fff" }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>;
+  const vibe = { women: (rows || []).filter(p => p.gender === "female").length, men: (rows || []).filter(p => p.gender === "male").length, newb: (rows || []).filter(p => isNewbie(p.joined)).length, online: (rows || []).filter(p => isOnline(p.last_seen)).length };
+  const vibeChip = (emoji, n, lbl) => <div style={{ flex: "1 1 0", minWidth: 0, background: "rgba(255,255,255,.18)", borderRadius: 12, padding: "7px 6px", textAlign: "center", backdropFilter: "blur(2px)" }}><div style={{ fontWeight: 900, fontSize: 16, lineHeight: 1 }}>{emoji} {n}</div><div style={{ fontSize: 10, opacity: .92, marginTop: 2, fontWeight: 700 }}>{lbl}</div></div>;
   return (
     <div style={asTab ? { paddingBottom: 90 } : { position: "fixed", inset: 0, zIndex: 160, background: W.bg, overflowY: "auto" }}>
-      <div style={{ position: "sticky", top: 0, zIndex: 5, background: W.teal, color: "#fff", padding: "13px 14px", display: "flex", alignItems: "center", gap: 10 }}>
-        {!asTab && <ArrowLeft size={21} onClick={onClose} style={{ cursor: "pointer" }} />}
-        <div style={{ fontWeight: 800, fontSize: 16, flex: 1 }}>👋 Meet</div>
+      <div style={{ position: "sticky", top: 0, zIndex: 5, background: "linear-gradient(120deg,#008069 0%,#6D28D9 55%,#DB2777 100%)", color: "#fff", padding: "13px 14px 14px", display: "flex", flexDirection: "column", gap: 11, boxShadow: "0 4px 16px rgba(109,40,217,.22)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {!asTab && <ArrowLeft size={21} onClick={onClose} style={{ cursor: "pointer" }} />}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 900, fontSize: 19, lineHeight: 1 }}>👋 Meet your people</div>
+            <div style={{ fontSize: 12, opacity: .92, marginTop: 3 }}>Wave, match & make plans ✨</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 7 }}>
+          {vibeChip("💃", vibe.women, "women")}
+          {vibeChip("🕺", vibe.men, "men")}
+          {vibeChip("🆕", vibe.newb, "new")}
+          {vibeChip("🟢", vibe.online, "online")}
+        </div>
       </div>
       <div style={{ display: "flex", gap: 8, padding: "12px 14px 0" }}>
         {[["discover", "✨ Discover"], ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]].map(([k, l]) => (
           <button key={k} onClick={() => setMtab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${mtab === k ? W.teal : W.line}`, background: mtab === k ? W.teal : "#fff", color: mtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>
         ))}
       </div>
+      {mtab === "discover" && (
+        <div style={{ padding: "12px 14px 0" }}>
+          <div style={{ background: "#fff", border: "1px solid #EBD9F0", borderRadius: 14, padding: "11px 12px" }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .4, color: "#7C3AED", marginBottom: 8 }}>💫 YOUR VIBE — WHAT ARE YOU HERE FOR?</div>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {MOODS.map(([k, l, c, b]) => { const on = me.mood === k; return (
+                <button key={k} onClick={() => setMyMood(k)} style={{ padding: "8px 13px", borderRadius: 999, border: on ? "none" : `1.5px solid ${W.line}`, background: on ? b : "#fff", color: on ? c : W.soft, fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: on ? `0 2px 8px ${b}` : "none" }}>{l}</button>
+              ); })}
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ margin: "0 14px" }}>
         <OrganiserApplicationCard user={user} profile={profile} onApproved={onOrganiserApproved} variant="banner" />
       </div>
@@ -4712,6 +4809,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           <img src={photoZoom} alt="" onClick={e => e.stopPropagation()} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 10 }} />
         </div>
       )}
+      {matchCel && <MatchCelebration me={profile} p={matchCel} onSayHi={() => { const pp = matchCel; setMatchCel(null); onOpenDM && onOpenDM(pp.id, pp.name); }} onClose={() => setMatchCel(null)} />}
       {peek && (
         <div onClick={() => setPeek(null)} style={{ position: "fixed", inset: 0, zIndex: 170, background: "rgba(8,20,18,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 480, overflow: "hidden" }}>
