@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v74 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v75 build</div>
       </div>
     </div>
   );
@@ -4549,13 +4549,18 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const mCandidates = (rows || []).filter(p => !p.waved_by_me && !p.waved_me && p.avatar_url && oppOnly(p));
   const matchOfDay = mCandidates.length ? mCandidates[new Date().getDate() % mCandidates.length] : null;
   const mixer = (() => {
-    // Anyone with a photo you can still wave at (fresh or they waved you); exclude mutual matches.
-    const pool = (rows || []).filter(p => p.avatar_url && !(p.waved_by_me && p.waved_me) && !p.waved_by_me);
-    pool.sort((a, b) => (oppOnly(b) ? 1 : 0) - (oppOnly(a) ? 1 : 0) || (b.waved_me ? 1 : 0) - (a.waved_me ? 1 : 0) || (b.spotlighted ? 1 : 0) - (a.spotlighted ? 1 : 0) || (isOnline(b.last_seen) ? 1 : 0) - (isOnline(a.last_seen) ? 1 : 0));
-    const top = pool.slice(0, 12);
-    if (!top.length) return [];
-    const rot = new Date().getDate() % top.length;
-    return [...top.slice(rot), ...top.slice(0, rot)].slice(0, 10);
+    // Anyone with a photo you can still wave at (fresh or they waved you).
+    const pool = (rows || []).filter(p => p.avatar_url && !p.waved_by_me);
+    const rank = (a, b) => (b.waved_me ? 1 : 0) - (a.waved_me ? 1 : 0) || (b.spotlighted ? 1 : 0) - (a.spotlighted ? 1 : 0) || (isOnline(b.last_seen) ? 1 : 0) - (isOnline(a.last_seen) ? 1 : 0);
+    const day = new Date().getDate();
+    const rot = (arr) => arr.length ? [...arr.slice(day % arr.length), ...arr.slice(0, day % arr.length)] : arr;
+    const girls = rot(pool.filter(p => p.gender === "female").sort(rank));
+    const boys = rot(pool.filter(p => p.gender === "male").sort(rank));
+    const other = rot(pool.filter(p => p.gender !== "female" && p.gender !== "male").sort(rank));
+    // interleave boys & girls so the mixer always has both
+    const mixed = [];
+    for (let i = 0; i < Math.max(girls.length, boys.length); i++) { if (girls[i]) mixed.push(girls[i]); if (boys[i]) mixed.push(boys[i]); }
+    return [...mixed, ...other].slice(0, 10);
   })();
   const hasPlan = typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0;
   const unlocked = hasPlan || isAdmin || isSuper; // admins/superadmins are never paywalled
