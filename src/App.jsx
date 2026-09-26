@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v78 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v79 build</div>
       </div>
     </div>
   );
@@ -4345,6 +4345,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [cityFlt, setCityFlt] = useState("all");
   const [ageFlt, setAgeFlt] = useState("all");
   const [moodFlt, setMoodFlt] = useState("all");
+  const [profDismiss, setProfDismiss] = useState(false);
   const [nameQ, setNameQ] = useState("");
   const [viewsN, setViewsN] = useState(0);
   const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
@@ -4538,6 +4539,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVerified(p.id) ? <span title="Verified" style={{ color: "#2563EB", marginLeft: 3 }}>✓</span> : null}{isVip(p.id) ? vipBadge : null}</div>
         {mood && <div style={{ display: "inline-block", marginTop: 5, background: mood[3], color: mood[2], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{mood[1]}</div>}
         <div style={{ fontSize: 11, color: W.soft, marginTop: 4, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
+        {iceMap[p.id] && <div style={{ fontSize: 10.5, color: "#7C3AED", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 600 }}>💬 {iceMap[p.id]}</div>}
         {p.waved_by_me && p.waved_me ? (
           <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff" }}>💬 Message</button>
         ) : p.waved_by_me ? (
@@ -4639,6 +4641,24 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           </div>
         </div>
       )}
+      {mtab === "discover" && !profDismiss && (() => {
+        const items = [["📸 Photo", hasPhoto], ["🏙️ City", !!me.city], ["📍 Area", !!me.area], ["🎂 Age", !!me.age], ["💫 Vibe", !!me.mood], ["💬 Icebreaker", !!iceMap[meId]]];
+        const done = items.filter(x => x[1]).length, pct = Math.round(done / items.length * 100);
+        const missing = items.filter(x => !x[1]).map(x => x[0]);
+        if (pct >= 100) return null;
+        return (
+          <div style={{ margin: "12px 14px 0", background: "linear-gradient(120deg,#FFF7E6,#FFECF3)", border: "1px solid #F3C6DA", borderRadius: 16, padding: "13px 14px", position: "relative" }}>
+            <span onClick={() => setProfDismiss(true)} style={{ position: "absolute", top: 9, right: 11, fontSize: 15, color: W.soft, cursor: "pointer", fontWeight: 800 }}>✕</span>
+            <div style={{ fontWeight: 900, fontSize: 14, color: W.ink }}>✨ Your profile is {pct}% complete</div>
+            <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>Fuller profiles get up to 3× more waves 💞</div>
+            <div style={{ height: 8, borderRadius: 6, background: "#F1E3EC", marginTop: 9, overflow: "hidden" }}><div style={{ width: pct + "%", height: "100%", borderRadius: 6, background: "linear-gradient(95deg,#7C3AED,#EC4899)", transition: "width .4s" }} /></div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              {missing.map(m => <span key={m} style={{ background: "#fff", border: "1px dashed #E4B7CC", color: "#B0227A", fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>+ {m}</span>)}
+            </div>
+            <div style={{ fontSize: 11, color: W.soft, marginTop: 9 }}>{me.mood ? "" : "Set your vibe above · "}Add the rest in Profile → Edit ✏️</div>
+          </div>
+        );
+      })()}
       <div style={{ margin: "0 14px" }}>
         <OrganiserApplicationCard user={user} profile={profile} onApproved={onOrganiserApproved} variant="banner" />
       </div>
@@ -4914,6 +4934,19 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
               <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}{isVerified(peek.id) ? <span title="Verified" style={{ color: "#2563EB", marginLeft: 4 }}>✓</span> : null}{isVip(peek.id) ? vipBadge : null}</div>
               <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
               {(() => { const md = moodOf(moodMap[peek.id]); return md ? <div style={{ display: "inline-block", marginTop: 8, background: md[3], color: md[2], fontSize: 12, fontWeight: 800, padding: "4px 11px", borderRadius: 20 }}>{md[1]}</div> : null; })()}
+              {(() => {
+                const reasons = [];
+                if (me.area && _norm(peek.area) === _norm(me.area)) reasons.push("📍 Same area");
+                else if (me.city && canonCity(peek.city) === canonCity(me.city)) reasons.push("🏙️ Same city");
+                if (me.age && peek.age && Math.abs(Number(me.age) - Number(peek.age)) <= 5) reasons.push("🎂 Similar age");
+                if (me.mood && moodMap[peek.id] === me.mood) { const md = moodOf(me.mood); reasons.push("💫 Both " + (md ? md[1].replace(/^\S+\s/, "") : "same vibe")); }
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "linear-gradient(95deg,#7C3AED,#EC4899)", color: "#fff", fontSize: 13, fontWeight: 900, padding: "5px 12px", borderRadius: 20 }}>💞 {compat(peek)}% match</span>
+                    {reasons.map(r => <span key={r} style={{ background: "#F3F0FF", color: "#6D28D9", fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{r}</span>)}
+                  </div>
+                );
+              })()}
               {iceMap[peek.id] && (
                 <div style={{ marginTop: 11, background: "linear-gradient(120deg,#FFF7FB,#F3F0FF)", border: "1px solid #EBD9F0", borderRadius: 13, padding: "11px 13px" }}>
                   <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#7C3AED" }}>💬 ASK ME ABOUT</div>
