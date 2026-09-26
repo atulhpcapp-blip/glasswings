@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v77 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v78 build</div>
       </div>
     </div>
   );
@@ -2612,6 +2612,7 @@ function ProfileGate({ user, profile, reload }) {
   const [name, setName] = useState(profile.full_name || "");
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");  const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [lookingFor, setLookingFor] = useState("");
+  const [icebreaker, setIcebreaker] = useState("");
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const [waGroup, setWaGroup] = useState("");
   useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
@@ -2620,7 +2621,7 @@ function ProfileGate({ user, profile, reload }) {
   const areaOptsP = curatedAreas(city).slice().sort((a, b) => a.localeCompare(b));
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); setLookingFor(data?.looking_for || ""); });
+      .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); setLookingFor(data?.looking_for || ""); setIcebreaker(data?.icebreaker || ""); });
     supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { if (data?.phone) setPhone(data.phone); });
   }, [user.id]);
@@ -2641,7 +2642,7 @@ function ProfileGate({ user, profile, reload }) {
     if (miss) return setErr(`${miss[0]} is required${buyLite ? "" : " to become a member"}.`);
     if (!buyLite && !avatar) return setErr("Please add a profile photo.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: canonCity(city), looking_for: lookingFor || null });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: canonCity(city), looking_for: lookingFor || null, icebreaker: icebreaker.trim() || null });
     await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
@@ -2687,6 +2688,11 @@ function ProfileGate({ user, profile, reload }) {
                 <button key={k} type="button" onClick={() => setLookingFor(on ? "" : k)} style={{ padding: "8px 13px", borderRadius: 999, border: on ? "none" : `1.5px solid ${W.line}`, background: on ? b : "#fff", color: on ? c : W.soft, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{l}</button>
               ); })}
             </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 12.5, color: "#7A7390", margin: "2px 0 3px", fontWeight: 700 }}>💬 Ask me about…</div>
+            <div style={{ fontSize: 11.5, color: "#9A93A8", marginBottom: 7, lineHeight: 1.4 }}>A fun line on your profile so people know how to break the ice.</div>
+            <input value={icebreaker} onChange={e => setIcebreaker(e.target.value.slice(0, 80))} placeholder="e.g. my street-food hunts, techno playlists, weekend treks" style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink, boxSizing: "border-box" }} />
           </div>
           {inp("Profession", prof, setProf, "text", !buyLite)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
@@ -4368,6 +4374,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [vipSet, setVipSet] = useState(new Set());
   const [verSet, setVerSet] = useState(new Set());
   const [moodMap, setMoodMap] = useState({});
+  const [iceMap, setIceMap] = useState({});
   const [matchCel, setMatchCel] = useState(null);
   const isVip = (id) => vipSet.has(id);
   const isVerified = (id) => verSet.has(id);
@@ -4397,7 +4404,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
     supabase.rpc("vip_ids").then(({ data, error }) => setVipSet(new Set(error ? [] : (data || []))));
     supabase.rpc("verified_ids").then(({ data, error }) => setVerSet(new Set(error ? [] : (data || []))));
-    supabase.rpc("meet_looking_for").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { m[r.user_id] = r.looking_for; }); setMoodMap(m); } });
+    supabase.rpc("meet_looking_for").then(({ data, error }) => { if (!error) { const m = {}, ic = {}; (data || []).forEach(r => { if (r.looking_for) m[r.user_id] = r.looking_for; if (r.icebreaker) ic[r.user_id] = r.icebreaker; }); setMoodMap(m); setIceMap(ic); } });
   };
   useEffect(load, []);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
@@ -4748,13 +4755,18 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             </div>
           </div>
         )}
-        <div onClick={() => (viewers === null ? showViewers() : setViewers(null))} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#F5F3FF,#FDF2F8)", border: "1px solid #E9D5FF", borderRadius: 13, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-          <span style={{ fontSize: 22 }}>👀</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5 }}>{viewsN} {viewsN === 1 ? "person" : "people"} viewed your profile this week</div>
-            <div style={{ fontSize: 11.5, color: W.soft }}>💎 Subscribers can see who · tap to {viewers === null ? "reveal" : "hide"}</div>
+        {viewsN > 0 && (
+          <div onClick={() => (viewers === null ? showViewers() : setViewers(null))} style={{ margin: "12px 14px 0", background: "linear-gradient(120deg,#6D28D9,#DB2777)", borderRadius: 16, padding: "14px 15px", display: "flex", alignItems: "center", gap: 13, cursor: "pointer", boxShadow: "0 6px 18px rgba(109,40,217,.25)", color: "#fff" }}>
+            <div style={{ position: "relative", width: 58, height: 40, flexShrink: 0 }}>
+              {[0, 1, 2].map(i => <div key={i} style={{ position: "absolute", left: i * 17, top: 0, width: 40, height: 40, borderRadius: "50%", background: ["#F472B6", "#A78BFA", "#67E8F9"][i], border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, filter: "blur(1px)" }}>{["👤", "👤", "👤"][i]}</div>)}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 900, fontSize: 16 }}>👀 {viewsN} {viewsN === 1 ? "person" : "people"} checked you out</div>
+              <div style={{ fontSize: 12, opacity: .92, marginTop: 2 }}>this week · {viewers === null ? "tap to see who" : "tap to hide"}</div>
+            </div>
+            <span style={{ background: "#fff", color: "#BE185D", fontWeight: 900, fontSize: 12.5, padding: "8px 14px", borderRadius: 10, flexShrink: 0 }}>{viewers === null ? "See who →" : "Hide"}</span>
           </div>
-        </div>
+        )}
         {viewers === "locked" && <div style={{ margin: "10px 14px 0", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "13px 14px", fontSize: 13, color: W.ink }}>🔒 Seeing <b>who</b> viewed you is a <b>💎 Premium perk</b> — subscribe from your Profile → Plans and this unlocks instantly.</div>}
         {Array.isArray(viewers) && <div style={{ margin: "10px 14px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>{viewers.map(v => card({ ...v, joined: null, last_seen: v.viewed_at }, "👋 Wave"))}{viewers.length === 0 && <div style={{ gridColumn: "1/-1", color: W.soft, fontSize: 13, textAlign: "center", padding: 10 }}>No views yet — go wave at some people! 👋</div>}</div>}
         {onlineNow.length > 0 && (
@@ -4899,8 +4911,15 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
               {peek.avatar_url ? <img src={peek.avatar_url} alt="" onClick={() => setPhotoZoom(peek.avatar_url)} style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "pointer" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 70 }}>{peek.gender === "female" ? "👩" : peek.gender === "male" ? "👨" : "🙂"}</div>}
             </div>
             <div style={{ padding: "14px 16px 20px" }}>
-              <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}{isVip(peek.id) ? vipBadge : null}</div>
+              <div style={{ fontWeight: 800, fontSize: 18, color: W.ink }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}{isVerified(peek.id) ? <span title="Verified" style={{ color: "#2563EB", marginLeft: 4 }}>✓</span> : null}{isVip(peek.id) ? vipBadge : null}</div>
               <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
+              {(() => { const md = moodOf(moodMap[peek.id]); return md ? <div style={{ display: "inline-block", marginTop: 8, background: md[3], color: md[2], fontSize: 12, fontWeight: 800, padding: "4px 11px", borderRadius: 20 }}>{md[1]}</div> : null; })()}
+              {iceMap[peek.id] && (
+                <div style={{ marginTop: 11, background: "linear-gradient(120deg,#FFF7FB,#F3F0FF)", border: "1px solid #EBD9F0", borderRadius: 13, padding: "11px 13px" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#7C3AED" }}>💬 ASK ME ABOUT</div>
+                  <div style={{ fontSize: 14.5, color: W.ink, marginTop: 4, lineHeight: 1.45, fontWeight: 600 }}>{iceMap[peek.id]}</div>
+                </div>
+              )}
               {peekInfo?.photos?.length > 0 && (
                 <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 12 }}>
                   {peekInfo.photos.map((url, i) => <img key={i} src={url} alt="" onClick={() => setPhotoZoom(url)} style={{ width: 88, height: 110, borderRadius: 10, objectFit: "cover", flexShrink: 0, cursor: "pointer" }} />)}
