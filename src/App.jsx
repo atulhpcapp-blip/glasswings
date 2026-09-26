@@ -402,6 +402,8 @@ function Auth({ initialMode = "login", onClose }) {
   const VIBES = ["HOUSE PARTIES 🪩", "BLIND DATE EVENTS 💘", "SINGLES MEETUPS 🥂", "GAME NIGHTS 🎲", "LIVE EVENTS 🎤", "SATURDAY NIGHT PARTIES 🌃", "PUB PARTIES 🍻", "POOL PARTIES 🏖️", "THEME PARTIES 🎭", "ROOFTOP PARTIES 🌆", "WEEKEND GETAWAYS 🏕️", "TRIPS WITH FRIENDS 🚐", "WORKSHOPS 🎨", "SPORTS MEETUPS ⚽"];
   const [wi, setWi] = useState(0);
   useEffect(() => { const iv = setInterval(() => setWi(w => (w + 1) % VIBES.length), 2200); return () => clearInterval(iv); }, []);
+  const cityOptsA = [...IN_CITIES].sort((a, b) => a.localeCompare(b));
+  const areaOptsA = (() => { const c = IN_CITIES.find(x => _norm(x) === _norm(city)); return (IN_AREAS[c] || IN_AREAS[city] || []).slice().sort((a, b) => a.localeCompare(b)); })();
   const go = async () => {
     setErr(""); setNote("");
     if (mode === "reset") {
@@ -500,10 +502,10 @@ function Auth({ initialMode = "login", onClose }) {
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
-                <div style={{ flex: 1 }}>{inp("City", city, setCity)}</div>
-                <div style={{ flex: 1 }}>{inp("Area / locality", area, setArea)}</div>
+                <LocPick icon="🏙️" placeholder="Select city" value={city} options={cityOptsA} accent="#2563EB" onPick={v => { setCity(v === "all" ? "" : v); setArea(""); }} />
+                <LocPick icon="📍" placeholder="Area / locality" value={area} options={areaOptsA} accent="#008069" onPick={v => setArea(v === "all" ? "" : v)} />
               </div>
-              <div style={{ fontSize: 11.5, color: "#7A7390", marginTop: 6, lineHeight: 1.4 }}>Helps us show you people & events near you 📍</div>
+              <div style={{ fontSize: 11.5, color: "#7A7390", marginTop: 6, lineHeight: 1.4 }}>Pick from the list or type your own — helps us show people & events near you 📍</div>
             </div>
           )}
           {err && <div style={{ color: "#C0392B", fontSize: 13, fontWeight: 600, background: "#FDF0EF", borderRadius: 10, padding: "9px 12px" }}>{err}</div>}
@@ -2535,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-loc-v64 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-loc-v65 build</div>
       </div>
     </div>
   );
@@ -2613,6 +2615,8 @@ function ProfileGate({ user, profile, reload }) {
   const [waGroup, setWaGroup] = useState("");
   useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
   const fileRef = useRef(null);
+  const cityOptsP = [...IN_CITIES].sort((a, b) => a.localeCompare(b));
+  const areaOptsP = (() => { const c = IN_CITIES.find(x => _norm(x) === _norm(city)); return (IN_AREAS[c] || IN_AREAS[city] || []).slice().sort((a, b) => a.localeCompare(b)); })();
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); });
@@ -2672,8 +2676,8 @@ function ProfileGate({ user, profile, reload }) {
           {inp("Full name", name, setName)}
           {inp("Phone number", phone, setPhone, "tel")}
           {inp("Age", age, setAge, "number", !buyLite)}
-          {inp("Area / locality", area, setArea, "text", !buyLite)}
-          {inp("City", city, setCity, "text", !buyLite)}
+          <div><LocPick icon="🏙️" placeholder="City" value={city} options={cityOptsP} accent="#2563EB" onPick={v => { setCity(v === "all" ? "" : v); setArea(""); }} /></div>
+          <div><LocPick icon="📍" placeholder="Area / locality" value={area} options={areaOptsP} accent="#008069" onPick={v => setArea(v === "all" ? "" : v)} /></div>
           {inp("Profession", prof, setProf, "text", !buyLite)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
           <button onClick={save} disabled={busy || uploading} style={{ padding: 14, borderRadius: 10, border: "none", cursor: "pointer", background: W.teal, color: "#fff", fontWeight: 700, fontSize: 15, opacity: (busy || uploading) ? .6 : 1 }}>{busy ? "Saving…" : "Save & continue"}</button>
