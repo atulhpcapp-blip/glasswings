@@ -421,7 +421,7 @@ function Auth({ initialMode = "login", onClose }) {
         try {
           const buying = localStorage.getItem("gw_buy");
           if (buying && data?.session?.user) await supabase.from("profiles").update({ full_name: name, gender, profile_completed: true }).eq("id", data.session.user.id);
-          if (data?.session?.user && (city.trim() || area.trim())) await supabase.from("member_details").upsert({ user_id: data.session.user.id, city: city.trim(), area: area.trim() });
+          if (data?.session?.user && (city.trim() || area.trim())) await supabase.from("member_details").upsert({ user_id: data.session.user.id, city: _tcase(city), area: _tcase(area) });
           if (data?.session?.user) { try { localStorage.setItem("gw_open_explore", "1"); } catch {} }
         } catch {}
         if (!data?.session) setNote("Account created! Please log in to continue.");
@@ -2535,7 +2535,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · wheel-v63 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-loc-v64 build</div>
       </div>
     </div>
   );
@@ -2636,7 +2636,7 @@ function ProfileGate({ user, profile, reload }) {
     if (miss) return setErr(`${miss[0]} is required${buyLite ? "" : " to become a member"}.`);
     if (!buyLite && !avatar) return setErr("Please add a profile photo.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: _tcase(city) });
     await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
@@ -4153,6 +4153,70 @@ function AlbumView({ album, isStaff, meId, onClose }) {
     </div>
   );
 }
+// ---------- India cities & metro areas (searchable filter data) ----------
+const IN_CITIES = ["Hyderabad","Secunderabad","Bengaluru","Mumbai","Navi Mumbai","Thane","Delhi","New Delhi","Noida","Greater Noida","Ghaziabad","Gurugram","Faridabad","Chennai","Kolkata","Pune","Ahmedabad","Gandhinagar","Surat","Vadodara","Rajkot","Jaipur","Jodhpur","Udaipur","Kota","Ajmer","Bikaner","Lucknow","Kanpur","Varanasi","Agra","Prayagraj","Meerut","Bareilly","Aligarh","Moradabad","Gorakhpur","Jhansi","Chandigarh","Ludhiana","Amritsar","Jalandhar","Patiala","Bathinda","Mohali","Bhopal","Indore","Gwalior","Jabalpur","Ujjain","Sagar","Ratlam","Patna","Gaya","Bhagalpur","Muzaffarpur","Ranchi","Jamshedpur","Dhanbad","Bokaro","Raipur","Bhilai","Bilaspur","Bhubaneswar","Cuttack","Rourkela","Puri","Sambalpur","Guwahati","Dibrugarh","Silchar","Shillong","Imphal","Aizawl","Agartala","Kohima","Itanagar","Gangtok","Dispur","Thiruvananthapuram","Kochi","Kozhikode","Thrissur","Kollam","Kannur","Kottayam","Alappuzha","Palakkad","Malappuram","Coimbatore","Madurai","Tiruchirappalli","Salem","Tirunelveli","Erode","Vellore","Thoothukudi","Thanjavur","Dindigul","Tiruppur","Hosur","Visakhapatnam","Vijayawada","Guntur","Nellore","Tirupati","Kurnool","Rajahmundry","Kakinada","Kadapa","Anantapur","Eluru","Ongole","Vizianagaram","Warangal","Nizamabad","Karimnagar","Khammam","Ramagundam","Mahbubnagar","Nalgonda","Adilabad","Siddipet","Mysuru","Mangaluru","Hubballi","Dharwad","Belagavi","Kalaburagi","Davanagere","Ballari","Vijayapura","Shivamogga","Tumakuru","Udupi","Hassan","Nagpur","Nashik","Aurangabad","Solapur","Kolhapur","Amravati","Nanded","Sangli","Jalgaon","Akola","Latur","Ahmednagar","Chandrapur","Panaji","Margao","Vasco da Gama","Dehradun","Haridwar","Roorkee","Haldwani","Nainital","Rishikesh","Shimla","Manali","Dharamshala","Solan","Mandi","Srinagar","Jammu","Leh","Anantnag","Bhilwara","Sikar","Alwar","Bhiwadi","Siliguri","Durgapur","Asansol","Howrah","Kharagpur","Darjeeling","Haldia","Jamshedpur","Deoghar","Hazaribagh","Pondicherry","Puducherry","Port Blair","Kavaratti","Daman","Diu","Silvassa","Dwarka","Mehsana","Bhavnagar","Jamnagar","Junagadh","Anand","Nadiad","Bharuch","Navsari","Valsad","Rewa","Satna","Dewas","Katni","Singrauli","Firozabad","Saharanpur","Muzaffarnagar","Rampur","Mathura","Ayodhya","Etawah","Farrukhabad","Sitapur","Hapur","Sonipat","Panipat","Karnal","Ambala","Hisar","Rohtak","Yamunanagar","Rewari","Sirsa","Bhatinda","Hoshiarpur","Moga","Pathankot","Abohar","Nangloi","Dwarka (Delhi)","Rohini","Pitampura"];
+const IN_AREAS = {
+  "Hyderabad": ["Gachibowli","Madhapur","Hitech City","Kondapur","Kukatpally","Miyapur","Banjara Hills","Jubilee Hills","Begumpet","Ameerpet","SR Nagar","Somajiguda","Nampally","Abids","Koti","Dilsukhnagar","LB Nagar","Uppal","Nacharam","Habsiguda","Tarnaka","Malkajgiri","AS Rao Nagar","ECIL","Kcompally","Alwal","Bowenpally","Manikonda","Narsingi","Nanakramguda","Financial District","Kokapet","Tellapur","Nallagandla","Chandanagar","Lingampally","Nizampet","Bachupally","Pragathi Nagar","Attapur","Rajendranagar","Mehdipatnam","Tolichowki","Masab Tank","Lakdikapul","Khairatabad","Panjagutta","Himayatnagar","Narayanguda","Malakpet","Charminar","Falaknuma","Santoshnagar","Vanasthalipuram","Hayathnagar","Ghatkesar","Medchal","Shamirpet","Shamshabad","Adibatla","Kphb","Moosapet","Erragadda","Sanathnagar","Yousufguda","Film Nagar","Shaikpet","Puppalaguda","Gopanpally","Kollur","Patancheru","Serilingampally"],
+  "Secunderabad": ["Paradise","Trimulgherry","Marredpally","Karkhana","Sainikpuri","AOC Centre","Bolarum","Lallaguda","Mettuguda","Sikh Village","Bowenpally"],
+  "Bengaluru": ["Koramangala","Indiranagar","HSR Layout","Whitefield","Marathahalli","BTM Layout","Jayanagar","JP Nagar","Electronic City","Bellandur","Sarjapur Road","Hebbal","Yelahanka","Malleshwaram","Rajajinagar","Basavanagudi","Banashankari","Bannerghatta Road","MG Road","Ulsoor","Kalyan Nagar","Banaswadi","KR Puram","Hennur","Bommanahalli","Rajarajeshwari Nagar","Vijayanagar","Yeshwanthpur","Domlur"],
+  "Mumbai": ["Andheri","Bandra","Juhu","Borivali","Dadar","Powai","Goregaon","Malad","Kandivali","Vile Parle","Santacruz","Chembur","Ghatkopar","Mulund","Colaba","Fort","Worli","Lower Parel","Byculla","Kurla","Sion","Wadala","Versova","Jogeshwari"],
+  "Navi Mumbai": ["Vashi","Nerul","Belapur","Kharghar","Airoli","Ghansoli","Kopar Khairane","Panvel","Seawoods","Sanpada","Turbhe"],
+  "Thane": ["Ghodbunder Road","Naupada","Wagle Estate","Kolshet","Majiwada","Manpada","Kalwa","Mumbra"],
+  "Delhi": ["Connaught Place","Karol Bagh","Rajouri Garden","Dwarka","Rohini","Pitampura","Janakpuri","Saket","Hauz Khas","Vasant Kunj","Lajpat Nagar","Greater Kailash","Nehru Place","South Extension","Chanakyapuri","Mayur Vihar","Preet Vihar","Laxmi Nagar","Dilshad Garden","Model Town","Kamla Nagar","Paharganj","Okhla","Kalkaji","Malviya Nagar"],
+  "Noida": ["Sector 18","Sector 62","Sector 63","Sector 15","Sector 137","Sector 76","Sector 50","Sector 44","Sector 128","Noida Extension"],
+  "Gurugram": ["DLF Phase 1","DLF Phase 2","DLF Phase 3","Cyber City","Sohna Road","Golf Course Road","MG Road","Sushant Lok","Sector 29","Sector 56","Udyog Vihar","Palam Vihar"],
+  "Chennai": ["T Nagar","Adyar","Velachery","Anna Nagar","Tambaram","Porur","OMR","Guindy","Mylapore","Nungambakkam","Egmore","Kilpauk","Perambur","Chromepet","Sholinganallur","Besant Nagar","Vadapalani","Ashok Nagar","Pallikaranai","Thoraipakkam"],
+  "Kolkata": ["Salt Lake","New Town","Park Street","Ballygunge","Behala","Howrah","Garia","Dumdum","Jadavpur","Tollygunge","Rajarhat","Alipore","Gariahat","Sealdah","Barasat"],
+  "Pune": ["Hinjewadi","Kothrud","Baner","Aundh","Wakad","Viman Nagar","Hadapsar","Kharadi","Magarpatta","Koregaon Park","Camp","Deccan","Shivaji Nagar","Pimpri","Chinchwad","Wagholi","Katraj","Warje","Bavdhan","Balewadi"],
+  "Ahmedabad": ["Satellite","Bopal","Vastrapur","Navrangpura","Maninagar","Bodakdev","Prahlad Nagar","SG Highway","Chandkheda","Naranpura","Gota","Thaltej","Vejalpur","Nikol"],
+  "Jaipur": ["Malviya Nagar","Vaishali Nagar","Mansarovar","C Scheme","Raja Park","Jagatpura","Tonk Road","Vidhyadhar Nagar","Bani Park","Civil Lines","Sodala","Jhotwara"],
+  "Visakhapatnam": ["MVP Colony","Dwaraka Nagar","Gajuwaka","Madhurawada","Seethammadhara","Rushikonda","Maddilapalem","NAD","Beach Road","Pendurthi"],
+  "Vijayawada": ["Benz Circle","Governorpet","Patamata","Auto Nagar","Gunadala","Poranki","Labbipet","Bhavanipuram","Kanuru"],
+  "Guntur": ["Brodipet","Arundelpet","Lakshmipuram","Gorantla","Nallapadu","Pattabhipuram","Amaravathi Road","SVN Colony"],
+  "Kochi": ["Kakkanad","Edappally","Vyttila","Marine Drive","Palarivattom","Fort Kochi","Kaloor","Aluva","Tripunithura","Panampilly Nagar"],
+  "Lucknow": ["Gomti Nagar","Hazratganj","Aliganj","Indira Nagar","Aminabad","Alambagh","Mahanagar","Chinhat","Jankipuram"],
+  "Chandigarh": ["Sector 17","Sector 22","Sector 35","Sector 43","Sector 15","Manimajra","Sector 8","Sector 34"],
+  "Nagpur": ["Dharampeth","Sadar","Civil Lines","Manish Nagar","Pratap Nagar","Wardha Road","Sitabuldi","Ramdaspeth"],
+  "Indore": ["Vijay Nagar","Palasia","Rau","Sudama Nagar","Bhawarkua","AB Road","Scheme 78","Rajwada"],
+  "Bhopal": ["MP Nagar","Arera Colony","Kolar Road","Hoshangabad Road","New Market","Shahpura","Bairagarh"],
+  "Coimbatore": ["RS Puram","Gandhipuram","Peelamedu","Saibaba Colony","Race Course","Singanallur","Ganapathy"]
+};
+const _tcase = s => String(s || "").trim().replace(/\s+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+const _norm = s => String(s || "").trim().toLowerCase();
+function LocPick({ icon, placeholder, value, options, accent, onPick }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const boxRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const ql = q.trim().toLowerCase();
+  const list = (ql ? options.filter(o => o.toLowerCase().includes(ql)) : options).slice(0, 80);
+  const exact = options.some(o => o.toLowerCase() === ql);
+  const active = value && value !== "all";
+  return (
+    <div ref={boxRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
+      <button onClick={() => { setOpen(o => !o); setQ(""); }} style={{ width: "100%", textAlign: "left", padding: "11px 12px", borderRadius: 11, border: `1.5px solid ${active ? accent : "#E4DCEF"}`, background: active ? accent + "18" : "#fff", color: active ? W.ink : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {icon} {active ? value : placeholder} <span style={{ float: "right", opacity: .6 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 5px)", left: 0, right: 0, zIndex: 30, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, boxShadow: "0 10px 28px rgba(17,27,33,.18)", overflow: "hidden" }}>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Type to search…" style={{ width: "100%", boxSizing: "border-box", padding: "11px 13px", border: "none", borderBottom: `1px solid ${W.line}`, fontSize: 14, outline: "none" }} />
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+            <div onClick={() => { onPick("all"); setOpen(false); }} style={{ padding: "10px 13px", fontSize: 13.5, fontWeight: 700, color: W.teal, cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>{placeholder}</div>
+            {ql && !exact && <div onClick={() => { onPick(_tcase(q)); setOpen(false); }} style={{ padding: "10px 13px", fontSize: 13.5, cursor: "pointer", color: W.ink, background: "#FFF8E6" }}>Use “{_tcase(q)}”</div>}
+            {list.map(o => (
+              <div key={o} onClick={() => { onPick(o); setOpen(false); }} style={{ padding: "10px 13px", fontSize: 13.5, cursor: "pointer", color: W.ink, background: _norm(o) === _norm(value) ? accent + "18" : "#fff" }}>{o}</div>
+            ))}
+            {!list.length && !ql && <div style={{ padding: "12px 13px", fontSize: 13, color: W.soft }}>No options.</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false, isMod = false, onUpgrade }) {
   const [mtab, setMtab] = useState("discover");
   const [matchTab, setMatchTab] = useState("perfect");
@@ -4313,8 +4377,20 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     if (error) { setViewers("locked"); return; }
     setViewers(data || []);
   };
-  const cityOpts = [...new Set((rows || []).map(p => (p.city || "").trim()).filter(Boolean))].sort();
-  const areaOpts = [...new Set((rows || []).filter(p => cityFlt === "all" || (p.city || "").trim() === cityFlt).map(p => (p.area || "").trim()).filter(Boolean))].sort();
+  // City options: built-in India list + any cities members actually entered, deduped case-insensitively.
+  const cityOpts = (() => {
+    const seen = new Map();
+    [...IN_CITIES, ...(rows || []).map(p => _tcase(p.city)).filter(Boolean)].forEach(c => { const k = _norm(c); if (k && !seen.has(k)) seen.set(k, c); });
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  })();
+  // Area options: curated areas for the chosen city + areas members entered (in that city if one is picked), deduped.
+  const areaOpts = (() => {
+    const seen = new Map();
+    const curated = cityFlt === "all" ? [] : (IN_AREAS[cityOpts.find(c => _norm(c) === _norm(cityFlt))] || IN_AREAS[cityFlt] || []);
+    const fromMembers = (rows || []).filter(p => cityFlt === "all" || _norm(p.city) === _norm(cityFlt)).map(p => _tcase(p.area)).filter(Boolean);
+    [...curated, ...fromMembers].forEach(a => { const k = _norm(a); if (k && !seen.has(k)) seen.set(k, a); });
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  })();
   const locMatches = (rows || []).filter(p => {
     const pa = (p.area || "").trim(), pc = (p.city || "").trim();
     return (me.area && pa === me.area) || (me.city && pc === me.city);
@@ -4332,8 +4408,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const nq = nameQ.trim().toLowerCase();
   const filtered = (rows || []).filter(p =>
     (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
-    && (areaFlt === "all" || (p.area || "").trim() === areaFlt)
-    && (cityFlt === "all" || (p.city || "").trim() === cityFlt)
+    && (areaFlt === "all" || _norm(p.area) === _norm(areaFlt))
+    && (cityFlt === "all" || _norm(p.city) === _norm(cityFlt))
     && inAge(p.age)
     && (!nq || (p.name || "").toLowerCase().includes(nq)));
   const card = (p, waveLbl) => (
@@ -4575,14 +4651,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           </div>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#1E6FB8", marginBottom: 7 }}>📍 WHERE</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 13 }}>
-            <select value={cityFlt} onChange={e => { setCityFlt(e.target.value); setAreaFlt("all"); }} style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 11, border: `1.5px solid ${cityFlt !== "all" ? "#2563EB" : "#E4DCEF"}`, background: cityFlt !== "all" ? "#EAF1FE" : "#fff", color: W.ink, fontWeight: 700, fontSize: 13, outline: "none" }}>
-              <option value="all">🏙️ All cities</option>
-              {cityOpts.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <select value={areaFlt} onChange={e => setAreaFlt(e.target.value)} disabled={areaOpts.length === 0} style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 11, border: `1.5px solid ${areaFlt !== "all" ? "#008069" : "#E4DCEF"}`, background: areaFlt !== "all" ? "#E7F6EF" : "#fff", color: W.ink, fontWeight: 700, fontSize: 13, outline: "none", opacity: areaOpts.length === 0 ? .5 : 1 }}>
-              <option value="all">📍 All areas</option>
-              {areaOpts.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
+            <LocPick icon="🏙️" placeholder="All cities" value={cityFlt === "all" ? "" : cityFlt} options={cityOpts} accent="#2563EB" onPick={v => { setCityFlt(v); setAreaFlt("all"); }} />
+            <LocPick icon="📍" placeholder="All areas" value={areaFlt === "all" ? "" : areaFlt} options={areaOpts} accent="#008069" onPick={v => setAreaFlt(v)} />
           </div>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#B45309", marginBottom: 7 }}>🎂 AGE</div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
