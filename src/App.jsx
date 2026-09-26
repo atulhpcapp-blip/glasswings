@@ -1796,6 +1796,15 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showMini, setShowMini] = useState(false);
+  const heroRef = useRef(null);
+  const ticketRef = useRef(null);
+  useEffect(() => {
+    const el = heroRef.current; if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([en]) => setShowMini(!en.isIntersecting), { rootMargin: "-70px 0px 0px 0px" });
+    io.observe(el); return () => io.disconnect();
+  }, []);
+  const scrollToTickets = () => { const el = ticketRef.current; if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
   const link = `${window.location.origin}/e/${e.id}`;
   const shareSuggested = `🎉 ${e.title}${e.event_date ? `\n📅 ${e.event_date}` : ""}${[e.venue, e.city].filter(Boolean).length ? `\n📍 ${[e.venue, e.city].filter(Boolean).join(", ")}` : ""}\n\nGrab your tickets 👉`;
   const shareCaption = (e.share_text != null && e.share_text !== "") ? e.share_text : shareSuggested;
@@ -1805,6 +1814,16 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const realAddons = (addons || []).filter(a => (a.name || "").trim());
   const prices = visTypes.length ? visTypes.map(t => t.price || 0) : [e.ticket_price || 0];
   const minPrice = Math.min(...prices);
+  const countdown = (() => {
+    if (!calStart || isNaN(calStart.getTime())) return null;
+    const ms = calStart.getTime() - Date.now();
+    if (ms <= 0) return null;
+    const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    if (d >= 1) return `⏳ Starts in ${d}d ${h}h`;
+    if (h >= 1) return `⏳ Starts in ${h}h ${m}m`;
+    return `⏳ Starts in ${m}m`;
+  })();
+  const similar = (events || []).filter(x => x.id !== e.id && !gwIsPrivateEvent(x) && gwEventLive(x) && (x.category === e.category || x.city === e.city)).slice(0, 8);
   const MAX_TIX = 10;
   const [qtyMap, setQtyMap] = useState(() => initialCart || {});
   const [addonQtyMap, setAddonQtyMap] = useState(() => initialAddons || {});
@@ -1954,6 +1973,16 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         <img src="/logo-white.png" alt="Glasswings" style={{ height: 26, objectFit: "contain" }} />
         <button onClick={share} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(255,255,255,.4)", color: "#fff", borderRadius: 9, padding: "7px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}><Share2 size={14} />{copied ? "Copied ✓" : "Share"}</button>
       </div>
+      {showMini && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 31, background: "rgba(8,18,24,.97)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", gap: 10, padding: wide ? "10px 7%" : "9px 12px" }}>
+          <button onClick={onBack} aria-label="Back" style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", display: "flex", flexShrink: 0, padding: 0 }}><ArrowLeft size={20} /></button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: "#fff", fontWeight: 800, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.emoji} {e.title}</div>
+            <div style={{ color: "#9fe8d6", fontSize: 12, fontWeight: 700 }}>{minPrice === 0 ? "Free" : `From ₹${minPrice}`}{countdown ? ` · ${countdown.replace("⏳ ", "")}` : ""}</div>
+          </div>
+          <button onClick={hasTicket ? (onViewTicket || scrollToTickets) : scrollToTickets} style={{ ...btn(W.teal, "#fff"), padding: "9px 18px", fontSize: 14, flexShrink: 0 }}>{hasTicket ? "My tickets" : "Book"}</button>
+        </div>
+      )}
       {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>⏳ UNPUBLISHED — members and the public can't see this event yet. Approve it from Admin → Events.</div>}
       {e.landscape_video_url ? (
         <div style={{ background: "#0b1f1c" }}><video src={e.landscape_video_url} autoPlay loop playsInline controls ref={el => { if (el) { el.muted = false; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(() => {}); } }} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
@@ -1976,8 +2005,11 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               <span key={dim + ":" + v} style={{ background: W.bg, color: W.soft, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{v}</span>
             )))}
           </div>
-          <h1 style={{ fontSize: wide ? 34 : 24, fontWeight: 800, color: W.ink, margin: 0, lineHeight: 1.18 }}>{e.emoji} {e.title}</h1>
-          {e.entry_badge && <span style={{ display: "inline-block", marginTop: 9, background: "#FEF3C7", color: "#B45309", fontSize: 12.5, fontWeight: 800, padding: "4px 12px", borderRadius: 20 }}>🔞 {e.entry_badge}</span>}
+          <h1 ref={heroRef} style={{ fontSize: wide ? 34 : 24, fontWeight: 800, color: W.ink, margin: 0, lineHeight: 1.18 }}>{e.emoji} {e.title}</h1>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+            {countdown && <span style={{ display: "inline-block", background: "#FEF3C7", color: "#B45309", fontSize: 12.5, fontWeight: 800, padding: "4px 12px", borderRadius: 20 }}>{countdown}</span>}
+            {e.entry_badge && <span style={{ display: "inline-block", background: "#FEF3C7", color: "#B45309", fontSize: 12.5, fontWeight: 800, padding: "4px 12px", borderRadius: 20 }}>🔞 {e.entry_badge}</span>}
+          </div>
           <div style={{ background: W.bg, borderRadius: 14, padding: "14px 16px", marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
             {e.event_date && <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", fontSize: 14.5, color: W.ink, fontWeight: 600 }}><span style={{ display: "flex", gap: 10, alignItems: "center" }}><Calendar size={17} color={W.teal} />{e.event_date}</span>{gcalUrl && <a href={gcalUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none", background: "#E7F6EF", color: "#0d6e58", fontWeight: 800, fontSize: 12, borderRadius: 8, padding: "6px 10px", flexShrink: 0 }}>📅 Add to Calendar</a>}</div>}
             {e.location_type === "online" && (
@@ -2008,7 +2040,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               <span style={{ background: "#fff", color: W.teal, fontWeight: 800, fontSize: 12.5, padding: "8px 12px", borderRadius: 9, whiteSpace: "nowrap", flexShrink: 0 }}>View plans</span>
             </div>
           )}
-          {!wide && <Sec title={hasTicket ? "Buy more tickets" : "Tickets"}><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec>}
+          {!wide && <div ref={ticketRef}><Sec title={hasTicket ? "Buy more tickets" : "Tickets"}><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec></div>}
           {onOpenDM && hasTicket && <EventJoinNudge eventId={e.id} eventTitle={e.title} />}
           {onOpenDM && <SelfCheckin eventId={e.id} hasTicket={hasTicket} />}
           {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
