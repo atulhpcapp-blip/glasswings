@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · banner-v69 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · banner-v70 build</div>
       </div>
     </div>
   );
@@ -3758,6 +3758,8 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const [q, setQ] = useState("");
   const [dateQuick, setDateQuick] = useState("all");
   const [savedOnly, setSavedOnly] = useState(false);
+  const [wide, setWide] = useState(typeof window !== "undefined" && window.innerWidth >= 900);
+  useEffect(() => { const f = () => setWide(window.innerWidth >= 900); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
   const ql = q.trim().toLowerCase();
   const matchQ = (e) => !ql || [e.title, e.venue, e.city, e.category, ...(Array.isArray(e.artists) ? e.artists.map(a => a && a.name) : [])].filter(Boolean).some(s => String(s).toLowerCase().includes(ql));
   const inQuick = (e) => {
@@ -3835,7 +3837,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
           <button key={k} onClick={() => setHostFlt(k)} style={filterPill(hostFlt === k && k !== "all")}>{lbl}</button>
         ))}
       </div>
-      {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
+      {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={wide} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
         {list.length === 0 && <div style={{ gridColumn: "1/-1", background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 10 }}><Center>{savedOnly ? "No saved events yet — tap the 🤍 on any event to save it." : privateMode ? "No private invitations are available for your segments right now." : (q.trim() || dateQuick !== "all" || fltCount(flt) > 0) ? "No events match your search/filters." : "No events here yet."}</Center></div>}
         {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} saved={savedIds.has(e.id)} onToggleSave={onToggleSave} rating={ratingSummary[e.id]} />)}
