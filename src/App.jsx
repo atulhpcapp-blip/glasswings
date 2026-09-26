@@ -2185,6 +2185,24 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             </Sec>
           )}
+          {similar.length > 0 && (
+            <Sec title="You may also like">
+              <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6 }}>
+                {similar.map(x => {
+                  const img = (x.banner_type !== "video" && x.banner_url) || x.poster_url;
+                  return (
+                    <div key={x.id} onClick={() => onPick && onPick(x)} style={{ flex: "0 0 auto", width: 150, cursor: "pointer" }}>
+                      <div style={{ width: 150, height: 190, borderRadius: 12, overflow: "hidden", background: W.bg }}>
+                        {img ? <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>{x.emoji || "🎟️"}</div>}
+                      </div>
+                      <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, marginTop: 6, lineHeight: 1.2, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{x.title}</div>
+                      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 2 }}>{[x.event_date, x.city].filter(Boolean).join(" · ")}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Sec>
+          )}
           <Sec title="Hosted by">
             <div style={{ display: "flex", alignItems: "center", gap: 13, border: `1px solid ${W.line}`, borderRadius: 14, padding: 14 }}>
               {e.host_type === "partner" && e.host_logo
@@ -2436,7 +2454,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v57 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v58 build</div>
       </div>
     </div>
   );
