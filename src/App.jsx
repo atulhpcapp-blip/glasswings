@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v80 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v82 build</div>
       </div>
     </div>
   );
@@ -2613,6 +2613,7 @@ function ProfileGate({ user, profile, reload }) {
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");  const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [lookingFor, setLookingFor] = useState("");
   const [icebreaker, setIcebreaker] = useState("");
+  const [prompts, setPrompts] = useState(["", "", ""]);
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const [waGroup, setWaGroup] = useState("");
   useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
@@ -2621,7 +2622,7 @@ function ProfileGate({ user, profile, reload }) {
   const areaOptsP = curatedAreas(city).slice().sort((a, b) => a.localeCompare(b));
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
-      .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); setLookingFor(data?.looking_for || ""); setIcebreaker(data?.icebreaker || ""); });
+      .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); setLookingFor(data?.looking_for || ""); setIcebreaker(data?.icebreaker || ""); const pr = Array.isArray(data?.prompts) ? data.prompts : []; setPrompts(PROMPT_QS.map(q => { const f = pr.find(x => x && x.q === q); return f ? (f.a || "") : ""; })); });
     supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { if (data?.phone) setPhone(data.phone); });
   }, [user.id]);
@@ -2642,7 +2643,7 @@ function ProfileGate({ user, profile, reload }) {
     if (miss) return setErr(`${miss[0]} is required${buyLite ? "" : " to become a member"}.`);
     if (!buyLite && !avatar) return setErr("Please add a profile photo.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: canonCity(city), looking_for: lookingFor || null, icebreaker: icebreaker.trim() || null });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: canonCity(city), looking_for: lookingFor || null, icebreaker: icebreaker.trim() || null, prompts: PROMPT_QS.map((q, i) => ({ q, a: (prompts[i] || "").trim() })).filter(x => x.a) });
     await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
@@ -2693,6 +2694,18 @@ function ProfileGate({ user, profile, reload }) {
             <div style={{ fontSize: 12.5, color: "#7A7390", margin: "2px 0 3px", fontWeight: 700 }}>💬 Ask me about…</div>
             <div style={{ fontSize: 11.5, color: "#9A93A8", marginBottom: 7, lineHeight: 1.4 }}>A fun line on your profile so people know how to break the ice.</div>
             <input value={icebreaker} onChange={e => setIcebreaker(e.target.value.slice(0, 80))} placeholder="e.g. my street-food hunts, techno playlists, weekend treks" style={{ width: "100%", padding: "13px 15px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink, boxSizing: "border-box" }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 12.5, color: "#7A7390", margin: "2px 0 3px", fontWeight: 700 }}>✨ A little about you (optional)</div>
+            <div style={{ fontSize: 11.5, color: "#9A93A8", marginBottom: 8, lineHeight: 1.4 }}>Answer a couple of prompts — they show on your profile and give people something to talk about.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {PROMPT_QS.map((q, i) => (
+                <div key={q} style={{ background: W.bg, borderRadius: 10, padding: "9px 11px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: W.soft, marginBottom: 5 }}>{q}</div>
+                  <input value={prompts[i]} onChange={e => setPrompts(ps => ps.map((v, j) => j === i ? e.target.value.slice(0, 120) : v))} placeholder="Your answer…" style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${W.line}`, fontSize: 14.5, outline: "none", color: W.ink, boxSizing: "border-box", background: "#fff" }} />
+                </div>
+              ))}
+            </div>
           </div>
           {inp("Profession", prof, setProf, "text", !buyLite)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
@@ -4213,6 +4226,7 @@ const MOODS = [
   ["networking", "🥂 Networking", "#1E40AF", "#DBEAFE"],
 ];
 const moodOf = (key) => MOODS.find(m => m[0] === key);
+const PROMPT_QS = ["My ideal Sunday…", "Best event or concert I've been to…", "You'll get along with me if…"];
 // Fold the many "Hyderabad" variants (Secunderabad, Hyd, Cyberabad, and Hyderabad
 // localities people type as their city) into a single canonical "Hyderabad".
 const _HYD_AREAS = new Set([...(IN_AREAS["Hyderabad"] || []), ...(IN_AREAS["Secunderabad"] || [])].map(_norm));
@@ -4346,6 +4360,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [ageFlt, setAgeFlt] = useState("all");
   const [moodFlt, setMoodFlt] = useState("all");
   const [sortMeet, setSortMeet] = useState("match");
+  const [eventsOnly, setEventsOnly] = useState(false);
   const [profDismiss, setProfDismiss] = useState(false);
   const [nameQ, setNameQ] = useState("");
   const [viewsN, setViewsN] = useState(0);
@@ -4377,6 +4392,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [verSet, setVerSet] = useState(new Set());
   const [moodMap, setMoodMap] = useState({});
   const [iceMap, setIceMap] = useState({});
+  const [sharedEv, setSharedEv] = useState({});
+  const [peekPrompts, setPeekPrompts] = useState(null);
   const [matchCel, setMatchCel] = useState(null);
   const isVip = (id) => vipSet.has(id);
   const isVerified = (id) => verSet.has(id);
@@ -4407,6 +4424,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("vip_ids").then(({ data, error }) => setVipSet(new Set(error ? [] : (data || []))));
     supabase.rpc("verified_ids").then(({ data, error }) => setVerSet(new Set(error ? [] : (data || []))));
     supabase.rpc("meet_looking_for").then(({ data, error }) => { if (!error) { const m = {}, ic = {}; (data || []).forEach(r => { if (r.looking_for) m[r.user_id] = r.looking_for; if (r.icebreaker) ic[r.user_id] = r.icebreaker; }); setMoodMap(m); setIceMap(ic); } });
+    supabase.rpc("meet_shared_events").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { (m[r.other_id] = m[r.other_id] || []).push({ id: r.event_id, title: r.title }); }); setSharedEv(m); } });
   };
   useEffect(load, []);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
@@ -4445,7 +4463,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     setInbox(ib => (ib || []).filter(x => x.id !== p.id));
     setPeek(pk => (pk && pk.id === p.id) ? null : pk);
   };
-  const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
+  const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); setPeekPrompts(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); supabase.rpc("meet_prompts", { p_user: p.id }).then(({ data }) => setPeekPrompts(Array.isArray(data) ? data : [])); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
   const flagProfile = (p, kind) => {
     window.gwConfirm(`🚩 Flag ${p.name?.split(" ")[0] || "this member"}'s ${kind} as not acceptable?\n\nTheir profile will be hidden from other members until they fix their ${kind}. They'll see a notice to update it.`, async () => {
       const { error } = await supabase.rpc("admin_flag_profile", { p_user: p.id, p_kind: kind, p_note: null });
@@ -4515,6 +4533,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     && (areaFlt === "all" || _norm(p.area) === _norm(areaFlt))
     && (cityFlt === "all" || canonCity(p.city) === canonCity(cityFlt))
     && (moodFlt === "all" || moodMap[p.id] === moodFlt)
+    && (!eventsOnly || (sharedEv[p.id] && sharedEv[p.id].length))
     && inAge(p.age)
     && (!nq || (p.name || "").toLowerCase().includes(nq)));
   const sortedFiltered = [...filtered].sort((a, b) => {
@@ -4546,6 +4565,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         {mood && <div style={{ display: "inline-block", marginTop: 5, background: mood[3], color: mood[2], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{mood[1]}</div>}
         <div style={{ fontSize: 11, color: W.soft, marginTop: 4, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
         {iceMap[p.id] && <div style={{ fontSize: 10.5, color: "#7C3AED", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 600 }}>💬 {iceMap[p.id]}</div>}
+        {sharedEv[p.id] && sharedEv[p.id].length > 0 && <div style={{ marginTop: 4, display: "inline-block", background: "#EAF1FE", color: "#1E40AF", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 20, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>🎫 Also going: {sharedEv[p.id][0].title}{sharedEv[p.id].length > 1 ? ` +${sharedEv[p.id].length - 1}` : ""}</div>}
         {p.waved_by_me && p.waved_me ? (
           <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff" }}>💬 Message</button>
         ) : p.waved_by_me ? (
@@ -4578,6 +4598,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     return [...mixed, ...other].slice(0, 10);
   })();
   const onlineNow = (rows || []).filter(p => p.avatar_url && isOnline(p.last_seen)).sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen)).slice(0, 14);
+  const newThisWeek = (rows || []).filter(p => isNewbie(p.joined)).length;
   const hasPlan = typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0;
   const unlocked = hasPlan || isAdmin || isSuper; // admins/superadmins are never paywalled
   const perfectList = mCandidates;
@@ -4795,6 +4816,16 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         )}
         {viewers === "locked" && <div style={{ margin: "10px 14px 0", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "13px 14px", fontSize: 13, color: W.ink }}>🔒 Seeing <b>who</b> viewed you is a <b>💎 Premium perk</b> — subscribe from your Profile → Plans and this unlocks instantly.</div>}
         {Array.isArray(viewers) && <div style={{ margin: "10px 14px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>{viewers.map(v => card({ ...v, joined: null, last_seen: v.viewed_at }, "👋 Wave"))}{viewers.length === 0 && <div style={{ gridColumn: "1/-1", color: W.soft, fontSize: 13, textAlign: "center", padding: 10 }}>No views yet — go wave at some people! 👋</div>}</div>}
+        {newThisWeek > 0 && flt !== "new" && (
+          <div onClick={() => setFlt("new")} style={{ margin: "14px 14px 0", background: "linear-gradient(120deg,#7C3AED,#06B6D4)", color: "#fff", borderRadius: 14, padding: "12px 15px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", boxShadow: "0 5px 16px rgba(124,58,237,.22)" }}>
+            <span style={{ fontSize: 24 }}>🎉</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 900, fontSize: 14.5 }}>{newThisWeek} new {newThisWeek === 1 ? "member" : "members"} this week!</div>
+              <div style={{ fontSize: 12, opacity: .93, marginTop: 2 }}>Fresh faces just joined — be the first to say hi 👋</div>
+            </div>
+            <span style={{ background: "#fff", color: "#6D28D9", fontWeight: 900, fontSize: 12.5, padding: "8px 13px", borderRadius: 10, flexShrink: 0, whiteSpace: "nowrap" }}>Meet them →</span>
+          </div>
+        )}
         {onlineNow.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 14px 9px" }}>
@@ -4877,7 +4908,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <span style={{ fontSize: 19 }}>🔎</span>
             <div style={{ fontWeight: 900, fontSize: 16, flex: 1, background: "linear-gradient(95deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Find your people</div>
-            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all" || moodFlt !== "all" || nameQ.trim()) && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); setMoodFlt("all"); setNameQ(""); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
+            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all" || moodFlt !== "all" || eventsOnly || nameQ.trim()) && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); setMoodFlt("all"); setEventsOnly(false); setNameQ(""); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
           </div>
           <div style={{ position: "relative", marginBottom: 13 }}>
             <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 15 }}>🔍</span>
@@ -4895,6 +4926,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             <LocPick icon="🏙️" placeholder="All cities" value={cityFlt === "all" ? "" : cityFlt} options={cityOpts} accent="#2563EB" canon={canonCity} onPick={v => { setCityFlt(v); setAreaFlt("all"); }} />
             <LocPick icon="📍" placeholder="All areas" value={areaFlt === "all" ? "" : areaFlt} options={areaOpts} accent="#008069" onPick={v => setAreaFlt(v)} />
           </div>
+          <button onClick={() => setEventsOnly(v => !v)} style={{ marginBottom: 13, padding: "9px 15px", borderRadius: 999, border: eventsOnly ? "none" : "1.5px solid #C7D2FE", background: eventsOnly ? "linear-gradient(95deg,#2563EB,#06B6D4)" : "#fff", color: eventsOnly ? "#fff" : "#1E40AF", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: eventsOnly ? "0 3px 10px rgba(37,99,235,.25)" : "none" }}>🎫 Going to my events</button>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#B45309", marginBottom: 7 }}>🎂 AGE</div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
             {[["all", "Any"], ["18-24", "18–24"], ["25-34", "25–34"], ["35-44", "35–44"], ["45+", "45+"]].map(([k, l]) => (
@@ -4959,10 +4991,28 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                   </div>
                 );
               })()}
+              {sharedEv[peek.id] && sharedEv[peek.id].length > 0 && (
+                <div style={{ marginTop: 11, background: "linear-gradient(120deg,#EAF1FE,#E0F7FA)", border: "1px solid #C7D2FE", borderRadius: 13, padding: "11px 13px" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#1E40AF" }}>🎫 YOU'RE BOTH GOING TO</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                    {sharedEv[peek.id].map(ev => <span key={ev.id} style={{ background: "#fff", color: "#1E40AF", fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 20, border: "1px solid #C7D2FE" }}>{ev.title}</span>)}
+                  </div>
+                </div>
+              )}
               {iceMap[peek.id] && (
                 <div style={{ marginTop: 11, background: "linear-gradient(120deg,#FFF7FB,#F3F0FF)", border: "1px solid #EBD9F0", borderRadius: 13, padding: "11px 13px" }}>
                   <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#7C3AED" }}>💬 ASK ME ABOUT</div>
                   <div style={{ fontSize: 14.5, color: W.ink, marginTop: 4, lineHeight: 1.45, fontWeight: 600 }}>{iceMap[peek.id]}</div>
+                </div>
+              )}
+              {Array.isArray(peekPrompts) && peekPrompts.filter(x => x && x.a && String(x.a).trim()).length > 0 && (
+                <div style={{ marginTop: 11, display: "flex", flexDirection: "column", gap: 9 }}>
+                  {peekPrompts.filter(x => x && x.a && String(x.a).trim()).map((x, i) => (
+                    <div key={i} style={{ background: W.bg, borderRadius: 13, padding: "11px 13px" }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft }}>{x.q}</div>
+                      <div style={{ fontSize: 14.5, color: W.ink, marginTop: 3, lineHeight: 1.45, fontWeight: 600 }}>{x.a}</div>
+                    </div>
+                  ))}
                 </div>
               )}
               {peekInfo?.photos?.length > 0 && (
