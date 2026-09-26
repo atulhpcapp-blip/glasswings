@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v82 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v83 build</div>
       </div>
     </div>
   );
@@ -4584,8 +4584,9 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const mCandidates = (rows || []).filter(p => !p.waved_by_me && !p.waved_me && p.avatar_url && oppOnly(p));
   const matchOfDay = mCandidates.length ? mCandidates[new Date().getDate() % mCandidates.length] : null;
   const mixer = (() => {
-    // Anyone with a photo you can still wave at (fresh or they waved you).
-    const pool = (rows || []).filter(p => p.avatar_url && !p.waved_by_me);
+    // Anyone with a photo, excluding only people you've already matched with.
+    // (Includes people you've waved so the minority gender still shows in the mix.)
+    const pool = (rows || []).filter(p => p.avatar_url && !(p.waved_by_me && p.waved_me));
     const rank = (a, b) => (b.waved_me ? 1 : 0) - (a.waved_me ? 1 : 0) || (b.spotlighted ? 1 : 0) - (a.spotlighted ? 1 : 0) || (isOnline(b.last_seen) ? 1 : 0) - (isOnline(a.last_seen) ? 1 : 0);
     const day = new Date().getDate();
     const rot = (arr) => arr.length ? [...arr.slice(day % arr.length), ...arr.slice(0, day % arr.length)] : arr;
@@ -4873,7 +4874,9 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                       </div>
                       <div style={{ padding: "8px 9px" }}>
                         {mood && <div style={{ display: "inline-block", marginBottom: 6, background: mood[3], color: mood[2], fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 20 }}>{mood[1]}</div>}
-                        <button onClick={() => doWave(p)} disabled={waveBusy === p.id} style={{ width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12, background: p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff", opacity: waveBusy === p.id ? .6 : 1 }}>{waveBusy === p.id ? "…" : p.waved_me ? "✓ Wave back" : "🤝 Be My Friend"}</button>
+                        {p.waved_by_me && !p.waved_me
+                          ? <div style={{ width: "100%", padding: "8px 0", borderRadius: 10, textAlign: "center", fontWeight: 800, fontSize: 12, background: "#E7F6EF", color: "#0d6e58" }}>✓ Sent</div>
+                          : <button onClick={() => doWave(p)} disabled={waveBusy === p.id} style={{ width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12, background: p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff", opacity: waveBusy === p.id ? .6 : 1 }}>{waveBusy === p.id ? "…" : p.waved_me ? "✓ Wave back" : "🤝 Be My Friend"}</button>}
                       </div>
                     </div>
                   </div>
