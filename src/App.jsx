@@ -2417,7 +2417,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · whatsapp-v53 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · whatsapp-v54 build</div>
       </div>
     </div>
   );
@@ -2492,6 +2492,8 @@ function ProfileGate({ user, profile, reload }) {
   const [name, setName] = useState(profile.full_name || "");
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");  const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
+  const [waGroup, setWaGroup] = useState("");
+  useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
   const fileRef = useRef(null);
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
@@ -2537,7 +2539,8 @@ function ProfileGate({ user, profile, reload }) {
         <span style={{ fontSize: 21, fontWeight: 700 }}>Complete your profile</span>
       </div>
       <div style={{ padding: 18 }}>
-        <div style={{ color: W.soft, fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>{buyLite ? "🎟️ Almost there — just your name and phone number and your tickets are a tap away. You can complete the rest of your profile anytime from the Profile tab." : "Welcome to Glasswings! Add your photo and details to join rooms and events. Your phone number stays private — only the organiser can see it."}</div>
+        <div style={{ color: W.soft, fontSize: 14, marginBottom: 16, lineHeight: 1.5 }}>{buyLite ? "🎟️ Almost there — just your name and phone number and your tickets are a tap away. You can complete the rest of your profile anytime from the Profile tab." : "Welcome to Glasswings! Add your photo and details to discover events and meet people. Your phone number stays private — only the organiser can see it."}</div>
+        {waGroup && <div style={{ marginBottom: 16 }}><WaCommunityBanner url={waGroup} /></div>}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 18 }}>
           <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", borderRadius: "50%", border: `3px solid ${!buyLite && tried && !avatar ? "#C0392B" : "transparent"}` }}>
             <PersonAvatar url={avatar} name={name} size={96} />
@@ -3450,7 +3453,7 @@ function Main({ user }) {
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
+      {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -3460,7 +3463,7 @@ function Main({ user }) {
           loadPlans();
         });
       }} />}
-      {tab === "profile" && <Profile user={user} profile={profile} isVIP={isVIP} reload={load} streak={streakInfo} events={events} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
+      {tab === "profile" && <Profile user={user} profile={profile} isVIP={isVIP} waGroup={waGroup} reload={load} streak={streakInfo} events={events} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
     </>
   );
 
@@ -3478,7 +3481,7 @@ function Main({ user }) {
           </div>
         )}
         {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onConfirmCredits={confirmPurchaseWithCredits} meId={user.id} onClose={() => setBuyTarget(null)} />}
-        {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} types={ticketTypes[ticketView.id] || []} onClose={() => setTicketView(null)} />}
+        {ticketView && <MyTicket event={ticketView} profile={profile} waGroup={waGroup} rows={myTickets[ticketView.id] || []} types={ticketTypes[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
         {eventPage && (() => {
           const ev = events.find(x => x.id === eventPage);
@@ -3544,7 +3547,7 @@ function Main({ user }) {
           </div>
         )}
       {buyTarget && <TicketSheet target={buyTarget} profile={profile} subs={subs} addons={addons[buyTarget.event.id] || []} onConfirm={confirmPurchase} onConfirmCredits={confirmPurchaseWithCredits} meId={user.id} onClose={() => setBuyTarget(null)} />}
-      {ticketView && <MyTicket event={ticketView} profile={profile} rows={myTickets[ticketView.id] || []} types={ticketTypes[ticketView.id] || []} onClose={() => setTicketView(null)} />}
+      {ticketView && <MyTicket event={ticketView} profile={profile} waGroup={waGroup} rows={myTickets[ticketView.id] || []} types={ticketTypes[ticketView.id] || []} onClose={() => setTicketView(null)} />}
         {payBusy && <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(8,18,24,.55)", display: "flex", alignItems: "center", justifyContent: "center" }}><style>{`@keyframes gwspin{to{transform:rotate(360deg)}}`}</style><div style={{ background: "#fff", borderRadius: 14, padding: "22px 26px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,.3)" }}><div style={{ width: 30, height: 30, border: `3px solid ${W.line}`, borderTopColor: W.teal, borderRadius: "50%", animation: "gwspin .8s linear infinite" }} /><div style={{ fontSize: 14, fontWeight: 600, color: W.ink }}>Starting secure payment…</div></div></div>}
         {eventPage && (() => {
           const ev = events.find(x => x.id === eventPage);
@@ -11150,7 +11153,8 @@ function TicketTypeDetails({ ticket, compact = false }) {
     </div>
   );
 }
-function MyTicket({ event: e, profile, rows, types = [], onClose }) {
+function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }) {
+  const waJoin = (e.whatsapp_url || waGroup || "").trim();
   const [busy, setBusy] = useState(false);
   const [showT, setShowT] = useState(false);
   const name = profile?.full_name || profile?.name || "Member";
@@ -11309,6 +11313,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose }) {
           } catch (e2) { alert("Could not send the email."); }
         }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>📧 Email me</button>
       </div>
+      {waJoin && <a href={waJoin} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), width: "100%", justifyContent: "center", marginTop: 10, textDecoration: "none", boxShadow: "0 6px 16px rgba(37,211,102,.28)" }}>💬 Join the WhatsApp group</a>}
       <button onClick={onClose} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 10 }}>Close</button>
     </Sheet>
   );
@@ -15658,7 +15663,7 @@ function OrganiserApplicationCard({ user, profile, onApproved, variant = "profil
   );
 }
 
-function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, events, isVIP = false }) {
+function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, events, isVIP = false, waGroup = "" }) {
   const _roles = profile?.roles || [];
   const roleLabel = _roles.includes("superadmin") ? "Founder ⭐"
     : _roles.includes("admin") ? "Admin"
@@ -15687,6 +15692,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
     <div>
       <TopBar title="Profile" right={<button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer", flexShrink: 0 }}><LogOut size={17} />Log out</button>} />
       <div style={{ padding: 16 }}>
+        <div style={{ margin: "0 0 14px" }}><WaCommunityBanner url={waGroup} /></div>
         <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 20, display: "flex", alignItems: "center", gap: 16 }}>
           <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", flexShrink: 0 }}>
             <PersonAvatar url={profile?.avatar_url} name={profile?.full_name} size={64} />
