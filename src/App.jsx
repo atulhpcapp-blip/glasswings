@@ -2535,7 +2535,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v62 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · wheel-v63 build</div>
       </div>
     </div>
   );
@@ -6606,8 +6606,11 @@ function GameZone({ user, profile, onOrganiserApproved, meId, events, isStaff, o
   const [playSpark, setPlaySpark] = useState(false);
   const [playClash, setPlayClash] = useState(false);
   const [playBdate, setPlayBdate] = useState(false);
+  const [playWheel, setPlayWheel] = useState(false);
+  const [wheelCan, setWheelCan] = useState(false);
   const [sparkCode, setSparkCode] = useState(null);
   const [riddleDone, setRiddleDone] = useState(null);
+  useEffect(() => { supabase.rpc("wheel_status").then(({ data }) => setWheelCan(!!(data && data.can_spin))); }, [meId, playWheel]);
   useEffect(() => {
     if (initialGame === "antakshari") setPlayAnt(true);
     else if (initialGame === "trivia") setPlayTrivia(true);
@@ -6660,6 +6663,17 @@ function GameZone({ user, profile, onOrganiserApproved, meId, events, isStaff, o
         <OrganiserApplicationCard user={user} profile={profile} onApproved={onOrganiserApproved} variant="banner" />
       </div>
       <div style={{ padding: 14 }}>
+        <div onClick={() => setPlayWheel(true)} style={{ position: "relative", overflow: "hidden", cursor: "pointer", borderRadius: 20, padding: "18px 16px", marginBottom: 16, background: "linear-gradient(120deg,#7A5AF8 0%,#D6336C 55%,#F4A100 100%)", boxShadow: "0 6px 20px rgba(122,90,248,.28)" }}>
+          <div style={{ position: "absolute", right: -18, top: -18, fontSize: 118, opacity: .18, transform: "rotate(12deg)" }}>🎡</div>
+          <div style={{ position: "relative" }}>
+            <div style={{ display: "inline-block", fontSize: 10, fontWeight: 800, letterSpacing: 1, color: "#fff", background: "rgba(255,255,255,.22)", padding: "3px 10px", borderRadius: 20 }}>DAILY · FREE SPIN</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "#fff", marginTop: 8 }}>🎡 Wheel of Luck</div>
+            <div style={{ fontSize: 12.8, color: "rgba(255,255,255,.92)", marginTop: 3, lineHeight: 1.45 }}>Spin once a day — win credits, ticket discounts & free perks 🎁</div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 12, background: "#fff", color: "#B0227A", fontWeight: 800, fontSize: 13.5, padding: "9px 16px", borderRadius: 11 }}>
+              {wheelCan ? "🎯 Spin now — it's free!" : "✅ Spun today · come back tomorrow"}
+            </div>
+          </div>
+        </div>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", margin: "2px 2px 11px" }}>
           <div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>Free games</div>
           <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 600 }}>Play as much as you like</div>
@@ -6723,6 +6737,7 @@ function GameZone({ user, profile, onOrganiserApproved, meId, events, isStaff, o
       {playHousie && <HousieHub meId={meId} isStaff={isStaff} events={events} onClose={() => setPlayHousie(false)} />}
       {playClash && <ClashGame meId={meId} isStaff={isStaff} onClose={() => setPlayClash(false)} />}
       {playBdate && <BlindDateNight meId={meId} isStaff={isStaff} onClose={() => setPlayBdate(false)} />}
+      {playWheel && <WheelHub meId={meId} isStaff={isStaff} onClose={() => setPlayWheel(false)} />}
       {playSpark && <SparkHub meId={meId} isStaff={isStaff} autoCode={sparkCode} onClose={() => { setPlaySpark(false); setSparkCode(null); }} />}
       {awardOpen && <AwardSheet meId={meId} onClose={() => setAwardOpen(false)} onDone={() => { setAwardOpen(false); loadAwards(); }} />}
     </div>
@@ -6774,6 +6789,237 @@ function AwardSheet({ meId, onClose, onDone }) {
         <button onClick={give} disabled={busy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", opacity: busy ? .6 : 1 }}>{busy ? "Sending…" : "Send gift 🎉"}</button>
         <div style={{ fontSize: 11, color: W.soft, textAlign: "center", marginTop: 8 }}>They get a celebration message in their Glasswings chat, and join the Winners' wall.</div>
       </div>
+    </div>
+  );
+}
+// ---------- 🎡 Wheel of Luck ----------
+function wheelPolar(cx, cy, r, deg) { const a = (deg - 90) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }
+function wheelSlicePath(cx, cy, r, a0, a1) {
+  const [x0, y0] = wheelPolar(cx, cy, r, a0), [x1, y1] = wheelPolar(cx, cy, r, a1);
+  const large = (a1 - a0) > 180 ? 1 : 0;
+  return `M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
+}
+function wheelShort(p) {
+  if (p.kind === "credits") return String(p.value);
+  if (p.kind === "discount") return p.value + "%";
+  if (p.kind === "coupon") return "FREE";
+  return "—";
+}
+function WheelHub({ meId, isStaff, onClose }) {
+  const [prizes, setPrizes] = useState(null);
+  const [canSpin, setCanSpin] = useState(true);
+  const [rot, setRot] = useState(0);
+  const [spinning, setSpinning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [rewards, setRewards] = useState([]);
+  const [tab, setTab] = useState("spin");
+  const [err, setErr] = useState("");
+  const loadRewards = () => supabase.rpc("wheel_my_rewards").then(({ data }) => setRewards(data || []));
+  useEffect(() => {
+    supabase.rpc("wheel_config").then(({ data }) => setPrizes(data || []));
+    supabase.rpc("wheel_status").then(({ data }) => setCanSpin(!!(data && data.can_spin)));
+    loadRewards();
+  }, []);
+  const N = (prizes || []).length;
+  const seg = N ? 360 / N : 0;
+  const cx = 130, cy = 130, r = 126;
+  const spin = async () => {
+    if (!canSpin || spinning || !N) return;
+    setErr(""); setResult(null); setSpinning(true);
+    const { data, error } = await supabase.rpc("spin_wheel");
+    if (error) {
+      setSpinning(false);
+      if (/already spun/i.test(error.message || "")) { setCanSpin(false); setErr("You've already spun today — come back tomorrow! 🎡"); }
+      else setErr(error.message || "Something went wrong. Try again.");
+      return;
+    }
+    const idx = Math.max(0, Math.min(N - 1, data.idx || 0));
+    const c = idx * seg + seg / 2;
+    setRot(prev => {
+      const desiredMod = ((360 - (c % 360)) % 360 + 360) % 360;
+      const curMod = ((prev % 360) + 360) % 360;
+      let delta = desiredMod - curMod; if (delta < 0) delta += 360;
+      return prev + 360 * 5 + delta;
+    });
+    setTimeout(() => { setResult(data); setSpinning(false); setCanSpin(false); loadRewards(); }, 4300);
+  };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 180, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 440, maxHeight: "94vh", overflowY: "auto", borderRadius: "18px 18px 0 0" }}>
+        <div style={{ position: "sticky", top: 0, zIndex: 2, background: "linear-gradient(120deg,#7A5AF8,#D6336C)", color: "#fff", padding: "15px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", borderRadius: "18px 18px 0 0" }}>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>🎡 Wheel of Luck</div>
+          <span onClick={onClose} style={{ cursor: "pointer", fontSize: 24, lineHeight: 1, opacity: .9 }}>×</span>
+        </div>
+        <div style={{ display: "flex", gap: 6, padding: "12px 14px 0" }}>
+          {[["spin", "Spin"], ["rewards", `My rewards${rewards.length ? " (" + rewards.length + ")" : ""}`], ...(isStaff ? [["manage", "⚙️ Manage"]] : [])].map(([k, lbl]) => (
+            <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: "9px 6px", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: tab === k ? W.teal : "#EEF1F3", color: tab === k ? "#fff" : W.soft }}>{lbl}</button>
+          ))}
+        </div>
+
+        {tab === "spin" && (
+          <div style={{ padding: "16px 16px calc(24px + env(safe-area-inset-bottom))", textAlign: "center" }}>
+            {prizes === null ? <div style={{ color: W.soft, padding: 40 }}>Loading…</div> : !N ? <div style={{ color: W.soft, padding: 40 }}>The wheel isn't set up yet.</div> : (
+              <>
+                <div style={{ position: "relative", width: 260, height: 274, margin: "6px auto 0" }}>
+                  <div style={{ position: "absolute", top: -2, left: "50%", transform: "translateX(-50%)", zIndex: 3, width: 0, height: 0, borderLeft: "13px solid transparent", borderRight: "13px solid transparent", borderTop: "22px solid #111B21", filter: "drop-shadow(0 2px 2px rgba(0,0,0,.3))" }} />
+                  <svg width="260" height="260" viewBox="0 0 260 260" style={{ display: "block", transform: `rotate(${rot}deg)`, transition: spinning ? "transform 4.2s cubic-bezier(.16,.84,.28,1)" : "none", filter: "drop-shadow(0 4px 12px rgba(0,0,0,.18))" }}>
+                    <circle cx={cx} cy={cy} r={r + 3} fill="#fff" />
+                    {prizes.map((p, i) => {
+                      const a0 = i * seg, a1 = (i + 1) * seg, am = a0 + seg / 2;
+                      const [lx, ly] = wheelPolar(cx, cy, r * 0.62, am);
+                      return (
+                        <g key={p.id}>
+                          <path d={wheelSlicePath(cx, cy, r, a0, a1)} fill={p.color} stroke="#fff" strokeWidth="2" />
+                          <g transform={`rotate(${am} ${lx} ${ly})`} style={{ pointerEvents: "none" }}>
+                            <text x={lx} y={ly - 5} textAnchor="middle" fontSize="17" fill="#fff">{p.emoji}</text>
+                            <text x={lx} y={ly + 13} textAnchor="middle" fontSize="12" fontWeight="800" fill="#fff">{wheelShort(p)}</text>
+                          </g>
+                        </g>
+                      );
+                    })}
+                    <circle cx={cx} cy={cy} r="22" fill="#fff" stroke="#E9EDEF" strokeWidth="2" />
+                    <text x={cx} y={cy + 6} textAnchor="middle" fontSize="20">🎁</text>
+                  </svg>
+                </div>
+
+                {result ? (
+                  <div style={{ marginTop: 14, background: result.kind === "nothing" ? "#F4F6F7" : "linear-gradient(120deg,#FFF6E6,#FFECF3)", border: `1px solid ${result.kind === "nothing" ? W.line : "#F3C6DA"}`, borderRadius: 14, padding: "14px 16px" }}>
+                    {result.kind === "nothing" ? (
+                      <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>🍀 {result.label}</div>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: "#B0227A", letterSpacing: .5 }}>🎉 YOU WON</div>
+                        <div style={{ fontWeight: 900, color: W.ink, fontSize: 20, marginTop: 3 }}>{result.label}</div>
+                        {result.kind === "credits" && <div style={{ fontSize: 13, color: "#0d6e58", fontWeight: 700, marginTop: 5 }}>✅ {result.value} credits added to your wallet</div>}
+                        {(result.kind === "discount" || result.kind === "coupon") && result.code && (
+                          <div style={{ marginTop: 8 }}>
+                            <div style={{ fontSize: 12.5, color: W.soft }}>{result.note || (result.kind === "discount" ? "Discount reward" : "Free perk")}</div>
+                            <div style={{ marginTop: 6, fontFamily: "monospace", fontSize: 18, fontWeight: 800, letterSpacing: 2, background: "#fff", border: "1px dashed #D6336C", borderRadius: 10, padding: "8px 12px", color: "#B0227A" }}>{result.code}</div>
+                            <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Saved in “My rewards”. Show this code to our team to redeem.</div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: W.soft, marginTop: 12, lineHeight: 1.5 }}>One free spin every day. Win credits for your wallet, ticket discounts, or free perks 🎁</div>
+                )}
+                {err && <div style={{ color: "#C0392B", fontSize: 13, fontWeight: 700, marginTop: 10 }}>{err}</div>}
+                <button onClick={spin} disabled={!canSpin || spinning} style={{ width: "100%", marginTop: 14, padding: "15px", borderRadius: 13, border: "none", fontWeight: 900, fontSize: 16, cursor: (!canSpin || spinning) ? "default" : "pointer", color: "#fff", background: (!canSpin || spinning) ? "#B7BEC2" : "linear-gradient(120deg,#7A5AF8,#D6336C)", boxShadow: (!canSpin || spinning) ? "none" : "0 4px 14px rgba(214,51,108,.35)" }}>
+                  {spinning ? "Spinning…" : canSpin ? "🎯 SPIN THE WHEEL" : "✅ Come back tomorrow"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === "rewards" && (
+          <div style={{ padding: "16px 16px calc(24px + env(safe-area-inset-bottom))" }}>
+            {!rewards.length ? <div style={{ color: W.soft, fontSize: 13.5, textAlign: "center", padding: "30px 10px" }}>No reward codes yet. Spin the wheel to win ticket discounts and free perks! 🎁</div> : (
+              <>
+                <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>Show a code to our team at the event to redeem it.</div>
+                {rewards.map(rw => (
+                  <div key={rw.id} style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: "12px 14px", marginBottom: 10 }}>
+                    <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{rw.kind === "discount" ? "🎟️ " : "🎁 "}{rw.label}</div>
+                    <div style={{ marginTop: 8, fontFamily: "monospace", fontSize: 17, fontWeight: 800, letterSpacing: 2, background: "#FBF3F7", border: "1px dashed #D6336C", borderRadius: 10, padding: "7px 12px", color: "#B0227A", textAlign: "center" }}>{rw.code}</div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
+        {tab === "manage" && isStaff && <WheelManage />}
+      </div>
+    </div>
+  );
+}
+function WheelManage() {
+  const [rows, setRows] = useState(null);
+  const [spins, setSpins] = useState([]);
+  const [redeem, setRedeem] = useState("");
+  const [redeemMsg, setRedeemMsg] = useState("");
+  const load = () => supabase.rpc("wheel_prizes_admin").then(({ data }) => setRows(data || []));
+  const loadSpins = () => supabase.rpc("wheel_recent_spins").then(({ data }) => setSpins(data || []));
+  useEffect(() => { load(); loadSpins(); }, []);
+  const totW = (rows || []).filter(r => r.active).reduce((a, r) => a + (Number(r.weight) || 0), 0) || 1;
+  const setField = (id, k, v) => setRows(rs => rs.map(r => r.id === id ? { ...r, [k]: v } : r));
+  const save = async (r) => {
+    const { error } = await supabase.rpc("wheel_set_prize", { p_id: r.id, p_label: r.label, p_kind: r.kind, p_value: Number(r.value) || 0, p_note: r.coupon_note || null, p_weight: Number(r.weight) || 0, p_color: r.color, p_emoji: r.emoji, p_active: r.active, p_sort: Number(r.sort) || 0 });
+    if (error) return alert(error.message);
+    load();
+  };
+  const addRow = async () => {
+    const { error } = await supabase.rpc("wheel_set_prize", { p_id: null, p_label: "New prize", p_kind: "credits", p_value: 10, p_note: null, p_weight: 10, p_color: "#008069", p_emoji: "🎁", p_active: true, p_sort: (rows || []).length + 1 });
+    if (error) return alert(error.message);
+    load();
+  };
+  const del = async (id) => { if (!window.confirm("Delete this slice?")) return; await supabase.rpc("wheel_delete_prize", { p_id: id }); load(); };
+  const doRedeem = async () => {
+    if (!redeem.trim()) return;
+    const { data, error } = await supabase.rpc("wheel_redeem_code", { p_code: redeem.trim() });
+    if (error) { setRedeemMsg("❌ " + error.message); return; }
+    setRedeemMsg(`✅ Redeemed: ${data.label}${data.kind === "credits" ? "" : ""}`); setRedeem("");
+  };
+  const ip = { border: `1px solid ${W.line}`, borderRadius: 8, padding: "6px 8px", fontSize: 13, outline: "none", boxSizing: "border-box" };
+  return (
+    <div style={{ padding: "14px 14px calc(24px + env(safe-area-inset-bottom))" }}>
+      <div style={{ background: "#F4FBF8", border: "1px solid #BFE6D6", borderRadius: 12, padding: "11px 13px", marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, marginBottom: 6 }}>Redeem a member's code</div>
+        <div style={{ display: "flex", gap: 7 }}>
+          <input value={redeem} onChange={e => { setRedeem(e.target.value); setRedeemMsg(""); }} placeholder="GW-XXXXXX" style={{ ...ip, flex: 1, fontFamily: "monospace", letterSpacing: 1, textTransform: "uppercase" }} />
+          <button onClick={doRedeem} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>Redeem</button>
+        </div>
+        {redeemMsg && <div style={{ fontSize: 12.5, marginTop: 7, fontWeight: 700, color: redeemMsg[0] === "✅" ? "#0d6e58" : "#C0392B" }}>{redeemMsg}</div>}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>Prize slices</div>
+        <button onClick={addRow} style={{ ...btn(W.teal, "#fff"), padding: "7px 12px", fontSize: 12.5 }}>＋ Add</button>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 10, lineHeight: 1.45 }}>“Weight” sets how likely a slice is — higher = more common. The % shown is the real win chance. Credits are paid automatically; discount & coupon wins become codes members redeem.</div>
+      {rows === null ? <div style={{ color: W.soft, fontSize: 13 }}>Loading…</div> : rows.map(r => (
+        <div key={r.id} style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 11, marginBottom: 10, opacity: r.active ? 1 : .55 }}>
+          <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
+            <input value={r.emoji || ""} onChange={e => setField(r.id, "emoji", e.target.value)} style={{ ...ip, width: 46, textAlign: "center" }} />
+            <input value={r.label || ""} onChange={e => setField(r.id, "label", e.target.value)} placeholder="Label" style={{ ...ip, flex: 1 }} />
+          </div>
+          <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
+            <select value={r.kind} onChange={e => setField(r.id, "kind", e.target.value)} style={{ ...ip, flex: 1 }}>
+              <option value="credits">Credits</option>
+              <option value="discount">Discount %</option>
+              <option value="coupon">Coupon / free perk</option>
+              <option value="nothing">Better luck</option>
+            </select>
+            <input type="number" value={r.value} onChange={e => setField(r.id, "value", e.target.value)} title="Credits amount, or discount %" style={{ ...ip, width: 68 }} />
+            <input value={r.color || ""} onChange={e => setField(r.id, "color", e.target.value)} title="Slice colour" style={{ ...ip, width: 78 }} />
+          </div>
+          {(r.kind === "coupon" || r.kind === "discount") && <input value={r.coupon_note || ""} onChange={e => setField(r.id, "coupon_note", e.target.value)} placeholder="What the member gets (staff sees this)" style={{ ...ip, width: "100%", marginBottom: 7 }} />}
+          <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 11.5, color: W.soft }}>Weight</span>
+              <input type="number" value={r.weight} onChange={e => setField(r.id, "weight", e.target.value)} style={{ ...ip, width: 58 }} />
+            </div>
+            <div style={{ fontSize: 11.5, color: W.teal, fontWeight: 800 }}>{r.active ? Math.round((Number(r.weight) || 0) / totW * 100) + "% chance" : "off"}</div>
+            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: W.soft, marginLeft: "auto" }}>
+              <input type="checkbox" checked={!!r.active} onChange={e => setField(r.id, "active", e.target.checked)} /> Active
+            </label>
+          </div>
+          <div style={{ display: "flex", gap: 7, marginTop: 9 }}>
+            <button onClick={() => save(r)} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "8px" }}>Save</button>
+            <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "8px 14px" }}>Delete</button>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "16px 0 8px" }}>Recent spins</div>
+      {!spins.length ? <div style={{ color: W.soft, fontSize: 13 }}>No spins yet.</div> : spins.slice(0, 40).map((s, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: `1px solid ${W.line}`, fontSize: 12.5 }}>
+          <div style={{ flex: 1, fontWeight: 700, color: W.ink }}>{s.member}</div>
+          <div style={{ color: W.soft }}>{s.label}</div>
+          {s.code && <div style={{ fontFamily: "monospace", color: s.redeemed ? W.soft : "#B0227A", fontWeight: 700, textDecoration: s.redeemed ? "line-through" : "none" }}>{s.code}</div>}
+        </div>
+      ))}
     </div>
   );
 }
