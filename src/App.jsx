@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v71 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v72 build</div>
       </div>
     </div>
   );
@@ -4337,6 +4337,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [areaFlt, setAreaFlt] = useState("all");
   const [cityFlt, setCityFlt] = useState("all");
   const [ageFlt, setAgeFlt] = useState("all");
+  const [moodFlt, setMoodFlt] = useState("all");
   const [nameQ, setNameQ] = useState("");
   const [viewsN, setViewsN] = useState(0);
   const [viewers, setViewers] = useState(null); // null=not loaded, "locked"=needs sub
@@ -4503,6 +4504,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
     && (areaFlt === "all" || _norm(p.area) === _norm(areaFlt))
     && (cityFlt === "all" || canonCity(p.city) === canonCity(cityFlt))
+    && (moodFlt === "all" || moodMap[p.id] === moodFlt)
     && inAge(p.age)
     && (!nq || (p.name || "").toLowerCase().includes(nq)));
   const card = (p, waveLbl) => {
@@ -4545,6 +4547,12 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const wavedYouList = (rows || []).filter(p => p.waved_me && !p.waved_by_me && oppOnly(p));
   const mCandidates = (rows || []).filter(p => !p.waved_by_me && !p.waved_me && p.avatar_url && oppOnly(p));
   const matchOfDay = mCandidates.length ? mCandidates[new Date().getDate() % mCandidates.length] : null;
+  const mixer = (() => {
+    const pool = [...mCandidates].sort((a, b) => (b.spotlighted ? 1 : 0) - (a.spotlighted ? 1 : 0) || (isOnline(b.last_seen) ? 1 : 0) - (isOnline(a.last_seen) ? 1 : 0));
+    if (!pool.length) return [];
+    const rot = new Date().getDate() % pool.length;
+    return [...pool.slice(rot), ...pool.slice(0, rot)].slice(0, 10);
+  })();
   const hasPlan = typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0;
   const unlocked = hasPlan || isAdmin || isSuper; // admins/superadmins are never paywalled
   const perfectList = mCandidates;
@@ -4738,6 +4746,40 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
         {viewers === "locked" && <div style={{ margin: "10px 14px 0", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 13, padding: "13px 14px", fontSize: 13, color: W.ink }}>🔒 Seeing <b>who</b> viewed you is a <b>💎 Premium perk</b> — subscribe from your Profile → Plans and this unlocks instantly.</div>}
         {Array.isArray(viewers) && <div style={{ margin: "10px 14px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>{viewers.map(v => card({ ...v, joined: null, last_seen: v.viewed_at }, "👋 Wave"))}{viewers.length === 0 && <div style={{ gridColumn: "1/-1", color: W.soft, fontSize: 13, textAlign: "center", padding: 10 }}>No views yet — go wave at some people! 👋</div>}</div>}
+        {mixer.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 14px 9px" }}>
+              <span style={{ fontSize: 17 }}>🎡</span>
+              <div style={{ fontWeight: 900, fontSize: 15.5, background: "linear-gradient(95deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Today's Meet Mixer</div>
+              <span style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>· fresh faces daily</span>
+            </div>
+            <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "0 14px 6px", WebkitOverflowScrolling: "touch" }}>
+              {mixer.map((p, idx) => {
+                const grad = ["linear-gradient(150deg,#7C3AED,#EC4899)", "linear-gradient(150deg,#008069,#04B08F)", "linear-gradient(150deg,#2563EB,#06B6D4)", "linear-gradient(150deg,#D97706,#F59E0B)", "linear-gradient(150deg,#DB2777,#F472B6)"][idx % 5];
+                const mood = moodOf(moodMap[p.id]);
+                return (
+                  <div key={p.id} style={{ flexShrink: 0, width: 158, borderRadius: 18, padding: 3, background: grad, boxShadow: "0 6px 16px rgba(124,58,237,.18)" }}>
+                    <div style={{ background: "#fff", borderRadius: 15, overflow: "hidden" }}>
+                      <div onClick={() => openPeek(p)} style={{ position: "relative", width: "100%", aspectRatio: "3/4", background: W.bg, cursor: "pointer" }}>
+                        {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
+                        <span style={{ position: "absolute", top: 7, left: 7, background: "rgba(8,18,24,.6)", color: "#fff", fontSize: 10.5, fontWeight: 900, padding: "3px 8px", borderRadius: 20 }}>💞 {compat(p)}%</span>
+                        {isOnline(p.last_seen) && <span style={{ position: "absolute", top: 7, right: 7, width: 10, height: 10, borderRadius: "50%", background: "#22C55E", border: "2px solid #fff" }} />}
+                        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "20px 10px 8px", background: "linear-gradient(transparent,rgba(0,0,0,.72))" }}>
+                          <div style={{ color: "#fff", fontWeight: 800, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVerified(p.id) ? " ✓" : ""}</div>
+                          <div style={{ color: "rgba(255,255,255,.9)", fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.area || p.city || "Say hi 👋"}</div>
+                        </div>
+                      </div>
+                      <div style={{ padding: "8px 9px" }}>
+                        {mood && <div style={{ display: "inline-block", marginBottom: 6, background: mood[3], color: mood[2], fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 20 }}>{mood[1]}</div>}
+                        <button onClick={() => doWave(p)} disabled={waveBusy === p.id} style={{ width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12, background: p.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff", opacity: waveBusy === p.id ? .6 : 1 }}>{waveBusy === p.id ? "…" : p.waved_me ? "✓ Wave back" : "🤝 Be My Friend"}</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {nearYou.length > 0 && (
           <div style={{ marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 14px 8px" }}>
@@ -4764,7 +4806,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <span style={{ fontSize: 19 }}>🔎</span>
             <div style={{ fontWeight: 900, fontSize: 16, flex: 1, background: "linear-gradient(95deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Find your people</div>
-            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all" || nameQ.trim()) && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); setNameQ(""); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
+            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all" || moodFlt !== "all" || nameQ.trim()) && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); setMoodFlt("all"); setNameQ(""); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
           </div>
           <div style={{ position: "relative", marginBottom: 13 }}>
             <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 15 }}>🔍</span>
@@ -4787,6 +4829,13 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             {[["all", "Any"], ["18-24", "18–24"], ["25-34", "25–34"], ["35-44", "35–44"], ["45+", "45+"]].map(([k, l]) => (
               <button key={k} onClick={() => setAgeFlt(k)} style={{ padding: "8px 14px", borderRadius: 999, border: ageFlt === k ? "none" : "1.5px solid #E4DCEF", background: ageFlt === k ? "linear-gradient(95deg,#D97706,#F59E0B)" : "#fff", color: ageFlt === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: ageFlt === k ? "0 3px 10px rgba(217,119,6,.25)" : "none" }}>{l}</button>
             ))}
+          </div>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#7C3AED", margin: "13px 0 7px" }}>💫 VIBE</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+            <button onClick={() => setMoodFlt("all")} style={{ padding: "8px 14px", borderRadius: 999, border: moodFlt === "all" ? "none" : "1.5px solid #E4DCEF", background: moodFlt === "all" ? "linear-gradient(95deg,#7C3AED,#C026D3)" : "#fff", color: moodFlt === "all" ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Any</button>
+            {MOODS.map(([k, l, c, b]) => { const on = moodFlt === k; return (
+              <button key={k} onClick={() => setMoodFlt(on ? "all" : k)} style={{ padding: "8px 14px", borderRadius: 999, border: on ? "none" : "1.5px solid #E4DCEF", background: on ? b : "#fff", color: on ? c : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: on ? `0 3px 10px ${b}` : "none" }}>{l}</button>
+            ); })}
           </div>
           <div style={{ marginTop: 13, display: "inline-block", background: "#fff", border: "1px solid #EBD9F0", borderRadius: 999, padding: "5px 13px", fontSize: 12, fontWeight: 800, color: "#7C3AED" }}>✨ {filtered.length} {filtered.length === 1 ? "person" : "people"} match</div>
         </div>
