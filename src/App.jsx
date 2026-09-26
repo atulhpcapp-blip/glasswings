@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v76 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v77 build</div>
       </div>
     </div>
   );
@@ -4562,7 +4562,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     for (let i = 0; i < Math.max(girls.length, boys.length); i++) { if (girls[i]) mixed.push(girls[i]); if (boys[i]) mixed.push(boys[i]); }
     return [...mixed, ...other].slice(0, 10);
   })();
-  const onlineNow = (rows || []).filter(p => p.avatar_url && p.last_seen && (Date.now() - new Date(p.last_seen).getTime()) < 30 * 60000).sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen)).slice(0, 14);
+  const onlineNow = (rows || []).filter(p => p.avatar_url && isOnline(p.last_seen)).sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen)).slice(0, 14);
   const hasPlan = typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0;
   const unlocked = hasPlan || isAdmin || isSuper; // admins/superadmins are never paywalled
   const perfectList = mCandidates;
@@ -4762,7 +4762,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 14px 9px" }}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 8px #22C55E" }} />
               <div style={{ fontWeight: 900, fontSize: 15.5, color: W.ink }}>Online now</div>
-              <span style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>· {onlineNow.length} active</span>
+              <span style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>· {onlineNow.length} recently active</span>
             </div>
             <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "0 14px 4px", WebkitOverflowScrolling: "touch" }}>
               {onlineNow.map(p => (
