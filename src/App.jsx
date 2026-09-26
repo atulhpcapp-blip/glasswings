@@ -1784,6 +1784,13 @@ function RecentBuyerToasts({ eventId, wide }) {
 
 function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM, mySegs = [], isStaff = false, segList = [], waGroup = "" }) {
   const waJoin = (e.whatsapp_url || waGroup || "").trim();
+  const calStart = e.event_at ? new Date(e.event_at) : null;
+  const gcalUrl = (calStart && !isNaN(calStart.getTime())) ? (() => {
+    const fmt = d => new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    const end = e.end_at && !isNaN(new Date(e.end_at).getTime()) ? new Date(e.end_at) : new Date(calStart.getTime() + 3 * 3600 * 1000);
+    const details = [(e.description || "").slice(0, 300), `${window.location.origin}/e/${e.id}`].filter(Boolean).join("\n\n");
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(e.title || "Event")}&dates=${fmt(calStart)}/${fmt(end)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent([e.venue, e.city].filter(Boolean).join(", "))}`;
+  })() : null;
   const segName = (id) => (segList.find(s => s.id === id) || {}).name || "invited members";
   const canBuyType = (t) => !t.segment_id || isStaff || (mySegs || []).includes(t.segment_id);
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
@@ -1972,7 +1979,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           <h1 style={{ fontSize: wide ? 34 : 24, fontWeight: 800, color: W.ink, margin: 0, lineHeight: 1.18 }}>{e.emoji} {e.title}</h1>
           {e.entry_badge && <span style={{ display: "inline-block", marginTop: 9, background: "#FEF3C7", color: "#B45309", fontSize: 12.5, fontWeight: 800, padding: "4px 12px", borderRadius: 20 }}>🔞 {e.entry_badge}</span>}
           <div style={{ background: W.bg, borderRadius: 14, padding: "14px 16px", marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-            {e.event_date && <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14.5, color: W.ink, fontWeight: 600 }}><Calendar size={17} color={W.teal} />{e.event_date}</div>}
+            {e.event_date && <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", fontSize: 14.5, color: W.ink, fontWeight: 600 }}><span style={{ display: "flex", gap: 10, alignItems: "center" }}><Calendar size={17} color={W.teal} />{e.event_date}</span>{gcalUrl && <a href={gcalUrl} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, textDecoration: "none", background: "#E7F6EF", color: "#0d6e58", fontWeight: 800, fontSize: 12, borderRadius: 8, padding: "6px 10px", flexShrink: 0 }}>📅 Add to Calendar</a>}</div>}
             {e.location_type === "online" && (
               <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 14.5, color: W.ink, fontWeight: 600 }}>
                 <span style={{ fontSize: 17 }}>🖥️</span>
@@ -2397,7 +2404,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · whatsapp-v56 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v57 build</div>
       </div>
     </div>
   );
@@ -3592,12 +3599,28 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const [citySheet, setCitySheet] = useState(false);
   const [custom, setCustom] = useState([]);
   const [hostFlt, setHostFlt] = useState("all");
+  const [q, setQ] = useState("");
+  const [dateQuick, setDateQuick] = useState("all");
+  const ql = q.trim().toLowerCase();
+  const matchQ = (e) => !ql || [e.title, e.venue, e.city, e.category, ...(Array.isArray(e.artists) ? e.artists.map(a => a && a.name) : [])].filter(Boolean).some(s => String(s).toLowerCase().includes(ql));
+  const inQuick = (e) => {
+    if (dateQuick === "all") return true;
+    if (!e.event_at) return false;
+    const d = new Date(e.event_at); if (isNaN(d.getTime())) return false;
+    const now = new Date();
+    const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (dateQuick === "today") return dd.getTime() === t0.getTime();
+    if (dateQuick === "weekend") { const sat = new Date(t0); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7)); const sun = new Date(sat); sun.setDate(sun.getDate() + 1); return dd.getTime() === sat.getTime() || dd.getTime() === sun.getTime(); }
+    if (dateQuick === "month") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    return true;
+  };
   useEffect(() => { supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || [])); }, []);
   useEffect(() => { if (focus) { onOpenDetail && onOpenDetail(focus); onFocusDone && onFocusDone(); } }, [focus]);
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
   const getMin = e => { const ts = ticketTypes[e.id] || []; const prices = ts.length ? ts.map(t => genderNet(t, null, profile)) : [e.ticket_price || 0]; return Math.min(...prices); };
-  const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin) && (hostFlt === "all" || (e.host_type || "glasswings") === hostFlt)), sortBy, getMin);
+  const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin) && (hostFlt === "all" || (e.host_type || "glasswings") === hostFlt) && inQuick(e) && matchQ(e)), sortBy, getMin);
   const priceFrom = (e) => {
     const ts = ticketTypes[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -3636,10 +3659,20 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
           <div onClick={() => setCitySheet(true)} style={{ color: W.teal, fontWeight: 800, fontSize: 14, marginTop: 3, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>{flt.city.length === 1 ? flt.city[0] : "All cities"}&nbsp;{"\u203a"}</div>
         </div>
       )}
+      <div style={{ padding: "10px 14px 4px", background: "#fff" }}>
+        <div style={{ position: "relative" }}>
+          <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 15 }}>🔍</span>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search events, venues, artists…" style={{ width: "100%", boxSizing: "border-box", padding: "11px 34px 11px 38px", borderRadius: 12, border: `1.5px solid ${ql ? W.teal : W.line}`, background: W.bg, color: W.ink, fontWeight: 600, fontSize: 14.5, outline: "none" }} />
+          {q && <span onClick={() => setQ("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: W.soft, cursor: "pointer", fontWeight: 800 }}>✕</span>}
+        </div>
+      </div>
       <CategoryTiles cats={catTiles} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
       <div style={{ display: "flex", gap: 10, padding: "10px 14px", overflowX: "auto", borderBottom: `1px solid ${W.line}`, background: "#fff", position: "sticky", top: 0, zIndex: 5 }}>
         <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
         <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
+        {[["all", "📅 All dates"], ["today", "Today"], ["weekend", "This weekend"], ["month", "This month"]].map(([k, l]) => (
+          <button key={k} onClick={() => setDateQuick(k)} style={filterPill(dateQuick === k && k !== "all")}>{l}</button>
+        ))}
         {[["all", "All"], ["glasswings", "🏠 Glasswings"], ["partner", "🤝 Partner"], ["meetup", "☕ Meetups"]].map(([k, lbl]) => (
           <button key={k} onClick={() => setHostFlt(k)} style={filterPill(hostFlt === k && k !== "all")}>{lbl}</button>
         ))}
