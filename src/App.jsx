@@ -1344,7 +1344,7 @@ async function exportGuestListPdf(ev) {
     w.document.close();
   } catch (e) { alert(e.message || "Could not build the guest list."); }
 }
-function PosterCard({ e, price, popular, going, onOpen, date, unpublished }) {
+function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved, onToggleSave }) {
   return (
     <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
       <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
@@ -1359,7 +1359,8 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished }) {
           ? <img src={e.vertical_banner_url || e.poster_url || e.banner_url} alt={e.title} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{e.emoji || "🎟️"}</div>}
         {popular && <span style={{ position: "absolute", top: 8, left: 8, background: "#D35400", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔥 Popular</span>}
-        {going && <span style={{ position: "absolute", top: 8, right: 8, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Going</span>}
+        {going && <span style={{ position: "absolute", top: 8, right: onToggleSave ? 46 : 8, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Going</span>}
+        {onToggleSave && <button onClick={(ev) => { ev.stopPropagation(); onToggleSave(e.id); }} aria-label={saved ? "Remove from saved" : "Save"} style={{ position: "absolute", top: 7, right: 7, zIndex: 3, width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.42)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{saved ? "❤️" : "🤍"}</button>}
         {unpublished && <div style={{ position: "absolute", top: 0, left: 0, right: 0, background: "rgba(40,48,46,.9)", color: "#fff", fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textAlign: "center", padding: "5px 0" }}>UNPUBLISHED</div>}
         {date && <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "linear-gradient(transparent, rgba(0,0,0,.74))", padding: "26px 10px 8px", color: "#fff", fontSize: 11.5, fontWeight: 700 }}>{date}</div>}
       </div>
@@ -2454,7 +2455,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v59 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v60 build</div>
       </div>
     </div>
   );
@@ -2655,6 +2656,14 @@ function Main({ user }) {
   useEffect(() => { supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegList(data || [])); }, []);
   const [waGroup, setWaGroup] = useState("");
   useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
+  const [savedIds, setSavedIds] = useState(new Set());
+  useEffect(() => { supabase.from("event_saves").select("event_id").eq("user_id", user.id).then(({ data }) => setSavedIds(new Set((data || []).map(r => r.event_id)))); }, []);
+  const toggleSave = async (id) => {
+    const on = !savedIds.has(id);
+    setSavedIds(s => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; });
+    if (on) await supabase.from("event_saves").insert({ event_id: id, user_id: user.id });
+    else await supabase.from("event_saves").delete().eq("event_id", id).eq("user_id", user.id);
+  };
   const [payBusy, setPayBusy] = useState(false);
   const [eventPage, setEventPage] = useState(null);
   const [roomPage, setRoomPage] = useState(null);
@@ -3485,7 +3494,7 @@ function Main({ user }) {
         </div>
       )}
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
-      {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} />}
+      {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
@@ -3637,7 +3646,7 @@ function Notice({ text, onClose }) {
 
 /* ---------------- chats ---------------- */
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll, privateMode = false }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll, privateMode = false, savedIds = new Set(), onToggleSave }) {
   const popSet = (() => {
     const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
     return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
@@ -3651,6 +3660,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const [hostFlt, setHostFlt] = useState("all");
   const [q, setQ] = useState("");
   const [dateQuick, setDateQuick] = useState("all");
+  const [savedOnly, setSavedOnly] = useState(false);
   const ql = q.trim().toLowerCase();
   const matchQ = (e) => !ql || [e.title, e.venue, e.city, e.category, ...(Array.isArray(e.artists) ? e.artists.map(a => a && a.name) : [])].filter(Boolean).some(s => String(s).toLowerCase().includes(ql));
   const inQuick = (e) => {
@@ -3670,7 +3680,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
   const getMin = e => { const ts = ticketTypes[e.id] || []; const prices = ts.length ? ts.map(t => genderNet(t, null, profile)) : [e.ticket_price || 0]; return Math.min(...prices); };
-  const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin) && (hostFlt === "all" || (e.host_type || "glasswings") === hostFlt) && inQuick(e) && matchQ(e)), sortBy, getMin);
+  const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin) && (hostFlt === "all" || (e.host_type || "glasswings") === hostFlt) && inQuick(e) && matchQ(e) && (!savedOnly || savedIds.has(e.id))), sortBy, getMin);
   const priceFrom = (e) => {
     const ts = ticketTypes[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
@@ -3720,6 +3730,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
       <div style={{ display: "flex", gap: 10, padding: "10px 14px", overflowX: "auto", borderBottom: `1px solid ${W.line}`, background: "#fff", position: "sticky", top: 0, zIndex: 5 }}>
         <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
         <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
+        {onToggleSave && <button onClick={() => setSavedOnly(v => !v)} style={filterPill(savedOnly)}>{savedOnly ? "❤️ Saved" : "🤍 Saved"}</button>}
         {[["all", "📅 All dates"], ["today", "Today"], ["weekend", "This weekend"], ["month", "This month"]].map(([k, l]) => (
           <button key={k} onClick={() => setDateQuick(k)} style={filterPill(dateQuick === k && k !== "all")}>{l}</button>
         ))}
@@ -3729,8 +3740,8 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
       </div>
       {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
-        {list.length === 0 && <div style={{ gridColumn: "1/-1", background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 10 }}><Center>{privateMode ? "No private invitations are available for your segments right now." : "No events here yet."}</Center></div>}
-        {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} />)}
+        {list.length === 0 && <div style={{ gridColumn: "1/-1", background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 10 }}><Center>{savedOnly ? "No saved events yet — tap the 🤍 on any event to save it." : privateMode ? "No private invitations are available for your segments right now." : (q.trim() || dateQuick !== "all" || fltCount(flt) > 0) ? "No events match your search/filters." : "No events here yet."}</Center></div>}
+        {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} saved={savedIds.has(e.id)} onToggleSave={onToggleSave} />)}
       </div>
       {fsheet && <FilterSheet events={events} dims={dims} opts={optsAll} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
       {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
