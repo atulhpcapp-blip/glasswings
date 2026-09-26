@@ -381,26 +381,6 @@ function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
     </div>
   );
 }
-function ChatListPane({ chats, open, onOpen, width }) {
-  return (
-    <div style={{ width, flexShrink: 0, position: "sticky", top: 0, height: "100vh", overflowY: "auto", background: "#fff", borderRight: `1px solid ${W.line}`, zIndex: 10 }}>
-      <div style={{ padding: "18px 18px 12px", fontWeight: 800, fontSize: 20, color: W.ink }}>Chats</div>
-      {chats.length === 0 && <div style={{ padding: "8px 18px", color: W.soft, fontSize: 13.5, lineHeight: 1.5 }}>No chats yet. Open <b>Explore</b> to join a room.</div>}
-      {chats.map(c => {
-        const on = open && open.id === c.id && open.type === c.type;
-        return (
-          <div key={c.type + c.id} onClick={() => onOpen(c)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", cursor: "pointer", background: on ? "#E7F6EF" : "transparent", borderLeft: on ? `3px solid ${W.teal}` : "3px solid transparent" }}>
-            <Avatar room={c} size={46} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
-              <div style={{ fontSize: 12.5, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.sub}</div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 function EmptyConvo() {
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: W.wall, backgroundImage: `url("${WALL}")` }}>
@@ -2417,7 +2397,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · whatsapp-v55 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · whatsapp-v56 build</div>
       </div>
     </div>
   );
@@ -3599,94 +3579,6 @@ function Notice({ text, onClose }) {
 }
 
 /* ---------------- chats ---------------- */
-function Chats({ chats, onOpen, onExplore, streaks = {}, previews = {}, isPremium, onUpgrade, meId, onStartDM }) {
-  const [q, setQ] = useState("");
-  const [memberHits, setMemberHits] = useState([]);
-  const [tipDismiss, setTipDismiss] = useState(false);
-  const ql = q.trim().toLowerCase();
-  const shown = ql ? chats.filter(c => (c.name || "").toLowerCase().includes(ql) || (previews[c.id]?.text || "").toLowerCase().includes(ql)) : chats;
-  useEffect(() => {
-    if (ql.length < 2) { setMemberHits([]); return; }
-    let dead = false;
-    const t = setTimeout(() => {
-      supabase.rpc("member_search", { p_q: ql })
-        .then(({ data }) => { if (!dead) setMemberHits(data || []); });
-    }, 250);
-    return () => { dead = true; clearTimeout(t); };
-  }, [ql, meId]);
-  return (
-    <div>
-      <TopBar title="Glasswings" />
-      {!tipDismiss && (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, background: "rgba(0,128,105,.08)", borderBottom: `1px solid ${W.line}`, padding: "11px 14px 12px" }}>
-          <span style={{ flex: 1, fontSize: 13, lineHeight: 1.5, color: "#0E5247" }}><b>🔒 Your phone number is private — no one can see it.</b> Personal chats unlock only with people you've actually met at an event (confirmed by event check-in). Until then, chat together in the community rooms.</span>
-          <span onClick={() => setTipDismiss(true)} role="button" aria-label="Dismiss" style={{ cursor: "pointer", fontSize: 18, fontWeight: 700, lineHeight: 1, color: W.soft, padding: "0 2px", flexShrink: 0 }}>×</span>
-        </div>
-      )}
-      {chats.length > 0 && (
-        <div style={{ padding: "8px 12px", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 0, zIndex: 5 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: W.bg, borderRadius: 10, padding: "9px 12px" }}>
-            <span style={{ fontSize: 14, opacity: .55 }}>🔍</span>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search chats" style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 14.5, color: W.ink }} />
-            {q && <span onClick={() => setQ("")} style={{ cursor: "pointer", color: W.soft, fontSize: 18, fontWeight: 700, lineHeight: 1, padding: "0 2px" }}>×</span>}
-          </div>
-        </div>
-      )}
-      {!isPremium && (
-        <div onClick={onUpgrade} style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(95deg,#6D28D9,#EC4899)", color: "#fff", padding: "11px 15px", cursor: "pointer" }}>
-          <span style={{ fontSize: 19 }}>💎</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 13.5 }}>Go Premium</div>
-            <div style={{ fontSize: 11, opacity: .92 }}>All rooms · all games · up to 100% off tickets</div>
-          </div>
-          <span style={{ fontWeight: 800, fontSize: 12.5, background: "rgba(255,255,255,.2)", padding: "6px 11px", borderRadius: 9 }}>View →</span>
-        </div>
-      )}
-      {chats.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "80px 30px", color: W.soft }}>
-          <MessageCircle size={42} color={W.teal} style={{ marginBottom: 14 }} />
-          <div style={{ fontWeight: 700, color: W.ink, fontSize: 17 }}>No chats yet</div>
-          <div style={{ fontSize: 14, marginTop: 6 }}>Join a room or grab an event ticket to start chatting.</div>
-          <button onClick={onExplore} style={{ marginTop: 16, padding: "11px 20px", border: "none", borderRadius: 22, background: W.teal, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>Explore</button>
-        </div>
-      ) : shown.map(c => (
-        <div key={c.type + c.id} onClick={() => onOpen({ id: c.id, type: c.type })} style={{ display: "flex", gap: 13, alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
-          <Avatar room={{ emoji: c.emoji, logo_url: c.logo_url }} size={52} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center" }}>
-              <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 16, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}{c.type === "event" && <Ticket size={13} color={W.soft} style={{ marginLeft: 6, verticalAlign: "middle" }} />}{(() => { const sk = c.type === "p2p" ? streaks[c.other] : (c.type === "dm" ? streaks[c.id] : null); return sk && sk.streak > 0 && (
-                <span style={{ marginLeft: 7, fontSize: 13, fontWeight: 800, color: "#E8590C", verticalAlign: "middle" }}>🔥{sk.streak}{sk.streak >= 30 ? "💍" : sk.streak >= 7 ? "⭐" : ""}{!sk.today && <span title="Message today to keep the streak!" style={{ marginLeft: 3 }}>⌛</span>}</span>
-              ); })()}</div>
-              {previews[c.id]?.at ? <span style={{ fontSize: 11.5, color: W.soft, flexShrink: 0, marginLeft: 8 }}>{gwTimeAgo(previews[c.id].at)}</span> : null}
-            </div>
-            <div style={{ color: W.soft, fontSize: 13.5, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{previews[c.id]?.text || c.sub}</div>
-          </div>
-        </div>
-      ))}
-      {ql && (
-        <>
-          {memberHits.length > 0 && <div style={{ padding: "12px 16px 5px", fontSize: 11.5, fontWeight: 800, color: W.soft, textTransform: "uppercase", letterSpacing: .5 }}>Start a new chat</div>}
-          {memberHits.map(mem => (
-            <div key={"m" + mem.id} onClick={() => onStartDM(mem.id, mem.full_name || "Member")} style={{ display: "flex", gap: 13, alignItems: "center", padding: "11px 16px", cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>
-              <PersonAvatar url={mem.avatar_url} name={mem.full_name} size={46} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 15.5, color: W.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mem.full_name || "Member"}</div>
-                <div style={{ color: W.teal, fontSize: 12.5, marginTop: 2, fontWeight: 600 }}>Tap to message</div>
-              </div>
-            </div>
-          ))}
-          {shown.length === 0 && memberHits.length === 0 && (
-            <div style={{ textAlign: "center", padding: "50px 30px", color: W.soft }}>
-              <div style={{ fontSize: 14.5, color: W.ink, fontWeight: 600 }}>No results</div>
-              <div style={{ fontSize: 13, marginTop: 5 }}>Nothing matches "{q.trim()}".</div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 /* ---------------- events ---------------- */
 function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll, privateMode = false }) {
   const popSet = (() => {
@@ -4599,77 +4491,6 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           </div>
         </div>
       )}
-    </div>
-  );
-}
-function Explore({ user, rooms, profile, counts, canAccess, freeForUser, onJoin, onOpenRoom, isStaffUser = false, meId, onOpenDM, onOrganiserApproved }) {
-  const [meetOpen, setMeetOpen] = useState(false);
-  const admin = ["admin", "superadmin"].includes(profile?.role);
-  const [city, setCity] = useState("all");
-  const cityList = Array.from(new Set(rooms.map(r => r.city).filter(Boolean))).sort();
-  const list = rooms.filter(r => admin || !r.gender_restrict || r.gender_restrict === "any" || r.gender_restrict === "couple" || r.gender_restrict === profile?.gender)
-    .filter(r => city === "all" || (r.city || "") === city);
-  const chip = (v, label) => <button key={v} onClick={() => setCity(v)} style={{ padding: "6px 13px", borderRadius: 16, border: `1px solid ${city === v ? W.teal : W.line}`, background: city === v ? W.teal : "#fff", color: city === v ? "#fff" : W.soft, fontWeight: 600, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>{label}</button>;
-  const badge = (t, bg, c) => <span style={{ background: bg, color: c, fontSize: 10.5, fontWeight: 800, padding: "3px 8px", borderRadius: 10 }}>{t}</span>;
-  return (
-    <div>
-      <TopBar title="Rooms" />
-      {meetOpen && <MeetPage user={user} profile={profile} onOrganiserApproved={onOrganiserApproved} meId={meId} onOpenDM={onOpenDM} isAdmin={isStaffUser} isSuper={profile?.role === "superadmin" || (profile?.roles || []).includes("superadmin")} isMod={["admin", "subadmin", "superadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "subadmin", "superadmin"].includes(r))} onClose={() => setMeetOpen(false)} />}
-      <div onClick={() => setMeetOpen(true)} style={{ margin: "12px 14px 0", background: "linear-gradient(100deg,#008069,#00A884)", borderRadius: 15, padding: "15px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", boxShadow: "0 4px 14px rgba(0,128,105,.25)" }}>
-        <span style={{ fontSize: 30 }}>👋</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, color: "#fff", fontSize: 15.5 }}>Meet new people</div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", marginTop: 2 }}>Wave 👋 · see who's new 🆕 · who viewed you 👀</div>
-        </div>
-        <span style={{ color: "#fff", fontWeight: 800, fontSize: 13, background: "rgba(255,255,255,.18)", padding: "8px 13px", borderRadius: 10 }}>Open →</span>
-      </div>
-      <div style={{ margin: "0 14px" }}>
-        <OrganiserApplicationCard user={user} profile={profile} onApproved={onOrganiserApproved} variant="banner" />
-      </div>
-      <AlbumsStrip isStaff={isStaffUser} meId={meId} />
-      {cityList.length > 0 && <div style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 14px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>{chip("all", "All cities")}{cityList.map(c => chip(c, c))}</div>}
-      <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
-        {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No rooms here yet.</Center></div>}
-        {list.map(r => {
-          const has = canAccess(r);
-          const womenFree = r.price_monthly > 0 && r.women_free !== false && profile?.gender !== "male";
-          return (
-            <div key={r.id} onClick={() => onOpenRoom ? onOpenRoom(r.id) : onJoin(r)} style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, overflow: "hidden", boxShadow: "0 3px 12px rgba(0,0,0,.07)", cursor: "pointer", display: "flex", flexDirection: "column" }}>
-              <div style={{ position: "relative", height: 130, background: "linear-gradient(135deg,#008069,#04B08F)", overflow: "hidden" }}>
-                {r.logo_url ? (
-                  <img src={r.logo_url} alt={r.name} loading="lazy" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 46 }}>{r.emoji || "💬"}</div>
-                )}
-                {has && <span style={{ position: "absolute", top: 10, right: 10, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Member</span>}
-              </div>
-              <div style={{ padding: "13px 15px 15px", display: "flex", flexDirection: "column", flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, lineHeight: 1.25 }}>{r.name}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                  <span style={{ color: W.soft, fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}><Users size={13} />{counts[r.id] || 0} members</span>
-                  {r.city && <span style={{ color: W.soft, fontSize: 12.5 }}>· {r.city}</span>}
-                  {r.gender_restrict === "female" && badge("WOMEN ONLY", "#FCE7F1", W.pink)}
-                  {r.gender_restrict === "male" && badge("MEN ONLY", "#E8F2FB", "#1B6FB8")}
-                  {r.gender_restrict === "couple" && badge("COUPLES", "#EFEAFB", "#7C3AED")}
-                </div>
-                {r.description && <div style={{ color: W.soft, fontSize: 13, marginTop: 7, lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.description}</div>}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto", paddingTop: 12, gap: 8 }}>
-                  {(() => { const gp = gwRoomPlan(r.id);
-                    if (gp) return (gp.women_free && profile?.gender !== "male")
-                      ? <span style={{ background: "#FCE7F1", color: W.pink, fontWeight: 700, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>Free for women</span>
-                      : <span style={{ background: "#F3E8FF", color: "#6D28D9", fontWeight: 800, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>{gp.label}</span>;
-                    return r.price_monthly === 0 ? <span style={{ fontWeight: 800, color: W.teal, fontSize: 14.5 }}>Free</span>
-                      : womenFree ? <span style={{ background: "#FCE7F1", color: W.pink, fontWeight: 700, fontSize: 11.5, padding: "3px 9px", borderRadius: 20 }}>Free for women</span>
-                        : <span style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, display: "flex", alignItems: "center" }}><IndianRupee size={13} />{r.price_monthly}<span style={{ color: W.soft, fontWeight: 500, fontSize: 12.5 }}>/mo</span></span>; })()}
-                  {has ? <button onClick={(ev) => { ev.stopPropagation(); onOpenRoom ? onOpenRoom(r.id) : onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}><MessageCircle size={14} />Open</button>
-                    : freeForUser(r) ? <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px" }}>Join free</button>
-                      : <button onClick={(ev) => { ev.stopPropagation(); onJoin(r); }} style={{ ...btn(W.ink, "#fff"), padding: "8px 16px" }}><Lock size={13} />Subscribe</button>}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
