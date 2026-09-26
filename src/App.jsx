@@ -402,8 +402,8 @@ function Auth({ initialMode = "login", onClose }) {
   const VIBES = ["HOUSE PARTIES 🪩", "BLIND DATE EVENTS 💘", "SINGLES MEETUPS 🥂", "GAME NIGHTS 🎲", "LIVE EVENTS 🎤", "SATURDAY NIGHT PARTIES 🌃", "PUB PARTIES 🍻", "POOL PARTIES 🏖️", "THEME PARTIES 🎭", "ROOFTOP PARTIES 🌆", "WEEKEND GETAWAYS 🏕️", "TRIPS WITH FRIENDS 🚐", "WORKSHOPS 🎨", "SPORTS MEETUPS ⚽"];
   const [wi, setWi] = useState(0);
   useEffect(() => { const iv = setInterval(() => setWi(w => (w + 1) % VIBES.length), 2200); return () => clearInterval(iv); }, []);
-  const cityOptsA = [...IN_CITIES].sort((a, b) => a.localeCompare(b));
-  const areaOptsA = (() => { const c = IN_CITIES.find(x => _norm(x) === _norm(city)); return (IN_AREAS[c] || IN_AREAS[city] || []).slice().sort((a, b) => a.localeCompare(b)); })();
+  const cityOptsA = (() => { const m = new Map(); IN_CITIES.forEach(c => { const cn = canonCity(c); if (!m.has(_norm(cn))) m.set(_norm(cn), cn); }); return [...m.values()].sort((a, b) => a.localeCompare(b)); })();
+  const areaOptsA = curatedAreas(city).slice().sort((a, b) => a.localeCompare(b));
   const go = async () => {
     setErr(""); setNote("");
     if (mode === "reset") {
@@ -417,13 +417,13 @@ function Auth({ initialMode = "login", onClose }) {
     if (mode === "signup" && !city.trim()) return setErr("Please add your city.");
     setBusy(true);
     if (mode === "signup") {
-      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, gender, city: city.trim(), area: area.trim() } } });
+      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, gender, city: canonCity(city), area: _tcase(area) } } });
       if (error) { setErr(error.message); }
       else {
         try {
           const buying = localStorage.getItem("gw_buy");
           if (buying && data?.session?.user) await supabase.from("profiles").update({ full_name: name, gender, profile_completed: true }).eq("id", data.session.user.id);
-          if (data?.session?.user && (city.trim() || area.trim())) await supabase.from("member_details").upsert({ user_id: data.session.user.id, city: _tcase(city), area: _tcase(area) });
+          if (data?.session?.user && (city.trim() || area.trim())) await supabase.from("member_details").upsert({ user_id: data.session.user.id, city: canonCity(city), area: _tcase(area) });
           if (data?.session?.user) { try { localStorage.setItem("gw_open_explore", "1"); } catch {} }
         } catch {}
         if (!data?.session) setNote("Account created! Please log in to continue.");
@@ -502,7 +502,7 @@ function Auth({ initialMode = "login", onClose }) {
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
-                <LocPick icon="🏙️" placeholder="Select city" value={city} options={cityOptsA} accent="#2563EB" onPick={v => { setCity(v === "all" ? "" : v); setArea(""); }} />
+                <LocPick icon="🏙️" placeholder="Select city" value={city} options={cityOptsA} accent="#2563EB" canon={canonCity} onPick={v => { setCity(v === "all" ? "" : v); setArea(""); }} />
                 <LocPick icon="📍" placeholder="Area / locality" value={area} options={areaOptsA} accent="#008069" onPick={v => setArea(v === "all" ? "" : v)} />
               </div>
               <div style={{ fontSize: 11.5, color: "#7A7390", marginTop: 6, lineHeight: 1.4 }}>Pick from the list or type your own — helps us show people & events near you 📍</div>
@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-loc-v65 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-loc-v66 build</div>
       </div>
     </div>
   );
@@ -2615,8 +2615,8 @@ function ProfileGate({ user, profile, reload }) {
   const [waGroup, setWaGroup] = useState("");
   useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
   const fileRef = useRef(null);
-  const cityOptsP = [...IN_CITIES].sort((a, b) => a.localeCompare(b));
-  const areaOptsP = (() => { const c = IN_CITIES.find(x => _norm(x) === _norm(city)); return (IN_AREAS[c] || IN_AREAS[city] || []).slice().sort((a, b) => a.localeCompare(b)); })();
+  const cityOptsP = (() => { const m = new Map(); IN_CITIES.forEach(c => { const cn = canonCity(c); if (!m.has(_norm(cn))) m.set(_norm(cn), cn); }); return [...m.values()].sort((a, b) => a.localeCompare(b)); })();
+  const areaOptsP = curatedAreas(city).slice().sort((a, b) => a.localeCompare(b));
   useEffect(() => {
     supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle()
       .then(({ data }) => { const um = user.user_metadata || {}; setAge(data?.age || ""); setArea(data?.area || um.area || ""); setProf(data?.profession || ""); setCity(data?.city || um.city || ""); });
@@ -2640,7 +2640,7 @@ function ProfileGate({ user, profile, reload }) {
     if (miss) return setErr(`${miss[0]} is required${buyLite ? "" : " to become a member"}.`);
     if (!buyLite && !avatar) return setErr("Please add a profile photo.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: _tcase(city) });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: canonCity(city) });
     await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
@@ -2676,7 +2676,7 @@ function ProfileGate({ user, profile, reload }) {
           {inp("Full name", name, setName)}
           {inp("Phone number", phone, setPhone, "tel")}
           {inp("Age", age, setAge, "number", !buyLite)}
-          <div><LocPick icon="🏙️" placeholder="City" value={city} options={cityOptsP} accent="#2563EB" onPick={v => { setCity(v === "all" ? "" : v); setArea(""); }} /></div>
+          <div><LocPick icon="🏙️" placeholder="City" value={city} options={cityOptsP} accent="#2563EB" canon={canonCity} onPick={v => { setCity(v === "all" ? "" : v); setArea(""); }} /></div>
           <div><LocPick icon="📍" placeholder="Area / locality" value={area} options={areaOptsP} accent="#008069" onPick={v => setArea(v === "all" ? "" : v)} /></div>
           {inp("Profession", prof, setProf, "text", !buyLite)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
@@ -4187,7 +4187,22 @@ const IN_AREAS = {
 };
 const _tcase = s => String(s || "").trim().replace(/\s+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 const _norm = s => String(s || "").trim().toLowerCase();
-function LocPick({ icon, placeholder, value, options, accent, onPick }) {
+// Fold the many "Hyderabad" variants (Secunderabad, Hyd, Cyberabad, and Hyderabad
+// localities people type as their city) into a single canonical "Hyderabad".
+const _HYD_AREAS = new Set([...(IN_AREAS["Hyderabad"] || []), ...(IN_AREAS["Secunderabad"] || [])].map(_norm));
+function canonCity(raw) {
+  const s = _norm(raw);
+  if (!s) return "";
+  if (s.includes("hyderabad") || s.includes("hyderbad") || s.includes("hydrabad") || s.includes("secunderabad") || s.includes("cyberabad") || /(^|\W)hyd(\W|$)/.test(s) || _HYD_AREAS.has(s)) return "Hyderabad";
+  return _tcase(raw);
+}
+function curatedAreas(city) {
+  const key = IN_CITIES.find(x => _norm(x) === _norm(city));
+  let arr = (IN_AREAS[key] || IN_AREAS[city] || []).slice();
+  if (_norm(city) === "hyderabad") arr = [...arr, ...(IN_AREAS["Secunderabad"] || [])];
+  return arr;
+}
+function LocPick({ icon, placeholder, value, options, accent, onPick, canon = _tcase }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const boxRef = useRef(null);
@@ -4197,24 +4212,35 @@ function LocPick({ icon, placeholder, value, options, accent, onPick }) {
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, [open]);
   const ql = q.trim().toLowerCase();
-  const list = (ql ? options.filter(o => o.toLowerCase().includes(ql)) : options).slice(0, 80);
+  const list = (ql ? options.filter(o => o.toLowerCase().includes(ql)) : options).slice(0, 120);
   const exact = options.some(o => o.toLowerCase() === ql);
   const active = value && value !== "all";
+  const row = (label, onClick, opts = {}) => (
+    <div onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 9, padding: "13px 15px", fontSize: 14.5, cursor: "pointer", minHeight: 46, boxSizing: "border-box", color: opts.color || W.ink, fontWeight: opts.weight || 600, background: opts.bg || "#fff", borderBottom: opts.divider ? `1px solid ${W.line}` : "none" }} onMouseEnter={e => { if (!opts.bg) e.currentTarget.style.background = "#F6F3FB"; }} onMouseLeave={e => { if (!opts.bg) e.currentTarget.style.background = "#fff"; }}>
+      {opts.icon && <span style={{ fontSize: 15 }}>{opts.icon}</span>}
+      <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+      {opts.check && <span style={{ color: accent, fontWeight: 900 }}>✓</span>}
+    </div>
+  );
   return (
     <div ref={boxRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
-      <button onClick={() => { setOpen(o => !o); setQ(""); }} style={{ width: "100%", textAlign: "left", padding: "11px 12px", borderRadius: 11, border: `1.5px solid ${active ? accent : "#E4DCEF"}`, background: active ? accent + "18" : "#fff", color: active ? W.ink : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {icon} {active ? value : placeholder} <span style={{ float: "right", opacity: .6 }}>▾</span>
+      <button onClick={() => { setOpen(o => !o); setQ(""); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 7, textAlign: "left", padding: "13px 12px", borderRadius: 12, border: `1.5px solid ${active ? accent : "#E4DCEF"}`, background: active ? accent + "14" : "#fff", color: active ? W.ink : W.soft, fontWeight: 700, fontSize: 13.5, cursor: "pointer", minHeight: 48, boxSizing: "border-box" }}>
+        <span style={{ fontSize: 15 }}>{icon}</span>
+        <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{active ? value : placeholder}</span>
+        {active ? <span onClick={e => { e.stopPropagation(); onPick("all"); }} style={{ fontSize: 15, color: W.soft, fontWeight: 800, padding: "0 2px" }}>✕</span> : <span style={{ opacity: .55 }}>▾</span>}
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 5px)", left: 0, right: 0, zIndex: 30, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, boxShadow: "0 10px 28px rgba(17,27,33,.18)", overflow: "hidden" }}>
-          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Type to search…" style={{ width: "100%", boxSizing: "border-box", padding: "11px 13px", border: "none", borderBottom: `1px solid ${W.line}`, fontSize: 14, outline: "none" }} />
-          <div style={{ maxHeight: 240, overflowY: "auto" }}>
-            <div onClick={() => { onPick("all"); setOpen(false); }} style={{ padding: "10px 13px", fontSize: 13.5, fontWeight: 700, color: W.teal, cursor: "pointer", borderBottom: `1px solid ${W.line}` }}>{placeholder}</div>
-            {ql && !exact && <div onClick={() => { onPick(_tcase(q)); setOpen(false); }} style={{ padding: "10px 13px", fontSize: 13.5, cursor: "pointer", color: W.ink, background: "#FFF8E6" }}>Use “{_tcase(q)}”</div>}
-            {list.map(o => (
-              <div key={o} onClick={() => { onPick(o); setOpen(false); }} style={{ padding: "10px 13px", fontSize: 13.5, cursor: "pointer", color: W.ink, background: _norm(o) === _norm(value) ? accent + "18" : "#fff" }}>{o}</div>
-            ))}
-            {!list.length && !ql && <div style={{ padding: "12px 13px", fontSize: 13, color: W.soft }}>No options.</div>}
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 30, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, boxShadow: "0 12px 34px rgba(17,27,33,.20)", overflow: "hidden" }}>
+          <div style={{ position: "relative", borderBottom: `1px solid ${W.line}` }}>
+            <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 15, opacity: .6 }}>🔍</span>
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Type to search…" style={{ width: "100%", boxSizing: "border-box", padding: "13px 13px 13px 38px", border: "none", fontSize: 15, outline: "none" }} />
+          </div>
+          <div style={{ maxHeight: 300, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+            {row(placeholder, () => { onPick("all"); setOpen(false); }, { color: W.teal, weight: 800, divider: true })}
+            {ql && !exact && row(`Use “${canon(q)}”`, () => { onPick(canon(q)); setOpen(false); }, { bg: "#FFF8E6", weight: 700, icon: "✏️" })}
+            {list.map(o => row(o, () => { onPick(o); setOpen(false); }, { check: _norm(o) === _norm(value), bg: _norm(o) === _norm(value) ? accent + "14" : undefined }))}
+            {!list.length && !ql && <div style={{ padding: "14px 15px", fontSize: 13.5, color: W.soft }}>No options.</div>}
+            {!list.length && ql && exact === false && <div style={{ padding: "10px 15px 14px", fontSize: 12.5, color: W.soft }}>No match — tap “Use …” above to add it.</div>}
           </div>
         </div>
       )}
@@ -4381,26 +4407,25 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     if (error) { setViewers("locked"); return; }
     setViewers(data || []);
   };
-  // City options: built-in India list + any cities members actually entered, deduped case-insensitively.
+  // City options: built-in India list + cities members entered, all canonicalised (Hyderabad variants merged) & deduped.
   const cityOpts = (() => {
     const seen = new Map();
-    [...IN_CITIES, ...(rows || []).map(p => _tcase(p.city)).filter(Boolean)].forEach(c => { const k = _norm(c); if (k && !seen.has(k)) seen.set(k, c); });
+    [...IN_CITIES, ...(rows || []).map(p => p.city).filter(Boolean)].forEach(c => { const canon = canonCity(c); const k = _norm(canon); if (k && !seen.has(k)) seen.set(k, canon); });
     return [...seen.values()].sort((a, b) => a.localeCompare(b));
   })();
   // Area options: curated areas for the chosen city + areas members entered (in that city if one is picked), deduped.
   const areaOpts = (() => {
     const seen = new Map();
-    const curated = cityFlt === "all" ? [] : (IN_AREAS[cityOpts.find(c => _norm(c) === _norm(cityFlt))] || IN_AREAS[cityFlt] || []);
-    const fromMembers = (rows || []).filter(p => cityFlt === "all" || _norm(p.city) === _norm(cityFlt)).map(p => _tcase(p.area)).filter(Boolean);
+    const curated = cityFlt === "all" ? [] : curatedAreas(cityFlt);
+    const fromMembers = (rows || []).filter(p => cityFlt === "all" || canonCity(p.city) === canonCity(cityFlt)).map(p => _tcase(p.area)).filter(Boolean);
     [...curated, ...fromMembers].forEach(a => { const k = _norm(a); if (k && !seen.has(k)) seen.set(k, a); });
     return [...seen.values()].sort((a, b) => a.localeCompare(b));
   })();
   const locMatches = (rows || []).filter(p => {
-    const pa = (p.area || "").trim(), pc = (p.city || "").trim();
-    return (me.area && pa === me.area) || (me.city && pc === me.city);
+    return (me.area && _norm(p.area) === _norm(me.area)) || (me.city && canonCity(p.city) === canonCity(me.city));
   }).sort((a, b) => {
-    const aa = me.area && (a.area || "").trim() === me.area ? 0 : 1;
-    const bb = me.area && (b.area || "").trim() === me.area ? 0 : 1;
+    const aa = me.area && _norm(a.area) === _norm(me.area) ? 0 : 1;
+    const bb = me.area && _norm(b.area) === _norm(me.area) ? 0 : 1;
     return aa - bb;
   });
   // Always populate: use location matches if we have them, otherwise show
@@ -4413,7 +4438,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const filtered = (rows || []).filter(p =>
     (flt === "all" ? true : flt === "new" ? isNewbie(p.joined) : (p.gender === flt))
     && (areaFlt === "all" || _norm(p.area) === _norm(areaFlt))
-    && (cityFlt === "all" || _norm(p.city) === _norm(cityFlt))
+    && (cityFlt === "all" || canonCity(p.city) === canonCity(cityFlt))
     && inAge(p.age)
     && (!nq || (p.name || "").toLowerCase().includes(nq)));
   const card = (p, waveLbl) => (
@@ -4655,7 +4680,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           </div>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#1E6FB8", marginBottom: 7 }}>📍 WHERE</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 13 }}>
-            <LocPick icon="🏙️" placeholder="All cities" value={cityFlt === "all" ? "" : cityFlt} options={cityOpts} accent="#2563EB" onPick={v => { setCityFlt(v); setAreaFlt("all"); }} />
+            <LocPick icon="🏙️" placeholder="All cities" value={cityFlt === "all" ? "" : cityFlt} options={cityOpts} accent="#2563EB" canon={canonCity} onPick={v => { setCityFlt(v); setAreaFlt("all"); }} />
             <LocPick icon="📍" placeholder="All areas" value={areaFlt === "all" ? "" : areaFlt} options={areaOpts} accent="#008069" onPick={v => setAreaFlt(v)} />
           </div>
           <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#B45309", marginBottom: 7 }}>🎂 AGE</div>
