@@ -2279,7 +2279,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             </div>
             {selQty > 0
               ? <button onClick={() => onBuy(e, cart, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "14px 28px", fontSize: 15.5, borderRadius: 12, flexShrink: 0, boxShadow: "0 6px 16px rgba(0,128,105,.28)" }}><Ticket size={18} />{hasTicket ? "Buy more →" : "Proceed to checkout →"}</button>
-              : <button onClick={() => onBuy(e, visTypes.length === 1 ? [{ type: visTypes[0], qty: 1 }] : null, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "14px 26px", fontSize: 15.5, borderRadius: 12, flexShrink: 0 }}><Ticket size={18} />Get tickets</button>}
+              : <button onClick={() => visTypes.length > 1 ? scrollToTickets() : onBuy(e, visTypes.length === 1 ? [{ type: visTypes[0], qty: 1 }] : null, 1, addonQtyMap)} style={{ ...btn(W.teal, "#fff"), padding: "14px 26px", fontSize: 15.5, borderRadius: 12, flexShrink: 0 }}><Ticket size={18} />Get tickets</button>}
           </div>
         </div>
       )}
@@ -2454,7 +2454,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v58 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v59 build</div>
       </div>
     </div>
   );
