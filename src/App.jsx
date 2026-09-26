@@ -1061,13 +1061,13 @@ function RideButtons({ e, compact }) {
 }
 function MediaSlider({ imgs, wide }) {
   const ref = useRef(null);
-  const scroll = (dir) => { const el = ref.current; if (!el) return; el.scrollBy({ left: dir * el.clientWidth * 0.86, behavior: "smooth" }); };
+  const scroll = (dir) => { const el = ref.current; if (!el) return; el.scrollBy({ left: dir * el.clientWidth * (wide ? 0.98 : 0.86), behavior: "smooth" }); };
   const arrow = { position: "absolute", top: wide ? 150 : 100, width: 40, height: 40, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.96)", boxShadow: "0 2px 10px rgba(0,0,0,.28)", cursor: "pointer", fontSize: 22, fontWeight: 900, color: W.ink, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, paddingBottom: 3, zIndex: 2 };
   return (
     <div style={{ marginBottom: 10, position: "relative" }}>
       <div ref={ref} style={{ display: "flex", gap: 10, overflowX: "auto", scrollSnapType: "x mandatory", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
         {imgs.map((m, i) => (
-          <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{ flex: "0 0 auto", width: imgs.length === 1 ? "100%" : "86%", scrollSnapAlign: "center", display: "block" }}>
+          <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{ flex: "0 0 auto", width: (imgs.length === 1 || wide) ? "100%" : "86%", scrollSnapAlign: "center", display: "block" }}>
             <img src={m.url} alt="" style={{ width: "100%", height: wide ? 340 : 240, objectFit: "cover", borderRadius: 14, display: "block", background: "#eee" }} />
           </a>
         ))}
@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-loc-v66 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · slider-v67 build</div>
       </div>
     </div>
   );
