@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v79 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v80 build</div>
       </div>
     </div>
   );
@@ -4345,6 +4345,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [cityFlt, setCityFlt] = useState("all");
   const [ageFlt, setAgeFlt] = useState("all");
   const [moodFlt, setMoodFlt] = useState("all");
+  const [sortMeet, setSortMeet] = useState("match");
   const [profDismiss, setProfDismiss] = useState(false);
   const [nameQ, setNameQ] = useState("");
   const [viewsN, setViewsN] = useState(0);
@@ -4516,6 +4517,11 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     && (moodFlt === "all" || moodMap[p.id] === moodFlt)
     && inAge(p.age)
     && (!nq || (p.name || "").toLowerCase().includes(nq)));
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    if (sortMeet === "new") return new Date(b.joined || 0) - new Date(a.joined || 0);
+    if (sortMeet === "active") return new Date(b.last_seen || 0) - new Date(a.last_seen || 0);
+    return compat(b) - compat(a); // best match (default)
+  });
   const card = (p, waveLbl) => {
     const online = isOnline(p.last_seen);
     const cm = compat(p);
@@ -4904,10 +4910,16 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           </div>
           <div style={{ marginTop: 13, display: "inline-block", background: "#fff", border: "1px solid #EBD9F0", borderRadius: 999, padding: "5px 13px", fontSize: 12, fontWeight: 800, color: "#7C3AED" }}>✨ {filtered.length} {filtered.length === 1 ? "person" : "people"} match</div>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "14px 14px 0", overflowX: "auto" }}>
+          <span style={{ fontSize: 11.5, color: W.soft, fontWeight: 800, flexShrink: 0 }}>Sort:</span>
+          {[["match", "💞 Best match"], ["active", "🟢 Most active"], ["new", "🆕 Newest"]].map(([k, l]) => (
+            <button key={k} onClick={() => setSortMeet(k)} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 999, border: sortMeet === k ? "none" : "1.5px solid #E4DCEF", background: sortMeet === k ? "linear-gradient(95deg,#7C3AED,#EC4899)" : "#fff", color: sortMeet === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{l}</button>
+          ))}
+        </div>
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>
           {rows === null ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24 }}>Loading members…</div>
-            : filtered.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>No one here yet.</div>
-            : filtered.map(p => card(p))}
+            : sortedFiltered.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>No one here yet.</div>
+            : sortedFiltered.map(p => card(p))}
         </div>
         </div>
       </div>}
