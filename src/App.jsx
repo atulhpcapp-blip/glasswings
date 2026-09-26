@@ -1344,7 +1344,7 @@ async function exportGuestListPdf(ev) {
     w.document.close();
   } catch (e) { alert(e.message || "Could not build the guest list."); }
 }
-function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved, onToggleSave }) {
+function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved, onToggleSave, rating }) {
   return (
     <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
       <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
@@ -1366,7 +1366,10 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved
       </div>
       <div style={{ padding: "8px 2px 0" }}>
         <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.title}</div>
-        <div style={{ fontSize: 12.5, color: W.teal, fontWeight: 800, marginTop: 3 }}>{price}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 3 }}>
+          <span style={{ fontSize: 12.5, color: W.teal, fontWeight: 800 }}>{price}</span>
+          {rating && rating.cnt > 0 && <span style={{ fontSize: 11.5, color: "#B45309", fontWeight: 800 }}>⭐ {rating.avg}<span style={{ color: W.soft, fontWeight: 600 }}> ({rating.cnt})</span></span>}
+        </div>
         {(e.entry_badge || (e.dress_code || "").trim()) && <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
           {e.entry_badge && <span style={{ background: "#FEF3C7", color: "#B45309", fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8, whiteSpace: "nowrap" }}>🔞 {e.entry_badge}</span>}
           {(e.dress_code || "").trim() && <span style={{ background: "#F3E8FF", color: "#7C3AED", fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 110 }}>👗 {e.dress_code}</span>}
@@ -1783,7 +1786,8 @@ function RecentBuyerToasts({ eventId, wide }) {
   );
 }
 
-function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM, mySegs = [], isStaff = false, segList = [], waGroup = "" }) {
+function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM, mySegs = [], isStaff = false, segList = [], waGroup = "", rating, myRating, onRate, saved, onToggleSave }) {
+  const eventPast = e.event_at && new Date(e.event_at).getTime() < Date.now();
   const waJoin = (e.whatsapp_url || waGroup || "").trim();
   const calStart = e.event_at ? new Date(e.event_at) : null;
   const gcalUrl = (calStart && !isNaN(calStart.getTime())) ? (() => {
@@ -1797,6 +1801,11 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   useEffect(() => { fetch("/api/razorpay/order", { method: "GET" }).catch(() => { }); }, []);
   const [showTerms, setShowTerms] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [rStars, setRStars] = useState(myRating?.stars || 0);
+  const [rReview, setRReview] = useState(myRating?.review || "");
+  const [rBusy, setRBusy] = useState(false);
+  const [rDone, setRDone] = useState(false);
+  const submitRating = async () => { if (!rStars || !onRate) return; setRBusy(true); const ok = await onRate(e.id, rStars, rReview); setRBusy(false); if (ok) setRDone(true); };
   const [showMini, setShowMini] = useState(false);
   const heroRef = useRef(null);
   const ticketRef = useRef(null);
@@ -1972,7 +1981,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       <div style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(8,18,24,.95)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "12px 7%" : "10px 14px" }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 7, background: "transparent", border: "none", color: "#fff", fontWeight: 700, fontSize: 14.5, cursor: "pointer", padding: 0 }}><ArrowLeft size={19} />All events</button>
         <img src="/logo-white.png" alt="Glasswings" style={{ height: 26, objectFit: "contain" }} />
-        <button onClick={share} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(255,255,255,.4)", color: "#fff", borderRadius: 9, padding: "7px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}><Share2 size={14} />{copied ? "Copied ✓" : "Share"}</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {onToggleSave && <button onClick={() => onToggleSave(e.id)} aria-label={saved ? "Remove from saved" : "Save"} style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid rgba(255,255,255,.4)", borderRadius: 9, padding: "7px 10px", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>{saved ? "❤️" : "🤍"}</button>}
+          <button onClick={share} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(255,255,255,.4)", color: "#fff", borderRadius: 9, padding: "7px 13px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}><Share2 size={14} />{copied ? "Copied ✓" : "Share"}</button>
+        </div>
       </div>
       {showMini && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 31, background: "rgba(8,18,24,.97)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", gap: 10, padding: wide ? "10px 7%" : "9px 12px" }}>
@@ -2007,7 +2019,8 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             )))}
           </div>
           <h1 ref={heroRef} style={{ fontSize: wide ? 34 : 24, fontWeight: 800, color: W.ink, margin: 0, lineHeight: 1.18 }}>{e.emoji} {e.title}</h1>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9, alignItems: "center" }}>
+            {rating && rating.cnt > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#FFF7E6", color: "#B45309", fontSize: 12.5, fontWeight: 900, padding: "4px 12px", borderRadius: 20, border: "1px solid #FBD9A0" }}>⭐ {rating.avg}<span style={{ color: W.soft, fontWeight: 600 }}> · {rating.cnt} rating{rating.cnt > 1 ? "s" : ""}</span></span>}
             {countdown && <span style={{ display: "inline-block", background: "#FEF3C7", color: "#B45309", fontSize: 12.5, fontWeight: 800, padding: "4px 12px", borderRadius: 20 }}>{countdown}</span>}
             {e.entry_badge && <span style={{ display: "inline-block", background: "#FEF3C7", color: "#B45309", fontSize: 12.5, fontWeight: 800, padding: "4px 12px", borderRadius: 20 }}>🔞 {e.entry_badge}</span>}
           </div>
@@ -2183,6 +2196,16 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
                     <div style={{ fontSize: 13.5, color: W.soft, lineHeight: 1.55, marginTop: 3, whiteSpace: "pre-wrap" }}>{f.a}</div>
                   </div>
                 ))}
+              </div>
+            </Sec>
+          )}
+          {eventPast && hasTicket && (
+            <Sec title="Rate this event">
+              <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 14 }}>
+                {(myRating || rDone) ? <div style={{ fontSize: 12.5, color: "#0d6e58", fontWeight: 800, marginBottom: 8 }}>✅ You rated this event — tap the stars to change it.</div> : <div style={{ fontSize: 13.5, color: W.ink, fontWeight: 700, marginBottom: 8 }}>How was it? Your rating helps others decide.</div>}
+                <div style={{ display: "flex", gap: 8 }}>{[1, 2, 3, 4, 5].map(n => <span key={n} onClick={() => setRStars(n)} style={{ fontSize: 30, cursor: "pointer", lineHeight: 1, filter: n <= rStars ? "none" : "grayscale(1) opacity(.35)" }}>⭐</span>)}</div>
+                <textarea value={rReview} onChange={ev => setRReview(ev.target.value)} rows={2} placeholder="Add a quick review (optional)" style={{ width: "100%", boxSizing: "border-box", marginTop: 10, border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
+                <button onClick={submitRating} disabled={!rStars || rBusy} style={{ ...btn(W.teal, "#fff"), marginTop: 10, padding: "11px 18px", opacity: (!rStars || rBusy) ? .6 : 1 }}>{rBusy ? "Saving…" : (myRating || rDone) ? "Update rating" : "Submit rating"}</button>
               </div>
             </Sec>
           )}
@@ -2455,7 +2478,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v60 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · events-v61 build</div>
       </div>
     </div>
   );
@@ -2663,6 +2686,19 @@ function Main({ user }) {
     setSavedIds(s => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; });
     if (on) await supabase.from("event_saves").insert({ event_id: id, user_id: user.id });
     else await supabase.from("event_saves").delete().eq("event_id", id).eq("user_id", user.id);
+  };
+  const [ratingSummary, setRatingSummary] = useState({});
+  const [myRatings, setMyRatings] = useState({});
+  const loadRatings = () => {
+    supabase.rpc("event_ratings_summary").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.event_id] = { avg: Number(r.avg_stars), cnt: Number(r.cnt) }; }); setRatingSummary(m); });
+    supabase.from("event_ratings").select("event_id, stars, review").eq("user_id", user.id).then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.event_id] = { stars: r.stars, review: r.review || "" }; }); setMyRatings(m); });
+  };
+  useEffect(() => { loadRatings(); }, []);
+  const onRate = async (eventId, stars, review) => {
+    const { error } = await supabase.rpc("rate_event", { p_event: eventId, p_stars: stars, p_review: review || null });
+    if (error) { setNotice(error.message); return false; }
+    loadRatings();
+    return true;
   };
   const [payBusy, setPayBusy] = useState(false);
   const [eventPage, setEventPage] = useState(null);
@@ -3494,7 +3530,7 @@ function Main({ user }) {
         </div>
       )}
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
-      {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} />}
+      {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
@@ -3535,7 +3571,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} waGroup={waGroup} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} waGroup={waGroup} rating={ratingSummary[ev.id]} myRating={myRatings[ev.id]} onRate={onRate} saved={savedIds.has(ev.id)} onToggleSave={toggleSave} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
@@ -3601,7 +3637,7 @@ function Main({ user }) {
           const tot = (eventStats?.[ev.id]?.male || 0) + (eventStats?.[ev.id]?.female || 0);
           return (
             <div style={{ position: "fixed", inset: 0, zIndex: 50, overflowY: "auto", background: "#fff" }}>
-              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} waGroup={waGroup} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
+              <PublicEventPage isPlanMember={myPlans.length > 0} mySegs={mySegs} isStaff={isAdmin} segList={segList} waGroup={waGroup} rating={ratingSummary[ev.id]} myRating={myRatings[ev.id]} onRate={onRate} saved={savedIds.has(ev.id)} onToggleSave={toggleSave} onViewPlans={() => setSubPage({ highlight: null })} onOpenDM={openDM} initialCart={resumeCart} initialAddons={resumeAddons} e={ev} types={ticketTypes[ev.id] || []} addons={addons[ev.id] || []} popular={tot >= 5} events={events} wide={wide} profile={profile} stats={eventStats} typeSold={typeSold}
                 hasTicket={canAccessEvent(ev)}
                 onBack={() => setEventPage(null)}
                 onBuy={(e2, c, q, initialAddons) => buyTicket(e2, c || null, q || 1, initialAddons || {})}
@@ -3646,7 +3682,7 @@ function Notice({ text, onClose }) {
 
 /* ---------------- chats ---------------- */
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll, privateMode = false, savedIds = new Set(), onToggleSave }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll, privateMode = false, savedIds = new Set(), onToggleSave, ratingSummary = {} }) {
   const popSet = (() => {
     const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
     return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
@@ -3741,7 +3777,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
       {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={false} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
       <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
         {list.length === 0 && <div style={{ gridColumn: "1/-1", background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 10 }}><Center>{savedOnly ? "No saved events yet — tap the 🤍 on any event to save it." : privateMode ? "No private invitations are available for your segments right now." : (q.trim() || dateQuick !== "all" || fltCount(flt) > 0) ? "No events match your search/filters." : "No events here yet."}</Center></div>}
-        {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} saved={savedIds.has(e.id)} onToggleSave={onToggleSave} />)}
+        {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} saved={savedIds.has(e.id)} onToggleSave={onToggleSave} rating={ratingSummary[e.id]} />)}
       </div>
       {fsheet && <FilterSheet events={events} dims={dims} opts={optsAll} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
       {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
