@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-inbox-v86 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-inbox-v87 build</div>
       </div>
     </div>
   );
@@ -4710,6 +4710,10 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 900, fontSize: 19, lineHeight: 1 }}>👋 Meet your people</div>
             <div style={{ fontSize: 12, opacity: .92, marginTop: 3 }}>Wave, match & make plans ✨</div>
+          </div>
+          <div onClick={() => setMtab("waves")} style={{ position: "relative", width: 42, height: 42, borderRadius: 12, background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, cursor: "pointer", flexShrink: 0 }}>
+            💌
+            {inbox.length > 0 && <span style={{ position: "absolute", top: -5, right: -5, minWidth: 20, height: 20, padding: "0 5px", borderRadius: 20, background: "#F43F5E", color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff", boxSizing: "border-box" }}>{inbox.length}</span>}
           </div>
         </div>
         <div style={{ display: "flex", gap: 7 }}>
