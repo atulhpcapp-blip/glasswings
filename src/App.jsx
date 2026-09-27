@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · series-v94 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · series-v95 build</div>
       </div>
     </div>
   );
@@ -17229,6 +17229,7 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const [title, setTitle] = useState(""), [desc, setDesc] = useState(""), [vurl, setVurl] = useState(""), [purl, setPurl] = useState("");
   const [paid, setPaid] = useState(true), [price, setPrice] = useState(24), [busy, setBusy] = useState(false), [up, setUp] = useState("");
   const [seriesId, setSeriesId] = useState(""), [epNo, setEpNo] = useState("");
+  const [editId, setEditId] = useState(null), [sEditId, setSEditId] = useState(null);
   const [sList, setSList] = useState([]);
   const [sTitle, setSTitle] = useState(""), [sGenre, setSGenre] = useState(""), [sPoster, setSPoster] = useState(""), [sPrice, setSPrice] = useState(0), [sFree, setSFree] = useState(1), [sBusy, setSBusy] = useState(false);
   const [bulkSeries, setBulkSeries] = useState(""), [bulkLinks, setBulkLinks] = useState(""), [bulkPrice, setBulkPrice] = useState(24), [bulkBusy, setBulkBusy] = useState(false);
@@ -17239,10 +17240,10 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const saveSeries = async () => {
     if (!sTitle.trim()) return alert("Series needs a title.");
     setSBusy(true);
-    const { error } = await supabase.rpc("series_upsert", { p_id: null, p_title: sTitle.trim(), p_desc: null, p_poster: sPoster.trim(), p_genre: sGenre.trim(), p_price: Number(sPrice) || 0, p_published: true, p_sort: 0, p_free_eps: Number(sFree) || 0 });
+    const { error } = await supabase.rpc("series_upsert", { p_id: sEditId, p_title: sTitle.trim(), p_desc: null, p_poster: sPoster.trim(), p_genre: sGenre.trim(), p_price: Number(sPrice) || 0, p_published: true, p_sort: 0, p_free_eps: Number(sFree) || 0 });
     setSBusy(false);
     if (error) return alert(error.message);
-    setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); loadSeries();
+    setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); setSEditId(null); loadSeries();
   };
   const bulkAdd = async () => {
     const links = bulkLinks.split("\n").map(x => x.trim()).filter(Boolean);
@@ -17261,17 +17262,22 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const save = async () => {
     if (!title.trim() || !vurl.trim()) return alert("Add a title and a video (upload or paste a URL).");
     setBusy(true);
-    const { error } = await supabase.rpc("shorts_upsert", { p_id: null, p_title: title.trim(), p_desc: desc, p_video: vurl.trim(), p_poster: purl.trim(), p_paid: paid, p_price: Number(price) || 24, p_published: true, p_sort: 0, p_series: seriesId || null, p_episode: seriesId ? (Number(epNo) || null) : null });
+    const { error } = await supabase.rpc("shorts_upsert", { p_id: editId, p_title: title.trim(), p_desc: desc, p_video: vurl.trim(), p_poster: purl.trim(), p_paid: paid, p_price: Number(price) || 24, p_published: true, p_sort: 0, p_series: seriesId || null, p_episode: seriesId ? (Number(epNo) || null) : null });
     setBusy(false);
     if (error) return alert(error.message);
-    setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); load(); onChanged && onChanged();
+    setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); setSeriesId(""); setEditId(null); load(); onChanged && onChanged();
   };
+  const editShort = (r) => { setEditId(r.id); setTitle(r.title || ""); setDesc(r.description || ""); setVurl(r.video_url || ""); setPurl(r.poster_url || ""); setPaid(!!r.is_paid); setPrice(r.price_inr || 24); setSeriesId(r.series_id || ""); setEpNo(r.episode_no || ""); try { document.querySelector("[data-shorts-admin]")?.scrollTo({ top: 0, behavior: "smooth" }); } catch {} };
   const del = async (id) => { if (!window.confirm("Delete this short?")) return; await supabase.rpc("shorts_delete", { p_id: id }); load(); onChanged && onChanged(); };
+  const editSeries = (s) => { setSEditId(s.id); setSTitle(s.title || ""); setSGenre(s.genre || ""); setSPoster(s.poster_url || ""); setSPrice(s.series_price_inr || 0); setSFree(s.free_eps != null ? s.free_eps : 1); try { document.querySelector("[data-shorts-admin]")?.scrollTo({ top: 99999, behavior: "smooth" }); } catch {} };
   const ip = { width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, outline: "none", marginBottom: 9 };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", borderRadius: "18px 18px 0 0", padding: "18px 16px calc(22px + env(safe-area-inset-bottom))" }}>
-        <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 12 }}>🎬 Add a short movie</div>
+      <div data-shorts-admin onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", borderRadius: "18px 18px 0 0", padding: "18px 16px calc(22px + env(safe-area-inset-bottom))" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{editId ? "✏️ Edit episode / short" : "🎬 Add a short movie"}</div>
+          {editId && <button onClick={() => { setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); setSeriesId(""); setEditId(null); }} style={{ background: "#EEF1F3", color: W.soft, border: "none", borderRadius: 8, padding: "6px 11px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Cancel</button>}
+        </div>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" style={ip} />
         <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{ ...ip, resize: "vertical", fontFamily: "inherit" }} />
         <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
@@ -17290,13 +17296,14 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
           <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 700, color: W.ink, cursor: "pointer" }}><input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} /> Paid</label>
           {paid && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>₹<input type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ width: 70, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 14 }} /></div>}
         </div>
-        <button onClick={save} disabled={busy || !!up} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", opacity: (busy || up) ? .6 : 1 }}>{busy ? "Saving…" : "Publish short"}</button>
+        <button onClick={save} disabled={busy || !!up} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", opacity: (busy || up) ? .6 : 1 }}>{busy ? "Saving…" : editId ? "Update" : "Publish short"}</button>
         <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "16px 0 8px" }}>Published shorts</div>
         {!rows.length ? <div style={{ color: W.soft, fontSize: 13 }}>None yet.</div> : rows.map(r => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
             <div style={{ width: 40, height: 54, borderRadius: 7, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{r.poster_url ? <img src={r.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎬</div>}</div>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.published ? "" : " · hidden"}</div></div>
-            <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>Delete</button>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in series" : ""}{r.published ? "" : " · hidden"}</div></div>
+            <button onClick={() => editShort(r)} style={{ ...btn("#EEF1F3", W.ink), padding: "7px 11px", fontSize: 12.5 }}>Edit</button>
+            <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 11px", fontSize: 12.5 }}>Del</button>
           </div>
         ))}
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: `2px solid ${W.line}` }}>
@@ -17309,7 +17316,10 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap" }}>Bundle ₹</span><input type="number" value={sPrice} onChange={e => setSPrice(e.target.value)} title="Price to unlock the whole series (0 = none)" style={{ width: 60, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
           </div>
           <label style={{ ...btn("#EEF1F3", W.ink), width: "100%", justifyContent: "center", padding: "10px", cursor: "pointer", marginBottom: 9 }}>{up === "sposter" ? "Uploading…" : sPoster ? "✓ Cover set" : "⬆ Series cover (portrait)"}<input type="file" accept="image/*" onChange={pickSPoster} style={{ display: "none" }} /></label>
-          <button onClick={saveSeries} disabled={sBusy || !!up} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", opacity: (sBusy || up) ? .6 : 1 }}>{sBusy ? "Saving…" : "Create series"}</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={saveSeries} disabled={sBusy || !!up} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "12px", opacity: (sBusy || up) ? .6 : 1 }}>{sBusy ? "Saving…" : sEditId ? "Update series" : "Create series"}</button>
+            {sEditId && <button onClick={() => { setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); setSEditId(null); }} style={{ ...btn("#EEF1F3", W.soft), padding: "12px 14px" }}>Cancel</button>}
+          </div>
 
           <div style={{ marginTop: 16, background: "#F4FBF8", border: "1px solid #BFE6D6", borderRadius: 12, padding: "12px 13px" }}>
             <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 4 }}>⚡ Bulk-add episodes</div>
@@ -17327,8 +17337,9 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
           {sList.map(s => (
             <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
               <div style={{ width: 34, height: 46, borderRadius: 6, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{s.poster_url ? <img src={s.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>📺</div>}</div>
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{s.genre || "—"}{s.series_price_inr > 0 ? ` · bundle ₹${s.series_price_inr}` : ""}</div></div>
-              <button onClick={() => delSeries(s.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>Delete</button>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{s.genre || "—"} · {s.free_eps != null ? s.free_eps : 1} free{s.series_price_inr > 0 ? ` · bundle ₹${s.series_price_inr}` : ""}</div></div>
+              <button onClick={() => editSeries(s)} style={{ ...btn("#EEF1F3", W.ink), padding: "7px 11px", fontSize: 12.5 }}>Edit</button>
+              <button onClick={() => delSeries(s.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 11px", fontSize: 12.5 }}>Del</button>
             </div>
           ))}
         </div>
