@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · series-v95 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · series-v96 build</div>
       </div>
     </div>
   );
@@ -17233,6 +17233,32 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const [sList, setSList] = useState([]);
   const [sTitle, setSTitle] = useState(""), [sGenre, setSGenre] = useState(""), [sPoster, setSPoster] = useState(""), [sPrice, setSPrice] = useState(0), [sFree, setSFree] = useState(1), [sBusy, setSBusy] = useState(false);
   const [bulkSeries, setBulkSeries] = useState(""), [bulkLinks, setBulkLinks] = useState(""), [bulkPrice, setBulkPrice] = useState(24), [bulkBusy, setBulkBusy] = useState(false);
+  const [bLib, setBLib] = useState(""), [bKey, setBKey] = useState(""), [bHost, setBHost] = useState(""), [bDone, setBDone] = useState(false), [bBusy, setBBusy] = useState(false), [bSetup, setBSetup] = useState(false);
+  useEffect(() => { supabase.rpc("has_secret", { p_key: "bunny_api_key" }).then(({ data }) => setBDone(!!data)); }, []);
+  const saveBunny = async () => {
+    if (!bLib.trim() || !bKey.trim() || !bHost.trim()) return alert("Enter Library ID, API key and CDN host.");
+    setBBusy(true);
+    try {
+      await supabase.rpc("set_secret", { p_key: "bunny_library_id", p_val: bLib.trim() });
+      await supabase.rpc("set_secret", { p_key: "bunny_api_key", p_val: bKey.trim() });
+      await supabase.rpc("set_secret", { p_key: "bunny_cdn_host", p_val: bHost.trim() });
+      setBKey(""); setBSetup(false); setBDone(true); alert("✅ Bunny connected.");
+    } catch (x) { alert(x.message || "Failed"); }
+    setBBusy(false);
+  };
+  const importBunny = async () => {
+    setBBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch("/api/bunny/list", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token }) });
+      const d = await r.json();
+      if (!r.ok || d.error) { alert(d.error || "Import failed."); setBBusy(false); return; }
+      if (!d.videos || !d.videos.length) { alert("No videos found in your Bunny library."); setBBusy(false); return; }
+      setBulkLinks(d.videos.map(v => v.url).join("\n"));
+      alert(`✅ Pulled ${d.count} videos from Bunny. Now pick the series below and tap "Import episodes".`);
+    } catch (x) { alert("Import failed: " + (x.message || x)); }
+    setBBusy(false);
+  };
   const load = () => supabase.rpc("shorts_admin_list").then(({ data }) => setRows(data || []));
   const loadSeries = () => supabase.rpc("series_admin_list").then(({ data }) => setSList(data || []));
   useEffect(() => { load(); loadSeries(); }, []);
@@ -17321,7 +17347,27 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
             {sEditId && <button onClick={() => { setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); setSEditId(null); }} style={{ ...btn("#EEF1F3", W.soft), padding: "12px 14px" }}>Cancel</button>}
           </div>
 
-          <div style={{ marginTop: 16, background: "#F4FBF8", border: "1px solid #BFE6D6", borderRadius: 12, padding: "12px 13px" }}>
+          <div style={{ marginTop: 16, background: "#FFF7E6", border: "1px solid #F6D28A", borderRadius: 12, padding: "12px 13px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, flex: 1 }}>🔗 Bunny auto-import {bDone && <span style={{ fontSize: 11, color: "#0d6e58", fontWeight: 800 }}>· connected ✓</span>}</div>
+              {bDone && <button onClick={() => setBSetup(s => !s)} style={{ background: "none", border: "none", color: W.teal, fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{bSetup ? "Cancel" : "Reconnect"}</button>}
+            </div>
+            {(!bDone || bSetup) ? (
+              <>
+                <div style={{ fontSize: 11.5, color: W.soft, margin: "5px 0 8px", lineHeight: 1.45 }}>One-time setup. From Bunny: Stream → your library → API tab for the Library ID & API Key, and the CDN hostname (vz-xxxx.b-cdn.net).</div>
+                <input value={bLib} onChange={e => setBLib(e.target.value)} placeholder="Library ID (e.g. 763461)" style={ip} />
+                <input value={bKey} onChange={e => setBKey(e.target.value)} placeholder="API Key (kept private)" style={ip} />
+                <input value={bHost} onChange={e => setBHost(e.target.value)} placeholder="CDN host (vz-xxxx.b-cdn.net)" style={ip} />
+                <button onClick={saveBunny} disabled={bBusy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "11px", opacity: bBusy ? .6 : 1 }}>{bBusy ? "Saving…" : "Connect Bunny"}</button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 11.5, color: W.soft, margin: "5px 0 8px", lineHeight: 1.45 }}>Pull every video from your Bunny library into the box below, then pick a series & import.</div>
+                <button onClick={importBunny} disabled={bBusy} style={{ ...btn("linear-gradient(95deg,#F59E0B,#E4572E)", "#fff"), width: "100%", justifyContent: "center", padding: "11px", opacity: bBusy ? .6 : 1 }}>{bBusy ? "Pulling…" : "⤵ Import all from Bunny"}</button>
+              </>
+            )}
+          </div>
+          <div style={{ marginTop: 12, background: "#F4FBF8", border: "1px solid #BFE6D6", borderRadius: 12, padding: "12px 13px" }}>
             <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 4 }}>⚡ Bulk-add episodes</div>
             <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9, lineHeight: 1.45 }}>Pick the series, paste all episode links (one per line, in order). They're auto-numbered after the last episode. Free-episode setting handles which are free.</div>
             <select value={bulkSeries} onChange={e => setBulkSeries(e.target.value)} style={ip}>
