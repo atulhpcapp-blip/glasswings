@@ -58,7 +58,17 @@ function loadRazorpay() {
     s.onload = () => resolve(true); s.onerror = () => resolve(false);
     document.body.appendChild(s);
   });
-}function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
+}
+function loadHls() {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && window.Hls) return resolve(true);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/hls.js@1";
+    s.onload = () => resolve(true); s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+}
+function rr(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
 function fitText(x, t, max) { let s = String(t || ""); if (x.measureText(s).width <= max) return s; while (s.length > 1 && x.measureText(s + "X").width > max) s = s.slice(0, -1); return s + "…"; }
 async function makeTicketBlob(d) {
   const Wd = 1000, Ht = 560, s = 2;
@@ -2537,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v91 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v92 build</div>
       </div>
     </div>
   );
@@ -17002,6 +17012,23 @@ function lastSeenStr(ts) {
   if (days < 7) return `last seen ${days}d ago`;
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
+function HlsVideo({ src, poster, muted }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const v = ref.current; if (!v) return;
+    const isM3u8 = /\.m3u8(\?|#|$)/i.test(src || "");
+    let hls;
+    if (isM3u8 && !v.canPlayType("application/vnd.apple.mpegurl")) {
+      (async () => {
+        const ok = await loadHls();
+        if (ok && window.Hls && window.Hls.isSupported()) { hls = new window.Hls(); hls.loadSource(src); hls.attachMedia(v); }
+        else { v.src = src; }
+      })();
+    } else { v.src = src; }
+    return () => { try { hls && hls.destroy(); } catch {} };
+  }, [src]);
+  return <video ref={ref} poster={poster || undefined} loop muted={muted} playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} onClick={e => { const vv = e.currentTarget; vv.paused ? vv.play().catch(() => {}) : vv.pause(); }} />;
+}
 function ShortsFeed({ user, profile, isStaff, startPayment }) {
   const [vids, setVids] = useState(null);
   const [credits, setCredits] = useState(0);
@@ -17069,7 +17096,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment }) {
                       {(() => {
                         const yt = _ytId(v.video_url);
                         if (_isDirectVideo(v.video_url)) return <>
-                          <video src={v.video_url} poster={v.poster_url || undefined} loop muted={muted} playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} onClick={e => { const vv = e.currentTarget; vv.paused ? vv.play().catch(() => {}) : vv.pause(); }} />
+                          <HlsVideo src={v.video_url} poster={v.poster_url} muted={muted} />
                           <div onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,.5)", color: "#fff", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, cursor: "pointer" }}>{muted ? "🔇" : "🔊"}</div>
                         </>;
                         if (yt) return ytOn.has(v.id)
