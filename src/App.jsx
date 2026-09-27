@@ -382,7 +382,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "series", icon: Film, label: "Series" }, { id: "shorts", icon: Zap, label: "Shorts" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Zap, label: "Shorts" }, { id: "series", icon: Film, label: "Series" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · series-v96 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v97 build</div>
       </div>
     </div>
   );
@@ -17013,7 +17013,15 @@ function lastSeenStr(ts) {
   if (days < 7) return `last seen ${days}d ago`;
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
-function HlsVideo({ src, poster, muted }) {
+function _advanceSlide(e) {
+  try {
+    const slide = e.target.closest("[data-slide]"); if (!slide) return;
+    const next = slide.nextElementSibling;
+    if (next && next.hasAttribute("data-slide")) next.scrollIntoView({ behavior: "smooth", block: "start" });
+    else { const first = slide.parentElement && slide.parentElement.querySelector("[data-slide]"); first && first.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  } catch {}
+}
+function HlsVideo({ src, poster, muted, onEnded }) {
   const ref = useRef(null);
   useEffect(() => {
     const v = ref.current; if (!v) return;
@@ -17028,12 +17036,12 @@ function HlsVideo({ src, poster, muted }) {
     } else { v.src = src; }
     return () => { try { hls && hls.destroy(); } catch {} };
   }, [src]);
-  return <video ref={ref} poster={poster || undefined} loop muted={muted} playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} onClick={e => { const vv = e.currentTarget; vv.paused ? vv.play().catch(() => {}) : vv.pause(); }} />;
+  return <video ref={ref} poster={poster || undefined} loop={!onEnded} muted={muted} playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} onEnded={onEnded} onClick={e => { const vv = e.currentTarget; vv.paused ? vv.play().catch(() => {}) : vv.pause(); }} />;
 }
-function ShortMedia({ v, muted, setMuted, ytOn, setYtOn }) {
+function ShortMedia({ v, muted, setMuted, ytOn, setYtOn, onEnded }) {
   const yt = _ytId(v.video_url);
   if (_isDirectVideo(v.video_url)) return (<>
-    <HlsVideo src={v.video_url} poster={v.poster_url} muted={muted} />
+    <HlsVideo src={v.video_url} poster={v.poster_url} muted={muted} onEnded={onEnded} />
     <div onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,.5)", color: "#fff", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, cursor: "pointer", zIndex: 3 }}>{muted ? "🔇" : "🔊"}</div>
   </>);
   if (yt) return ytOn.has(v.id)
@@ -17124,7 +17132,7 @@ function SeriesPlayer({ series, user, isStaff, credits, onCredits, onBack }) {
                   </>
                 ) : (
                   <>
-                    <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} />
+                    <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} onEnded={_advanceSlide} />
                     <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 16px 18px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
                       <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .5, opacity: .85 }}>EPISODE {v.episode_no || ""}</div>
                       <div style={{ fontWeight: 900, fontSize: 18, marginTop: 2 }}>{v.title}</div>
@@ -17208,7 +17216,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
                     </>
                   ) : (
                     <>
-                      <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} />
+                      <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} onEnded={_advanceSlide} />
                       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 16px 18px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
                         <div style={{ fontWeight: 900, fontSize: 18 }}>{v.title}{v.is_paid && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.25)", padding: "2px 8px", borderRadius: 20 }}>✓ Unlocked</span>}</div>
                         {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
@@ -17230,6 +17238,9 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const [paid, setPaid] = useState(true), [price, setPrice] = useState(24), [busy, setBusy] = useState(false), [up, setUp] = useState("");
   const [seriesId, setSeriesId] = useState(""), [epNo, setEpNo] = useState("");
   const [editId, setEditId] = useState(null), [sEditId, setSEditId] = useState(null);
+  const [segOpts, setSegOpts] = useState([]);
+  const [segId, setSegId] = useState(""), [sSeg, setSSeg] = useState(""), [bulkSeg, setBulkSeg] = useState("");
+  useEffect(() => { supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegOpts(data || [])); }, []);
   const [sList, setSList] = useState([]);
   const [sTitle, setSTitle] = useState(""), [sGenre, setSGenre] = useState(""), [sPoster, setSPoster] = useState(""), [sPrice, setSPrice] = useState(0), [sFree, setSFree] = useState(1), [sBusy, setSBusy] = useState(false);
   const [bulkSeries, setBulkSeries] = useState(""), [bulkLinks, setBulkLinks] = useState(""), [bulkPrice, setBulkPrice] = useState(24), [bulkBusy, setBulkBusy] = useState(false);
@@ -17266,21 +17277,22 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const saveSeries = async () => {
     if (!sTitle.trim()) return alert("Series needs a title.");
     setSBusy(true);
-    const { error } = await supabase.rpc("series_upsert", { p_id: sEditId, p_title: sTitle.trim(), p_desc: null, p_poster: sPoster.trim(), p_genre: sGenre.trim(), p_price: Number(sPrice) || 0, p_published: true, p_sort: 0, p_free_eps: Number(sFree) || 0 });
+    const { error } = await supabase.rpc("series_upsert", { p_id: sEditId, p_title: sTitle.trim(), p_desc: null, p_poster: sPoster.trim(), p_genre: sGenre.trim(), p_price: Number(sPrice) || 0, p_published: true, p_sort: 0, p_free_eps: Number(sFree) || 0, p_segment: sSeg || null });
     setSBusy(false);
     if (error) return alert(error.message);
-    setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); setSEditId(null); loadSeries();
+    setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); setSSeg(""); setSEditId(null); loadSeries();
   };
   const bulkAdd = async () => {
     const links = bulkLinks.split("\n").map(x => x.trim()).filter(Boolean);
-    if (!bulkSeries) return alert("Pick a series for the episodes.");
-    if (!links.length) return alert("Paste at least one episode link (one per line).");
+    if (!bulkSeries) return alert("Choose a series, or 'Standalone Shorts', for these videos.");
+    if (!links.length) return alert("Paste at least one link (one per line).");
+    const standalone = bulkSeries === "__standalone";
     setBulkBusy(true);
-    const { data, error } = await supabase.rpc("shorts_bulk_add", { p_series: bulkSeries, p_links: links, p_price: Number(bulkPrice) || 24, p_paid: true });
+    const { data, error } = await supabase.rpc("shorts_bulk_add", { p_series: standalone ? null : bulkSeries, p_links: links, p_price: Number(bulkPrice) || 24, p_paid: true, p_segment: standalone ? (bulkSeg || null) : null });
     setBulkBusy(false);
     if (error) return alert(error.message);
     setBulkLinks(""); load(); onChanged && onChanged();
-    alert(`✅ Added ${data} episode${data === 1 ? "" : "s"} — numbered automatically after the last one.`);
+    alert(`✅ Added ${data} ${standalone ? "short" : "episode"}${data === 1 ? "" : "s"}.`);
   };
   const delSeries = async (id) => { if (!window.confirm("Delete this series? Its episodes become standalone shorts.")) return; await supabase.rpc("series_delete", { p_id: id }); loadSeries(); load(); };
   const pickVideo = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("video"); try { setVurl(await uploadChatFile("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
@@ -17288,14 +17300,14 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const save = async () => {
     if (!title.trim() || !vurl.trim()) return alert("Add a title and a video (upload or paste a URL).");
     setBusy(true);
-    const { error } = await supabase.rpc("shorts_upsert", { p_id: editId, p_title: title.trim(), p_desc: desc, p_video: vurl.trim(), p_poster: purl.trim(), p_paid: paid, p_price: Number(price) || 24, p_published: true, p_sort: 0, p_series: seriesId || null, p_episode: seriesId ? (Number(epNo) || null) : null });
+    const { error } = await supabase.rpc("shorts_upsert", { p_id: editId, p_title: title.trim(), p_desc: desc, p_video: vurl.trim(), p_poster: purl.trim(), p_paid: paid, p_price: Number(price) || 24, p_published: true, p_sort: 0, p_series: seriesId || null, p_episode: seriesId ? (Number(epNo) || null) : null, p_segment: seriesId ? null : (segId || null) });
     setBusy(false);
     if (error) return alert(error.message);
-    setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); setSeriesId(""); setEditId(null); load(); onChanged && onChanged();
+    setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); setSeriesId(""); setSegId(""); setEditId(null); load(); onChanged && onChanged();
   };
-  const editShort = (r) => { setEditId(r.id); setTitle(r.title || ""); setDesc(r.description || ""); setVurl(r.video_url || ""); setPurl(r.poster_url || ""); setPaid(!!r.is_paid); setPrice(r.price_inr || 24); setSeriesId(r.series_id || ""); setEpNo(r.episode_no || ""); try { document.querySelector("[data-shorts-admin]")?.scrollTo({ top: 0, behavior: "smooth" }); } catch {} };
+  const editShort = (r) => { setEditId(r.id); setTitle(r.title || ""); setDesc(r.description || ""); setVurl(r.video_url || ""); setPurl(r.poster_url || ""); setPaid(!!r.is_paid); setPrice(r.price_inr || 24); setSeriesId(r.series_id || ""); setEpNo(r.episode_no || ""); setSegId(r.segment_id || ""); try { document.querySelector("[data-shorts-admin]")?.scrollTo({ top: 0, behavior: "smooth" }); } catch {} };
   const del = async (id) => { if (!window.confirm("Delete this short?")) return; await supabase.rpc("shorts_delete", { p_id: id }); load(); onChanged && onChanged(); };
-  const editSeries = (s) => { setSEditId(s.id); setSTitle(s.title || ""); setSGenre(s.genre || ""); setSPoster(s.poster_url || ""); setSPrice(s.series_price_inr || 0); setSFree(s.free_eps != null ? s.free_eps : 1); try { document.querySelector("[data-shorts-admin]")?.scrollTo({ top: 99999, behavior: "smooth" }); } catch {} };
+  const editSeries = (s) => { setSEditId(s.id); setSTitle(s.title || ""); setSGenre(s.genre || ""); setSPoster(s.poster_url || ""); setSPrice(s.series_price_inr || 0); setSFree(s.free_eps != null ? s.free_eps : 1); setSSeg(s.segment_id || ""); try { document.querySelector("[data-shorts-admin]")?.scrollTo({ top: 99999, behavior: "smooth" }); } catch {} };
   const ip = { width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, outline: "none", marginBottom: 9 };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
@@ -17318,6 +17330,12 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
           </select>
           {seriesId && <input type="number" value={epNo} onChange={e => setEpNo(e.target.value)} placeholder="Ep #" style={{ ...ip, flex: 1, marginBottom: 0 }} />}
         </div>
+        {!seriesId && segOpts.length > 0 && (
+          <select value={segId} onChange={e => setSegId(e.target.value)} style={ip}>
+            <option value="">🌐 Everyone can watch</option>
+            {segOpts.map(s => <option key={s.id} value={s.id}>🔒 Only {s.name}</option>)}
+          </select>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 10px" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 700, color: W.ink, cursor: "pointer" }}><input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} /> Paid</label>
           {paid && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>₹<input type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ width: 70, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 14 }} /></div>}
@@ -17342,6 +17360,12 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap" }}>Bundle ₹</span><input type="number" value={sPrice} onChange={e => setSPrice(e.target.value)} title="Price to unlock the whole series (0 = none)" style={{ width: 60, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
           </div>
           <label style={{ ...btn("#EEF1F3", W.ink), width: "100%", justifyContent: "center", padding: "10px", cursor: "pointer", marginBottom: 9 }}>{up === "sposter" ? "Uploading…" : sPoster ? "✓ Cover set" : "⬆ Series cover (portrait)"}<input type="file" accept="image/*" onChange={pickSPoster} style={{ display: "none" }} /></label>
+          {segOpts.length > 0 && (
+            <select value={sSeg} onChange={e => setSSeg(e.target.value)} style={ip}>
+              <option value="">🌐 Everyone can watch this series</option>
+              {segOpts.map(s => <option key={s.id} value={s.id}>🔒 Only {s.name}</option>)}
+            </select>
+          )}
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={saveSeries} disabled={sBusy || !!up} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "12px", opacity: (sBusy || up) ? .6 : 1 }}>{sBusy ? "Saving…" : sEditId ? "Update series" : "Create series"}</button>
             {sEditId && <button onClick={() => { setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); setSEditId(null); }} style={{ ...btn("#EEF1F3", W.soft), padding: "12px 14px" }}>Cancel</button>}
@@ -17368,16 +17392,23 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
             )}
           </div>
           <div style={{ marginTop: 12, background: "#F4FBF8", border: "1px solid #BFE6D6", borderRadius: 12, padding: "12px 13px" }}>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 4 }}>⚡ Bulk-add episodes</div>
-            <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9, lineHeight: 1.45 }}>Pick the series, paste all episode links (one per line, in order). They're auto-numbered after the last episode. Free-episode setting handles which are free.</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 4 }}>⚡ Bulk-add episodes / shorts</div>
+            <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9, lineHeight: 1.45 }}>Choose a series (auto-numbered episodes) or "Standalone Shorts". Paste links, one per line.</div>
             <select value={bulkSeries} onChange={e => setBulkSeries(e.target.value)} style={ip}>
-              <option value="">Choose series…</option>
+              <option value="">Choose where these go…</option>
+              <option value="__standalone">⚡ Standalone Shorts (no series)</option>
               {sList.map(s => <option key={s.id} value={s.id}>📺 {s.title}</option>)}
             </select>
-            <textarea value={bulkLinks} onChange={e => setBulkLinks(e.target.value)} rows={5} placeholder={"https://vz-xxxx.b-cdn.net/…/playlist.m3u8\nhttps://vz-xxxx.b-cdn.net/…/playlist.m3u8\n(one per line, episode order)"} style={{ ...ip, resize: "vertical", fontFamily: "monospace", fontSize: 12.5 }} />
+            {bulkSeries === "__standalone" && segOpts.length > 0 && (
+              <select value={bulkSeg} onChange={e => setBulkSeg(e.target.value)} style={ip}>
+                <option value="">🌐 Everyone can watch</option>
+                {segOpts.map(s => <option key={s.id} value={s.id}>🔒 Only {s.name}</option>)}
+              </select>
+            )}
+            <textarea value={bulkLinks} onChange={e => setBulkLinks(e.target.value)} rows={5} placeholder={"https://vz-xxxx.b-cdn.net/…/playlist.m3u8\nhttps://vz-xxxx.b-cdn.net/…/playlist.m3u8\n(one per line)"} style={{ ...ip, resize: "vertical", fontFamily: "monospace", fontSize: 12.5 }} />
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5, flex: 1 }}><span style={{ fontSize: 12.5, color: W.soft }}>Price per paid ep ₹</span><input type="number" value={bulkPrice} onChange={e => setBulkPrice(e.target.value)} style={{ width: 66, border: `1px solid ${W.line}`, borderRadius: 8, padding: "8px 9px", fontSize: 14 }} /></div>
-              <button onClick={bulkAdd} disabled={bulkBusy} style={{ ...btn(W.teal, "#fff"), padding: "10px 16px", opacity: bulkBusy ? .6 : 1 }}>{bulkBusy ? "Adding…" : "Import episodes"}</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flex: 1 }}><span style={{ fontSize: 12.5, color: W.soft }}>Price per paid one ₹</span><input type="number" value={bulkPrice} onChange={e => setBulkPrice(e.target.value)} style={{ width: 66, border: `1px solid ${W.line}`, borderRadius: 8, padding: "8px 9px", fontSize: 14 }} /></div>
+              <button onClick={bulkAdd} disabled={bulkBusy} style={{ ...btn(W.teal, "#fff"), padding: "10px 16px", opacity: bulkBusy ? .6 : 1 }}>{bulkBusy ? "Adding…" : "Import"}</button>
             </div>
           </div>
           {sList.map(s => (
@@ -17398,8 +17429,8 @@ function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
     { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
     { id: "meet", icon: Users, label: "Meet", c: "#EC4899" },
-    { id: "series", icon: Film, label: "Series", c: "#E4572E" },
     { id: "shorts", icon: Zap, label: "Shorts", c: "#F59E0B" },
+    { id: "series", icon: Film, label: "Series", c: "#E4572E" },
     { id: "games", icon: Gamepad2, label: "Games", c: "#2563EB" },
     { id: "gallery", icon: ImageIcon, label: "Gallery", c: "#0EA5A3" },
     ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin", c: "#DB2777" }] : []),
