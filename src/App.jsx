@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v92 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · series-v93 build</div>
       </div>
     </div>
   );
@@ -17029,6 +17029,115 @@ function HlsVideo({ src, poster, muted }) {
   }, [src]);
   return <video ref={ref} poster={poster || undefined} loop muted={muted} playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} onClick={e => { const vv = e.currentTarget; vv.paused ? vv.play().catch(() => {}) : vv.pause(); }} />;
 }
+function ShortMedia({ v, muted, setMuted, ytOn, setYtOn }) {
+  const yt = _ytId(v.video_url);
+  if (_isDirectVideo(v.video_url)) return (<>
+    <HlsVideo src={v.video_url} poster={v.poster_url} muted={muted} />
+    <div onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,.5)", color: "#fff", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, cursor: "pointer", zIndex: 3 }}>{muted ? "🔇" : "🔊"}</div>
+  </>);
+  if (yt) return ytOn.has(v.id)
+    ? <iframe src={`https://www.youtube.com/embed/${yt}?autoplay=1&playsinline=1&rel=0`} allow="autoplay; encrypted-media; fullscreen" allowFullScreen title={v.title} style={{ width: "100%", height: "100%", border: "none" }} />
+    : <div onClick={() => setYtOn(s => new Set(s).add(v.id))} style={{ position: "absolute", inset: 0, cursor: "pointer" }}>
+        <img src={v.poster_url || `https://img.youtube.com/vi/${yt}/hqdefault.jpg`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><div style={{ width: 68, height: 68, borderRadius: "50%", background: "rgba(0,0,0,.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>▶</div></div>
+      </div>;
+  return <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 28px" }}>
+    {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "brightness(.5)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
+    <div style={{ position: "relative", color: "#fff" }}>
+      <div style={{ fontSize: 40 }}>▶️</div>
+      <div style={{ fontWeight: 900, fontSize: 18, marginTop: 8 }}>{v.title}</div>
+      <button onClick={() => window.open(v.video_url, "_blank")} style={{ marginTop: 14, padding: "12px 22px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)" }}>Open video ↗</button>
+      <div style={{ fontSize: 11, opacity: .7, marginTop: 10, lineHeight: 1.5 }}>This link opens outside the app. For in-app play, use a direct .mp4 / HLS (.m3u8) link or YouTube.</div>
+    </div>
+  </div>;
+}
+function SeriesGrid({ onOpen }) {
+  const [list, setList] = useState(null);
+  useEffect(() => { supabase.rpc("series_list").then(({ data }) => setList(data || [])); }, []);
+  if (list === null) return <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>;
+  if (!list.length) return <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No series yet 🎬</div>;
+  return (
+    <div style={{ background: "#0b0b12", minHeight: "calc(100vh - 108px)", padding: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12 }}>
+        {list.map(s => (
+          <div key={s.id} onClick={() => onOpen(s)} style={{ cursor: "pointer" }}>
+            <div style={{ position: "relative", width: "100%", aspectRatio: "2/3", borderRadius: 14, overflow: "hidden", background: "#1a1030" }}>
+              {s.poster_url ? <img src={s.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 44 }}>🎬</div>}
+              <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(0,0,0,.6)", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{s.ep_count} ep</div>
+              {s.owned && <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,128,105,.92)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>✓ Owned</div>}
+              <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "22px 9px 8px", background: "linear-gradient(transparent,rgba(0,0,0,.85))" }}>
+                <div style={{ color: "#fff", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
+                {s.genre && <div style={{ color: "rgba(255,255,255,.7)", fontSize: 10.5 }}>{s.genre}</div>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+function SeriesPlayer({ series, user, isStaff, credits, onCredits, onBack }) {
+  const [eps, setEps] = useState(null);
+  const [muted, setMuted] = useState(true);
+  const [ytOn, setYtOn] = useState(() => new Set());
+  const [busy, setBusy] = useState(null);
+  const [bal, setBal] = useState(credits || 0);
+  const wrapRef = useRef(null);
+  const load = () => supabase.rpc("series_episodes", { p_series: series.id }).then(({ data }) => setEps(data || []));
+  useEffect(() => { load(); supabase.from("profiles").select("game_credits").eq("id", user.id).maybeSingle().then(({ data }) => setBal(Number(data?.game_credits) || 0)); }, []);
+  useEffect(() => {
+    if (!eps) return;
+    const io = new IntersectionObserver(ents => ents.forEach(e => { const vv = e.target.querySelector("video"); if (!vv) return; if (e.isIntersecting && e.intersectionRatio > 0.55) vv.play().catch(() => {}); else vv.pause(); }), { threshold: [0, 0.55, 1] });
+    (wrapRef.current ? wrapRef.current.querySelectorAll("[data-slide]") : []).forEach(el => io.observe(el));
+    return () => io.disconnect();
+  }, [eps, muted]);
+  const unlockEp = async (v) => { setBusy(v.id); const { data, error } = await supabase.rpc("unlock_video_credits", { p_video: v.id }); setBusy(null); if (error) return window.gwConfirm(error.message, () => {}); if (!data.ok) { if (data.reason === "credits") return window.gwConfirm(`Needs ${data.need} credits — you have ${data.have}. Earn more in Games & the Wheel 🎡`, () => {}); return; } setBal(b => b - v.price_inr); load(); onCredits && onCredits(); };
+  const unlockSeries = async () => { setBusy("series"); const { data, error } = await supabase.rpc("unlock_series_credits", { p_series: series.id }); setBusy(null); if (error) return window.gwConfirm(error.message, () => {}); if (!data.ok) { if (data.reason === "credits") return window.gwConfirm(`Needs ${series.series_price_inr} credits — you have ${bal}.`, () => {}); return; } setBal(b => b - series.series_price_inr); load(); onCredits && onCredits(); };
+  return (
+    <div style={{ background: "#000" }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 6, display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: "linear-gradient(120deg,#0b0b12,#1a1030)", color: "#fff" }}>
+        <span onClick={onBack} style={{ cursor: "pointer", fontSize: 24, lineHeight: 1 }}>‹</span>
+        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 900, fontSize: 16, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{series.title}</div></div>
+        <span style={{ fontSize: 12.5, fontWeight: 700, opacity: .9 }}>🪙 {bal}</span>
+        {series.series_price_inr > 0 && !series.owned && <button onClick={unlockSeries} disabled={busy === "series"} style={{ background: "linear-gradient(95deg,#7C3AED,#EC4899)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Unlock all · {series.series_price_inr}🪙</button>}
+      </div>
+      {eps === null ? <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>
+        : !eps.length ? <div style={{ color: "#bbb", textAlign: "center", padding: 40 }}>No episodes yet.</div>
+        : (
+          <div ref={wrapRef} style={{ height: "calc(100vh - 108px)", overflowY: "auto", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", WebkitOverflowScrolling: "touch" }}>
+            {eps.map(v => { const locked = v.is_paid && !v.unlocked; return (
+              <div key={v.id} data-slide style={{ position: "relative", height: "100%", scrollSnapAlign: "start", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {locked || !v.video_url ? (
+                  <>
+                    {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(14px) brightness(.5)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
+                    <div style={{ position: "relative", textAlign: "center", color: "#fff", padding: "0 26px" }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1, opacity: .8 }}>EPISODE {v.episode_no || "?"}</div>
+                      <div style={{ fontSize: 38, marginTop: 6 }}>🔒</div>
+                      <div style={{ fontWeight: 900, fontSize: 19, marginTop: 6 }}>{v.title}</div>
+                      <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 9, alignItems: "center" }}>
+                        <button onClick={() => unlockEp(v)} disabled={busy === v.id} style={{ width: 250, padding: "13px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)", opacity: busy === v.id ? .6 : 1 }}>{busy === v.id ? "Unlocking…" : `🪙 Unlock episode · ${v.price_inr}`}</button>
+                        {series.series_price_inr > 0 && <button onClick={unlockSeries} disabled={busy === "series"} style={{ width: 250, padding: "12px", borderRadius: 12, border: "1.5px solid rgba(255,255,255,.5)", cursor: "pointer", fontWeight: 800, fontSize: 14, color: "#fff", background: "transparent" }}>Unlock whole series · {series.series_price_inr}🪙</button>}
+                        <div style={{ fontSize: 12, opacity: .8 }}>You have 🪙 {bal}</div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} />
+                    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 16px 18px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .5, opacity: .85 }}>EPISODE {v.episode_no || ""}</div>
+                      <div style={{ fontWeight: 900, fontSize: 18, marginTop: 2 }}>{v.title}</div>
+                      {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
+                    </div>
+                  </>
+                )}
+              </div>
+            ); })}
+          </div>
+        )}
+    </div>
+  );
+}
 function ShortsFeed({ user, profile, isStaff, startPayment }) {
   const [vids, setVids] = useState(null);
   const [credits, setCredits] = useState(0);
@@ -17036,6 +17145,8 @@ function ShortsFeed({ user, profile, isStaff, startPayment }) {
   const [muted, setMuted] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
   const [ytOn, setYtOn] = useState(() => new Set());
+  const [mode, setMode] = useState("series");
+  const [openSeries, setOpenSeries] = useState(null);
   const wrapRef = useRef(null);
   const load = () => supabase.rpc("shorts_list").then(({ data }) => setVids(data || []));
   const loadCredits = () => supabase.from("profiles").select("game_credits").eq("id", user.id).maybeSingle().then(({ data }) => setCredits(Number(data?.game_credits) || 0));
@@ -17061,15 +17172,18 @@ function ShortsFeed({ user, profile, isStaff, startPayment }) {
     }
     setCredits(c => c - v.price_inr); load();
   };
-  const payRazor = (v) => startPayment && startPayment("video", { video_id: v.id }, () => { load(); loadCredits(); });
+  if (openSeries) return <SeriesPlayer series={openSeries} user={user} isStaff={isStaff} credits={credits} onCredits={loadCredits} onBack={() => setOpenSeries(null)} />;
+  const tab = (k, l) => <button key={k} onClick={() => setMode(k)} style={{ padding: "7px 15px", borderRadius: 999, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 13, background: mode === k ? "#fff" : "rgba(255,255,255,.16)", color: mode === k ? "#111" : "#fff" }}>{l}</button>;
   return (
     <div style={{ background: "#000" }}>
-      <div style={{ position: "sticky", top: 0, zIndex: 6, display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: "linear-gradient(120deg,#0b0b12,#1a1030)", color: "#fff" }}>
-        <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>🎬 Shorts</div>
+      <div style={{ position: "sticky", top: 0, zIndex: 6, display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: "linear-gradient(120deg,#0b0b12,#1a1030)", color: "#fff" }}>
+        {tab("series", "🎬 Series")}{tab("shorts", "⚡ Shorts")}
+        <span style={{ flex: 1 }} />
         <span style={{ fontSize: 12.5, fontWeight: 700, opacity: .9 }}>🪙 {credits}</span>
         {isStaff && <button onClick={() => setAdminOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>＋ Add</button>}
       </div>
-      {vids === null ? <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>
+      {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
+        : vids === null ? <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>
         : vids.length === 0 ? <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No shorts yet.{isStaff ? " Tap ＋ Add to upload the first one." : " Check back soon 🎬"}</div>
         : (
           <div ref={wrapRef} style={{ height: "calc(100vh - 108px)", overflowY: "auto", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", WebkitOverflowScrolling: "touch" }}>
@@ -17093,30 +17207,8 @@ function ShortsFeed({ user, profile, isStaff, startPayment }) {
                     </>
                   ) : (
                     <>
-                      {(() => {
-                        const yt = _ytId(v.video_url);
-                        if (_isDirectVideo(v.video_url)) return <>
-                          <HlsVideo src={v.video_url} poster={v.poster_url} muted={muted} />
-                          <div onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,.5)", color: "#fff", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, cursor: "pointer" }}>{muted ? "🔇" : "🔊"}</div>
-                        </>;
-                        if (yt) return ytOn.has(v.id)
-                          ? <iframe src={`https://www.youtube.com/embed/${yt}?autoplay=1&playsinline=1&rel=0`} allow="autoplay; encrypted-media; fullscreen" allowFullScreen title={v.title} style={{ width: "100%", height: "100%", border: "none" }} />
-                          : <div onClick={() => setYtOn(s => new Set(s).add(v.id))} style={{ position: "absolute", inset: 0, cursor: "pointer" }}>
-                              <img src={v.poster_url || `https://img.youtube.com/vi/${yt}/hqdefault.jpg`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><div style={{ width: 68, height: 68, borderRadius: "50%", background: "rgba(0,0,0,.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>▶</div></div>
-                            </div>;
-                        // Non-playable link (Instagram, etc.) — offer to open externally instead of a black screen.
-                        return <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 28px" }}>
-                          {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "brightness(.5)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
-                          <div style={{ position: "relative", color: "#fff" }}>
-                            <div style={{ fontSize: 40 }}>▶️</div>
-                            <div style={{ fontWeight: 900, fontSize: 18, marginTop: 8 }}>{v.title}</div>
-                            <button onClick={() => window.open(v.video_url, "_blank")} style={{ marginTop: 14, padding: "12px 22px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)" }}>Open video ↗</button>
-                            <div style={{ fontSize: 11, opacity: .7, marginTop: 10, lineHeight: 1.5 }}>This link opens outside the app. For in-app play, use a direct .mp4 link or YouTube.</div>
-                          </div>
-                        </div>;
-                      })()}
-                      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 16px 18px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff" }}>
+                      <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} />
+                      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 16px 18px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
                         <div style={{ fontWeight: 900, fontSize: 18 }}>{v.title}{v.is_paid && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.25)", padding: "2px 8px", borderRadius: 20 }}>✓ Unlocked</span>}</div>
                         {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
                       </div>
@@ -17135,17 +17227,31 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const [rows, setRows] = useState([]);
   const [title, setTitle] = useState(""), [desc, setDesc] = useState(""), [vurl, setVurl] = useState(""), [purl, setPurl] = useState("");
   const [paid, setPaid] = useState(true), [price, setPrice] = useState(24), [busy, setBusy] = useState(false), [up, setUp] = useState("");
+  const [seriesId, setSeriesId] = useState(""), [epNo, setEpNo] = useState("");
+  const [sList, setSList] = useState([]);
+  const [sTitle, setSTitle] = useState(""), [sGenre, setSGenre] = useState(""), [sPoster, setSPoster] = useState(""), [sPrice, setSPrice] = useState(0), [sBusy, setSBusy] = useState(false);
   const load = () => supabase.rpc("shorts_admin_list").then(({ data }) => setRows(data || []));
-  useEffect(() => { load(); }, []);
+  const loadSeries = () => supabase.rpc("series_admin_list").then(({ data }) => setSList(data || []));
+  useEffect(() => { load(); loadSeries(); }, []);
+  const pickSPoster = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("sposter"); try { setSPoster(await uploadPhoto("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
+  const saveSeries = async () => {
+    if (!sTitle.trim()) return alert("Series needs a title.");
+    setSBusy(true);
+    const { error } = await supabase.rpc("series_upsert", { p_id: null, p_title: sTitle.trim(), p_desc: null, p_poster: sPoster.trim(), p_genre: sGenre.trim(), p_price: Number(sPrice) || 0, p_published: true, p_sort: 0 });
+    setSBusy(false);
+    if (error) return alert(error.message);
+    setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); loadSeries();
+  };
+  const delSeries = async (id) => { if (!window.confirm("Delete this series? Its episodes become standalone shorts.")) return; await supabase.rpc("series_delete", { p_id: id }); loadSeries(); load(); };
   const pickVideo = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("video"); try { setVurl(await uploadChatFile("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
   const pickPoster = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("poster"); try { setPurl(await uploadPhoto("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
   const save = async () => {
     if (!title.trim() || !vurl.trim()) return alert("Add a title and a video (upload or paste a URL).");
     setBusy(true);
-    const { error } = await supabase.rpc("shorts_upsert", { p_id: null, p_title: title.trim(), p_desc: desc, p_video: vurl.trim(), p_poster: purl.trim(), p_paid: paid, p_price: Number(price) || 24, p_published: true, p_sort: 0 });
+    const { error } = await supabase.rpc("shorts_upsert", { p_id: null, p_title: title.trim(), p_desc: desc, p_video: vurl.trim(), p_poster: purl.trim(), p_paid: paid, p_price: Number(price) || 24, p_published: true, p_sort: 0, p_series: seriesId || null, p_episode: seriesId ? (Number(epNo) || null) : null });
     setBusy(false);
     if (error) return alert(error.message);
-    setTitle(""); setDesc(""); setVurl(""); setPurl(""); load(); onChanged && onChanged();
+    setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); load(); onChanged && onChanged();
   };
   const del = async (id) => { if (!window.confirm("Delete this short?")) return; await supabase.rpc("shorts_delete", { p_id: id }); load(); onChanged && onChanged(); };
   const ip = { width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, outline: "none", marginBottom: 9 };
@@ -17159,7 +17265,14 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
           <label style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "10px", cursor: "pointer" }}>{up === "video" ? "Uploading…" : vurl ? "✓ Video set" : "⬆ Upload video"}<input type="file" accept="video/*" onChange={pickVideo} style={{ display: "none" }} /></label>
           <label style={{ ...btn("#EEF1F3", W.ink), flex: 1, justifyContent: "center", padding: "10px", cursor: "pointer" }}>{up === "poster" ? "Uploading…" : purl ? "✓ Poster set" : "⬆ Poster"}<input type="file" accept="image/*" onChange={pickPoster} style={{ display: "none" }} /></label>
         </div>
-        <input value={vurl} onChange={e => setVurl(e.target.value)} placeholder="…or paste a video URL" style={ip} />
+        <input value={vurl} onChange={e => setVurl(e.target.value)} placeholder="…or paste a video URL (Bunny HLS .m3u8, .mp4, or YouTube)" style={ip} />
+        <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
+          <select value={seriesId} onChange={e => setSeriesId(e.target.value)} style={{ ...ip, flex: 2, marginBottom: 0 }}>
+            <option value="">Standalone short (no series)</option>
+            {sList.map(s => <option key={s.id} value={s.id}>📺 {s.title}</option>)}
+          </select>
+          {seriesId && <input type="number" value={epNo} onChange={e => setEpNo(e.target.value)} placeholder="Ep #" style={{ ...ip, flex: 1, marginBottom: 0 }} />}
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 10px" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 700, color: W.ink, cursor: "pointer" }}><input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} /> Paid</label>
           {paid && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>₹<input type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ width: 70, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 14 }} /></div>}
@@ -17173,6 +17286,24 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
             <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>Delete</button>
           </div>
         ))}
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: `2px solid ${W.line}` }}>
+          <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>📺 Series</div>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.45 }}>Create a series here first, then add episodes above by picking the series + episode number.</div>
+          <input value={sTitle} onChange={e => setSTitle(e.target.value)} placeholder="Series title (e.g. Midnight in Hyderabad)" style={ip} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <input value={sGenre} onChange={e => setSGenre(e.target.value)} placeholder="Genre (e.g. Romance)" style={{ ...ip, flex: 1 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 9 }}><span style={{ fontSize: 12.5, color: W.soft, whiteSpace: "nowrap" }}>Bundle ₹</span><input type="number" value={sPrice} onChange={e => setSPrice(e.target.value)} title="Price to unlock the whole series (0 = none)" style={{ width: 66, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
+          </div>
+          <label style={{ ...btn("#EEF1F3", W.ink), width: "100%", justifyContent: "center", padding: "10px", cursor: "pointer", marginBottom: 9 }}>{up === "sposter" ? "Uploading…" : sPoster ? "✓ Cover set" : "⬆ Series cover (portrait)"}<input type="file" accept="image/*" onChange={pickSPoster} style={{ display: "none" }} /></label>
+          <button onClick={saveSeries} disabled={sBusy || !!up} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", opacity: (sBusy || up) ? .6 : 1 }}>{sBusy ? "Saving…" : "Create series"}</button>
+          {sList.map(s => (
+            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
+              <div style={{ width: 34, height: 46, borderRadius: 6, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{s.poster_url ? <img src={s.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>📺</div>}</div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{s.genre || "—"}{s.series_price_inr > 0 ? ` · bundle ₹${s.series_price_inr}` : ""}</div></div>
+              <button onClick={() => delSeries(s.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>Delete</button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
