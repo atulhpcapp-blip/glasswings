@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v84 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v85 build</div>
       </div>
     </div>
   );
@@ -4662,6 +4662,46 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const miniAv = (p, ring) => <div onClick={() => openPeek(p)} style={{ width: 76, height: 76, borderRadius: "50%", overflow: "hidden", margin: "0 auto", border: `2.5px solid ${ring}`, cursor: "pointer", background: "#fff" }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>;
   const vibe = { women: (rows || []).filter(p => p.gender === "female").length, men: (rows || []).filter(p => p.gender === "male").length, newb: (rows || []).filter(p => isNewbie(p.joined)).length, online: (rows || []).filter(p => isOnline(p.last_seen)).length };
   const vibeChip = (emoji, n, lbl) => <div style={{ flex: "1 1 0", minWidth: 0, background: "rgba(255,255,255,.18)", borderRadius: 12, padding: "7px 6px", textAlign: "center", backdropFilter: "blur(2px)" }}><div style={{ fontWeight: 900, fontSize: 16, lineHeight: 1 }}>{emoji} {n}</div><div style={{ fontSize: 10, opacity: .92, marginTop: 2, fontWeight: 700 }}>{lbl}</div></div>;
+  const filterBlock = (
+        <div style={{ margin: wide ? "12px 6px 2px" : "14px 14px 2px", background: "linear-gradient(135deg,#FFF7FB,#F3F0FF 55%,#EAF7F2)", border: "1px solid #EBD9F0", borderRadius: 18, padding: 15, boxShadow: "0 4px 16px rgba(124,58,237,.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 19 }}>🔎</span>
+            <div style={{ fontWeight: 900, fontSize: 16, flex: 1, background: "linear-gradient(95deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Find your people</div>
+            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all" || moodFlt !== "all" || eventsOnly || nameQ.trim()) && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); setMoodFlt("all"); setEventsOnly(false); setNameQ(""); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
+          </div>
+          <div style={{ position: "relative", marginBottom: 13 }}>
+            <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 15 }}>🔍</span>
+            <input value={nameQ} onChange={e => setNameQ(e.target.value)} placeholder="Search by name…" style={{ width: "100%", boxSizing: "border-box", padding: "11px 34px 11px 38px", borderRadius: 11, border: `1.5px solid ${nameQ.trim() ? "#7C3AED" : "#E4DCEF"}`, background: nameQ.trim() ? "#F5F0FF" : "#fff", color: W.ink, fontWeight: 600, fontSize: 14, outline: "none" }} />
+            {nameQ && <span onClick={() => setNameQ("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: W.soft, cursor: "pointer", fontWeight: 800 }}>✕</span>}
+          </div>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#0d6e58", marginBottom: 7 }}>👥 SHOW</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 13 }}>
+            {[["all", "Everyone", "linear-gradient(95deg,#008069,#00A884)"], ["female", "👩 Women", "linear-gradient(95deg,#EC4899,#F472B6)"], ["male", "👨 Men", "linear-gradient(95deg,#2563EB,#06B6D4)"], ["new", "🆕 Newbies", "linear-gradient(95deg,#7C3AED,#A78BFA)"]].map(([k, l, g]) => (
+              <button key={k} onClick={() => setFlt(k)} style={{ padding: "10px 16px", borderRadius: 999, border: flt === k ? "none" : "1.5px solid #E4DCEF", background: flt === k ? g : "#fff", color: flt === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: flt === k ? "0 3px 10px rgba(0,0,0,.15)" : "none" }}>{l}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#1E6FB8", marginBottom: 7 }}>📍 WHERE</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 13 }}>
+            <LocPick icon="🏙️" placeholder="All cities" value={cityFlt === "all" ? "" : cityFlt} options={cityOpts} accent="#2563EB" canon={canonCity} onPick={v => { setCityFlt(v); setAreaFlt("all"); }} />
+            <LocPick icon="📍" placeholder="All areas" value={areaFlt === "all" ? "" : areaFlt} options={areaOpts} accent="#008069" onPick={v => setAreaFlt(v)} />
+          </div>
+          <button onClick={() => setEventsOnly(v => !v)} style={{ marginBottom: 13, padding: "9px 15px", borderRadius: 999, border: eventsOnly ? "none" : "1.5px solid #C7D2FE", background: eventsOnly ? "linear-gradient(95deg,#2563EB,#06B6D4)" : "#fff", color: eventsOnly ? "#fff" : "#1E40AF", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: eventsOnly ? "0 3px 10px rgba(37,99,235,.25)" : "none" }}>🎫 Going to my events</button>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#B45309", marginBottom: 7 }}>🎂 AGE</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+            {[["all", "Any"], ["18-24", "18–24"], ["25-34", "25–34"], ["35-44", "35–44"], ["45+", "45+"]].map(([k, l]) => (
+              <button key={k} onClick={() => setAgeFlt(k)} style={{ padding: "8px 14px", borderRadius: 999, border: ageFlt === k ? "none" : "1.5px solid #E4DCEF", background: ageFlt === k ? "linear-gradient(95deg,#D97706,#F59E0B)" : "#fff", color: ageFlt === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: ageFlt === k ? "0 3px 10px rgba(217,119,6,.25)" : "none" }}>{l}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#7C3AED", margin: "13px 0 7px" }}>💫 VIBE</div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+            <button onClick={() => setMoodFlt("all")} style={{ padding: "8px 14px", borderRadius: 999, border: moodFlt === "all" ? "none" : "1.5px solid #E4DCEF", background: moodFlt === "all" ? "linear-gradient(95deg,#7C3AED,#C026D3)" : "#fff", color: moodFlt === "all" ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Any</button>
+            {MOODS.map(([k, l, c, b]) => { const on = moodFlt === k; return (
+              <button key={k} onClick={() => setMoodFlt(on ? "all" : k)} style={{ padding: "8px 14px", borderRadius: 999, border: on ? "none" : "1.5px solid #E4DCEF", background: on ? b : "#fff", color: on ? c : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: on ? `0 3px 10px ${b}` : "none" }}>{l}</button>
+            ); })}
+          </div>
+          <div style={{ marginTop: 13, display: "inline-block", background: "#fff", border: "1px solid #EBD9F0", borderRadius: 999, padding: "5px 13px", fontSize: 12, fontWeight: 800, color: "#7C3AED" }}>✨ {filtered.length} {filtered.length === 1 ? "person" : "people"} match</div>
+        </div>
+  );
   return (
     <div style={asTab ? { paddingBottom: 90 } : { position: "fixed", inset: 0, zIndex: 160, background: W.bg, overflowY: "auto" }}>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "linear-gradient(120deg,#008069 0%,#6D28D9 55%,#DB2777 100%)", color: "#fff", padding: "13px 14px 14px", display: "flex", flexDirection: "column", gap: 11, boxShadow: "0 4px 16px rgba(109,40,217,.22)" }}>
@@ -4793,6 +4833,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             </div>
           </div>
         )}
+        {wide && filterBlock}
         </div>
         <div style={{ order: wide ? 1 : 0, flex: wide ? "1 1 0%" : "none", minWidth: 0 }}>
         {!hasPhoto && !nudgeDismissed && (
@@ -4958,44 +4999,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             </div>
           </div>
         )}
-        <div style={{ margin: wide ? "14px 6px 2px" : "14px 14px 2px", background: "linear-gradient(135deg,#FFF7FB,#F3F0FF 55%,#EAF7F2)", border: "1px solid #EBD9F0", borderRadius: 18, padding: 15, boxShadow: "0 4px 16px rgba(124,58,237,.08)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 19 }}>🔎</span>
-            <div style={{ fontWeight: 900, fontSize: 16, flex: 1, background: "linear-gradient(95deg,#7C3AED,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Find your people</div>
-            {(flt !== "all" || areaFlt !== "all" || cityFlt !== "all" || ageFlt !== "all" || moodFlt !== "all" || eventsOnly || nameQ.trim()) && <button onClick={() => { setFlt("all"); setAreaFlt("all"); setCityFlt("all"); setAgeFlt("all"); setMoodFlt("all"); setEventsOnly(false); setNameQ(""); }} style={{ background: "#fff", border: "1px solid #F3C7C7", color: "#DC2626", fontWeight: 800, fontSize: 12, cursor: "pointer", borderRadius: 999, padding: "5px 12px" }}>✕ Clear</button>}
-          </div>
-          <div style={{ position: "relative", marginBottom: 13 }}>
-            <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 15 }}>🔍</span>
-            <input value={nameQ} onChange={e => setNameQ(e.target.value)} placeholder="Search by name…" style={{ width: "100%", boxSizing: "border-box", padding: "11px 34px 11px 38px", borderRadius: 11, border: `1.5px solid ${nameQ.trim() ? "#7C3AED" : "#E4DCEF"}`, background: nameQ.trim() ? "#F5F0FF" : "#fff", color: W.ink, fontWeight: 600, fontSize: 14, outline: "none" }} />
-            {nameQ && <span onClick={() => setNameQ("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: W.soft, cursor: "pointer", fontWeight: 800 }}>✕</span>}
-          </div>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#0d6e58", marginBottom: 7 }}>👥 SHOW</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 13 }}>
-            {[["all", "Everyone", "linear-gradient(95deg,#008069,#00A884)"], ["female", "👩 Women", "linear-gradient(95deg,#EC4899,#F472B6)"], ["male", "👨 Men", "linear-gradient(95deg,#2563EB,#06B6D4)"], ["new", "🆕 Newbies", "linear-gradient(95deg,#7C3AED,#A78BFA)"]].map(([k, l, g]) => (
-              <button key={k} onClick={() => setFlt(k)} style={{ padding: "10px 16px", borderRadius: 999, border: flt === k ? "none" : "1.5px solid #E4DCEF", background: flt === k ? g : "#fff", color: flt === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 13, cursor: "pointer", boxShadow: flt === k ? "0 3px 10px rgba(0,0,0,.15)" : "none" }}>{l}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#1E6FB8", marginBottom: 7 }}>📍 WHERE</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 13 }}>
-            <LocPick icon="🏙️" placeholder="All cities" value={cityFlt === "all" ? "" : cityFlt} options={cityOpts} accent="#2563EB" canon={canonCity} onPick={v => { setCityFlt(v); setAreaFlt("all"); }} />
-            <LocPick icon="📍" placeholder="All areas" value={areaFlt === "all" ? "" : areaFlt} options={areaOpts} accent="#008069" onPick={v => setAreaFlt(v)} />
-          </div>
-          <button onClick={() => setEventsOnly(v => !v)} style={{ marginBottom: 13, padding: "9px 15px", borderRadius: 999, border: eventsOnly ? "none" : "1.5px solid #C7D2FE", background: eventsOnly ? "linear-gradient(95deg,#2563EB,#06B6D4)" : "#fff", color: eventsOnly ? "#fff" : "#1E40AF", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: eventsOnly ? "0 3px 10px rgba(37,99,235,.25)" : "none" }}>🎫 Going to my events</button>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#B45309", marginBottom: 7 }}>🎂 AGE</div>
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-            {[["all", "Any"], ["18-24", "18–24"], ["25-34", "25–34"], ["35-44", "35–44"], ["45+", "45+"]].map(([k, l]) => (
-              <button key={k} onClick={() => setAgeFlt(k)} style={{ padding: "8px 14px", borderRadius: 999, border: ageFlt === k ? "none" : "1.5px solid #E4DCEF", background: ageFlt === k ? "linear-gradient(95deg,#D97706,#F59E0B)" : "#fff", color: ageFlt === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: ageFlt === k ? "0 3px 10px rgba(217,119,6,.25)" : "none" }}>{l}</button>
-            ))}
-          </div>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#7C3AED", margin: "13px 0 7px" }}>💫 VIBE</div>
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-            <button onClick={() => setMoodFlt("all")} style={{ padding: "8px 14px", borderRadius: 999, border: moodFlt === "all" ? "none" : "1.5px solid #E4DCEF", background: moodFlt === "all" ? "linear-gradient(95deg,#7C3AED,#C026D3)" : "#fff", color: moodFlt === "all" ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Any</button>
-            {MOODS.map(([k, l, c, b]) => { const on = moodFlt === k; return (
-              <button key={k} onClick={() => setMoodFlt(on ? "all" : k)} style={{ padding: "8px 14px", borderRadius: 999, border: on ? "none" : "1.5px solid #E4DCEF", background: on ? b : "#fff", color: on ? c : "#6B5B85", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: on ? `0 3px 10px ${b}` : "none" }}>{l}</button>
-            ); })}
-          </div>
-          <div style={{ marginTop: 13, display: "inline-block", background: "#fff", border: "1px solid #EBD9F0", borderRadius: 999, padding: "5px 13px", fontSize: 12, fontWeight: 800, color: "#7C3AED" }}>✨ {filtered.length} {filtered.length === 1 ? "person" : "people"} match</div>
-        </div>
+        {!wide && filterBlock}
         <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "14px 14px 0", overflowX: "auto" }}>
           <span style={{ fontSize: 11.5, color: W.soft, fontWeight: 800, flexShrink: 0 }}>Sort:</span>
           {[["match", "💞 Best match"], ["active", "🟢 Most active"], ["new", "🆕 Newest"]].map(([k, l]) => (
