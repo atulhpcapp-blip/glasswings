@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · door-v104 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · door-v105 build</div>
       </div>
     </div>
   );
@@ -10054,8 +10054,24 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const types = ev ? (ticketTypes[ev.id] || []) : [];
   const selType = types.find(t => t.id === sType);
   const unitPrice = selType ? (selType.price || 0) : 0;
-  // When a ticket type / qty is chosen, auto-fill the base price; staff can still edit it (e.g. plain Door entry).
-  useEffect(() => { if (selType) setSBase(String((selType.price || 0) * (Number(sQty) || 1))); }, [sType, sQty]);
+  const [cart, setCart] = useState([]); // [{typeId, name, unit, qty}]
+  const cartGross = cart.reduce((s, l) => s + (l.unit || 0) * (l.qty || 1), 0);
+  const cartQty = cart.reduce((s, l) => s + (l.qty || 1), 0);
+  const addLine = () => {
+    if (!selType) return alert("Pick a ticket type first.");
+    const q = Number(sQty) || 1;
+    setCart(c => {
+      const i = c.findIndex(l => l.typeId === selType.id);
+      if (i >= 0) { const n = [...c]; n[i] = { ...n[i], qty: (n[i].qty || 1) + q }; return n; }
+      return [...c, { typeId: selType.id, name: selType.name, unit: selType.price || 0, qty: q }];
+    });
+    setSType(""); setSQty("1");
+  };
+  const removeLine = (id) => setCart(c => c.filter(l => l.typeId !== id));
+  // When a single ticket type / qty is chosen (no cart), auto-fill the base price.
+  useEffect(() => { if (selType && !cart.length) setSBase(String((selType.price || 0) * (Number(sQty) || 1))); }, [sType, sQty]);
+  // Cart present → base price = cart total (editable).
+  useEffect(() => { if (cart.length) setSBase(String(cartGross)); }, [cart]);
   // Final amount to collect = base price − discount.
   useEffect(() => { setSAmt(String(Math.max(0, (Number(sBase) || 0) - (Number(sDisc) || 0)))); }, [sBase, sDisc]);
   useEffect(() => {
@@ -10064,28 +10080,43 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     const ti = types.findIndex(t => t.id === sType);
     if (ti >= 0 && qrs.length) { const q = qrs[Math.min(ti, qrs.length - 1)]; if (q) setQrSel(q.id); }
   }, [sType]);
+  // Build the ticket lines for this sale: one per cart type, or a single line if the cart is empty.
+  const saleLines = () => cart.length
+    ? cart.map(l => ({ name: l.name, qty: l.qty, gross: (l.unit || 0) * (l.qty || 1) }))
+    : [{ name: selType ? selType.name : "Door entry", qty: Number(sQty) || 1, gross: unitPrice * (Number(sQty) || 1) }];
+  // Split the final (post-discount) amount across lines by their price share; remainder on the last.
+  const splitAmounts = (lines, final) => {
+    const g = lines.reduce((s, l) => s + l.gross, 0);
+    if (g <= 0) return lines.map((_, i) => i === 0 ? final : 0);
+    let used = 0;
+    return lines.map((l, i) => { if (i === lines.length - 1) return Math.max(0, final - used); const a = Math.round(final * l.gross / g); used += a; return a; });
+  };
+  const resetSaleForm = () => { setCart([]); setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setSType(""); setMSel(null); setMq(""); setSBase("0"); setSDisc("0"); setGNames(""); };
   const submitGroupSale = async () => {
-    const total = Number(sAmt) || 0;
-    setSBusy(true);
-    if (gMode === "one") {
-      if (!sName.trim()) return (setSBusy(false), alert("Enter the group lead's name."));
-      const { data, error } = await supabase.rpc("door_group_sale", { p_event: ev.id, p_type: selType ? selType.name : "Door entry", p_method: sMethod, p_total: total, p_mode: "one", p_names: [sName.trim()], p_phones: [sPhone || ""], p_size: Number(sQty) || 1 });
-      setSBusy(false);
-      if (error) return alert(error.message);
-      const t = (data?.tickets || [])[0];
-      setSDone({ code: t?.code, name: sName.trim(), qty: Number(sQty) || 1, phone: sPhone, member: false, group: true });
-      setSName(""); setSPhone(""); setSQty("1"); setSBase("0"); setSDisc("0");
-    } else {
-      const lines = gNames.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      if (!lines.length) return (setSBusy(false), alert("Add at least one name (one per line)."));
+    const final = Number(sAmt) || 0;
+    if (gMode === "each") {
+      const rows = gNames.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (!rows.length) return alert("Add at least one name (one per line).");
       const names = [], phones = [];
-      lines.forEach(l => { const parts = l.split(/[,\t]/).map(s => s.trim()); names.push(parts[0]); phones.push(parts.find(x => /\d/.test(x) && x !== parts[0]) || ""); });
-      const { data, error } = await supabase.rpc("door_group_sale", { p_event: ev.id, p_type: selType ? selType.name : "Door entry", p_method: sMethod, p_total: total, p_mode: "each", p_names: names, p_phones: phones, p_size: names.length });
+      rows.forEach(l => { const parts = l.split(/[,\t]/).map(s => s.trim()); names.push(parts[0]); phones.push(parts.find(x => /\d/.test(x) && x !== parts[0]) || ""); });
+      setSBusy(true);
+      const { data, error } = await supabase.rpc("door_group_sale", { p_event: ev.id, p_type: selType ? selType.name : "Door entry", p_method: sMethod, p_total: final, p_mode: "each", p_names: names, p_phones: phones, p_size: names.length });
       setSBusy(false);
       if (error) return alert(error.message);
-      setGResults(data?.tickets || []);
-      setGNames("");
+      setGResults(data?.tickets || []); resetSaleForm();
+      return;
     }
+    if (!sName.trim()) return alert("Enter the group lead's name.");
+    const lines = saleLines(); const amts = splitAmounts(lines, final);
+    setSBusy(true);
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      const { data, error } = await supabase.rpc("door_group_sale", { p_event: ev.id, p_type: lines[i].name, p_method: sMethod, p_total: amts[i], p_mode: "one", p_names: [sName.trim()], p_phones: [sPhone || ""], p_size: lines[i].qty });
+      if (error) { setSBusy(false); return alert(error.message); }
+      const t = (data?.tickets || [])[0]; if (t) out.push({ name: `${sName.trim()} · ${lines[i].name} ×${lines[i].qty}`, code: t.code, phone: sPhone });
+    }
+    setSBusy(false);
+    setGResults(out); resetSaleForm();
   };
   const submitSale = async () => {
     if (linkMode === "group") return submitGroupSale();
@@ -10093,21 +10124,20 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     if (isMember && !mSel) return alert("Search and pick the member this sale is for.");
     const buyerName = isMember ? (mSel.full_name || "Member") : sName.trim();
     if (!buyerName) return alert("Buyer name is required.");
+    const lines = saleLines(); const amts = splitAmounts(lines, Number(sAmt) || 0);
     setSBusy(true);
-    let data, error;
-    if (isMember) {
-      ({ data, error } = await supabase.rpc("member_offline_sale", { p_event: ev.id, p_user: mSel.id, p_name: buyerName, p_type: selType ? selType.name : "Door entry", p_qty: Number(sQty) || 1, p_method: sMethod, p_amount: Number(sAmt) || 0 }));
-    } else {
-      ({ data, error } = await supabase.rpc("door_sale", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_type: selType ? selType.name : "Door entry", p_qty: Number(sQty) || 1, p_method: sMethod, p_amount: Number(sAmt) || 0 }));
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      let data, error;
+      if (isMember) ({ data, error } = await supabase.rpc("member_offline_sale", { p_event: ev.id, p_user: mSel.id, p_name: buyerName, p_type: lines[i].name, p_qty: lines[i].qty, p_method: sMethod, p_amount: amts[i] }));
+      else ({ data, error } = await supabase.rpc("door_sale", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_type: lines[i].name, p_qty: lines[i].qty, p_method: sMethod, p_amount: amts[i] }));
+      if (error) { setSBusy(false); return alert(error.message); }
+      out.push({ name: lines.length > 1 ? `${buyerName} · ${lines[i].name} ×${lines[i].qty}` : buyerName, code: data && data.code, phone: sPhone, qty: lines[i].qty });
     }
     setSBusy(false);
-    if (error) return alert(error.message);
-    // Walk-in → save to Door leads so you can invite them into the community later.
-    if (!isMember) {
-      try { await supabase.rpc("add_door_lead", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_email: sEmail }); loadLeads(ev.id); } catch (e2) {}
-    }
-    setSDone({ code: data && data.code, name: buyerName, qty: Number(sQty) || 1, phone: sPhone, member: isMember });
-    setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setMSel(null); setMq(""); setSBase("0"); setSDisc("0");
+    if (!isMember) { try { await supabase.rpc("add_door_lead", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_email: sEmail }); loadLeads(ev.id); } catch (e2) {} }
+    if (out.length === 1) { setSDone({ code: out[0].code, name: out[0].name, qty: out[0].qty || 1, phone: out[0].phone, member: isMember }); resetSaleForm(); }
+    else { setGResults(out); resetSaleForm(); }
   };
   const [qrs, setQrs] = useState([]); const [qrSel, setQrSel] = useState("");
   const loadQrs = (eid) => supabase.rpc("event_payment_qrs", { p_event: eid }).then(({ data, error }) => { if (!error) { setQrs(data || []); setQrSel(c => (data || []).some(q => q.id === c) ? c : ((data && data[0] && data[0].id) || "")); } });
@@ -10138,7 +10168,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
       <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>Scan ticket QRs to admit, or sell at the door with cash / your UPI QR.</div>
       <HelpBox title="How the door works" tips={["Pick the event first from the dropdown below.", "Tap ‘Scan tickets’ and point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the code (from the WhatsApp/email ticket) in the box and tap Check.", "‘Door sale’ lets you sell a ticket on the spot and take cash or UPI.", "Every scan and sale is recorded — see running counts and recent scans below."]} />
       <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: "#EEF6FF", border: "1px solid #CFE2FA", color: "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 14 }}>📖 Organiser guide — how event bookings work</a>
-      <select value={evId} onChange={e => { setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); setGResults(null); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
+      <select value={evId} onChange={e => { setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); setGResults(null); setCart([]); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
         <option value="">Choose event…</option>
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
       </select>
@@ -10151,7 +10181,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
         <>
           <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
             <button onClick={() => { setScanOn(v => !v); setSaleOpen(false); }} style={{ ...btn(scanOn ? W.ink : W.teal, "#fff"), flex: 1, justifyContent: "center" }}>📷 {scanOn ? "Stop scanning" : "Scan tickets"}</button>
-            <button onClick={() => { setSaleOpen(v => !v); setScanOn(false); setSDone(null); setGResults(null); }} style={{ ...btn(saleOpen ? W.ink : "#7C3AED", "#fff"), flex: 1, justifyContent: "center" }}>💵 Door sale</button>
+            <button onClick={() => { setSaleOpen(v => !v); setScanOn(false); setSDone(null); setGResults(null); setCart([]); }} style={{ ...btn(saleOpen ? W.ink : "#7C3AED", "#fff"), flex: 1, justifyContent: "center" }}>💵 Door sale</button>
           </div>
           {scanOn && <div style={{ marginBottom: 12 }}><QrScanner onCode={check} /></div>}
           {!saleOpen && (
@@ -10212,7 +10242,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       }} style={{ ...btn("#25D366", "#fff"), padding: "7px 11px", fontSize: 12 }}>Send</button>
                     </div>
                   ))}
-                  <button onClick={() => { setGResults(null); setSAmt("0"); setSDisc("0"); setSBase("0"); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}>+ New sale</button>
+                  <button onClick={() => { setGResults(null); setSAmt("0"); resetSaleForm(); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}>+ New sale</button>
                 </div>
               ) : (
                 <>
@@ -10231,8 +10261,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                         <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                           <input value={sName} onChange={e => setSName(e.target.value)} placeholder="Group lead name *" style={{ ...ip2, flex: "1 1 120px" }} />
                           <input value={sPhone} onChange={e => setSPhone(e.target.value)} placeholder="Phone (WhatsApp)" inputMode="tel" style={{ ...ip2, flex: "1 1 100px" }} />
-                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft }}>People</span><input value={sQty} onChange={e => setSQty(e.target.value.replace(/\D/g, ""))} inputMode="numeric" style={{ ...ip2, width: 54, textAlign: "center" }} /></div>
-                          <div style={{ flexBasis: "100%", fontSize: 11, color: W.soft }}>One ticket showing “1+{Math.max(0, (Number(sQty) || 1) - 1)}”, all {Number(sQty) || 1} enter on this code.</div>
+                          <div style={{ flexBasis: "100%", fontSize: 11, color: W.soft }}>Add the ticket types &amp; counts below — one ticket per type is created for the group.</div>
                         </div>
                       ) : (
                         <>
@@ -10273,13 +10302,37 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       <input value={sEmail} onChange={e => setSEmail(e.target.value)} placeholder="Email (optional)" inputMode="email" style={{ ...ip2, flex: "1 1 100px" }} />
                     </div>
                   )}
-                  <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
-                    <select value={sType} onChange={e => setSType(e.target.value)} style={{ ...ip2, flex: 1, minWidth: 0 }}>
-                      <option value="">{types.length ? "Ticket type…" : "Door entry"}</option>
-                      {types.map(t => <option key={t.id} value={t.id}>{t.name} — ₹{t.price}</option>)}
-                    </select>
-                    {linkMode !== "group" && <input value={sQty} onChange={e => setSQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ ...ip2, width: 56, textAlign: "center" }} />}
-                  </div>
+                  {(linkMode === "group" && gMode === "each") ? (
+                    <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
+                      <select value={sType} onChange={e => setSType(e.target.value)} style={{ ...ip2, flex: 1, minWidth: 0 }}>
+                        <option value="">{types.length ? "Ticket type (for everyone)…" : "Door entry"}</option>
+                        {types.map(t => <option key={t.id} value={t.id}>{t.name} — ₹{t.price}</option>)}
+                      </select>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
+                        <select value={sType} onChange={e => setSType(e.target.value)} style={{ ...ip2, flex: 1, minWidth: 0 }}>
+                          <option value="">{types.length ? "Ticket type…" : "Door entry"}</option>
+                          {types.map(t => <option key={t.id} value={t.id}>{t.name} — ₹{t.price}</option>)}
+                        </select>
+                        <input value={sQty} onChange={e => setSQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ ...ip2, width: 52, textAlign: "center" }} />
+                        {types.length > 0 && <button onClick={addLine} style={{ ...btn("#0F766E", "#fff"), padding: "9px 12px", fontSize: 13 }}>＋ Add</button>}
+                      </div>
+                      {cart.length > 0 && (
+                        <div style={{ border: `1px solid ${W.line}`, borderRadius: 10, marginBottom: 8, overflow: "hidden" }}>
+                          {cart.map(l => (
+                            <div key={l.typeId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 11px", borderBottom: `1px solid ${W.bg}` }}>
+                              <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: W.ink }}>{l.name} <span style={{ color: W.soft, fontWeight: 600 }}>×{l.qty}</span></div>
+                              <div style={{ fontSize: 13, color: W.soft }}>₹{(l.unit || 0) * (l.qty || 1)}</div>
+                              <button onClick={() => removeLine(l.typeId)} style={{ background: "none", border: "none", color: "#C0392B", fontWeight: 800, fontSize: 16, cursor: "pointer", lineHeight: 1 }}>×</button>
+                            </div>
+                          ))}
+                          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 11px", fontSize: 13, fontWeight: 800, color: W.ink, background: "#F6FBFA" }}><span>{cartQty} ticket{cartQty === 1 ? "" : "s"}</span><span>₹{cartGross}</span></div>
+                        </div>
+                      )}
+                    </>
+                  )}
                   {!(linkMode === "group" && gMode === "each") && (
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, background: "#F6FBFA", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 11px", flexWrap: "wrap" }}>
                       <span style={{ fontSize: 12.5, color: W.soft }}>Price ₹</span>
