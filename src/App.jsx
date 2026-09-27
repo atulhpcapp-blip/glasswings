@@ -17733,14 +17733,127 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
   const mode = only || modeState;
   const [openSeries, setOpenSeries] = useState(null);
   const wrapRef = useRef(null);
+  const [engagement, setEngagement] = useState({});
+  const [engagementError, setEngagementError] = useState(false);
+  const currentReel = useRef(0);
+  const movingReel = useRef(false);
+  const seenReels = useRef(new Set());
+  const engagementRef = useRef({});
+  const engagementBusy = useRef(new Set());
+  useEffect(() => { engagementRef.current = engagement; }, [engagement]);
+  useEffect(() => {
+    if (!vids?.length || mode !== "shorts") return;
+    let cancelled = false;
+    const ids = vids.map(v => String(v.id));
+    supabase.from("short_engagement").select("video_id,user_id,liked,views").in("video_id", ids).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) { setEngagementError(true); return; }
+      const counts = {};
+      ids.forEach(id => { counts[id] = { likes: 0, views: 0, liked: false }; });
+      (data || []).forEach(row => {
+        const c = counts[row.video_id]; if (!c) return;
+        c.likes += row.liked ? 1 : 0;
+        c.views += Number(row.views) || 0;
+        if (row.user_id === user.id) c.liked = !!row.liked;
+      });
+      setEngagement(counts);
+    });
+    return () => { cancelled = true; };
+  }, [vids, mode, user.id]);
+  const saveEngagement = async (v, kind) => {
+    const id = String(v.id);
+    if (engagementError || engagementBusy.current.has(id)) return;
+    if (kind === "view" && seenReels.current.has(id)) return;
+    engagementBusy.current.add(id);
+    if (kind === "view") seenReels.current.add(id);
+    const previous = engagementRef.current[id] || { likes: 0, views: 0, liked: false };
+    const next = kind === "view"
+      ? { ...previous, views: previous.views + 1 }
+      : { ...previous, liked: !previous.liked, likes: Math.max(0, previous.likes + (previous.liked ? -1 : 1)) };
+    setEngagement(s => ({ ...s, [id]: next }));
+    const { data: existing, error: readError } = await supabase.from("short_engagement")
+      .select("liked,views").eq("video_id", id).eq("user_id", user.id).maybeSingle();
+    const { error } = readError ? { error: readError } : await supabase.from("short_engagement").upsert({
+      video_id: id, user_id: user.id,
+      liked: kind === "like" ? next.liked : !!existing?.liked,
+      views: (Number(existing?.views) || 0) + (kind === "view" ? 1 : 0)
+    }, { onConflict: "video_id,user_id" });
+    if (error) {
+      setEngagement(s => ({ ...s, [id]: previous }));
+      if (kind === "view") seenReels.current.delete(id);
+      setEngagementError(true);
+    }
+    engagementBusy.current.delete(id);
+  };
+  const shareReel = async v => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("reel", String(v.id));
+    const link = url.toString();
+    try {
+      if (navigator.share) await navigator.share({ title: v.title, text: `Watch this Glasswings reel: ${v.title}`, url: link });
+      else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(link); window.alert("Reel link copied"); }
+      else window.open(`https://wa.me/?text=${encodeURIComponent(link)}`, "_blank", "noopener,noreferrer");
+    } catch (err) { if (err?.name !== "AbortError") window.alert("Could not share this reel."); }
+  };
+  useEffect(() => {
+    if (mode !== "shorts" || !vids?.length || !wrapRef.current) return;
+    const el = wrapRef.current;
+    let startY = null, lastWheel = 0, timer;
+    const go = direction => {
+      if (movingReel.current) return;
+      const next = Math.max(0, Math.min(vids.length - 1, currentReel.current + direction));
+      if (next === currentReel.current) return;
+      movingReel.current = true;
+      currentReel.current = next;
+      el.scrollTo({ top: next * el.clientHeight, behavior: "smooth" });
+      clearTimeout(timer);
+      timer = setTimeout(() => { el.scrollTop = next * el.clientHeight; movingReel.current = false; }, 480);
+    };
+    const onStart = e => { startY = e.touches[0]?.clientY ?? null; };
+    const onMove = e => { if (startY !== null && Math.abs(e.touches[0].clientY - startY) > 8) e.preventDefault(); };
+    const onEnd = e => {
+      if (startY === null) return;
+      const delta = startY - (e.changedTouches[0]?.clientY ?? startY);
+      startY = null;
+      if (Math.abs(delta) > 35) go(delta > 0 ? 1 : -1);
+    };
+    const onWheel = e => {
+      e.preventDefault();
+      if (Math.abs(e.deltaY) < 10 || Date.now() - lastWheel < 520) return;
+      lastWheel = Date.now();
+      go(e.deltaY > 0 ? 1 : -1);
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      clearTimeout(timer); movingReel.current = false;
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [vids, mode]);
+  useEffect(() => {
+    if (mode !== "shorts" || !vids?.length) return;
+    const reelId = new URLSearchParams(window.location.search).get("reel");
+    const index = Math.max(0, vids.findIndex(v => String(v.id) === reelId));
+    currentReel.current = index;
+    if (wrapRef.current) wrapRef.current.scrollTop = index * wrapRef.current.clientHeight;
+  }, [vids, mode]);
   const load = () => supabase.rpc("shorts_list").then(({ data }) => setVids(data || []));
   const loadCredits = () => supabase.from("profiles").select("game_credits").eq("id", user.id).maybeSingle().then(({ data }) => setCredits(Number(data?.game_credits) || 0));
   useEffect(() => { load(); loadCredits(); }, []);
   useEffect(() => {
     if (!vids || !vids.length) return;
     const io = new IntersectionObserver(ents => ents.forEach(e => {
-      const v = e.target.querySelector("video"); if (!v) return;
-      if (e.isIntersecting && e.intersectionRatio > 0.55) { v.play().catch(() => {}); } else { v.pause(); }
+      const v = e.target.querySelector("video");
+      if (e.isIntersecting && e.intersectionRatio > 0.55) {
+        const reel = vids.find(item => String(item.id) === e.target.dataset.reelId);
+        if (reel && !reel.seg_locked && (!reel.is_paid || reel.unlocked) && reel.video_url) saveEngagement(reel, "view");
+        v?.play().catch(() => {});
+      } else { v?.pause(); }
     }), { threshold: [0, 0.55, 1] });
     const els = wrapRef.current ? wrapRef.current.querySelectorAll("[data-slide]") : [];
     els.forEach(el => io.observe(el));
@@ -17770,12 +17883,12 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
         : vids === null ? <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>
         : vids.length === 0 ? <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No reels yet.{isStaff ? " Tap ＋ Add to upload the first one." : " Check back soon 🎬"}</div>
         : (
-          <div ref={wrapRef} style={{ height: "calc(100vh - 108px)", overflowY: "auto", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", WebkitOverflowScrolling: "touch" }}>
+          <div ref={wrapRef} style={{ height: "calc(100dvh - 108px)", overflowY: "hidden", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", overscrollBehavior: "contain", touchAction: "pan-x" }}>
             {vids.map(v => {
               const segLocked = !!v.seg_locked;
               const locked = v.is_paid && !v.unlocked;
               return (
-                <div key={v.id} data-slide style={{ position: "relative", height: "100%", scrollSnapAlign: "start", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div key={v.id} data-slide data-reel-id={String(v.id)} style={{ position: "relative", height: "100%", scrollSnapAlign: "start", scrollSnapStop: "always", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {segLocked ? (
                     <>
                       {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(16px) brightness(.45)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
@@ -17804,8 +17917,15 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
                     </>
                   ) : (
                     <>
-                      <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} onEnded={_advanceSlide} />
-                      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 16px 18px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
+                      <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} />
+                      <div style={{ position: "absolute", right: 12, bottom: 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
+                        <button aria-label={engagement[String(v.id)]?.liked ? "Unlike reel" : "Like reel"} onClick={() => saveEngagement(v, "like")} style={{ border: 0, background: "transparent", color: engagement[String(v.id)]?.liked ? "#ff4d76" : "#fff", cursor: "pointer", fontSize: 29, textShadow: "0 2px 5px #000" }}>♥</button>
+                        <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.likes ?? 0}</span>
+                        <button aria-label="Share reel" onClick={() => shareReel(v)} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer", filter: "drop-shadow(0 2px 3px #000)" }}><Share2 size={29} /></button>
+                        <span style={{ fontSize: 12, marginTop: -13 }}>Share</span>
+                        <span title="Views" style={{ fontSize: 12, textShadow: "0 2px 5px #000" }}>👁 {engagement[String(v.id)]?.views ?? 0}</span>
+                      </div>
+                      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
                         <div style={{ fontWeight: 900, fontSize: 18 }}>{v.title}{v.is_paid && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.25)", padding: "2px 8px", borderRadius: 20 }}>✓ Unlocked</span>}</div>
                         {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
                       </div>
