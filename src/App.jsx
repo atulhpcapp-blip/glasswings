@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-inbox-v88 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-streak-v89 build</div>
       </div>
     </div>
   );
@@ -4400,7 +4400,9 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [noteSuper, setNoteSuper] = useState(false);
   const [noteBusy, setNoteBusy] = useState(false);
   const [peekPrompts, setPeekPrompts] = useState(null);
+  const [streak, setStreak] = useState({ streak: 0, waved_today: false });
   const [matchCel, setMatchCel] = useState(null);
+  const bumpStreak = () => setStreak(s => s.waved_today ? s : { streak: (s.streak || 0) + 1, waved_today: true });
   const premium = (typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0) || isAdmin || isSuper;
   const isVip = (id) => vipSet.has(id);
   const isVerified = (id) => verSet.has(id);
@@ -4434,6 +4436,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("meet_shared_events").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { (m[r.other_id] = m[r.other_id] || []).push({ id: r.event_id, title: r.title }); }); setSharedEv(m); } });
     supabase.rpc("meet_trending").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { m[r.user_id] = r.waves; }); setTrendMap(m); } });
     supabase.rpc("incoming_wave_notes").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { m[r.from_user] = { note: r.note, sup: r.is_super }; }); setNoteMap(m); } });
+    supabase.rpc("wave_streak").then(({ data, error }) => { if (!error && data) setStreak(data); });
   };
   useEffect(load, []);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
@@ -4461,6 +4464,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     }
     setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
     setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
+    bumpStreak();
     if (data.mutual) setMatchCel(p);
   };
   const openNote = (p) => { if (!premium) return goPlan(); setNoteFor(p); setNoteText(""); setNoteSuper(false); };
@@ -4477,7 +4481,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
       return window.gwConfirm("Couldn't send that right now.", () => {});
     }
     setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
-    setNoteFor(null);
+    setNoteFor(null); bumpStreak();
     if (data.mutual) setMatchCel(p); else setPeek(pk => (pk && pk.id === p.id) ? null : pk);
   };
   const doPass = async (p) => {
@@ -4711,6 +4715,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             <div style={{ fontWeight: 900, fontSize: 19, lineHeight: 1 }}>👋 Meet your people</div>
             <div style={{ fontSize: 12, opacity: .92, marginTop: 3 }}>Wave, match & make plans ✨</div>
           </div>
+          {streak.streak > 0 && <div title={streak.waved_today ? "You waved today — streak safe!" : "Wave today to keep your streak!"} style={{ display: "flex", alignItems: "center", gap: 4, background: streak.waved_today ? "rgba(255,255,255,.22)" : "rgba(255,255,255,.12)", borderRadius: 20, padding: "6px 11px", fontWeight: 900, fontSize: 13.5, flexShrink: 0, opacity: streak.waved_today ? 1 : .85 }}>🔥 {streak.streak}</div>}
           <div onClick={() => setMtab("waves")} style={{ position: "relative", width: 42, height: 42, borderRadius: 12, background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, cursor: "pointer", flexShrink: 0 }}>
             💌
             {inbox.length > 0 && <span style={{ position: "absolute", top: -5, right: -5, minWidth: 20, height: 20, padding: "0 5px", borderRadius: 20, background: "#F43F5E", color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff", boxSizing: "border-box" }}>{inbox.length}</span>}
