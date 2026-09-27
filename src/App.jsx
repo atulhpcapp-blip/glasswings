@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v83 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v84 build</div>
       </div>
     </div>
   );
@@ -4393,6 +4393,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [moodMap, setMoodMap] = useState({});
   const [iceMap, setIceMap] = useState({});
   const [sharedEv, setSharedEv] = useState({});
+  const [trendMap, setTrendMap] = useState({});
   const [peekPrompts, setPeekPrompts] = useState(null);
   const [matchCel, setMatchCel] = useState(null);
   const isVip = (id) => vipSet.has(id);
@@ -4425,6 +4426,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("verified_ids").then(({ data, error }) => setVerSet(new Set(error ? [] : (data || []))));
     supabase.rpc("meet_looking_for").then(({ data, error }) => { if (!error) { const m = {}, ic = {}; (data || []).forEach(r => { if (r.looking_for) m[r.user_id] = r.looking_for; if (r.icebreaker) ic[r.user_id] = r.icebreaker; }); setMoodMap(m); setIceMap(ic); } });
     supabase.rpc("meet_shared_events").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { (m[r.other_id] = m[r.other_id] || []).push({ id: r.event_id, title: r.title }); }); setSharedEv(m); } });
+    supabase.rpc("meet_trending").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { m[r.user_id] = r.waves; }); setTrendMap(m); } });
   };
   useEffect(load, []);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
@@ -4600,6 +4602,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   })();
   const onlineNow = (rows || []).filter(p => p.avatar_url && isOnline(p.last_seen)).sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen)).slice(0, 14);
   const newThisWeek = (rows || []).filter(p => isNewbie(p.joined)).length;
+  const trending = (rows || []).filter(p => p.avatar_url && (trendMap[p.id] || 0) > 0).sort((a, b) => (trendMap[b.id] || 0) - (trendMap[a.id] || 0)).slice(0, 12);
   const hasPlan = typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0;
   const unlocked = hasPlan || isAdmin || isSuper; // admins/superadmins are never paywalled
   const perfectList = mCandidates;
@@ -4882,6 +4885,29 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+        {trending.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 14px 9px" }}>
+              <span style={{ fontSize: 17 }}>🔥</span>
+              <div style={{ fontWeight: 900, fontSize: 15.5, color: W.ink }}>Trending</div>
+              <span style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>· most waved lately</span>
+            </div>
+            <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "0 14px 4px", WebkitOverflowScrolling: "touch" }}>
+              {trending.map((p, i) => (
+                <div key={p.id} style={{ flexShrink: 0, width: 84, textAlign: "center" }}>
+                  <div onClick={() => openPeek(p)} style={{ position: "relative", width: 78, height: 78, margin: "0 auto", cursor: "pointer" }}>
+                    <div style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", background: "#fff", border: "2.5px solid #F59E0B", boxShadow: "0 0 0 2px #fff, 0 2px 8px rgba(245,158,11,.35)" }}>
+                      {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
+                    </div>
+                    {i < 3 && <span style={{ position: "absolute", top: -3, left: -3, background: "#F59E0B", color: "#fff", fontSize: 11, fontWeight: 900, width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>{i + 1}</span>}
+                    <span style={{ position: "absolute", bottom: -2, right: -2, background: "rgba(8,18,24,.72)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 20 }}>🔥 {trendMap[p.id]}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}</div>
+                </div>
+              ))}
             </div>
           </div>
         )}
