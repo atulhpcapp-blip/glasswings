@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-spice-v85 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-inbox-v86 build</div>
       </div>
     </div>
   );
@@ -5013,12 +5013,51 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
         </div>
       </div>}
-      {mtab === "waves" && (
-        <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>
-          {inbox.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>No waves yet — when someone waves at you, they'll show up here 👋</div>
-            : inbox.map(p => card({ ...p, joined: null, last_seen: p.waved_at, waved_me: true, waved_by_me: p.mutual }, p.mutual ? "💚 Mutual" : "👋 Wave back"))}
-        </div>
-      )}
+      {mtab === "waves" && (() => {
+        const matches = (inbox || []).filter(p => p.mutual);
+        const likedYou = (inbox || []).filter(p => !p.mutual);
+        const sent = (rows || []).filter(p => p.waved_by_me && !p.waved_me);
+        const av = (p, ring) => <div onClick={() => openPeek(p)} style={{ width: 54, height: 54, borderRadius: "50%", overflow: "hidden", flexShrink: 0, cursor: "pointer", background: W.bg, border: `2px solid ${ring || W.line}` }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>;
+        const nm = p => (p.name || "Member").split(" ")[0];
+        const sec = (title, n, color) => <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 4px 9px" }}><div style={{ fontWeight: 900, fontSize: 15, color: W.ink }}>{title}</div>{n > 0 && <span style={{ background: color, color: "#fff", fontSize: 11, fontWeight: 900, padding: "1px 8px", borderRadius: 20 }}>{n}</span>}</div>;
+        const row = (p, right) => {
+          const note = noteMap[p.id];
+          return (
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: note && note.sup ? "1.5px solid #F59E0B" : `1px solid ${W.line}`, borderRadius: 14, padding: "10px 12px", marginBottom: 9, boxShadow: "0 1px 4px rgba(17,27,33,.04)" }}>
+              {av(p, note && note.sup ? "#F59E0B" : (p.mutual ? "#6D28D9" : W.line))}
+              <div onClick={() => openPeek(p)} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nm(p)}{isVerified(p.id) ? <span style={{ color: "#2563EB", marginLeft: 3 }}>✓</span> : null}</div>
+                {note && (note.sup || note.note)
+                  ? <div style={{ fontSize: 12, color: "#BE185D", fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{note.sup ? "⭐ " : "💬 "}{note.note ? `“${note.note}”` : "Super Wave"}</div>
+                  : <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{p.mutual ? "You matched 💚" : "waved at you 👋"}</div>}
+              </div>
+              <div style={{ flexShrink: 0 }}>{right(p)}</div>
+            </div>
+          );
+        };
+        const empty = (msg) => <div style={{ color: W.soft, textAlign: "center", padding: "16px 10px", fontSize: 13 }}>{msg}</div>;
+        return (
+          <div style={{ padding: "4px 14px 20px", maxWidth: 620, margin: "0 auto" }}>
+            {sec("💚 Matches", matches.length, "#6D28D9")}
+            {matches.length === 0 ? empty("No matches yet — when you both tap 🤝 it's a match and chat opens here.")
+              : matches.map(p => row(p, () => <button onClick={() => onOpenDM && onOpenDM(p.id, nm(p))} style={{ ...btn("linear-gradient(95deg,#6D28D9,#008069)", "#fff"), padding: "9px 16px", fontSize: 13 }}>💬 Message</button>))}
+
+            {sec("👋 Liked you", likedYou.length, "#EC4899")}
+            {likedYou.length === 0 ? empty("No new waves right now.")
+              : likedYou.map(p => row(p, () => (
+                <div style={{ display: "flex", gap: 7 }}>
+                  <button onClick={() => doPass(p)} disabled={waveBusy === p.id} title="Decline" style={{ width: 40, padding: "9px 0", borderRadius: 10, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, cursor: "pointer" }}>✗</button>
+                  <button onClick={() => doWave(p)} disabled={waveBusy === p.id} style={{ ...btn("linear-gradient(95deg,#EC4899,#F472B6)", "#fff"), padding: "9px 15px", fontSize: 13 }}>{waveBusy === p.id ? "…" : "✓ Wave back"}</button>
+                </div>
+              )))}
+
+            {sent.length > 0 && (<>
+              {sec("📤 Sent · waiting", sent.length, "#94A3B8")}
+              {sent.map(p => row({ ...p, mutual: false }, () => <div style={{ fontSize: 12.5, fontWeight: 800, color: "#0d6e58", background: "#E7F6EF", padding: "8px 13px", borderRadius: 10 }}>Waiting…</div>))}
+            </>)}
+          </div>
+        );
+      })()}
       {photoZoom && (
         <div onClick={() => setPhotoZoom(null)} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.92)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div onClick={() => setPhotoZoom(null)} style={{ position: "absolute", top: 16, right: 18, color: "#fff", fontSize: 26, fontWeight: 300, cursor: "pointer", lineHeight: 1 }}>✕</div>
