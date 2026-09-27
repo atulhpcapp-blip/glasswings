@@ -1636,7 +1636,7 @@ function EventGoers({ eventId, onOpenDM }) {
           <div key={p.id} style={{ flexShrink: 0, width: 92, textAlign: "center" }}>
             <div style={{ width: 74, height: 74, borderRadius: "50%", overflow: "visible", margin: "0 auto", background: W.bg, border: `2px solid ${p.waved_me ? "#EC4899" : W.line}`, position: "relative" }}>
               <div style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden" }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>
-              {typeof window !== "undefined" && window.__gwVerified && window.__gwVerified.has(p.id) && <span style={{ position: "absolute", bottom: -1, right: -1 }}><VerifiedSeal size={22} /></span>}
+              {typeof window !== "undefined" && window.__gwVerified && window.__gwVerified.has(p.id) && <span style={{ position: "absolute", bottom: -3, right: -3 }}><VerifiedSeal size={18} /></span>}
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
             <button onClick={() => mutual ? (onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])) : wave(p)} disabled={busy === p.id || (p.waved_by_me && !mutual)} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: mutual ? "linear-gradient(95deg,#6D28D9,#008069)" : p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "#EC4899" : W.teal), color: p.waved_by_me && !mutual ? "#0d6e58" : "#fff" }}>
@@ -2548,7 +2548,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v112 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v113 build</div>
       </div>
     </div>
   );
@@ -5144,7 +5144,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                       {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
                     </div>
                     <span style={{ position: "absolute", bottom: 2, right: 2, width: 13, height: 13, borderRadius: "50%", background: "#22C55E", border: "2px solid #fff" }} />
-                    {isVerified(p.id) && <span style={{ position: "absolute", top: -2, right: -2 }}><VerifiedSeal size={20} /></span>}
+                    {isVerified(p.id) && <span style={{ position: "absolute", top: -3, right: -3 }}><VerifiedSeal size={17} /></span>}
                   </div>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}</div>
                 </div>
@@ -5170,7 +5170,6 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                         {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
                         <span style={{ position: "absolute", top: 7, left: 7, background: "rgba(8,18,24,.6)", color: "#fff", fontSize: 10.5, fontWeight: 900, padding: "3px 8px", borderRadius: 20 }}>💞 {compat(p)}%</span>
                         {isOnline(p.last_seen) && <span style={{ position: "absolute", top: 7, right: 7, width: 10, height: 10, borderRadius: "50%", background: "#22C55E", border: "2px solid #fff" }} />}
-                        {isVerified(p.id) && <span style={{ position: "absolute", bottom: 44, right: 8 }}><VerifiedSeal size={22} /></span>}
                         <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "20px 10px 8px", background: "linear-gradient(transparent,rgba(0,0,0,.72))" }}>
                           <div style={{ color: "#fff", fontWeight: 800, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 3 }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVerified(p.id) ? <VerifiedSeal size={13} /> : null}</div>
                           <div style={{ color: "rgba(255,255,255,.9)", fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.area || p.city || "Say hi 👋"}</div>
@@ -5204,7 +5203,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                       {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
                     </div>
                     {i < 3 && <span style={{ position: "absolute", top: -3, left: -3, background: "#F59E0B", color: "#fff", fontSize: 11, fontWeight: 900, width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>{i + 1}</span>}
-                    {isVerified(p.id) && <span style={{ position: "absolute", top: -3, right: -3 }}><VerifiedSeal size={21} /></span>}
+                    {isVerified(p.id) && <span style={{ position: "absolute", top: -3, right: -3 }}><VerifiedSeal size={17} /></span>}
                     <span style={{ position: "absolute", bottom: -2, right: -2, background: "rgba(8,18,24,.72)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 20 }}>🔥 {trendMap[p.id]}</span>
                   </div>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, marginTop: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}</div>
@@ -5222,9 +5221,9 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             <div style={{ display: "flex", gap: 11, overflowX: "auto", padding: "0 14px 4px" }}>
               {nearYou.map(p => { const mutual = p.waved_by_me && p.waved_me; return (
                 <div key={p.id} style={{ flexShrink: 0, width: 96, textAlign: "center" }}>
-                  <div onClick={() => openPeek(p)} style={{ width: 84, height: 84, borderRadius: "50%", overflow: "hidden", margin: "0 auto", background: "#fff", border: `2px solid ${p.waved_me ? "#EC4899" : W.line}`, cursor: "pointer", position: "relative" }}>
-                    {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
-                    {isVerified(p.id) && <span style={{ position: "absolute", bottom: 0, right: 0 }}><VerifiedSeal size={22} /></span>}
+                  <div onClick={() => openPeek(p)} style={{ width: 84, height: 84, margin: "0 auto", cursor: "pointer", position: "relative" }}>
+                    <div style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", background: "#fff", border: `2px solid ${p.waved_me ? "#EC4899" : W.line}` }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>
+                    {isVerified(p.id) && <span style={{ position: "absolute", bottom: -3, right: -3 }}><VerifiedSeal size={18} /></span>}
                   </div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
                   <div style={{ fontSize: 10, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.area || p.city}</div>
