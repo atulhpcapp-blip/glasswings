@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · door-v105 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v106 build</div>
       </div>
     </div>
   );
@@ -2757,6 +2757,59 @@ function PhotoGate({ user, profile, reload, onBack }) {
     </div>
   );
 }
+function RestrictedGate({ user, profile, reviewFlag, reload }) {
+  const [avatar, setAvatar] = useState(profile.avatar_url || "");
+  const [phone, setPhone] = useState("");
+  const [uploading, setUploading] = useState(false), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const fileRef = useRef(null);
+  useEffect(() => { supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data?.phone) setPhone(data.phone); }); }, [user.id]);
+  const pick = async (e) => { const f = e.target.files?.[0]; if (!f) return; setErr(""); setUploading(true); try { setAvatar(await uploadPhoto(user.id, f)); } catch (x) { setErr("Photo upload failed: " + (x.message || x)); } setUploading(false); };
+  const phoneDigits = (phone || "").replace(/\D/g, "");
+  const bothReady = !!avatar && phoneDigits.length >= 10;
+  const save = async () => {
+    setErr("");
+    if (!avatar) return setErr("Please add a clear profile photo.");
+    if (phoneDigits.length < 10) return setErr("Please enter a valid mobile number.");
+    setBusy(true);
+    try {
+      await supabase.from("member_phone").upsert({ user_id: user.id, phone });
+      const { error } = await supabase.from("profiles").update({ avatar_url: avatar }).eq("id", user.id);
+      if (error) throw error;
+      try { localStorage.removeItem("gw_lite"); } catch {}
+      reload();
+    } catch (x) { setErr(x.message || String(x)); setBusy(false); }
+  };
+  return (
+    <div style={{ minHeight: "calc(100vh - 120px)", background: "linear-gradient(160deg,#1a1030,#3a1846)", padding: "26px 20px 60px" }}>
+      <div style={{ maxWidth: 440, margin: "0 auto", background: "#fff", borderRadius: 20, padding: "24px 20px", boxShadow: "0 16px 44px rgba(0,0,0,.28)" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 42 }}>🔒</div>
+          <div style={{ fontWeight: 900, fontSize: 20, color: W.ink, marginTop: 8 }}>Let's verify it's really you</div>
+        </div>
+        <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", borderRadius: 12, padding: "13px 15px", margin: "16px 0", color: "#8a2a20", fontSize: 13.5, lineHeight: 1.6 }}>
+          Glasswings is a <b>real community with real people</b> — genuine faces and reachable numbers keep everyone safe and the vibe trusted. Your {reviewFlag === "phone" ? "phone number" : reviewFlag === "photo" ? "profile photo" : "profile"} was flagged for review.
+          <br /><br />
+          Until you update <b>both your photo and phone number</b>, access is restricted — you can still browse Events and buy tickets, but everything else is locked. <b>Unverified accounts are deactivated after 2 weeks.</b>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 16 }}>
+          <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", borderRadius: "50%", border: `3px solid ${avatar ? W.teal : "#C0392B"}` }}>
+            <PersonAvatar url={avatar} name={profile.full_name} size={104} />
+            <div style={{ position: "absolute", bottom: 0, right: 0, width: 32, height: 32, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}><Camera size={17} /></div>
+            {uploading && <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(0,0,0,.4)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>…</div>}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 8, color: avatar ? W.soft : "#C0392B" }}>{avatar ? "✓ Photo added — tap to change" : "Tap to add a clear photo of you *"}</div>
+        </div>
+        <div style={{ fontSize: 12.5, color: W.soft, fontWeight: 700, marginBottom: 5 }}>Mobile number</div>
+        <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d+ ]/g, ""))} inputMode="tel" placeholder="10-digit mobile number" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${phoneDigits.length >= 10 ? W.teal : "#E5B4AE"}`, borderRadius: 10, padding: "12px 14px", fontSize: 15, outline: "none" }} />
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 5 }}>Your number stays private — only the organiser can see it.</div>
+        {err && <div style={{ color: "#C0392B", fontSize: 13, marginTop: 12, textAlign: "center" }}>{err}</div>}
+        <button onClick={save} disabled={busy || uploading || !bothReady} style={{ width: "100%", marginTop: 18, padding: 15, borderRadius: 12, border: "none", cursor: bothReady ? "pointer" : "not-allowed", background: bothReady ? "linear-gradient(95deg,#008069,#04B08F)" : "#C9D2CF", color: "#fff", fontWeight: 900, fontSize: 15.5, opacity: busy ? .6 : 1 }}>{busy ? "Updating…" : "Update & unlock my account"}</button>
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, textAlign: "center", lineHeight: 1.5 }}>Both a photo and a phone number are required to unlock. Need help? Reach the Glasswings team on WhatsApp.</div>
+      </div>
+    </div>
+  );
+}
 function Main({ user }) {
   const wide = useWide(900);
   const SW = 248;
@@ -2874,13 +2927,13 @@ function Main({ user }) {
     setPlanRoomIds(liveIds.length ? [...new Set((prsAll || []).filter(x => liveIds.includes(x.plan_id)).map(x => x.room_id))] : []);
   };
   useEffect(() => { loadPlans(); }, [user?.id, tab]);
+  const refreshReview = useCallback(() => supabase.rpc("my_review_status").then(({ data }) => { const r = (data || [])[0]; setReviewFlag(r?.flag || null); }), [user?.id]);
   useEffect(() => {
     if (!user?.id) return;
-    const load = () => supabase.rpc("my_review_status").then(({ data }) => { const r = (data || [])[0]; setReviewFlag(r?.flag || null); });
-    load();
-    window.addEventListener("focus", load);
-    return () => window.removeEventListener("focus", load);
-  }, [user?.id]);
+    refreshReview();
+    window.addEventListener("focus", refreshReview);
+    return () => window.removeEventListener("focus", refreshReview);
+  }, [user?.id, refreshReview]);
   useEffect(() => {
     if (!subPage) return;
     loadRazorpay();
@@ -3594,7 +3647,7 @@ function Main({ user }) {
       if (e) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     }
   }
-  if (chatEl && !wide) return needPhoto ? <PhotoGate user={user} profile={profile} reload={load} onBack={() => setOpen(null)} /> : chatEl;
+  if (chatEl && !wide) return reviewFlag ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => { load(); refreshReview(); }} /> : needPhoto ? <PhotoGate user={user} profile={profile} reload={load} onBack={() => setOpen(null)} /> : chatEl;
 
   const myChats = [
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
@@ -3635,6 +3688,7 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
+      {reviewFlag && tab !== "events" ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => { load(); refreshReview(); }} /> : (<>
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
@@ -3655,6 +3709,7 @@ function Main({ user }) {
         });
       }} />}
       {tab === "profile" && <Profile user={user} profile={profile} isVIP={isVIP} waGroup={waGroup} reload={load} streak={streakInfo} events={events} paidSubs={(subRows || []).filter(s => s.razorpay_subscription_id).map(s => ({ room_id: s.room_id, name: (rooms.find(r => r.id === s.room_id) || {}).name || "Room" }))} onCancelSub={cancelSub} />}
+      </>)}
     </>
   );
 
@@ -3724,7 +3779,7 @@ function Main({ user }) {
     <>
       {reviewFlag && (
         <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 1400, background: "linear-gradient(95deg,#6D28D9,#9333EA)", color: "#fff", padding: "10px 14px", fontSize: 12.5, lineHeight: 1.45, boxShadow: "0 2px 10px rgba(109,40,217,.4)" }}>
-          <b>⚠️ Your profile is under review.</b> Please update your {reviewFlag === "photo" ? "profile photo" : "phone number"} in Profile → Edit. Until then, you won't appear to other members in Meet.
+          <b>🔒 Access restricted.</b> Update your photo &amp; phone to unlock everything — you can still buy tickets on Events. Unverified accounts are deactivated in 2 weeks.
         </div>
       )}
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
