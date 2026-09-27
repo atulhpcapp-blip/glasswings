@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-inbox-v87 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-inbox-v88 build</div>
       </div>
     </div>
   );
@@ -5024,16 +5024,29 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         const av = (p, ring) => <div onClick={() => openPeek(p)} style={{ width: 54, height: 54, borderRadius: "50%", overflow: "hidden", flexShrink: 0, cursor: "pointer", background: W.bg, border: `2px solid ${ring || W.line}` }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>;
         const nm = p => (p.name || "Member").split(" ")[0];
         const sec = (title, n, color) => <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 4px 9px" }}><div style={{ fontWeight: 900, fontSize: 15, color: W.ink }}>{title}</div>{n > 0 && <span style={{ background: color, color: "#fff", fontSize: 11, fontWeight: 900, padding: "1px 8px", borderRadius: 20 }}>{n}</span>}</div>;
-        const row = (p, right) => {
+        const row = (p, right, kind) => {
           const note = noteMap[p.id];
+          const md = moodOf(moodMap[p.id]);
+          const isSuper = note && note.sup;
+          const theme = isSuper ? { bg: "linear-gradient(120deg,#FFF7E6,#FFF1F6)", ring: "#F59E0B", bd: "#F6D28A" }
+            : kind === "match" ? { bg: "linear-gradient(120deg,#F3F0FF,#EAF7F2)", ring: "#6D28D9", bd: "#DDD3F5" }
+            : kind === "liked" ? { bg: "linear-gradient(120deg,#FDF2F8,#FFF6EE)", ring: "#EC4899", bd: "#F7CFE2" }
+            : { bg: "#F8FAFC", ring: "#CBD5E1", bd: "#E7ECF1" };
+          const place = p.area || p.city;
+          const sub = isSuper ? "⭐ Super Wave" : (note && note.note) ? "💬 " + note.note
+            : kind === "match" ? "You matched 💚" : kind === "sent" ? "You waved 👋 · waiting for a reply" : "waved at you 👋";
+          const subColor = (isSuper || (note && note.note)) ? "#BE185D" : kind === "match" ? "#0d6e58" : W.soft;
           return (
-            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", border: note && note.sup ? "1.5px solid #F59E0B" : `1px solid ${W.line}`, borderRadius: 14, padding: "10px 12px", marginBottom: 9, boxShadow: "0 1px 4px rgba(17,27,33,.04)" }}>
-              {av(p, note && note.sup ? "#F59E0B" : (p.mutual ? "#6D28D9" : W.line))}
+            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, background: theme.bg, border: `1.5px solid ${theme.bd}`, borderRadius: 15, padding: "11px 13px", marginBottom: 10, boxShadow: "0 2px 8px rgba(17,27,33,.05)" }}>
+              {av(p, theme.ring)}
               <div onClick={() => openPeek(p)} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
-                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nm(p)}{isVerified(p.id) ? <span style={{ color: "#2563EB", marginLeft: 3 }}>✓</span> : null}</div>
-                {note && (note.sup || note.note)
-                  ? <div style={{ fontSize: 12, color: "#BE185D", fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{note.sup ? "⭐ " : "💬 "}{note.note ? `“${note.note}”` : "Super Wave"}</div>
-                  : <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{p.mutual ? "You matched 💚" : "waved at you 👋"}</div>}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 900, color: W.ink, fontSize: 15 }}>{nm(p)}{p.age ? `, ${p.age}` : ""}</span>
+                  {isVerified(p.id) && <span style={{ color: "#2563EB", fontWeight: 900 }}>✓</span>}
+                  {md && <span style={{ background: md[3], color: md[2], fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 20 }}>{md[1]}</span>}
+                </div>
+                <div style={{ fontSize: 12.5, color: subColor, fontWeight: 700, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
+                {place && <div style={{ fontSize: 11, color: W.soft, marginTop: 1 }}>📍 {place}</div>}
               </div>
               <div style={{ flexShrink: 0 }}>{right(p)}</div>
             </div>
@@ -5044,7 +5057,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           <div style={{ padding: "4px 14px 20px", maxWidth: 620, margin: "0 auto" }}>
             {sec("💚 Matches", matches.length, "#6D28D9")}
             {matches.length === 0 ? empty("No matches yet — when you both tap 🤝 it's a match and chat opens here.")
-              : matches.map(p => row(p, () => <button onClick={() => onOpenDM && onOpenDM(p.id, nm(p))} style={{ ...btn("linear-gradient(95deg,#6D28D9,#008069)", "#fff"), padding: "9px 16px", fontSize: 13 }}>💬 Message</button>))}
+              : matches.map(p => row(p, () => <button onClick={() => onOpenDM && onOpenDM(p.id, nm(p))} style={{ ...btn("linear-gradient(95deg,#6D28D9,#008069)", "#fff"), padding: "9px 16px", fontSize: 13 }}>💬 Message</button>, "match"))}
 
             {sec("👋 Liked you", likedYou.length, "#EC4899")}
             {likedYou.length === 0 ? empty("No new waves right now.")
@@ -5053,11 +5066,11 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                   <button onClick={() => doPass(p)} disabled={waveBusy === p.id} title="Decline" style={{ width: 40, padding: "9px 0", borderRadius: 10, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, cursor: "pointer" }}>✗</button>
                   <button onClick={() => doWave(p)} disabled={waveBusy === p.id} style={{ ...btn("linear-gradient(95deg,#EC4899,#F472B6)", "#fff"), padding: "9px 15px", fontSize: 13 }}>{waveBusy === p.id ? "…" : "✓ Wave back"}</button>
                 </div>
-              )))}
+              ), "liked"))}
 
             {sent.length > 0 && (<>
               {sec("📤 Sent · waiting", sent.length, "#94A3B8")}
-              {sent.map(p => row({ ...p, mutual: false }, () => <div style={{ fontSize: 12.5, fontWeight: 800, color: "#0d6e58", background: "#E7F6EF", padding: "8px 13px", borderRadius: 10 }}>Waiting…</div>))}
+              {sent.map(p => row({ ...p, mutual: false }, () => <div style={{ fontSize: 12.5, fontWeight: 800, color: "#64748B", background: "#EEF2F6", padding: "8px 13px", borderRadius: 10 }}>Waiting…</div>, "sent"))}
             </>)}
           </div>
         );
