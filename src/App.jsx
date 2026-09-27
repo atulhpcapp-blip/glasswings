@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · door-v101 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · door-v102 build</div>
       </div>
     </div>
   );
@@ -10036,8 +10036,11 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const [sType, setSType] = useState(""); const [sMethod, setSMethod] = useState("cash"); const [sAmt, setSAmt] = useState("0");
   const [sBusy, setSBusy] = useState(false); const [sDone, setSDone] = useState(null);
   const [sEmail, setSEmail] = useState("");
-  const [linkMode, setLinkMode] = useState("walkin"); // walkin | member
+  const [linkMode, setLinkMode] = useState("walkin"); // walkin | member | group
   const [mq, setMq] = useState(""); const [mHits, setMHits] = useState([]); const [mSel, setMSel] = useState(null);
+  const [gMode, setGMode] = useState("one"); // one ticket (1+N) | each person
+  const [gNames, setGNames] = useState(""); const [gResults, setGResults] = useState(null);
+  const [sDisc, setSDisc] = useState("0");
   useEffect(() => {
     if (linkMode !== "member") return;
     const ql = mq.trim(); if (ql.length < 2) { setMHits([]); return; }
@@ -10050,14 +10053,40 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const inviteLead = (l) => { window.open(`https://wa.me/${(l.phone || "").replace(/[^\d]/g, "")}?text=${encodeURIComponent(inviteMsg(l.name))}`, "_blank"); if (!l.invited) { supabase.rpc("set_door_lead_invited", { p_id: l.id, p_invited: true }).then(() => loadLeads(ev.id)); } };
   const types = ev ? (ticketTypes[ev.id] || []) : [];
   const selType = types.find(t => t.id === sType);
-  useEffect(() => { const unit = selType ? (selType.price || 0) : 0; setSAmt(String(unit * (Number(sQty) || 1))); }, [sType, sQty]);
+  const unitPrice = selType ? (selType.price || 0) : 0;
+  const subTotal = unitPrice * (Number(sQty) || 1);
+  useEffect(() => { const d = Number(sDisc) || 0; setSAmt(String(Math.max(0, subTotal - d))); }, [sType, sQty, sDisc]);
   useEffect(() => {
     if (!sType) return;
     setSMethod("upi");
     const ti = types.findIndex(t => t.id === sType);
     if (ti >= 0 && qrs.length) { const q = qrs[Math.min(ti, qrs.length - 1)]; if (q) setQrSel(q.id); }
   }, [sType]);
+  const submitGroupSale = async () => {
+    const total = Number(sAmt) || 0;
+    setSBusy(true);
+    if (gMode === "one") {
+      if (!sName.trim()) return (setSBusy(false), alert("Enter the group lead's name."));
+      const { data, error } = await supabase.rpc("door_group_sale", { p_event: ev.id, p_type: selType ? selType.name : "Door entry", p_method: sMethod, p_total: total, p_mode: "one", p_names: [sName.trim()], p_phones: [sPhone || ""], p_size: Number(sQty) || 1 });
+      setSBusy(false);
+      if (error) return alert(error.message);
+      const t = (data?.tickets || [])[0];
+      setSDone({ code: t?.code, name: sName.trim(), qty: Number(sQty) || 1, phone: sPhone, member: false, group: true });
+      setSName(""); setSPhone(""); setSQty("1");
+    } else {
+      const lines = gNames.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (!lines.length) return (setSBusy(false), alert("Add at least one name (one per line)."));
+      const names = [], phones = [];
+      lines.forEach(l => { const parts = l.split(/[,\t]/).map(s => s.trim()); names.push(parts[0]); phones.push(parts.find(x => /\d/.test(x) && x !== parts[0]) || ""); });
+      const { data, error } = await supabase.rpc("door_group_sale", { p_event: ev.id, p_type: selType ? selType.name : "Door entry", p_method: sMethod, p_total: total, p_mode: "each", p_names: names, p_phones: phones, p_size: names.length });
+      setSBusy(false);
+      if (error) return alert(error.message);
+      setGResults(data?.tickets || []);
+      setGNames("");
+    }
+  };
   const submitSale = async () => {
+    if (linkMode === "group") return submitGroupSale();
     const isMember = linkMode === "member";
     if (isMember && !mSel) return alert("Search and pick the member this sale is for.");
     const buyerName = isMember ? (mSel.full_name || "Member") : sName.trim();
@@ -10107,7 +10136,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
       <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>Scan ticket QRs to admit, or sell at the door with cash / your UPI QR.</div>
       <HelpBox title="How the door works" tips={["Pick the event first from the dropdown below.", "Tap ‘Scan tickets’ and point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the code (from the WhatsApp/email ticket) in the box and tap Check.", "‘Door sale’ lets you sell a ticket on the spot and take cash or UPI.", "Every scan and sale is recorded — see running counts and recent scans below."]} />
       <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: "#EEF6FF", border: "1px solid #CFE2FA", color: "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 14 }}>📖 Organiser guide — how event bookings work</a>
-      <select value={evId} onChange={e => { setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
+      <select value={evId} onChange={e => { setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); setGResults(null); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
         <option value="">Choose event…</option>
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
       </select>
@@ -10120,7 +10149,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
         <>
           <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
             <button onClick={() => { setScanOn(v => !v); setSaleOpen(false); }} style={{ ...btn(scanOn ? W.ink : W.teal, "#fff"), flex: 1, justifyContent: "center" }}>📷 {scanOn ? "Stop scanning" : "Scan tickets"}</button>
-            <button onClick={() => { setSaleOpen(v => !v); setScanOn(false); setSDone(null); }} style={{ ...btn(saleOpen ? W.ink : "#7C3AED", "#fff"), flex: 1, justifyContent: "center" }}>💵 Door sale</button>
+            <button onClick={() => { setSaleOpen(v => !v); setScanOn(false); setSDone(null); setGResults(null); }} style={{ ...btn(saleOpen ? W.ink : "#7C3AED", "#fff"), flex: 1, justifyContent: "center" }}>💵 Door sale</button>
           </div>
           {scanOn && <div style={{ marginBottom: 12 }}><QrScanner onCode={check} /></div>}
           {!saleOpen && (
@@ -10160,13 +10189,57 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                     <button onClick={() => setSDone(null)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, fontSize: 13 }}>+ Next sale</button>
                   </div>
                 </div>
+              ) : gResults ? (
+                <div style={{ padding: "4px 0" }}>
+                  <div style={{ fontWeight: 800, color: W.teal, fontSize: 16, textAlign: "center" }}>✓ {gResults.length} group ticket{gResults.length === 1 ? "" : "s"} created</div>
+                  <div style={{ fontSize: 12, color: W.soft, textAlign: "center", margin: "4px 0 10px" }}>Send each person their ticket on WhatsApp.</div>
+                  {gResults.map((t, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: `1px solid ${W.line}` }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                        <div style={{ fontSize: 11.5, color: W.soft, fontFamily: "ui-monospace,monospace" }}>{t.code}</div>
+                      </div>
+                      <button onClick={async () => {
+                        const text = `🎟️ ${ev.title}\nYour ticket — show the QR at the door.\nCode: ${t.code}\nTicket: https://glass-wings.com/?gt=${t.code}\n— Glasswings Events`;
+                        try {
+                          const blob = await makeTicketBlob({ emoji: "🎟️", title: ev.title, dateStr: ev.event_date, place: [ev.venue, ev.city].filter(Boolean).join(", "), name: t.name, qty: 1, code: t.code, category: ev.category, entryBadge: ev.entry_badge, dressCode: ev.dress_code, terms: ev.terms });
+                          const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
+                          if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: ev.title, text }); return; }
+                        } catch (e2) {}
+                        window.open(`https://wa.me/${(t.phone || "").replace(/[^\d]/g, "")}?text=${encodeURIComponent(text)}`, "_blank");
+                      }} style={{ ...btn("#25D366", "#fff"), padding: "7px 11px", fontSize: 12 }}>Send</button>
+                    </div>
+                  ))}
+                  <button onClick={() => { setGResults(null); setSAmt("0"); setSDisc("0"); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}>+ New sale</button>
+                </div>
               ) : (
                 <>
                   <div style={{ display: "flex", borderRadius: 9, overflow: "hidden", border: `1px solid ${W.line}`, marginBottom: 9 }}>
-                    <button onClick={() => { setLinkMode("walkin"); setMSel(null); setMq(""); }} style={{ flex: 1, border: "none", padding: "9px 10px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: linkMode === "walkin" ? "#7C3AED" : "#fff", color: linkMode === "walkin" ? "#fff" : W.soft }}>🚶 Walk-in (non-member)</button>
-                    <button onClick={() => setLinkMode("member")} style={{ flex: 1, border: "none", padding: "9px 10px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: linkMode === "member" ? "#7C3AED" : "#fff", color: linkMode === "member" ? "#fff" : W.soft }}>👤 Existing member</button>
+                    <button onClick={() => { setLinkMode("walkin"); setMSel(null); setMq(""); }} style={{ flex: 1, border: "none", padding: "9px 6px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: linkMode === "walkin" ? "#7C3AED" : "#fff", color: linkMode === "walkin" ? "#fff" : W.soft }}>🚶 Walk-in</button>
+                    <button onClick={() => setLinkMode("member")} style={{ flex: 1, border: "none", padding: "9px 6px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: linkMode === "member" ? "#7C3AED" : "#fff", color: linkMode === "member" ? "#fff" : W.soft }}>👤 Member</button>
+                    <button onClick={() => { setLinkMode("group"); setMSel(null); setMq(""); }} style={{ flex: 1, border: "none", padding: "9px 6px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: linkMode === "group" ? "#7C3AED" : "#fff", color: linkMode === "group" ? "#fff" : W.soft }}>👥 Group</button>
                   </div>
-                  {linkMode === "member" ? (
+                  {linkMode === "group" ? (
+                    <div style={{ marginBottom: 7 }}>
+                      <div style={{ display: "flex", borderRadius: 9, overflow: "hidden", border: `1px solid ${W.line}`, marginBottom: 8 }}>
+                        <button onClick={() => setGMode("one")} style={{ flex: 1, border: "none", padding: "8px 6px", fontSize: 12, fontWeight: 800, cursor: "pointer", background: gMode === "one" ? "#0F766E" : "#fff", color: gMode === "one" ? "#fff" : W.soft }}>🎟️ One ticket (1+N)</button>
+                        <button onClick={() => setGMode("each")} style={{ flex: 1, border: "none", padding: "8px 6px", fontSize: 12, fontWeight: 800, cursor: "pointer", background: gMode === "each" ? "#0F766E" : "#fff", color: gMode === "each" ? "#fff" : W.soft }}>👤 A ticket each</button>
+                      </div>
+                      {gMode === "one" ? (
+                        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                          <input value={sName} onChange={e => setSName(e.target.value)} placeholder="Group lead name *" style={{ ...ip2, flex: "1 1 120px" }} />
+                          <input value={sPhone} onChange={e => setSPhone(e.target.value)} placeholder="Phone (WhatsApp)" inputMode="tel" style={{ ...ip2, flex: "1 1 100px" }} />
+                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft }}>People</span><input value={sQty} onChange={e => setSQty(e.target.value.replace(/\D/g, ""))} inputMode="numeric" style={{ ...ip2, width: 54, textAlign: "center" }} /></div>
+                          <div style={{ flexBasis: "100%", fontSize: 11, color: W.soft }}>One ticket showing “1+{Math.max(0, (Number(sQty) || 1) - 1)}”, all {Number(sQty) || 1} enter on this code.</div>
+                        </div>
+                      ) : (
+                        <>
+                          <textarea value={gNames} onChange={e => setGNames(e.target.value)} rows={4} placeholder={"One name per line — optionally add a phone:\nRahul, 98765xxxxx\nPriya\nAmit, 90000xxxxx"} style={{ ...ip2, width: "100%", resize: "vertical", fontFamily: "inherit" }} />
+                          <div style={{ fontSize: 11, color: W.soft, marginTop: 4 }}>Each person gets their own ticket & code. The total below is split across them for your P&L.</div>
+                        </>
+                      )}
+                    </div>
+                  ) : linkMode === "member" ? (
                     <div style={{ marginBottom: 7 }}>
                       {mSel ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 9, background: "#EDE9FE", border: "1px solid #C4B5FD", borderRadius: 10, padding: "9px 12px" }}>
@@ -10203,8 +10276,15 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       <option value="">{types.length ? "Ticket type…" : "Door entry"}</option>
                       {types.map(t => <option key={t.id} value={t.id}>{t.name} — ₹{t.price}</option>)}
                     </select>
-                    <input value={sQty} onChange={e => setSQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ ...ip2, width: 56, textAlign: "center" }} />
+                    {linkMode !== "group" && <input value={sQty} onChange={e => setSQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ ...ip2, width: 56, textAlign: "center" }} />}
                   </div>
+                  {(!!selType && !(linkMode === "group" && gMode === "each")) && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, background: "#F6FBFA", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 11px" }}>
+                      <span style={{ fontSize: 12.5, color: W.soft }}>List ₹{subTotal}</span>
+                      <span style={{ fontSize: 12.5, color: W.soft, marginLeft: "auto" }}>Discount ₹</span>
+                      <input value={sDisc} onChange={e => setSDisc(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" style={{ width: 66, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 13.5, fontWeight: 700, textAlign: "center" }} />
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 10 }}>
                     <div style={{ display: "flex", borderRadius: 9, overflow: "hidden", border: `1px solid ${W.line}` }}>
                       <button onClick={() => setSMethod("cash")} style={{ border: "none", padding: "9px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", background: sMethod === "cash" ? W.teal : "#fff", color: sMethod === "cash" ? "#fff" : W.soft }}>💵 Cash</button>
@@ -10215,7 +10295,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       <input value={sAmt} onChange={e => setSAmt(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" style={{ ...ip2, width: "100%", fontWeight: 800 }} />
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, color: W.soft, marginTop: -4, marginBottom: 10 }}>Amount includes processing fee.</div>
+                  <div style={{ fontSize: 11, color: W.soft, marginTop: -4, marginBottom: 10 }}>{(Number(sDisc) || 0) > 0 ? `💸 ₹${Number(sDisc)} off — final ₹${sAmt}. ` : ""}{linkMode === "group" ? "Enter the total taken from the group. " : ""}Amount includes processing fee.</div>
                   {sMethod === "upi" && (
                     <div style={{ textAlign: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: 12, marginBottom: 10 }}>
                       {qrs.length > 1 && (
@@ -10243,7 +10323,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       )}
                     </div>
                   )}
-                  <button onClick={submitSale} disabled={sBusy} style={{ ...btn("#7C3AED", "#fff"), width: "100%", justifyContent: "center", opacity: sBusy ? .6 : 1 }}>{sBusy ? "Saving…" : `Mark ${sMethod === "upi" ? "UPI" : "cash"} received — admit`}</button>
+                  <button onClick={submitSale} disabled={sBusy} style={{ ...btn("#7C3AED", "#fff"), width: "100%", justifyContent: "center", opacity: sBusy ? .6 : 1 }}>{sBusy ? "Saving…" : linkMode === "group" ? (gMode === "each" ? "Create tickets for the group" : "Create group ticket") : linkMode === "member" ? `Record ${sMethod === "upi" ? "UPI" : "cash"} — link to member` : `Mark ${sMethod === "upi" ? "UPI" : "cash"} received — admit`}</button>
                 </>
               )}
             </div>
