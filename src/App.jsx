@@ -382,7 +382,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Zap, label: "Shorts" }, { id: "series", icon: Film, label: "Series" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · door-v102 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · reels-v103 build</div>
       </div>
     </div>
   );
@@ -17235,7 +17235,7 @@ function SeriesGrid({ onOpen }) {
   const [list, setList] = useState(null);
   useEffect(() => { supabase.rpc("series_list").then(({ data }) => setList(data || [])); }, []);
   if (list === null) return <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>;
-  if (!list.length) return <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No series yet 🎬</div>;
+  if (!list.length) return <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No movies yet 🎬</div>;
   return (
     <div style={{ background: "#0b0b12", minHeight: "calc(100vh - 108px)", padding: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 12 }}>
@@ -17309,7 +17309,7 @@ function SeriesPlayer({ series, user, isStaff, credits, onCredits, onBack }) {
                       <div style={{ fontWeight: 900, fontSize: 19, marginTop: 6 }}>{v.title}</div>
                       <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 9, alignItems: "center" }}>
                         <button onClick={() => unlockEp(v)} disabled={busy === v.id} style={{ width: 250, padding: "13px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)", opacity: busy === v.id ? .6 : 1 }}>{busy === v.id ? "Unlocking…" : `🪙 Unlock episode · ${v.price_inr}`}</button>
-                        {series.series_price_inr > 0 && <button onClick={unlockSeries} disabled={busy === "series"} style={{ width: 250, padding: "12px", borderRadius: 12, border: "1.5px solid rgba(255,255,255,.5)", cursor: "pointer", fontWeight: 800, fontSize: 14, color: "#fff", background: "transparent" }}>Unlock whole series · {series.series_price_inr}🪙</button>}
+                        {series.series_price_inr > 0 && <button onClick={unlockSeries} disabled={busy === "series"} style={{ width: 250, padding: "12px", borderRadius: 12, border: "1.5px solid rgba(255,255,255,.5)", cursor: "pointer", fontWeight: 800, fontSize: 14, color: "#fff", background: "transparent" }}>Unlock whole movie · {series.series_price_inr}🪙</button>}
                         <div style={{ fontSize: 12, opacity: .8 }}>You have 🪙 {bal}</div>
                       </div>
                     </div>
@@ -17371,13 +17371,13 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
   return (
     <div style={{ background: "#000" }}>
       <div style={{ position: "sticky", top: 0, zIndex: 6, display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: "linear-gradient(120deg,#0b0b12,#1a1030)", color: "#fff" }}>
-        {only ? <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{only === "series" ? "🎬 Series" : "⚡ Shorts"}</div> : <>{tab("series", "🎬 Series")}{tab("shorts", "⚡ Shorts")}<span style={{ flex: 1 }} /></>}
+        {only ? <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{only === "series" ? "🎬 Movies" : "⚡ Reels"}</div> : <>{tab("series", "🎬 Movies")}{tab("shorts", "⚡ Reels")}<span style={{ flex: 1 }} /></>}
         <span style={{ fontSize: 12.5, fontWeight: 700, opacity: .9 }}>🪙 {credits}</span>
         {isStaff && <button onClick={() => setAdminOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>＋ Add</button>}
       </div>
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
         : vids === null ? <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>
-        : vids.length === 0 ? <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No shorts yet.{isStaff ? " Tap ＋ Add to upload the first one." : " Check back soon 🎬"}</div>
+        : vids.length === 0 ? <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No reels yet.{isStaff ? " Tap ＋ Add to upload the first one." : " Check back soon 🎬"}</div>
         : (
           <div ref={wrapRef} style={{ height: "calc(100vh - 108px)", overflowY: "auto", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", WebkitOverflowScrolling: "touch" }}>
             {vids.map(v => {
@@ -17393,7 +17393,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
                         <div style={{ fontWeight: 900, fontSize: 21, marginTop: 8 }}>{v.title}</div>
                         {v.description && <div style={{ fontSize: 13, opacity: .85, marginTop: 6, lineHeight: 1.5 }}>{v.description}</div>}
                         <div style={{ display: "inline-block", marginTop: 16, background: "linear-gradient(95deg,#7C3AED,#EC4899)", padding: "10px 18px", borderRadius: 999, fontWeight: 900, fontSize: 14.5 }}>Only for {v.seg_name || "members"}</div>
-                        <div style={{ fontSize: 12.5, opacity: .8, marginTop: 12, lineHeight: 1.5 }}>This short is reserved for {v.seg_name || "select"} members.</div>
+                        <div style={{ fontSize: 12.5, opacity: .8, marginTop: 12, lineHeight: 1.5 }}>This reel is reserved for {v.seg_name || "select"} members.</div>
                       </div>
                     </>
                   ) : locked || !v.video_url ? (
@@ -17463,7 +17463,7 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
       if (!r.ok || d.error) { alert(d.error || "Import failed."); setBBusy(false); return; }
       if (!d.videos || !d.videos.length) { alert("No videos found in your Bunny library."); setBBusy(false); return; }
       setBulkLinks(d.videos.map(v => v.url).join("\n"));
-      alert(`✅ Pulled ${d.count} videos from Bunny. Now pick the series below and tap "Import episodes".`);
+      alert(`✅ Pulled ${d.count} videos from Bunny. Now pick the movie below and tap "Import episodes".`);
     } catch (x) { alert("Import failed: " + (x.message || x)); }
     setBBusy(false);
   };
@@ -17481,7 +17481,7 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   };
   const bulkAdd = async () => {
     const links = bulkLinks.split("\n").map(x => x.trim()).filter(Boolean);
-    if (!bulkSeries) return alert("Choose a series, or 'Standalone Shorts', for these videos.");
+    if (!bulkSeries) return alert("Choose a movie, or 'Standalone Reels', for these videos.");
     if (!links.length) return alert("Paste at least one link (one per line).");
     const standalone = bulkSeries === "__standalone";
     setBulkBusy(true);
@@ -17489,9 +17489,9 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
     setBulkBusy(false);
     if (error) return alert(error.message);
     setBulkLinks(""); load(); onChanged && onChanged();
-    alert(`✅ Added ${data} ${standalone ? "short" : "episode"}${data === 1 ? "" : "s"}.`);
+    alert(`✅ Added ${data} ${standalone ? "reel" : "episode"}${data === 1 ? "" : "s"}.`);
   };
-  const delSeries = async (id) => { if (!window.confirm("Delete this series? Its episodes become standalone shorts.")) return; await supabase.rpc("series_delete", { p_id: id }); loadSeries(); load(); };
+  const delSeries = async (id) => { if (!window.confirm("Delete this movie? Its episodes become standalone reels.")) return; await supabase.rpc("series_delete", { p_id: id }); loadSeries(); load(); };
   const pickVideo = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("video"); try { setVurl(await uploadChatFile("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
   const pickPoster = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("poster"); try { setPurl(await uploadPhoto("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
   const save = async () => {
@@ -17503,14 +17503,14 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
     setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); setSeriesId(""); setSegId(""); setEditId(null); load(); onChanged && onChanged();
   };
   const editShort = (r) => { setEditId(r.id); setTitle(r.title || ""); setDesc(r.description || ""); setVurl(r.video_url || ""); setPurl(r.poster_url || ""); setPaid(!!r.is_paid); setPrice(r.price_inr || 24); setSeriesId(r.series_id || ""); setEpNo(r.episode_no || ""); setSegId(r.segment_id || ""); try { document.querySelector("[data-shorts-admin]")?.scrollTo({ top: 0, behavior: "smooth" }); } catch {} };
-  const del = async (id) => { if (!window.confirm("Delete this short?")) return; await supabase.rpc("shorts_delete", { p_id: id }); load(); onChanged && onChanged(); };
+  const del = async (id) => { if (!window.confirm("Delete this reel?")) return; await supabase.rpc("shorts_delete", { p_id: id }); load(); onChanged && onChanged(); };
   const editSeries = (s) => { setSEditId(s.id); setSTitle(s.title || ""); setSGenre(s.genre || ""); setSPoster(s.poster_url || ""); setSPrice(s.series_price_inr || 0); setSFree(s.free_eps != null ? s.free_eps : 1); setSSeg(s.segment_id || ""); try { document.querySelector("[data-shorts-admin]")?.scrollTo({ top: 99999, behavior: "smooth" }); } catch {} };
   const ip = { width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, outline: "none", marginBottom: 9 };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div data-shorts-admin onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", borderRadius: "18px 18px 0 0", padding: "18px 16px calc(22px + env(safe-area-inset-bottom))" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{editId ? "✏️ Edit episode / short" : "🎬 Add a short movie"}</div>
+          <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{editId ? "✏️ Edit episode / reel" : "🎬 Add a reel"}</div>
           {editId && <button onClick={() => { setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); setSeriesId(""); setEditId(null); }} style={{ background: "#EEF1F3", color: W.soft, border: "none", borderRadius: 8, padding: "6px 11px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Cancel</button>}
         </div>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" style={ip} />
@@ -17522,7 +17522,7 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
         <input value={vurl} onChange={e => setVurl(e.target.value)} placeholder="…or paste a video URL (Bunny HLS .m3u8, .mp4, or YouTube)" style={ip} />
         <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
           <select value={seriesId} onChange={e => setSeriesId(e.target.value)} style={{ ...ip, flex: 2, marginBottom: 0 }}>
-            <option value="">Standalone short (no series)</option>
+            <option value="">Standalone reel (no movie)</option>
             {sList.map(s => <option key={s.id} value={s.id}>📺 {s.title}</option>)}
           </select>
           {seriesId && <input type="number" value={epNo} onChange={e => setEpNo(e.target.value)} placeholder="Ep #" style={{ ...ip, flex: 1, marginBottom: 0 }} />}
@@ -17537,34 +17537,34 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
           <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 700, color: W.ink, cursor: "pointer" }}><input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} /> Paid</label>
           {paid && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>₹<input type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ width: 70, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 14 }} /></div>}
         </div>
-        <button onClick={save} disabled={busy || !!up} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", opacity: (busy || up) ? .6 : 1 }}>{busy ? "Saving…" : editId ? "Update" : "Publish short"}</button>
-        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "16px 0 8px" }}>Published shorts</div>
+        <button onClick={save} disabled={busy || !!up} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", opacity: (busy || up) ? .6 : 1 }}>{busy ? "Saving…" : editId ? "Update" : "Publish reel"}</button>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "16px 0 8px" }}>Published reels</div>
         {!rows.length ? <div style={{ color: W.soft, fontSize: 13 }}>None yet.</div> : rows.map(r => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
             <div style={{ width: 40, height: 54, borderRadius: 7, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{r.poster_url ? <img src={r.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎬</div>}</div>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in series" : ""}{r.published ? "" : " · hidden"}</div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in movie" : ""}{r.published ? "" : " · hidden"}</div></div>
             <button onClick={() => editShort(r)} style={{ ...btn("#EEF1F3", W.ink), padding: "7px 11px", fontSize: 12.5 }}>Edit</button>
             <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 11px", fontSize: 12.5 }}>Del</button>
           </div>
         ))}
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: `2px solid ${W.line}` }}>
-          <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>📺 Series</div>
-          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.45 }}>Create a series, then bulk-add all episodes below (paste links). First N episodes are free automatically.</div>
-          <input value={sTitle} onChange={e => setSTitle(e.target.value)} placeholder="Series title (e.g. Midnight in Hyderabad)" style={ip} />
+          <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>🎬 Movies</div>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.45 }}>Create a movie, then bulk-add all episodes below (paste links). First N episodes are free automatically.</div>
+          <input value={sTitle} onChange={e => setSTitle(e.target.value)} placeholder="Movie title (e.g. Midnight in Hyderabad)" style={ip} />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 9 }}>
             <input value={sGenre} onChange={e => setSGenre(e.target.value)} placeholder="Genre" style={{ ...ip, flex: 1, minWidth: 110, marginBottom: 0 }} />
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap" }}>Free eps</span><input type="number" value={sFree} onChange={e => setSFree(e.target.value)} title="How many first episodes are free" style={{ width: 52, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap" }}>Bundle ₹</span><input type="number" value={sPrice} onChange={e => setSPrice(e.target.value)} title="Price to unlock the whole series (0 = none)" style={{ width: 60, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap" }}>Bundle ₹</span><input type="number" value={sPrice} onChange={e => setSPrice(e.target.value)} title="Price to unlock the whole movie (0 = none)" style={{ width: 60, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
           </div>
-          <label style={{ ...btn("#EEF1F3", W.ink), width: "100%", justifyContent: "center", padding: "10px", cursor: "pointer", marginBottom: 9 }}>{up === "sposter" ? "Uploading…" : sPoster ? "✓ Cover set" : "⬆ Series cover (portrait)"}<input type="file" accept="image/*" onChange={pickSPoster} style={{ display: "none" }} /></label>
+          <label style={{ ...btn("#EEF1F3", W.ink), width: "100%", justifyContent: "center", padding: "10px", cursor: "pointer", marginBottom: 9 }}>{up === "sposter" ? "Uploading…" : sPoster ? "✓ Cover set" : "⬆ Movie cover (portrait)"}<input type="file" accept="image/*" onChange={pickSPoster} style={{ display: "none" }} /></label>
           {segOpts.length > 0 && (
             <select value={sSeg} onChange={e => setSSeg(e.target.value)} style={ip}>
-              <option value="">🌐 Everyone can watch this series</option>
+              <option value="">🌐 Everyone can watch this movie</option>
               {segOpts.map(s => <option key={s.id} value={s.id}>🔒 Only {s.name}</option>)}
             </select>
           )}
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={saveSeries} disabled={sBusy || !!up} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "12px", opacity: (sBusy || up) ? .6 : 1 }}>{sBusy ? "Saving…" : sEditId ? "Update series" : "Create series"}</button>
+            <button onClick={saveSeries} disabled={sBusy || !!up} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "12px", opacity: (sBusy || up) ? .6 : 1 }}>{sBusy ? "Saving…" : sEditId ? "Update movie" : "Create movie"}</button>
             {sEditId && <button onClick={() => { setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); setSEditId(null); }} style={{ ...btn("#EEF1F3", W.soft), padding: "12px 14px" }}>Cancel</button>}
           </div>
 
@@ -17590,10 +17590,10 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
           </div>
           <div style={{ marginTop: 12, background: "#F4FBF8", border: "1px solid #BFE6D6", borderRadius: 12, padding: "12px 13px" }}>
             <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 4 }}>⚡ Bulk-add episodes / shorts</div>
-            <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9, lineHeight: 1.45 }}>Choose a series (auto-numbered episodes) or "Standalone Shorts". Paste links, one per line.</div>
+            <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9, lineHeight: 1.45 }}>Choose a movie (auto-numbered episodes) or "Standalone Reels". Paste links, one per line.</div>
             <select value={bulkSeries} onChange={e => setBulkSeries(e.target.value)} style={ip}>
               <option value="">Choose where these go…</option>
-              <option value="__standalone">⚡ Standalone Shorts (no series)</option>
+              <option value="__standalone">⚡ Standalone Reels (no movie)</option>
               {sList.map(s => <option key={s.id} value={s.id}>📺 {s.title}</option>)}
             </select>
             {bulkSeries === "__standalone" && segOpts.length > 0 && (
@@ -17626,8 +17626,8 @@ function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
     { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
     { id: "meet", icon: Users, label: "Meet", c: "#EC4899" },
-    { id: "shorts", icon: Zap, label: "Shorts", c: "#F59E0B" },
-    { id: "series", icon: Film, label: "Series", c: "#E4572E" },
+    { id: "shorts", icon: Zap, label: "Reels", c: "#F59E0B" },
+    { id: "series", icon: Film, label: "Movies", c: "#E4572E" },
     { id: "games", icon: Gamepad2, label: "Games", c: "#2563EB" },
     { id: "gallery", icon: ImageIcon, label: "Gallery", c: "#0EA5A3" },
     ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Door", c: "#0F766E" }] : []),
