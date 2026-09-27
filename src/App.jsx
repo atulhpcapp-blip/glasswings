@@ -4394,8 +4394,14 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [iceMap, setIceMap] = useState({});
   const [sharedEv, setSharedEv] = useState({});
   const [trendMap, setTrendMap] = useState({});
+  const [noteMap, setNoteMap] = useState({});
+  const [noteFor, setNoteFor] = useState(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteSuper, setNoteSuper] = useState(false);
+  const [noteBusy, setNoteBusy] = useState(false);
   const [peekPrompts, setPeekPrompts] = useState(null);
   const [matchCel, setMatchCel] = useState(null);
+  const premium = (typeof window !== "undefined" && (window.__gwMyPlanIds || []).length > 0) || isAdmin || isSuper;
   const isVip = (id) => vipSet.has(id);
   const isVerified = (id) => verSet.has(id);
   const compat = (p) => {
@@ -4427,6 +4433,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("meet_looking_for").then(({ data, error }) => { if (!error) { const m = {}, ic = {}; (data || []).forEach(r => { if (r.looking_for) m[r.user_id] = r.looking_for; if (r.icebreaker) ic[r.user_id] = r.icebreaker; }); setMoodMap(m); setIceMap(ic); } });
     supabase.rpc("meet_shared_events").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { (m[r.other_id] = m[r.other_id] || []).push({ id: r.event_id, title: r.title }); }); setSharedEv(m); } });
     supabase.rpc("meet_trending").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { m[r.user_id] = r.waves; }); setTrendMap(m); } });
+    supabase.rpc("incoming_wave_notes").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { m[r.from_user] = { note: r.note, sup: r.is_super }; }); setNoteMap(m); } });
   };
   useEffect(load, []);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
@@ -4455,6 +4462,23 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
     setInbox(ib => ib.map(x => x.id === p.id ? { ...x, mutual: true } : x));
     if (data.mutual) setMatchCel(p);
+  };
+  const openNote = (p) => { if (!premium) return goPlan(); setNoteFor(p); setNoteText(""); setNoteSuper(false); };
+  const sendNote = async () => {
+    if (!noteFor) return;
+    setNoteBusy(true);
+    const p = noteFor;
+    const { data, error } = await supabase.rpc("wave_note", { p_user: p.id, p_note: noteText, p_super: noteSuper });
+    setNoteBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) {
+      if (data?.reason === "premium") { setNoteFor(null); return goPlan(); }
+      if (data?.reason === "need_photo") { setNoteFor(null); return window.gwConfirm("Add a profile photo first 📸 — Profile → Edit.", () => {}); }
+      return window.gwConfirm("Couldn't send that right now.", () => {});
+    }
+    setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
+    setNoteFor(null);
+    if (data.mutual) setMatchCel(p); else setPeek(pk => (pk && pk.id === p.id) ? null : pk);
   };
   const doPass = async (p) => {
     setWaveBusy(p.id);
@@ -4568,6 +4592,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         <div style={{ fontSize: 11, color: W.soft, marginTop: 4, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
         {iceMap[p.id] && <div style={{ fontSize: 10.5, color: "#7C3AED", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 600 }}>💬 {iceMap[p.id]}</div>}
         {sharedEv[p.id] && sharedEv[p.id].length > 0 && <div style={{ marginTop: 4, display: "inline-block", background: "#EAF1FE", color: "#1E40AF", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 20, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>🎫 Also going: {sharedEv[p.id][0].title}{sharedEv[p.id].length > 1 ? ` +${sharedEv[p.id].length - 1}` : ""}</div>}
+        {p.waved_me && noteMap[p.id] && (noteMap[p.id].note || noteMap[p.id].sup) && <div style={{ marginTop: 5, background: "#FDF2F8", border: "1px solid #FBCFE8", borderRadius: 9, padding: "5px 8px", fontSize: 10.5, color: "#BE185D", fontWeight: 700, lineHeight: 1.35 }}>{noteMap[p.id].sup ? "⭐ Super Wave" : ""}{noteMap[p.id].sup && noteMap[p.id].note ? " · " : ""}{noteMap[p.id].note ? `“${noteMap[p.id].note}”` : ""}</div>}
         {p.waved_by_me && p.waved_me ? (
           <button onClick={() => onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])} style={{ marginTop: 7, width: "100%", padding: "8px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 12.5, background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff" }}>💬 Message</button>
         ) : p.waved_by_me ? (
