@@ -382,7 +382,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Zap, label: "Shorts" }, { id: "series", icon: Film, label: "Series" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Zap, label: "Shorts" }, { id: "series", icon: Film, label: "Series" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v99 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · door-v101 build</div>
       </div>
     </div>
   );
@@ -3083,6 +3083,12 @@ function Main({ user }) {
     const sbLive = (sb || []).filter(x => !x.expires_at || new Date(x.expires_at).getTime() > Date.now());
     setSubs(sbLive.map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
     const mt = {}; (tk || []).forEach(r => { if (!mt[r.event_id]) mt[r.event_id] = []; mt[r.event_id].push(r); }); setMyTickets(mt);
+    // Also fold in any offline/door tickets sold to this member (so they appear in "My tickets").
+    supabase.rpc("my_door_tickets").then(({ data: dt }) => {
+      if (!dt || !dt.length) return;
+      setMyTickets(prev => { const c = { ...prev }; dt.forEach(r => { c[r.event_id] = [...(c[r.event_id] || []), r]; }); return c; });
+      setTickets(prev => [...new Set([...prev, ...dt.map(r => r.event_id)])]);
+    });
     setMods((md || []).map(x => x.room_id)); setEventMods((emd || []).map(x => x.event_id)); setEventGroups((egm || []).map(x => x.event_id)); setMySegs((sgm || []).map(x => x.segment_id));
     const cm = {}; (cnt || []).forEach(x => { cm[x.room_id] = Number(x.members); }); setCounts(cm);
     const ec = {}; (ecnt || []).forEach(x => { ec[x.event_id] = Number(x.going); }); setEventCounts(ec);
@@ -3634,6 +3640,7 @@ function Main({ user }) {
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "door" && isStaff && <DoorCheckin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} ticketTypes={ticketTypes} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} onUpdateEvent={updateEvent} />}
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
       {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
@@ -9997,14 +10004,17 @@ function QrScanner({ onCode }) {
     : <div style={{ textAlign: "center" }}><video ref={vref} muted playsInline style={{ width: "100%", maxWidth: 340, borderRadius: 14, background: "#000", aspectRatio: "3/4", objectFit: "cover" }} /><div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Point the camera at the ticket QR</div></div>;
 }
 function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent }) {
-  const manageable = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
-  const [evId, setEvId] = useState("");
-  const ev = manageable.find(e => e.id === evId);
-  const eventEnded = (() => {
-    if (!ev) return false;
-    const endTs = ev.end_at ? new Date(ev.end_at).getTime() : (ev.event_at ? new Date(ev.event_at).getTime() + 6 * 3600000 : null);
+  const gwIsEnded = (e) => {
+    if (!e) return false;
+    const endTs = e.end_at ? new Date(e.end_at).getTime() : (e.event_at ? new Date(e.event_at).getTime() + 6 * 3600000 : null);
     return endTs != null && endTs < Date.now();
-  })();
+  };
+  const manageableAll = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
+  // Door picker shows only upcoming / ongoing events — ended ones are hidden.
+  const manageable = manageableAll.filter(e => !gwIsEnded(e));
+  const [evId, setEvId] = useState("");
+  const ev = manageableAll.find(e => e.id === evId);
+  const eventEnded = gwIsEnded(ev);
   const [scanOn, setScanOn] = useState(false);
   const [manual, setManual] = useState("");
   const [res, setRes] = useState(null);
@@ -10025,6 +10035,19 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const [sName, setSName] = useState(""); const [sPhone, setSPhone] = useState(""); const [sQty, setSQty] = useState("1");
   const [sType, setSType] = useState(""); const [sMethod, setSMethod] = useState("cash"); const [sAmt, setSAmt] = useState("0");
   const [sBusy, setSBusy] = useState(false); const [sDone, setSDone] = useState(null);
+  const [sEmail, setSEmail] = useState("");
+  const [linkMode, setLinkMode] = useState("walkin"); // walkin | member
+  const [mq, setMq] = useState(""); const [mHits, setMHits] = useState([]); const [mSel, setMSel] = useState(null);
+  useEffect(() => {
+    if (linkMode !== "member") return;
+    const ql = mq.trim(); if (ql.length < 2) { setMHits([]); return; }
+    const t = setTimeout(() => supabase.rpc("member_search", { p_q: ql }).then(({ data }) => setMHits((data || []).slice(0, 8))), 250);
+    return () => clearTimeout(t);
+  }, [mq, linkMode]);
+  const [leads, setLeads] = useState([]); const [leadsOpen, setLeadsOpen] = useState(false);
+  const loadLeads = (eid) => supabase.rpc("door_leads_list", { p_event: eid }).then(({ data }) => setLeads(data || []));
+  const inviteMsg = (nm) => `Hey ${nm || "there"}! 🎉 Great having you at ${ev ? ev.title : "our event"}.\n\nJoin the Glasswings community for member perks, early tickets & more:\nhttps://glass-wings.com\n\nSee you at the next one!\n— Glasswings Events`;
+  const inviteLead = (l) => { window.open(`https://wa.me/${(l.phone || "").replace(/[^\d]/g, "")}?text=${encodeURIComponent(inviteMsg(l.name))}`, "_blank"); if (!l.invited) { supabase.rpc("set_door_lead_invited", { p_id: l.id, p_invited: true }).then(() => loadLeads(ev.id)); } };
   const types = ev ? (ticketTypes[ev.id] || []) : [];
   const selType = types.find(t => t.id === sType);
   useEffect(() => { const unit = selType ? (selType.price || 0) : 0; setSAmt(String(unit * (Number(sQty) || 1))); }, [sType, sQty]);
@@ -10035,17 +10058,29 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     if (ti >= 0 && qrs.length) { const q = qrs[Math.min(ti, qrs.length - 1)]; if (q) setQrSel(q.id); }
   }, [sType]);
   const submitSale = async () => {
-    if (!sName.trim()) return alert("Buyer name is required.");
+    const isMember = linkMode === "member";
+    if (isMember && !mSel) return alert("Search and pick the member this sale is for.");
+    const buyerName = isMember ? (mSel.full_name || "Member") : sName.trim();
+    if (!buyerName) return alert("Buyer name is required.");
     setSBusy(true);
-    const { data, error } = await supabase.rpc("door_sale", { p_event: ev.id, p_name: sName, p_phone: sPhone, p_type: selType ? selType.name : "Door entry", p_qty: Number(sQty) || 1, p_method: sMethod, p_amount: Number(sAmt) || 0 });
+    let data, error;
+    if (isMember) {
+      ({ data, error } = await supabase.rpc("member_offline_sale", { p_event: ev.id, p_user: mSel.id, p_name: buyerName, p_type: selType ? selType.name : "Door entry", p_qty: Number(sQty) || 1, p_method: sMethod, p_amount: Number(sAmt) || 0 }));
+    } else {
+      ({ data, error } = await supabase.rpc("door_sale", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_type: selType ? selType.name : "Door entry", p_qty: Number(sQty) || 1, p_method: sMethod, p_amount: Number(sAmt) || 0 }));
+    }
     setSBusy(false);
     if (error) return alert(error.message);
-    setSDone({ code: data && data.code, name: sName.trim(), qty: Number(sQty) || 1, phone: sPhone });
-    setSName(""); setSPhone(""); setSQty("1");
+    // Walk-in → save to Door leads so you can invite them into the community later.
+    if (!isMember) {
+      try { await supabase.rpc("add_door_lead", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_email: sEmail }); loadLeads(ev.id); } catch (e2) {}
+    }
+    setSDone({ code: data && data.code, name: buyerName, qty: Number(sQty) || 1, phone: sPhone, member: isMember });
+    setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setMSel(null); setMq("");
   };
   const [qrs, setQrs] = useState([]); const [qrSel, setQrSel] = useState("");
   const loadQrs = (eid) => supabase.rpc("event_payment_qrs", { p_event: eid }).then(({ data, error }) => { if (!error) { setQrs(data || []); setQrSel(c => (data || []).some(q => q.id === c) ? c : ((data && data[0] && data[0].id) || "")); } });
-  useEffect(() => { if (evId) loadQrs(evId); else { setQrs([]); setQrSel(""); } }, [evId]);
+  useEffect(() => { if (evId) { loadQrs(evId); loadLeads(evId); } else { setQrs([]); setQrSel(""); setLeads([]); } }, [evId]);
   const selQr = qrs.find(q => q.id === qrSel);
   const uploadQr = async (file) => {
     if (!file) return;
@@ -10107,9 +10142,11 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
               <div style={{ fontWeight: 800, color: "#5B21B6", fontSize: 14.5, marginBottom: 10 }}>💵 Sell at the door</div>
               {sDone ? (
                 <div style={{ textAlign: "center", padding: "8px 0" }}>
-                  <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>✓ Sold & checked in</div>
+                  <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{sDone.member ? "✓ Recorded & linked to member" : "✓ Sold & checked in"}</div>
                   <div style={{ fontSize: 14, color: W.ink, marginTop: 4 }}>{sDone.name} · {sDone.qty} entr{sDone.qty === 1 ? "y" : "ies"} · code <b style={{ fontFamily: "ui-monospace,monospace" }}>{sDone.code}</b></div>
-                  <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
+                  {sDone.member ? <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>The ticket now shows in their app and the amount is in your P&L.</div>
+                    : <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>Saved to Door leads — invite them to join the community below.</div>}
+                  <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
                     <button onClick={async () => {
                       const text = `🎟️ ${ev.title}\nYour ticket — show the QR at the door.\nCode: ${sDone.code}\nTicket: https://glass-wings.com/?gt=${sDone.code}\n— Glasswings Events`;
                       try {
@@ -10119,15 +10156,48 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       } catch (e2) {}
                       window.open(`https://wa.me/${(sDone.phone || "").replace(/[^\d]/g, "")}?text=${encodeURIComponent(text)}`, "_blank");
                     }} style={{ ...btn("#25D366", "#fff"), fontSize: 13 }}>Send ticket on WhatsApp</button>
+                    {!sDone.member && <button onClick={() => window.open(`https://wa.me/${(sDone.phone || "").replace(/[^\d]/g, "")}?text=${encodeURIComponent(inviteMsg(sDone.name))}`, "_blank")} style={{ ...btn("#7C3AED", "#fff"), fontSize: 13 }}>➕ Invite to join Glasswings</button>}
                     <button onClick={() => setSDone(null)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, fontSize: 13 }}>+ Next sale</button>
                   </div>
                 </div>
               ) : (
                 <>
-                  <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7 }}>
-                    <input value={sName} onChange={e => setSName(e.target.value)} placeholder="Buyer name *" style={{ ...ip2, flex: "1 1 130px" }} />
-                    <input value={sPhone} onChange={e => setSPhone(e.target.value)} placeholder="Phone (for WhatsApp ticket)" inputMode="tel" style={{ ...ip2, flex: "1 1 130px" }} />
+                  <div style={{ display: "flex", borderRadius: 9, overflow: "hidden", border: `1px solid ${W.line}`, marginBottom: 9 }}>
+                    <button onClick={() => { setLinkMode("walkin"); setMSel(null); setMq(""); }} style={{ flex: 1, border: "none", padding: "9px 10px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: linkMode === "walkin" ? "#7C3AED" : "#fff", color: linkMode === "walkin" ? "#fff" : W.soft }}>🚶 Walk-in (non-member)</button>
+                    <button onClick={() => setLinkMode("member")} style={{ flex: 1, border: "none", padding: "9px 10px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: linkMode === "member" ? "#7C3AED" : "#fff", color: linkMode === "member" ? "#fff" : W.soft }}>👤 Existing member</button>
                   </div>
+                  {linkMode === "member" ? (
+                    <div style={{ marginBottom: 7 }}>
+                      {mSel ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 9, background: "#EDE9FE", border: "1px solid #C4B5FD", borderRadius: 10, padding: "9px 12px" }}>
+                          {mSel.avatar_url ? <img src={mSel.avatar_url} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover" }} /> : <span style={{ fontSize: 20 }}>👤</span>}
+                          <div style={{ flex: 1, minWidth: 0, fontWeight: 800, color: "#5B21B6", fontSize: 14 }}>{mSel.full_name}</div>
+                          <button onClick={() => { setMSel(null); setMq(""); }} style={{ background: "none", border: "none", color: "#7C3AED", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Change</button>
+                        </div>
+                      ) : (
+                        <>
+                          <input value={mq} onChange={e => setMq(e.target.value)} placeholder="🔍 Search member by name…" style={{ ...ip2, width: "100%" }} />
+                          {mHits.length > 0 && (
+                            <div style={{ border: `1px solid ${W.line}`, borderRadius: 10, marginTop: 5, overflow: "hidden" }}>
+                              {mHits.map(m => (
+                                <div key={m.id} onClick={() => { setMSel(m); setMHits([]); setMq(""); }} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 11px", cursor: "pointer", borderBottom: `1px solid ${W.bg}` }}>
+                                  {m.avatar_url ? <img src={m.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} /> : <span style={{ fontSize: 18 }}>👤</span>}
+                                  <span style={{ fontWeight: 700, color: W.ink, fontSize: 13.5 }}>{m.full_name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 11, color: W.soft, marginTop: 4 }}>The ticket links to their account (shows in their app) and the amount is recorded in your P&L.</div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 7 }}>
+                      <input value={sName} onChange={e => setSName(e.target.value)} placeholder="Buyer name *" style={{ ...ip2, flex: "1 1 100px" }} />
+                      <input value={sPhone} onChange={e => setSPhone(e.target.value)} placeholder="Phone (WhatsApp)" inputMode="tel" style={{ ...ip2, flex: "1 1 100px" }} />
+                      <input value={sEmail} onChange={e => setSEmail(e.target.value)} placeholder="Email (optional)" inputMode="email" style={{ ...ip2, flex: "1 1 100px" }} />
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
                     <select value={sType} onChange={e => setSType(e.target.value)} style={{ ...ip2, flex: 1, minWidth: 0 }}>
                       <option value="">{types.length ? "Ticket type…" : "Door entry"}</option>
@@ -10175,6 +10245,28 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                   )}
                   <button onClick={submitSale} disabled={sBusy} style={{ ...btn("#7C3AED", "#fff"), width: "100%", justifyContent: "center", opacity: sBusy ? .6 : 1 }}>{sBusy ? "Saving…" : `Mark ${sMethod === "upi" ? "UPI" : "cash"} received — admit`}</button>
                 </>
+              )}
+            </div>
+          )}
+          {!saleOpen && leads.length > 0 && (
+            <div style={{ marginBottom: 14, background: "#F7F4FD", border: "1px solid #E2D9F6", borderRadius: 14, overflow: "hidden" }}>
+              <div onClick={() => setLeadsOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", cursor: "pointer" }}>
+                <div style={{ fontWeight: 800, color: "#5B21B6", fontSize: 14, flex: 1 }}>📇 Door leads · {leads.length}</div>
+                <span style={{ color: "#7C3AED", fontWeight: 800, fontSize: 12.5 }}>{leadsOpen ? "Hide" : "Show"}</span>
+              </div>
+              {leadsOpen && (
+                <div style={{ padding: "0 14px 12px" }}>
+                  <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 8 }}>Walk-ins you sold to. Invite them on WhatsApp to join the community.</div>
+                  {leads.map(l => (
+                    <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid #E2D9F6" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}{l.invited && <span style={{ color: W.teal, fontSize: 11, fontWeight: 800, marginLeft: 6 }}>✓ invited</span>}</div>
+                        <div style={{ fontSize: 11.5, color: W.soft }}>{l.phone || l.email || "no contact"}</div>
+                      </div>
+                      {l.phone && <button onClick={() => inviteLead(l)} style={{ ...btn(l.invited ? "#EEF1F3" : "#25D366", l.invited ? W.ink : "#fff"), padding: "7px 11px", fontSize: 12 }}>{l.invited ? "Invite again" : "Invite"}</button>}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}
@@ -11247,7 +11339,6 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
-    ...(caps.rooms ? [["rooms", "Rooms"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
@@ -11976,7 +12067,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
   const name = profile?.full_name || profile?.name || "Member";
   const qty = rows.reduce((s, r) => s + (r.quantity || 1), 0) || 1;
   const base = (rows[0]?.id || ((profile?.id || "") + (e.id || ""))).replace(/-/g, "");
-  const code = "GW-" + (base.slice(0, 8).toUpperCase() || "TICKET");
+  const code = rows[0]?.code ? rows[0].code : ("GW-" + (base.slice(0, 8).toUpperCase() || "TICKET"));
   const place = [e.venue, e.city].filter(Boolean).join(", ");
   const qr = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=" + encodeURIComponent(code);
   const summary = `🎟️ Glasswings Ticket\n${e.title}\n${e.event_date || ""}${place ? `\n${place}` : ""}\nName: ${name}\nTickets: ${qty}\nCode: ${code}`;
@@ -17459,6 +17550,7 @@ function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
     { id: "series", icon: Film, label: "Series", c: "#E4572E" },
     { id: "games", icon: Gamepad2, label: "Games", c: "#2563EB" },
     { id: "gallery", icon: ImageIcon, label: "Gallery", c: "#0EA5A3" },
+    ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Door", c: "#0F766E" }] : []),
     ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin", c: "#DB2777" }] : []),
     { id: "profile", icon: User, label: "Profile", c: "#6D28D9" },
   ];
