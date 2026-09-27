@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · reels-v103 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · door-v104 build</div>
       </div>
     </div>
   );
@@ -10040,7 +10040,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const [mq, setMq] = useState(""); const [mHits, setMHits] = useState([]); const [mSel, setMSel] = useState(null);
   const [gMode, setGMode] = useState("one"); // one ticket (1+N) | each person
   const [gNames, setGNames] = useState(""); const [gResults, setGResults] = useState(null);
-  const [sDisc, setSDisc] = useState("0");
+  const [sDisc, setSDisc] = useState("0"); const [sBase, setSBase] = useState("0");
   useEffect(() => {
     if (linkMode !== "member") return;
     const ql = mq.trim(); if (ql.length < 2) { setMHits([]); return; }
@@ -10054,8 +10054,10 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const types = ev ? (ticketTypes[ev.id] || []) : [];
   const selType = types.find(t => t.id === sType);
   const unitPrice = selType ? (selType.price || 0) : 0;
-  const subTotal = unitPrice * (Number(sQty) || 1);
-  useEffect(() => { const d = Number(sDisc) || 0; setSAmt(String(Math.max(0, subTotal - d))); }, [sType, sQty, sDisc]);
+  // When a ticket type / qty is chosen, auto-fill the base price; staff can still edit it (e.g. plain Door entry).
+  useEffect(() => { if (selType) setSBase(String((selType.price || 0) * (Number(sQty) || 1))); }, [sType, sQty]);
+  // Final amount to collect = base price − discount.
+  useEffect(() => { setSAmt(String(Math.max(0, (Number(sBase) || 0) - (Number(sDisc) || 0)))); }, [sBase, sDisc]);
   useEffect(() => {
     if (!sType) return;
     setSMethod("upi");
@@ -10072,7 +10074,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
       if (error) return alert(error.message);
       const t = (data?.tickets || [])[0];
       setSDone({ code: t?.code, name: sName.trim(), qty: Number(sQty) || 1, phone: sPhone, member: false, group: true });
-      setSName(""); setSPhone(""); setSQty("1");
+      setSName(""); setSPhone(""); setSQty("1"); setSBase("0"); setSDisc("0");
     } else {
       const lines = gNames.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       if (!lines.length) return (setSBusy(false), alert("Add at least one name (one per line)."));
@@ -10105,7 +10107,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
       try { await supabase.rpc("add_door_lead", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_email: sEmail }); loadLeads(ev.id); } catch (e2) {}
     }
     setSDone({ code: data && data.code, name: buyerName, qty: Number(sQty) || 1, phone: sPhone, member: isMember });
-    setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setMSel(null); setMq("");
+    setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setMSel(null); setMq(""); setSBase("0"); setSDisc("0");
   };
   const [qrs, setQrs] = useState([]); const [qrSel, setQrSel] = useState("");
   const loadQrs = (eid) => supabase.rpc("event_payment_qrs", { p_event: eid }).then(({ data, error }) => { if (!error) { setQrs(data || []); setQrSel(c => (data || []).some(q => q.id === c) ? c : ((data && data[0] && data[0].id) || "")); } });
@@ -10210,7 +10212,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       }} style={{ ...btn("#25D366", "#fff"), padding: "7px 11px", fontSize: 12 }}>Send</button>
                     </div>
                   ))}
-                  <button onClick={() => { setGResults(null); setSAmt("0"); setSDisc("0"); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}>+ New sale</button>
+                  <button onClick={() => { setGResults(null); setSAmt("0"); setSDisc("0"); setSBase("0"); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}>+ New sale</button>
                 </div>
               ) : (
                 <>
@@ -10278,11 +10280,12 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                     </select>
                     {linkMode !== "group" && <input value={sQty} onChange={e => setSQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ ...ip2, width: 56, textAlign: "center" }} />}
                   </div>
-                  {(!!selType && !(linkMode === "group" && gMode === "each")) && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, background: "#F6FBFA", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 11px" }}>
-                      <span style={{ fontSize: 12.5, color: W.soft }}>List ₹{subTotal}</span>
+                  {!(linkMode === "group" && gMode === "each") && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, background: "#F6FBFA", border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 11px", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12.5, color: W.soft }}>Price ₹</span>
+                      <input value={sBase} onChange={e => setSBase(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" style={{ width: 76, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 13.5, fontWeight: 700, textAlign: "center" }} />
                       <span style={{ fontSize: 12.5, color: W.soft, marginLeft: "auto" }}>Discount ₹</span>
-                      <input value={sDisc} onChange={e => setSDisc(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" style={{ width: 66, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 13.5, fontWeight: 700, textAlign: "center" }} />
+                      <input value={sDisc} onChange={e => setSDisc(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" style={{ width: 76, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 13.5, fontWeight: 700, textAlign: "center", color: (Number(sDisc) || 0) > 0 ? "#C0392B" : W.ink }} />
                     </div>
                   )}
                   <div style={{ display: "flex", gap: 7, alignItems: "center", marginBottom: 10 }}>
