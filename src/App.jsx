@@ -5022,6 +5022,31 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
       )}
       {matchCel && <MatchCelebration me={profile} p={matchCel} onSayHi={() => { const pp = matchCel; setMatchCel(null); onOpenDM && onOpenDM(pp.id, pp.name); }} onClose={() => setMatchCel(null)} />}
+      {noteFor && (
+        <div onClick={() => setNoteFor(null)} style={{ position: "fixed", inset: 0, zIndex: 190, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 440, borderRadius: "18px 18px 0 0", padding: "18px 16px calc(22px + env(safe-area-inset-bottom))" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 46, height: 46, borderRadius: "50%", overflow: "hidden", background: W.bg, flexShrink: 0 }}>{noteFor.avatar_url ? <img src={noteFor.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🙂</div>}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 900, fontSize: 16, color: W.ink }}>Wave at {(noteFor.name || "them").split(" ")[0]}</div>
+                <div style={{ fontSize: 12, color: W.soft }}>A note makes you stand out 💬</div>
+              </div>
+            </div>
+            <textarea value={noteText} onChange={e => setNoteText(e.target.value.slice(0, 140))} rows={3} placeholder="Say something — an opener beats a plain wave every time…" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 13px", fontSize: 14.5, outline: "none", resize: "vertical", fontFamily: "inherit" }} />
+            <div style={{ textAlign: "right", fontSize: 11, color: W.soft, marginTop: 3 }}>{noteText.length}/140</div>
+            <label onClick={() => setNoteSuper(s => !s)} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: "11px 13px", borderRadius: 12, border: `1.5px solid ${noteSuper ? "#F59E0B" : W.line}`, background: noteSuper ? "#FFF7E6" : "#fff", cursor: "pointer" }}>
+              <span style={{ fontSize: 20 }}>⭐</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 13.5, color: W.ink }}>Send as a Super Wave</div>
+                <div style={{ fontSize: 11.5, color: W.soft }}>Highlighted & pinned to the top of their Waves</div>
+              </div>
+              <div style={{ width: 42, height: 24, borderRadius: 20, background: noteSuper ? "#F59E0B" : "#D8DEE2", position: "relative", transition: "background .2s", flexShrink: 0 }}><div style={{ position: "absolute", top: 2, left: noteSuper ? 20 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left .2s" }} /></div>
+            </label>
+            <button onClick={sendNote} disabled={noteBusy} style={{ marginTop: 14, width: "100%", padding: 14, borderRadius: 13, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15.5, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)", opacity: noteBusy ? .6 : 1 }}>{noteBusy ? "Sending…" : noteSuper ? "⭐ Send Super Wave" : "💬 Send wave"}</button>
+            <div style={{ fontSize: 11, color: W.soft, textAlign: "center", marginTop: 8 }}>💎 A premium perk — thanks for supporting Glasswings.</div>
+          </div>
+        </div>
+      )}
       {peek && (
         <div onClick={() => setPeek(null)} style={{ position: "fixed", inset: 0, zIndex: 170, background: "rgba(8,20,18,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 480, overflow: "hidden" }}>
@@ -5123,6 +5148,15 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                   <button onClick={() => { doWave(peek); setPeek(null); }} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: peek.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff", fontWeight: 800, cursor: "pointer" }}>{peek.waved_me ? "✓ Match" : "✓ Like"}</button>
                 </>)}
               </div>
+              {peek.waved_me && noteMap[peek.id] && (noteMap[peek.id].note || noteMap[peek.id].sup) && (
+                <div style={{ marginTop: 11, background: "linear-gradient(120deg,#FDF2F8,#FFF7E6)", border: "1px solid #FBCFE8", borderRadius: 13, padding: "11px 13px" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#BE185D" }}>{noteMap[peek.id].sup ? "⭐ SUPER WAVE" : "💬 THEY WROTE"}</div>
+                  {noteMap[peek.id].note && <div style={{ fontSize: 14.5, color: W.ink, marginTop: 4, lineHeight: 1.45, fontWeight: 600 }}>“{noteMap[peek.id].note}”</div>}
+                </div>
+              )}
+              {!peek.waved_by_me && (
+                <button onClick={() => openNote(peek)} style={{ marginTop: 10, width: "100%", padding: 12, borderRadius: 11, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 13.5, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)" }}>⭐ Super Wave / 💬 add a note {premium ? "" : "· 💎"}</button>
+              )}
             </div>
           </div>
         </div>
