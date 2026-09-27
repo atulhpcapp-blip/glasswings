@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v97 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v98 build</div>
       </div>
     </div>
   );
@@ -17073,10 +17073,11 @@ function SeriesGrid({ onOpen }) {
             <div style={{ position: "relative", width: "100%", aspectRatio: "2/3", borderRadius: 14, overflow: "hidden", background: "#1a1030" }}>
               {s.poster_url ? <img src={s.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 44 }}>🎬</div>}
               <div style={{ position: "absolute", top: 8, left: 8, background: "rgba(0,0,0,.6)", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{s.ep_count} ep</div>
-              {s.owned && <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,128,105,.92)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>✓ Owned</div>}
+              {s.owned && !s.locked && <div style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,128,105,.92)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>✓ Owned</div>}
+              {s.locked && <div style={{ position: "absolute", top: 8, right: 8, background: "linear-gradient(95deg,#7C3AED,#EC4899)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>🔒 {s.seg_name || "Members"}</div>}
               <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "22px 9px 8px", background: "linear-gradient(transparent,rgba(0,0,0,.85))" }}>
                 <div style={{ color: "#fff", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.title}</div>
-                {s.genre && <div style={{ color: "rgba(255,255,255,.7)", fontSize: 10.5 }}>{s.genre}</div>}
+                {s.locked ? <div style={{ color: "#F5C6FF", fontSize: 10.5, fontWeight: 700 }}>🔒 Only for {s.seg_name || "members"}</div> : s.genre ? <div style={{ color: "rgba(255,255,255,.7)", fontSize: 10.5 }}>{s.genre}</div> : null}
               </div>
             </div>
           </div>
@@ -17114,9 +17115,20 @@ function SeriesPlayer({ series, user, isStaff, credits, onCredits, onBack }) {
         : !eps.length ? <div style={{ color: "#bbb", textAlign: "center", padding: 40 }}>No episodes yet.</div>
         : (
           <div ref={wrapRef} style={{ height: "calc(100vh - 108px)", overflowY: "auto", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", WebkitOverflowScrolling: "touch" }}>
-            {eps.map(v => { const locked = v.is_paid && !v.unlocked; return (
+            {eps.map(v => { const segLocked = !!series.locked; const locked = v.is_paid && !v.unlocked; return (
               <div key={v.id} data-slide style={{ position: "relative", height: "100%", scrollSnapAlign: "start", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {locked || !v.video_url ? (
+                {segLocked ? (
+                  <>
+                    {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(16px) brightness(.45)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
+                    <div style={{ position: "relative", textAlign: "center", color: "#fff", padding: "0 28px" }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 1, opacity: .8 }}>EPISODE {v.episode_no || "?"}</div>
+                      <div style={{ fontSize: 46, marginTop: 8 }}>🔒</div>
+                      <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>{v.title}</div>
+                      <div style={{ display: "inline-block", marginTop: 14, background: "linear-gradient(95deg,#7C3AED,#EC4899)", padding: "9px 16px", borderRadius: 999, fontWeight: 900, fontSize: 14 }}>Only for {series.seg_name || "members"}</div>
+                      <div style={{ fontSize: 12.5, opacity: .8, marginTop: 12, lineHeight: 1.5 }}>This series is reserved for {series.seg_name || "select"} members.</div>
+                    </div>
+                  </>
+                ) : locked || !v.video_url ? (
                   <>
                     {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(14px) brightness(.5)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
                     <div style={{ position: "relative", textAlign: "center", color: "#fff", padding: "0 26px" }}>
@@ -17197,10 +17209,22 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
         : (
           <div ref={wrapRef} style={{ height: "calc(100vh - 108px)", overflowY: "auto", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", WebkitOverflowScrolling: "touch" }}>
             {vids.map(v => {
+              const segLocked = !!v.locked;
               const locked = v.is_paid && !v.unlocked;
               return (
                 <div key={v.id} data-slide style={{ position: "relative", height: "100%", scrollSnapAlign: "start", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {locked || !v.video_url ? (
+                  {segLocked ? (
+                    <>
+                      {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(16px) brightness(.45)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
+                      <div style={{ position: "relative", textAlign: "center", color: "#fff", padding: "0 28px" }}>
+                        <div style={{ fontSize: 46 }}>🔒</div>
+                        <div style={{ fontWeight: 900, fontSize: 21, marginTop: 8 }}>{v.title}</div>
+                        {v.description && <div style={{ fontSize: 13, opacity: .85, marginTop: 6, lineHeight: 1.5 }}>{v.description}</div>}
+                        <div style={{ display: "inline-block", marginTop: 16, background: "linear-gradient(95deg,#7C3AED,#EC4899)", padding: "10px 18px", borderRadius: 999, fontWeight: 900, fontSize: 14.5 }}>Only for {v.seg_name || "members"}</div>
+                        <div style={{ fontSize: 12.5, opacity: .8, marginTop: 12, lineHeight: 1.5 }}>This short is reserved for {v.seg_name || "select"} members.</div>
+                      </div>
+                    </>
+                  ) : locked || !v.video_url ? (
                     <>
                       {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(14px) brightness(.5)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
                       <div style={{ position: "relative", textAlign: "center", color: "#fff", padding: "0 26px" }}>
