@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient.js";
 import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
-  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Check, Pencil, Image as ImageIcon, Gamepad2, Trophy, Gift
+  Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Check, Pencil, Image as ImageIcon, Gamepad2, Trophy, Gift, Film
 } from "lucide-react";
 
 const W = { teal: "#008069", sent: "#D9FDD3", recv: "#fff", wall: "#EAE2D8", ink: "#111B21", soft: "#667781", line: "#E9EDEF", blue: "#53BDEB", pink: "#D81B7A", bg: "#F0F2F5" };
@@ -372,7 +372,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Film, label: "Shorts" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · meet-streak-v89 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v90 build</div>
       </div>
     </div>
   );
@@ -3624,6 +3624,7 @@ function Main({ user }) {
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
@@ -16999,8 +17000,134 @@ function lastSeenStr(ts) {
   if (days < 7) return `last seen ${days}d ago`;
   return "last seen " + new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
+function ShortsFeed({ user, profile, isStaff, startPayment }) {
+  const [vids, setVids] = useState(null);
+  const [credits, setCredits] = useState(0);
+  const [busy, setBusy] = useState(null);
+  const [muted, setMuted] = useState(true);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const load = () => supabase.rpc("shorts_list").then(({ data }) => setVids(data || []));
+  const loadCredits = () => supabase.from("profiles").select("game_credits").eq("id", user.id).maybeSingle().then(({ data }) => setCredits(Number(data?.game_credits) || 0));
+  useEffect(() => { load(); loadCredits(); }, []);
+  useEffect(() => {
+    if (!vids || !vids.length) return;
+    const io = new IntersectionObserver(ents => ents.forEach(e => {
+      const v = e.target.querySelector("video"); if (!v) return;
+      if (e.isIntersecting && e.intersectionRatio > 0.55) { v.play().catch(() => {}); } else { v.pause(); }
+    }), { threshold: [0, 0.55, 1] });
+    const els = wrapRef.current ? wrapRef.current.querySelectorAll("[data-slide]") : [];
+    els.forEach(el => io.observe(el));
+    return () => io.disconnect();
+  }, [vids, muted]);
+  const unlockCredits = async (v) => {
+    setBusy(v.id);
+    const { data, error } = await supabase.rpc("unlock_video_credits", { p_video: v.id });
+    setBusy(null);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data.ok) {
+      if (data.reason === "credits") return window.gwConfirm(`This needs ${data.need} credits — you have ${data.have}.\n\nEarn more credits in Games & the Wheel of Luck 🎡`, () => {});
+      return window.gwConfirm("Couldn't unlock right now.", () => {});
+    }
+    setCredits(c => c - v.price_inr); load();
+  };
+  const payRazor = (v) => startPayment && startPayment("video", { video_id: v.id }, () => { load(); loadCredits(); });
+  return (
+    <div style={{ background: "#000" }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 6, display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: "linear-gradient(120deg,#0b0b12,#1a1030)", color: "#fff" }}>
+        <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>🎬 Shorts</div>
+        <span style={{ fontSize: 12.5, fontWeight: 700, opacity: .9 }}>🪙 {credits}</span>
+        {isStaff && <button onClick={() => setAdminOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>＋ Add</button>}
+      </div>
+      {vids === null ? <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>
+        : vids.length === 0 ? <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No shorts yet.{isStaff ? " Tap ＋ Add to upload the first one." : " Check back soon 🎬"}</div>
+        : (
+          <div ref={wrapRef} style={{ height: "calc(100vh - 108px)", overflowY: "auto", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", WebkitOverflowScrolling: "touch" }}>
+            {vids.map(v => {
+              const locked = v.is_paid && !v.unlocked;
+              return (
+                <div key={v.id} data-slide style={{ position: "relative", height: "100%", scrollSnapAlign: "start", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {locked || !v.video_url ? (
+                    <>
+                      {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(14px) brightness(.5)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
+                      <div style={{ position: "relative", textAlign: "center", color: "#fff", padding: "0 26px" }}>
+                        <div style={{ fontSize: 40 }}>🔒</div>
+                        <div style={{ fontWeight: 900, fontSize: 20, marginTop: 8 }}>{v.title}</div>
+                        {v.description && <div style={{ fontSize: 13, opacity: .85, marginTop: 6, lineHeight: 1.5 }}>{v.description}</div>}
+                        <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 9, alignItems: "center" }}>
+                          <button onClick={() => unlockCredits(v)} disabled={busy === v.id} style={{ width: 250, padding: "14px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15.5, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)", opacity: busy === v.id ? .6 : 1 }}>{busy === v.id ? "Unlocking…" : `🪙 Unlock for ${v.price_inr} credits`}</button>
+                          <div style={{ fontSize: 12, opacity: .8 }}>You have 🪙 {credits} credits</div>
+                        </div>
+                        <div style={{ fontSize: 11, opacity: .7, marginTop: 12 }}>Watch anytime once unlocked · earn credits in Games & the Wheel</div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <video src={v.video_url} poster={v.poster_url || undefined} loop muted={muted} playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} onClick={e => { const vv = e.currentTarget; vv.paused ? vv.play().catch(() => {}) : vv.pause(); }} />
+                      <div onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,.5)", color: "#fff", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, cursor: "pointer" }}>{muted ? "🔇" : "🔊"}</div>
+                      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 16px 18px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff" }}>
+                        <div style={{ fontWeight: 900, fontSize: 18 }}>{v.title}{v.is_paid && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.25)", padding: "2px 8px", borderRadius: 20 }}>✓ Unlocked</span>}</div>
+                        {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      {adminOpen && <ShortsAdmin onClose={() => setAdminOpen(false)} onChanged={load} meId={user.id} />}
+    </div>
+  );
+}
+function ShortsAdmin({ onClose, onChanged, meId }) {
+  const [rows, setRows] = useState([]);
+  const [title, setTitle] = useState(""), [desc, setDesc] = useState(""), [vurl, setVurl] = useState(""), [purl, setPurl] = useState("");
+  const [paid, setPaid] = useState(true), [price, setPrice] = useState(24), [busy, setBusy] = useState(false), [up, setUp] = useState("");
+  const load = () => supabase.rpc("shorts_admin_list").then(({ data }) => setRows(data || []));
+  useEffect(() => { load(); }, []);
+  const pickVideo = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("video"); try { setVurl(await uploadChatFile("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
+  const pickPoster = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("poster"); try { setPurl(await uploadPhoto("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
+  const save = async () => {
+    if (!title.trim() || !vurl.trim()) return alert("Add a title and a video (upload or paste a URL).");
+    setBusy(true);
+    const { error } = await supabase.rpc("shorts_upsert", { p_id: null, p_title: title.trim(), p_desc: desc, p_video: vurl.trim(), p_poster: purl.trim(), p_paid: paid, p_price: Number(price) || 24, p_published: true, p_sort: 0 });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setTitle(""); setDesc(""); setVurl(""); setPurl(""); load(); onChanged && onChanged();
+  };
+  const del = async (id) => { if (!window.confirm("Delete this short?")) return; await supabase.rpc("shorts_delete", { p_id: id }); load(); onChanged && onChanged(); };
+  const ip = { width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 14.5, outline: "none", marginBottom: 9 };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", borderRadius: "18px 18px 0 0", padding: "18px 16px calc(22px + env(safe-area-inset-bottom))" }}>
+        <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 12 }}>🎬 Add a short movie</div>
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" style={ip} />
+        <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{ ...ip, resize: "vertical", fontFamily: "inherit" }} />
+        <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
+          <label style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "10px", cursor: "pointer" }}>{up === "video" ? "Uploading…" : vurl ? "✓ Video set" : "⬆ Upload video"}<input type="file" accept="video/*" onChange={pickVideo} style={{ display: "none" }} /></label>
+          <label style={{ ...btn("#EEF1F3", W.ink), flex: 1, justifyContent: "center", padding: "10px", cursor: "pointer" }}>{up === "poster" ? "Uploading…" : purl ? "✓ Poster set" : "⬆ Poster"}<input type="file" accept="image/*" onChange={pickPoster} style={{ display: "none" }} /></label>
+        </div>
+        <input value={vurl} onChange={e => setVurl(e.target.value)} placeholder="…or paste a video URL" style={ip} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 10px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 700, color: W.ink, cursor: "pointer" }}><input type="checkbox" checked={paid} onChange={e => setPaid(e.target.checked)} /> Paid</label>
+          {paid && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>₹<input type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ width: 70, border: `1px solid ${W.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 14 }} /></div>}
+        </div>
+        <button onClick={save} disabled={busy || !!up} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "13px", opacity: (busy || up) ? .6 : 1 }}>{busy ? "Saving…" : "Publish short"}</button>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, margin: "16px 0 8px" }}>Published shorts</div>
+        {!rows.length ? <div style={{ color: W.soft, fontSize: 13 }}>None yet.</div> : rows.map(r => (
+          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
+            <div style={{ width: 40, height: 54, borderRadius: 7, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{r.poster_url ? <img src={r.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎬</div>}</div>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.published ? "" : " · hidden"}</div></div>
+            <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>Delete</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private" }, { id: "meet", icon: Users, label: "Meet" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Film, label: "Shorts" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", overflowX: "auto", padding: "8px 0 11px" }}>
       {items.map((it) => { const on = tab === it.id; const I = it.icon; return (
