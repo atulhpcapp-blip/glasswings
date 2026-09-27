@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v106 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v108 build</div>
       </div>
     </div>
   );
@@ -2757,6 +2757,118 @@ function PhotoGate({ user, profile, reload, onBack }) {
     </div>
   );
 }
+function VerifyRecorder({ user, onClose, onSubmitted }) {
+  const liveRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+  const recRef = useRef(null);
+  const timerRef = useRef(null);
+  const [phase, setPhase] = useState("idle"); // idle | recording | preview | uploading
+  const [previewUrl, setPreviewUrl] = useState("");
+  const blobRef = useRef(null);
+  const [secs, setSecs] = useState(0);
+  const [err, setErr] = useState("");
+  const stopStream = () => { try { streamRef.current && streamRef.current.getTracks().forEach(t => t.stop()); } catch {} };
+  const startCam = async () => {
+    setErr("");
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
+      streamRef.current = s;
+      if (liveRef.current) { liveRef.current.srcObject = s; liveRef.current.play().catch(() => {}); }
+    } catch (e) { setErr("Camera access is needed. Please allow the camera and try again."); }
+  };
+  useEffect(() => { startCam(); return () => { stopStream(); if (timerRef.current) clearInterval(timerRef.current); }; }, []);
+  const startRec = () => {
+    const s = streamRef.current; if (!s) return startCam();
+    chunksRef.current = [];
+    const mt = (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm")) ? "video/webm"
+      : (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/mp4")) ? "video/mp4" : "";
+    let mr; try { mr = new MediaRecorder(s, mt ? { mimeType: mt } : undefined); } catch (e) { setErr("Recording isn't supported on this browser."); return; }
+    mr.ondataavailable = e => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
+    mr.onstop = () => { const b = new Blob(chunksRef.current, { type: mt || "video/webm" }); blobRef.current = b; setPreviewUrl(URL.createObjectURL(b)); setPhase("preview"); };
+    mr.start(); recRef.current = mr; setPhase("recording"); setSecs(0);
+    timerRef.current = setInterval(() => setSecs(x => { const n = x + 1; if (n >= 20) stopRec(); return n; }), 1000);
+  };
+  const stopRec = () => { try { recRef.current && recRef.current.state !== "inactive" && recRef.current.stop(); } catch {} if (timerRef.current) clearInterval(timerRef.current); };
+  const retake = () => { setPreviewUrl(""); blobRef.current = null; setPhase("idle"); if (liveRef.current && streamRef.current) { liveRef.current.srcObject = streamRef.current; liveRef.current.play().catch(() => {}); } };
+  const submit = async () => {
+    if (!blobRef.current) return;
+    setPhase("uploading"); setErr("");
+    try {
+      const b = blobRef.current;
+      const ext = (b.type || "").includes("mp4") ? "mp4" : "webm";
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("kyc").upload(path, b, { contentType: b.type || "video/webm", upsert: true });
+      if (upErr) throw upErr;
+      const { data, error } = await supabase.rpc("submit_verification", { p_path: path });
+      if (error) throw error;
+      if (data && data.ok === false) throw new Error("Could not submit. Please sign in again.");
+      stopStream();
+      onSubmitted();
+    } catch (e) { setErr(e.message || String(e)); setPhase("preview"); }
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 220, background: "#0b0b12", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 16px", color: "#fff" }}>
+        <span onClick={() => { stopStream(); onClose(); }} style={{ cursor: "pointer", fontSize: 26, lineHeight: 1 }}>‹</span>
+        <div style={{ fontWeight: 900, fontSize: 16, flex: 1 }}>Get the blue tick — record a quick video</div>
+      </div>
+      <div style={{ padding: "0 16px", color: "rgba(255,255,255,.85)", fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>
+        Look into the camera, say your name, then <b>hold your Aadhaar / government ID next to your face</b> so it's readable. 10–20 seconds is enough.
+      </div>
+      <div style={{ flex: 1, position: "relative", background: "#000", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        {phase === "preview"
+          ? <video src={previewUrl} controls playsInline style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          : <video ref={liveRef} muted playsInline autoPlay style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scaleX(-1)" }} />}
+        {phase === "recording" && <div style={{ position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)", background: "rgba(192,57,43,.92)", color: "#fff", fontWeight: 900, fontSize: 13, padding: "5px 12px", borderRadius: 20, display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 9, height: 9, borderRadius: "50%", background: "#fff" }} /> REC {secs}s</div>}
+      </div>
+      {err && <div style={{ color: "#FCA5A5", fontSize: 13, textAlign: "center", padding: "10px 16px 0" }}>{err}</div>}
+      <div style={{ padding: "14px 16px calc(18px + env(safe-area-inset-bottom))", display: "flex", gap: 10, justifyContent: "center" }}>
+        {phase === "idle" && <button onClick={startRec} style={{ ...btn("#EF4444", "#fff"), padding: "14px 26px", fontSize: 15, justifyContent: "center" }}>● Start recording</button>}
+        {phase === "recording" && <button onClick={stopRec} style={{ ...btn("#fff", "#111"), padding: "14px 26px", fontSize: 15, justifyContent: "center" }}>■ Stop</button>}
+        {phase === "preview" && <>
+          <button onClick={retake} style={{ ...btn("rgba(255,255,255,.15)", "#fff"), padding: "13px 20px", justifyContent: "center" }}>↺ Retake</button>
+          <button onClick={submit} style={{ ...btn("linear-gradient(95deg,#3B82F6,#1D4ED8)", "#fff"), padding: "13px 24px", fontWeight: 900, justifyContent: "center" }}>Submit for review</button>
+        </>}
+        {phase === "uploading" && <button disabled style={{ ...btn("#334155", "#fff"), padding: "13px 24px", justifyContent: "center", opacity: .8 }}>Uploading…</button>}
+      </div>
+    </div>
+  );
+}
+function VerificationPanel({ user, profile }) {
+  const [st, setSt] = useState(null);
+  const [open, setOpen] = useState(false);
+  const loadSt = () => supabase.rpc("my_verification").then(({ data }) => setSt(data || {}));
+  useEffect(() => { loadSt(); }, []);
+  const verified = (st && st.verified) || profile?.verified;
+  const status = st && st.status;
+  if (verified) return (
+    <div style={{ background: "linear-gradient(120deg,#EFF6FF,#DBEAFE)", border: "1px solid #BFDBFE", borderRadius: 14, padding: "14px 16px", margin: "0 0 14px", display: "flex", alignItems: "center", gap: 12 }}>
+      <VerifiedSeal size={30} />
+      <div><div style={{ fontWeight: 900, color: "#1D4ED8", fontSize: 15 }}>Verified profile</div><div style={{ fontSize: 12.5, color: "#3B5BA5" }}>Your blue tick shows across Meet and everywhere your photo appears.</div></div>
+    </div>
+  );
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "15px 16px", margin: "0 0 14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+        <VerifiedSeal size={24} />
+        <div style={{ fontWeight: 900, color: W.ink, fontSize: 15.5, flex: 1 }}>Get the blue tick</div>
+      </div>
+      <div style={{ fontSize: 13, color: W.soft, lineHeight: 1.5, marginBottom: 12 }}>Verified members stand out and are trusted more in Meet. A quick video check (your face + your ID) is all it takes.</div>
+      {status === "pending" ? (
+        <div style={{ background: "#FFF7E6", border: "1px solid #F6D28A", color: "#8a6a1f", borderRadius: 10, padding: "11px 13px", fontSize: 13, fontWeight: 700 }}>⏳ Under review — we'll add your blue tick once approved. You'll see the result here.</div>
+      ) : status === "rejected" ? (
+        <>
+          <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#B23B2E", borderRadius: 10, padding: "11px 13px", fontSize: 13, marginBottom: 10 }}>❌ Not approved.{st?.reason ? ` Reason: ${st.reason}` : ""} Please record again.</div>
+          <button onClick={() => setOpen(true)} style={{ ...btn("linear-gradient(95deg,#3B82F6,#1D4ED8)", "#fff"), width: "100%", justifyContent: "center", padding: "12px" }}>Record again</button>
+        </>
+      ) : (
+        <button onClick={() => setOpen(true)} style={{ ...btn("linear-gradient(95deg,#3B82F6,#1D4ED8)", "#fff"), width: "100%", justifyContent: "center", padding: "13px", fontWeight: 900 }}>✓ Verify me</button>
+      )}
+      {open && <VerifyRecorder user={user} onClose={() => setOpen(false)} onSubmitted={() => { setOpen(false); loadSt(); }} />}
+    </div>
+  );
+}
 function RestrictedGate({ user, profile, reviewFlag, reload }) {
   const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [phone, setPhone] = useState("");
@@ -2927,6 +3039,7 @@ function Main({ user }) {
     setPlanRoomIds(liveIds.length ? [...new Set((prsAll || []).filter(x => liveIds.includes(x.plan_id)).map(x => x.room_id))] : []);
   };
   useEffect(() => { loadPlans(); }, [user?.id, tab]);
+  useEffect(() => { supabase.rpc("verified_ids").then(({ data, error }) => { try { window.__gwVerified = new Set(error ? [] : (data || [])); } catch {} }); }, [user?.id]);
   const refreshReview = useCallback(() => supabase.rpc("my_review_status").then(({ data }) => { const r = (data || [])[0]; setReviewFlag(r?.flag || null); }), [user?.id]);
   useEffect(() => {
     if (!user?.id) return;
@@ -3699,6 +3812,7 @@ function Main({ user }) {
       {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
+      {tab === "profile" && <div style={{ padding: "14px 14px 0", maxWidth: 640, margin: "0 auto" }}><VerificationPanel user={user} profile={profile} /></div>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
@@ -4507,7 +4621,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("waves_inbox").then(({ data }) => setInbox(data || []));
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
     supabase.rpc("vip_ids").then(({ data, error }) => setVipSet(new Set(error ? [] : (data || []))));
-    supabase.rpc("verified_ids").then(({ data, error }) => setVerSet(new Set(error ? [] : (data || []))));
+    supabase.rpc("verified_ids").then(({ data, error }) => { const s = new Set(error ? [] : (data || [])); setVerSet(s); try { window.__gwVerified = s; } catch {} });
     supabase.rpc("meet_looking_for").then(({ data, error }) => { if (!error) { const m = {}, ic = {}; (data || []).forEach(r => { if (r.looking_for) m[r.user_id] = r.looking_for; if (r.icebreaker) ic[r.user_id] = r.icebreaker; }); setMoodMap(m); setIceMap(ic); } });
     supabase.rpc("meet_shared_events").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { (m[r.other_id] = m[r.other_id] || []).push({ id: r.event_id, title: r.title }); }); setSharedEv(m); } });
     supabase.rpc("meet_trending").then(({ data, error }) => { if (!error) { const m = {}; (data || []).forEach(r => { m[r.user_id] = r.waves; }); setTrendMap(m); } });
@@ -4586,6 +4700,15 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
       window.gwConfirm("✅ Flag cleared — this member is visible again.", () => {});
     });
   };
+  const verifyMember = (p) => {
+    const on = !isVerified(p.id);
+    window.gwConfirm(on ? `Give ${p.name?.split(" ")[0] || "this member"} the blue verified tick? (No video needed.)` : `Remove the verified tick from ${p.name?.split(" ")[0] || "this member"}?`, async () => {
+      const { error } = await supabase.rpc("admin_set_verified", { p_user: p.id, p_on: on });
+      if (error) return window.gwConfirm(error.message, () => {});
+      setVerSet(s => { const n = new Set(s); if (on) n.add(p.id); else n.delete(p.id); try { window.__gwVerified = n; } catch {} return n; });
+      window.gwConfirm(on ? "✅ Verified — the blue tick now shows on their photo everywhere." : "Verified tick removed.", () => {});
+    });
+  };
   const deactivateMember = (p) => {
     window.gwConfirm(`🔴 Deactivate ${p.name?.split(" ")[0] || "this member"}'s account?\n\nThey will be blocked from the app entirely. You can reactivate them later from Admin → Members.`, async () => {
       const { error } = await supabase.rpc("admin_set_blocked", { p_user: p.id, p_blocked: true });
@@ -4660,6 +4783,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 42 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}
         </div>
         {p.avatar_url && <span style={{ position: "absolute", top: 8, left: 8, display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(8,18,24,.62)", color: "#fff", fontSize: 10.5, fontWeight: 900, padding: "3px 8px", borderRadius: 20, backdropFilter: "blur(2px)" }}>💞 {cm}%</span>}
+        {isVerified(p.id) && <span style={{ position: "absolute", top: 34, left: 8, display: "inline-flex", alignItems: "center", gap: 4, background: "linear-gradient(95deg,#3B82F6,#1D4ED8)", color: "#fff", fontSize: 10, fontWeight: 900, padding: "3px 8px", borderRadius: 20, boxShadow: "0 2px 8px rgba(29,78,216,.5)" }}><VerifiedSeal size={13} /> Verified</span>}
         {p.spotlighted && <span style={{ position: "absolute", bottom: 8, left: 8, background: "rgba(245,158,11,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>✨ Spotlight</span>}
         {isAdmin && p.review_flag && <span style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(192,57,43,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🚩 {p.review_flag}</span>}
         {online && <span style={{ position: "absolute", bottom: 8, right: 8, display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(8,18,24,.62)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 20 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 6px #22C55E" }} />online</span>}
@@ -4667,7 +4791,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         {p.waved_me && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
       </div>
       <div style={{ padding: "9px 11px" }}>
-        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVerified(p.id) ? <span title="Verified" style={{ color: "#2563EB", marginLeft: 3 }}>✓</span> : null}{isVip(p.id) ? vipBadge : null}</div>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVerified(p.id) ? <span style={{ display: "inline-block", verticalAlign: "middle", marginLeft: 4 }}><VerifiedSeal size={15} /></span> : null}{isVip(p.id) ? vipBadge : null}</div>
         {mood && <div style={{ display: "inline-block", marginTop: 5, background: mood[3], color: mood[2], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{mood[1]}</div>}
         <div style={{ fontSize: 11, color: W.soft, marginTop: 4, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
         {iceMap[p.id] && <div style={{ fontSize: 10.5, color: "#7C3AED", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 600 }}>💬 {iceMap[p.id]}</div>}
@@ -5275,6 +5399,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                     <button onClick={() => deactivateMember(peek)} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", fontSize: 12, padding: "8px 4px", justifyContent: "center" }}>🔴 Deactivate</button>
                   </div>
                   <button onClick={() => clearFlag(peek)} style={{ ...btn("#fff", "#0d6e58"), border: "1px solid #A7F3D0", fontSize: 12, padding: "8px 4px", justifyContent: "center", width: "100%", marginTop: 7 }}>✅ Clear flag / make visible</button>
+                  <button onClick={() => verifyMember(peek)} style={{ ...btn(isVerified(peek.id) ? "#fff" : "linear-gradient(95deg,#3B82F6,#1D4ED8)", isVerified(peek.id) ? "#1D4ED8" : "#fff"), border: isVerified(peek.id) ? "1px solid #BFDBFE" : "none", fontSize: 12.5, padding: "10px 4px", justifyContent: "center", width: "100%", marginTop: 7, fontWeight: 900 }}>{isVerified(peek.id) ? "✓ Verified — tap to remove" : "✓ Verify this member (no video)"}</button>
                   <div style={{ fontSize: 10.5, color: W.soft, marginTop: 7, lineHeight: 1.4 }}>Flagging hides this profile from other members until they fix it. It auto-clears when they update the flagged item.</div>
                 </div>
               )}
@@ -11526,6 +11651,53 @@ function OrganiserStaffPanel() {
   );
 }
 
+function VerificationsAdmin() {
+  const [rows, setRows] = useState(null);
+  const [urls, setUrls] = useState({});
+  const [busy, setBusy] = useState(null);
+  const load = () => supabase.rpc("verification_queue").then(({ data }) => setRows(data || []));
+  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    (rows || []).forEach(async r => {
+      if (r.video_path && !urls[r.user_id]) {
+        const { data } = await supabase.storage.from("kyc").createSignedUrl(r.video_path, 900);
+        if (data?.signedUrl) setUrls(u => ({ ...u, [r.user_id]: data.signedUrl }));
+      }
+    });
+  }, [rows]);
+  const review = async (r, approve) => {
+    let reason = null;
+    if (!approve) { reason = window.prompt("Reason to reject (the member sees this):", "Face or ID wasn't clear — please record again in good light."); if (reason === null) return; }
+    else if (!window.confirm(`Approve ${r.name}? They'll get the blue tick and the video will be deleted.`)) return;
+    setBusy(r.user_id);
+    const { data, error } = await supabase.rpc("review_verification", { p_user: r.user_id, p_approve: approve, p_reason: reason });
+    if (!error && data?.path) { try { await supabase.storage.from("kyc").remove([data.path]); } catch {} }
+    setBusy(null);
+    if (error) return alert(error.message);
+    setUrls(u => { const n = { ...u }; delete n[r.user_id]; return n; });
+    load();
+  };
+  if (rows === null) return <Center>Loading…</Center>;
+  if (!rows.length) return <div style={{ padding: 20 }}><Center>No pending verifications 🎉</Center></div>;
+  return (
+    <div style={{ padding: 14, maxWidth: 620, margin: "0 auto" }}>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12, lineHeight: 1.5 }}>Watch each video, check the face matches the profile photo and the ID looks genuine, then approve or ask them to redo. Approving gives the blue tick and deletes the video.</div>
+      {rows.map(r => (
+        <div key={r.user_id} style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: 12, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <PersonAvatar url={r.avatar_url} name={r.name} size={40} />
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 800, color: W.ink }}>{r.name}</div><div style={{ fontSize: 11.5, color: W.soft }}>Submitted {new Date(r.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</div></div>
+          </div>
+          {urls[r.user_id] ? <video src={urls[r.user_id]} controls playsInline style={{ width: "100%", borderRadius: 10, background: "#000", maxHeight: 380 }} /> : <div style={{ padding: 20, textAlign: "center", color: W.soft, fontSize: 13 }}>Loading video…</div>}
+          <div style={{ display: "flex", gap: 9, marginTop: 11 }}>
+            <button onClick={() => review(r, false)} disabled={busy === r.user_id} style={{ ...btn("#FCE9E9", "#C0392B"), flex: 1, justifyContent: "center", padding: "11px" }}>Reject — redo</button>
+            <button onClick={() => review(r, true)} disabled={busy === r.user_id} style={{ ...btn("linear-gradient(95deg,#3B82F6,#1D4ED8)", "#fff"), flex: 1, justifyContent: "center", padding: "11px", fontWeight: 900 }}>{busy === r.user_id ? "…" : "Approve ✓"}</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
   const tabs = [
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
@@ -11535,6 +11707,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
     ...((myEventsOnly && caps.privateMembers) ? [["orgmembers", "👥 My Members"]] : []),
     ...((canApprove || caps.door) ? [["door", "🚪 EVENT DOOR"]] : []),
+    ...(!organiserStaff ? [["verify", "✔ Verify"]] : []),
     ...((caps.broadcast && !myEventsOnly) ? [["broadcast", "Send"]] : []),
     ...((caps.members && !myEventsOnly) ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
@@ -11573,6 +11746,7 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
         : seg === "dash" ? <Dashboard isSuper={isSuper} myEventsOnly={myEventsOnly} meId={meId} events={events} />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
+        : seg === "verify" ? <VerificationsAdmin />
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <PromotersPanel />
@@ -17275,9 +17449,20 @@ function Avatar({ room, size }) {
   if (room?.logo_url) return <img src={room.logo_url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />;
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, fontSize: size * .5, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#7AD6C0,#008069)" }}>{room?.emoji || "💬"}</div>;
 }
-function PersonAvatar({ url, name, size }) {
-  if (url) return <img src={url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />;
-  return <div style={{ width: size, height: size, borderRadius: "50%", background: "#9DB2AC", color: "#fff", fontWeight: 700, fontSize: size * .42, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{(name || "?")[0].toUpperCase()}</div>;
+function VerifiedSeal({ size = 18 }) {
+  return (
+    <span title="Verified profile" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: "50%", background: "linear-gradient(135deg,#3B82F6,#1D4ED8)", border: "2px solid #fff", boxShadow: "0 1px 4px rgba(29,78,216,.55)", flexShrink: 0 }}>
+      <svg viewBox="0 0 24 24" width={Math.max(8, size * 0.56)} height={Math.max(8, size * 0.56)} fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+    </span>
+  );
+}
+function PersonAvatar({ url, name, size, verified, id }) {
+  const isVer = verified || (id && typeof window !== "undefined" && window.__gwVerified && window.__gwVerified.has(id));
+  const inner = url
+    ? <img src={url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+    : <div style={{ width: size, height: size, borderRadius: "50%", background: "#9DB2AC", color: "#fff", fontWeight: 700, fontSize: size * .42, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{(name || "?")[0].toUpperCase()}</div>;
+  if (!isVer) return inner;
+  return <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>{inner}<span style={{ position: "absolute", right: -1, bottom: -1 }}><VerifiedSeal size={Math.max(14, Math.round(size * 0.34))} /></span></span>;
 }
 const Center = ({ children }) => <div style={{ textAlign: "center", color: W.soft, fontSize: 14, padding: "26px 0" }}>{children}</div>;
 const btn = (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 13.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 });
