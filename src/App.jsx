@@ -2537,7 +2537,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v90 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · shorts-v91 build</div>
       </div>
     </div>
   );
@@ -4228,6 +4228,8 @@ const MOODS = [
 ];
 const moodOf = (key) => MOODS.find(m => m[0] === key);
 const PROMPT_QS = ["My ideal Sunday…", "Best event or concert I've been to…", "You'll get along with me if…"];
+const _ytId = (u) => { const m = String(u || "").match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|v\/))([\w-]{11})/); return m ? m[1] : null; };
+const _isDirectVideo = (u) => /\.(mp4|webm|ogg|ogv|mov|m4v|m3u8)(\?|#|$)/i.test(u || "") || /\/storage\/v1\/object\//.test(u || "");
 // Fold the many "Hyderabad" variants (Secunderabad, Hyd, Cyberabad, and Hyderabad
 // localities people type as their city) into a single canonical "Hyderabad".
 const _HYD_AREAS = new Set([...(IN_AREAS["Hyderabad"] || []), ...(IN_AREAS["Secunderabad"] || [])].map(_norm));
@@ -17006,6 +17008,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment }) {
   const [busy, setBusy] = useState(null);
   const [muted, setMuted] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [ytOn, setYtOn] = useState(() => new Set());
   const wrapRef = useRef(null);
   const load = () => supabase.rpc("shorts_list").then(({ data }) => setVids(data || []));
   const loadCredits = () => supabase.from("profiles").select("game_credits").eq("id", user.id).maybeSingle().then(({ data }) => setCredits(Number(data?.game_credits) || 0));
@@ -17063,8 +17066,29 @@ function ShortsFeed({ user, profile, isStaff, startPayment }) {
                     </>
                   ) : (
                     <>
-                      <video src={v.video_url} poster={v.poster_url || undefined} loop muted={muted} playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} onClick={e => { const vv = e.currentTarget; vv.paused ? vv.play().catch(() => {}) : vv.pause(); }} />
-                      <div onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,.5)", color: "#fff", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, cursor: "pointer" }}>{muted ? "🔇" : "🔊"}</div>
+                      {(() => {
+                        const yt = _ytId(v.video_url);
+                        if (_isDirectVideo(v.video_url)) return <>
+                          <video src={v.video_url} poster={v.poster_url || undefined} loop muted={muted} playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover" }} onClick={e => { const vv = e.currentTarget; vv.paused ? vv.play().catch(() => {}) : vv.pause(); }} />
+                          <div onClick={() => setMuted(m => !m)} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,.5)", color: "#fff", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, cursor: "pointer" }}>{muted ? "🔇" : "🔊"}</div>
+                        </>;
+                        if (yt) return ytOn.has(v.id)
+                          ? <iframe src={`https://www.youtube.com/embed/${yt}?autoplay=1&playsinline=1&rel=0`} allow="autoplay; encrypted-media; fullscreen" allowFullScreen title={v.title} style={{ width: "100%", height: "100%", border: "none" }} />
+                          : <div onClick={() => setYtOn(s => new Set(s).add(v.id))} style={{ position: "absolute", inset: 0, cursor: "pointer" }}>
+                              <img src={v.poster_url || `https://img.youtube.com/vi/${yt}/hqdefault.jpg`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><div style={{ width: 68, height: 68, borderRadius: "50%", background: "rgba(0,0,0,.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>▶</div></div>
+                            </div>;
+                        // Non-playable link (Instagram, etc.) — offer to open externally instead of a black screen.
+                        return <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 28px" }}>
+                          {v.poster_url ? <img src={v.poster_url} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "brightness(.5)" }} /> : <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#1a1030,#3a1846)" }} />}
+                          <div style={{ position: "relative", color: "#fff" }}>
+                            <div style={{ fontSize: 40 }}>▶️</div>
+                            <div style={{ fontWeight: 900, fontSize: 18, marginTop: 8 }}>{v.title}</div>
+                            <button onClick={() => window.open(v.video_url, "_blank")} style={{ marginTop: 14, padding: "12px 22px", borderRadius: 12, border: "none", cursor: "pointer", fontWeight: 900, fontSize: 15, color: "#fff", background: "linear-gradient(95deg,#7C3AED,#EC4899)" }}>Open video ↗</button>
+                            <div style={{ fontSize: 11, opacity: .7, marginTop: 10, lineHeight: 1.5 }}>This link opens outside the app. For in-app play, use a direct .mp4 link or YouTube.</div>
+                          </div>
+                        </div>;
+                      })()}
                       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 16px 18px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff" }}>
                         <div style={{ fontWeight: 900, fontSize: 18 }}>{v.title}{v.is_paid && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.25)", padding: "2px 8px", borderRadius: 20 }}>✓ Unlocked</span>}</div>
                         {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
