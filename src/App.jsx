@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v108 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v110 build</div>
       </div>
     </div>
   );
@@ -2865,6 +2865,28 @@ function VerificationPanel({ user, profile }) {
       ) : (
         <button onClick={() => setOpen(true)} style={{ ...btn("linear-gradient(95deg,#3B82F6,#1D4ED8)", "#fff"), width: "100%", justifyContent: "center", padding: "13px", fontWeight: 900 }}>✓ Verify me</button>
       )}
+      {open && <VerifyRecorder user={user} onClose={() => setOpen(false)} onSubmitted={() => { setOpen(false); loadSt(); }} />}
+    </div>
+  );
+}
+function MeetVerifyBanner({ user, profile }) {
+  const [st, setSt] = useState(null);
+  const [open, setOpen] = useState(false);
+  const loadSt = () => supabase.rpc("my_verification").then(({ data }) => setSt(data || {}));
+  useEffect(() => { loadSt(); }, []);
+  const verified = (st && st.verified) || profile?.verified;
+  if (verified) return null;
+  const status = st && st.status;
+  return (
+    <div style={{ margin: "10px 12px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(120deg,#EFF6FF,#DBEAFE)", border: "1px solid #BFDBFE", borderRadius: 14, padding: "11px 13px" }}>
+        <VerifiedSeal size={28} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 900, color: "#1D4ED8", fontSize: 13.5 }}>{status === "pending" ? "Verification under review ⏳" : "Get the blue tick"}</div>
+          <div style={{ fontSize: 11.5, color: "#3B5BA5", lineHeight: 1.4 }}>{status === "pending" ? "We'll add your seal once approved." : "Verified members stand out & get more waves — a quick video (your face + ID) is all it takes."}</div>
+        </div>
+        {status !== "pending" && <button onClick={() => setOpen(true)} style={{ ...btn("linear-gradient(95deg,#3B82F6,#1D4ED8)", "#fff"), padding: "8px 14px", fontSize: 12.5, fontWeight: 900, flexShrink: 0 }}>{status === "rejected" ? "Redo" : "Verify me"}</button>}
+      </div>
       {open && <VerifyRecorder user={user} onClose={() => setOpen(false)} onSubmitted={() => { setOpen(false); loadSt(); }} />}
     </div>
   );
@@ -3811,7 +3833,7 @@ function Main({ user }) {
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
       {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
+      {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><MeetVerifyBanner user={user} profile={profile} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "profile" && <div style={{ padding: "14px 14px 0", maxWidth: 640, margin: "0 auto" }}><VerificationPanel user={user} profile={profile} /></div>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
@@ -4706,7 +4728,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
       const { error } = await supabase.rpc("admin_set_verified", { p_user: p.id, p_on: on });
       if (error) return window.gwConfirm(error.message, () => {});
       setVerSet(s => { const n = new Set(s); if (on) n.add(p.id); else n.delete(p.id); try { window.__gwVerified = n; } catch {} return n; });
-      window.gwConfirm(on ? "✅ Verified — the blue tick now shows on their photo everywhere." : "Verified tick removed.", () => {});
+      if (on) { try { const token = (await supabase.auth.getSession()).data.session?.access_token; fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "verified", access_token: token, user_id: p.id }) }); } catch {} }
+      window.gwConfirm(on ? "✅ Verified — the blue tick now shows on their photo everywhere. A confirmation email is on its way." : "Verified tick removed.", () => {});
     });
   };
   const deactivateMember = (p) => {
@@ -11672,6 +11695,7 @@ function VerificationsAdmin() {
     setBusy(r.user_id);
     const { data, error } = await supabase.rpc("review_verification", { p_user: r.user_id, p_approve: approve, p_reason: reason });
     if (!error && data?.path) { try { await supabase.storage.from("kyc").remove([data.path]); } catch {} }
+    if (!error && approve) { try { const token = (await supabase.auth.getSession()).data.session?.access_token; fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "verified", access_token: token, user_id: r.user_id }) }); } catch {} }
     setBusy(null);
     if (error) return alert(error.message);
     setUrls(u => { const n = { ...u }; delete n[r.user_id]; return n; });
@@ -17450,9 +17474,22 @@ function Avatar({ room, size }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, fontSize: size * .5, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#7AD6C0,#008069)" }}>{room?.emoji || "💬"}</div>;
 }
 function VerifiedSeal({ size = 18 }) {
+  // Scalloped rosette seal (classic "verified" badge) in blue, with a white check.
+  const pts = 10, cx = 12, cy = 12, R = 11.2, r = 9;
+  let d = "";
+  for (let i = 0; i < pts * 2; i++) {
+    const ang = (Math.PI / pts) * i - Math.PI / 2;
+    const rad = i % 2 === 0 ? R : r;
+    d += (i === 0 ? "M" : "L") + (cx + rad * Math.cos(ang)).toFixed(2) + " " + (cy + rad * Math.sin(ang)).toFixed(2) + " ";
+  }
+  d += "Z";
   return (
-    <span title="Verified profile" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, borderRadius: "50%", background: "linear-gradient(135deg,#3B82F6,#1D4ED8)", border: "2px solid #fff", boxShadow: "0 1px 4px rgba(29,78,216,.55)", flexShrink: 0 }}>
-      <svg viewBox="0 0 24 24" width={Math.max(8, size * 0.56)} height={Math.max(8, size * 0.56)} fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+    <span title="Verified profile" style={{ display: "inline-flex", flexShrink: 0, lineHeight: 0, filter: "drop-shadow(0 1px 2px rgba(29,78,216,.45))" }}>
+      <svg viewBox="0 0 24 24" width={size} height={size}>
+        <defs><linearGradient id="gwSeal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#3B82F6" /><stop offset="1" stopColor="#1D4ED8" /></linearGradient></defs>
+        <path d={d} fill="url(#gwSeal)" stroke="#fff" strokeWidth="1.1" strokeLinejoin="round" />
+        <path d="M7.6 12.3l2.9 2.9 6-6.4" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     </span>
   );
 }
