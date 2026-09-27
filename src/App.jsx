@@ -382,7 +382,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Film, label: "Shorts" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "series", icon: Film, label: "Series" }, { id: "shorts", icon: Zap, label: "Shorts" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -2547,7 +2547,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · series-v93 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · series-v94 build</div>
       </div>
     </div>
   );
@@ -3634,7 +3634,8 @@ function Main({ user }) {
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
-      {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} />}
+      {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
+      {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
@@ -17138,14 +17139,15 @@ function SeriesPlayer({ series, user, isStaff, credits, onCredits, onBack }) {
     </div>
   );
 }
-function ShortsFeed({ user, profile, isStaff, startPayment }) {
+function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
   const [vids, setVids] = useState(null);
   const [credits, setCredits] = useState(0);
   const [busy, setBusy] = useState(null);
   const [muted, setMuted] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
   const [ytOn, setYtOn] = useState(() => new Set());
-  const [mode, setMode] = useState("series");
+  const [modeState, setMode] = useState("series");
+  const mode = only || modeState;
   const [openSeries, setOpenSeries] = useState(null);
   const wrapRef = useRef(null);
   const load = () => supabase.rpc("shorts_list").then(({ data }) => setVids(data || []));
@@ -17177,8 +17179,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment }) {
   return (
     <div style={{ background: "#000" }}>
       <div style={{ position: "sticky", top: 0, zIndex: 6, display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: "linear-gradient(120deg,#0b0b12,#1a1030)", color: "#fff" }}>
-        {tab("series", "🎬 Series")}{tab("shorts", "⚡ Shorts")}
-        <span style={{ flex: 1 }} />
+        {only ? <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{only === "series" ? "🎬 Series" : "⚡ Shorts"}</div> : <>{tab("series", "🎬 Series")}{tab("shorts", "⚡ Shorts")}<span style={{ flex: 1 }} /></>}
         <span style={{ fontSize: 12.5, fontWeight: 700, opacity: .9 }}>🪙 {credits}</span>
         {isStaff && <button onClick={() => setAdminOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>＋ Add</button>}
       </div>
@@ -17229,7 +17230,8 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const [paid, setPaid] = useState(true), [price, setPrice] = useState(24), [busy, setBusy] = useState(false), [up, setUp] = useState("");
   const [seriesId, setSeriesId] = useState(""), [epNo, setEpNo] = useState("");
   const [sList, setSList] = useState([]);
-  const [sTitle, setSTitle] = useState(""), [sGenre, setSGenre] = useState(""), [sPoster, setSPoster] = useState(""), [sPrice, setSPrice] = useState(0), [sBusy, setSBusy] = useState(false);
+  const [sTitle, setSTitle] = useState(""), [sGenre, setSGenre] = useState(""), [sPoster, setSPoster] = useState(""), [sPrice, setSPrice] = useState(0), [sFree, setSFree] = useState(1), [sBusy, setSBusy] = useState(false);
+  const [bulkSeries, setBulkSeries] = useState(""), [bulkLinks, setBulkLinks] = useState(""), [bulkPrice, setBulkPrice] = useState(24), [bulkBusy, setBulkBusy] = useState(false);
   const load = () => supabase.rpc("shorts_admin_list").then(({ data }) => setRows(data || []));
   const loadSeries = () => supabase.rpc("series_admin_list").then(({ data }) => setSList(data || []));
   useEffect(() => { load(); loadSeries(); }, []);
@@ -17237,10 +17239,21 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   const saveSeries = async () => {
     if (!sTitle.trim()) return alert("Series needs a title.");
     setSBusy(true);
-    const { error } = await supabase.rpc("series_upsert", { p_id: null, p_title: sTitle.trim(), p_desc: null, p_poster: sPoster.trim(), p_genre: sGenre.trim(), p_price: Number(sPrice) || 0, p_published: true, p_sort: 0 });
+    const { error } = await supabase.rpc("series_upsert", { p_id: null, p_title: sTitle.trim(), p_desc: null, p_poster: sPoster.trim(), p_genre: sGenre.trim(), p_price: Number(sPrice) || 0, p_published: true, p_sort: 0, p_free_eps: Number(sFree) || 0 });
     setSBusy(false);
     if (error) return alert(error.message);
-    setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); loadSeries();
+    setSTitle(""); setSGenre(""); setSPoster(""); setSPrice(0); setSFree(1); loadSeries();
+  };
+  const bulkAdd = async () => {
+    const links = bulkLinks.split("\n").map(x => x.trim()).filter(Boolean);
+    if (!bulkSeries) return alert("Pick a series for the episodes.");
+    if (!links.length) return alert("Paste at least one episode link (one per line).");
+    setBulkBusy(true);
+    const { data, error } = await supabase.rpc("shorts_bulk_add", { p_series: bulkSeries, p_links: links, p_price: Number(bulkPrice) || 24, p_paid: true });
+    setBulkBusy(false);
+    if (error) return alert(error.message);
+    setBulkLinks(""); load(); onChanged && onChanged();
+    alert(`✅ Added ${data} episode${data === 1 ? "" : "s"} — numbered automatically after the last one.`);
   };
   const delSeries = async (id) => { if (!window.confirm("Delete this series? Its episodes become standalone shorts.")) return; await supabase.rpc("series_delete", { p_id: id }); loadSeries(); load(); };
   const pickVideo = async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; setUp("video"); try { setVurl(await uploadChatFile("shorts", f)); } catch (x) { alert("Upload failed: " + (x.message || x)); } setUp(""); };
@@ -17288,14 +17301,29 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
         ))}
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: `2px solid ${W.line}` }}>
           <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>📺 Series</div>
-          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.45 }}>Create a series here first, then add episodes above by picking the series + episode number.</div>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.45 }}>Create a series, then bulk-add all episodes below (paste links). First N episodes are free automatically.</div>
           <input value={sTitle} onChange={e => setSTitle(e.target.value)} placeholder="Series title (e.g. Midnight in Hyderabad)" style={ip} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <input value={sGenre} onChange={e => setSGenre(e.target.value)} placeholder="Genre (e.g. Romance)" style={{ ...ip, flex: 1 }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 9 }}><span style={{ fontSize: 12.5, color: W.soft, whiteSpace: "nowrap" }}>Bundle ₹</span><input type="number" value={sPrice} onChange={e => setSPrice(e.target.value)} title="Price to unlock the whole series (0 = none)" style={{ width: 66, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 9 }}>
+            <input value={sGenre} onChange={e => setSGenre(e.target.value)} placeholder="Genre" style={{ ...ip, flex: 1, minWidth: 110, marginBottom: 0 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap" }}>Free eps</span><input type="number" value={sFree} onChange={e => setSFree(e.target.value)} title="How many first episodes are free" style={{ width: 52, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 12, color: W.soft, whiteSpace: "nowrap" }}>Bundle ₹</span><input type="number" value={sPrice} onChange={e => setSPrice(e.target.value)} title="Price to unlock the whole series (0 = none)" style={{ width: 60, border: `1px solid ${W.line}`, borderRadius: 8, padding: "10px 9px", fontSize: 14 }} /></div>
           </div>
           <label style={{ ...btn("#EEF1F3", W.ink), width: "100%", justifyContent: "center", padding: "10px", cursor: "pointer", marginBottom: 9 }}>{up === "sposter" ? "Uploading…" : sPoster ? "✓ Cover set" : "⬆ Series cover (portrait)"}<input type="file" accept="image/*" onChange={pickSPoster} style={{ display: "none" }} /></label>
           <button onClick={saveSeries} disabled={sBusy || !!up} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "12px", opacity: (sBusy || up) ? .6 : 1 }}>{sBusy ? "Saving…" : "Create series"}</button>
+
+          <div style={{ marginTop: 16, background: "#F4FBF8", border: "1px solid #BFE6D6", borderRadius: 12, padding: "12px 13px" }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 4 }}>⚡ Bulk-add episodes</div>
+            <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9, lineHeight: 1.45 }}>Pick the series, paste all episode links (one per line, in order). They're auto-numbered after the last episode. Free-episode setting handles which are free.</div>
+            <select value={bulkSeries} onChange={e => setBulkSeries(e.target.value)} style={ip}>
+              <option value="">Choose series…</option>
+              {sList.map(s => <option key={s.id} value={s.id}>📺 {s.title}</option>)}
+            </select>
+            <textarea value={bulkLinks} onChange={e => setBulkLinks(e.target.value)} rows={5} placeholder={"https://vz-xxxx.b-cdn.net/…/playlist.m3u8\nhttps://vz-xxxx.b-cdn.net/…/playlist.m3u8\n(one per line, episode order)"} style={{ ...ip, resize: "vertical", fontFamily: "monospace", fontSize: 12.5 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flex: 1 }}><span style={{ fontSize: 12.5, color: W.soft }}>Price per paid ep ₹</span><input type="number" value={bulkPrice} onChange={e => setBulkPrice(e.target.value)} style={{ width: 66, border: `1px solid ${W.line}`, borderRadius: 8, padding: "8px 9px", fontSize: 14 }} /></div>
+              <button onClick={bulkAdd} disabled={bulkBusy} style={{ ...btn(W.teal, "#fff"), padding: "10px 16px", opacity: bulkBusy ? .6 : 1 }}>{bulkBusy ? "Adding…" : "Import episodes"}</button>
+            </div>
+          </div>
           {sList.map(s => (
             <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
               <div style={{ width: 34, height: 46, borderRadius: 6, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{s.poster_url ? <img src={s.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>📺</div>}</div>
@@ -17309,13 +17337,26 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
   );
 }
 function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Film, label: "Shorts" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [
+    { id: "events", icon: Calendar, label: "Events", c: "#008069" },
+    { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
+    { id: "meet", icon: Users, label: "Meet", c: "#EC4899" },
+    { id: "series", icon: Film, label: "Series", c: "#E4572E" },
+    { id: "shorts", icon: Zap, label: "Shorts", c: "#F59E0B" },
+    { id: "games", icon: Gamepad2, label: "Games", c: "#2563EB" },
+    { id: "gallery", icon: ImageIcon, label: "Gallery", c: "#0EA5A3" },
+    ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin", c: "#DB2777" }] : []),
+    { id: "profile", icon: User, label: "Profile", c: "#6D28D9" },
+  ];
   return (
-    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: `1px solid ${W.line}`, display: "flex", overflowX: "auto", padding: "8px 0 11px" }}>
+    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, background: "linear-gradient(180deg,#ffffff, #FBF7FF)", borderTop: "1px solid #EEE6F5", boxShadow: "0 -3px 14px rgba(109,40,217,.08)", display: "flex", overflowX: "auto", padding: "7px 2px 10px" }}>
       {items.map((it) => { const on = tab === it.id; const I = it.icon; return (
-        <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: "0 0 61px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? W.teal : W.soft, position: "relative" }}>
-          {it.id === "meet" && meetBadge > 0 && <span style={{ position: "absolute", top: -4, right: "50%", transform: "translateX(16px)", background: "#EC4899", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 6px", minWidth: 16 }}>{meetBadge}</span>}
-          <I size={23} strokeWidth={on ? 2.4 : 2} /><span style={{ fontSize: 11, fontWeight: on ? 700 : 500 }}>{it.label}</span>
+        <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: "0 0 58px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? "#fff" : W.soft, position: "relative" }}>
+          {it.id === "meet" && meetBadge > 0 && <span style={{ position: "absolute", top: -2, right: "50%", transform: "translateX(16px)", background: "#EC4899", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 6px", minWidth: 16, zIndex: 2, border: "1.5px solid #fff" }}>{meetBadge}</span>}
+          <div style={{ width: 40, height: 30, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", background: on ? it.c : "transparent", boxShadow: on ? `0 3px 9px ${it.c}55` : "none", transition: "all .18s" }}>
+            <I size={21} strokeWidth={on ? 2.5 : 2} color={on ? "#fff" : it.c} style={{ opacity: on ? 1 : .78 }} />
+          </div>
+          <span style={{ fontSize: 10.5, fontWeight: on ? 800 : 600, color: on ? it.c : W.soft }}>{it.label}</span>
         </button>
       ); })}
     </div>
