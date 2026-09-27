@@ -2548,7 +2548,7 @@ function PublicLanding() {
       <div style={{ textAlign: "center", color: W.soft, fontSize: 12.5, padding: "10px 20px 24px" }}>Already a member? <span onClick={() => setAuthMode("login")} style={{ color: W.teal, fontWeight: 700, cursor: "pointer" }}>Log in</span></div>
       <div style={{ borderTop: `1px solid ${W.line}`, padding: "20px", textAlign: "center" }}>
         <LegalLinks />
-        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v111 build</div>
+        <div style={{ color: W.soft, fontSize: 11.5, marginTop: 10 }}>© {new Date().getFullYear()} Glasswings Events · verify-v112 build</div>
       </div>
     </div>
   );
@@ -17480,7 +17480,29 @@ function Avatar({ room, size }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", flexShrink: 0, fontSize: size * .5, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#7AD6C0,#008069)" }}>{room?.emoji || "💬"}</div>;
 }
 function VerifiedSeal({ size = 18 }) {
-  // Scalloped rosette seal (classic "verified" badge) in blue, with a white check.
+  const uid = useMemo(() => "vs" + Math.random().toString(36).slice(2, 8), []);
+  // Larger sizes → full circular "VERIFIED" stamp with a blue tick in the middle.
+  if (size >= 26) {
+    return (
+      <span title="Verified profile" style={{ display: "inline-flex", flexShrink: 0, lineHeight: 0, filter: "drop-shadow(0 1px 3px rgba(29,78,216,.45))" }}>
+        <svg viewBox="0 0 48 48" width={size} height={size}>
+          <defs>
+            <linearGradient id={uid + "g"} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#3B82F6" /><stop offset="1" stopColor="#1D4ED8" /></linearGradient>
+            <path id={uid + "p"} d="M24 24 m -20 0 a 20 20 0 1 1 40 0 a 20 20 0 1 1 -40 0" fill="none" />
+          </defs>
+          <circle cx="24" cy="24" r="23" fill={"url(#" + uid + "g)"} />
+          <circle cx="24" cy="24" r="22.4" fill="none" stroke="#fff" strokeWidth="1.3" opacity="0.9" />
+          <circle cx="24" cy="24" r="18.6" fill="none" stroke="#fff" strokeWidth="0.9" opacity="0.5" />
+          <text fill="#fff" fontSize="6.2" fontWeight="800" letterSpacing="2.1" fontFamily="system-ui, Arial, sans-serif">
+            <textPath xlinkHref={"#" + uid + "p"} startOffset="0">★ VERIFIED ★ VERIFIED </textPath>
+          </text>
+          <circle cx="24" cy="24" r="11.6" fill="#fff" />
+          <path d="M18.4 24.3l3.7 3.7 7.6-8" fill="none" stroke={"url(#" + uid + "g)"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    );
+  }
+  // Small sizes → clean scalloped seal with a white check.
   const pts = 10, cx = 12, cy = 12, R = 11.2, r = 9;
   let d = "";
   for (let i = 0; i < pts * 2; i++) {
@@ -17492,8 +17514,8 @@ function VerifiedSeal({ size = 18 }) {
   return (
     <span title="Verified profile" style={{ display: "inline-flex", flexShrink: 0, lineHeight: 0, filter: "drop-shadow(0 1px 2px rgba(29,78,216,.45))" }}>
       <svg viewBox="0 0 24 24" width={size} height={size}>
-        <defs><linearGradient id="gwSeal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#3B82F6" /><stop offset="1" stopColor="#1D4ED8" /></linearGradient></defs>
-        <path d={d} fill="url(#gwSeal)" stroke="#fff" strokeWidth="1.1" strokeLinejoin="round" />
+        <defs><linearGradient id={uid + "g"} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#3B82F6" /><stop offset="1" stopColor="#1D4ED8" /></linearGradient></defs>
+        <path d={d} fill={"url(#" + uid + "g)"} stroke="#fff" strokeWidth="1.1" strokeLinejoin="round" />
         <path d="M7.6 12.3l2.9 2.9 6-6.4" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
