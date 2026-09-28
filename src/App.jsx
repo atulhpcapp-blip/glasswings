@@ -353,7 +353,7 @@ function AppRoot() {
   const [session, setSession] = useState(null);
   const [recovery, setRecovery] = useState(false);
   useEffect(() => {
-    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const gm = sp.get("game"); if (gm) localStorage.setItem("gw_open_game", gm.trim()); const spk = sp.get("spark"); if (spk) localStorage.setItem("gw_open_spark", spk.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); const reel = sp.get("reel"); if (reel) localStorage.setItem("gw_open_reel", reel.trim()); } catch {}
+    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const gm = sp.get("game"); if (gm) localStorage.setItem("gw_open_game", gm.trim()); const spk = sp.get("spark"); if (spk) localStorage.setItem("gw_open_spark", spk.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); } catch {}
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -3020,10 +3020,9 @@ function Main({ user }) {
     window.addEventListener("focus", loadBadge);
     return () => { window.removeEventListener("gwmeet", loadBadge); window.removeEventListener("focus", loadBadge); };
   }, []);
-  useEffect(() => { try { const ev = localStorage.getItem("gw_event"); const reel = new URLSearchParams(window.location.search).get("reel") || localStorage.getItem("gw_open_reel"); if (ev && !reel) { localStorage.removeItem("gw_event"); setTab("events"); setEventPage(ev); } } catch {} }, []);
+  useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setEventPage(ev); } } catch {} }, []);
   useEffect(() => { loadRazorpay(); }, []);
   const [tab, setTab] = useState(() => {
-    try { if (new URLSearchParams(window.location.search).get("reel") || localStorage.getItem("gw_open_reel")) return "shorts"; } catch {}
     try { if (localStorage.getItem("gw_open_explore") === "1") { localStorage.removeItem("gw_open_explore"); return "events"; } } catch {}
     return "meet";
   });
@@ -17729,8 +17728,6 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
   const [busy, setBusy] = useState(null);
   const [muted, setMuted] = useState(true);
   const [adminOpen, setAdminOpen] = useState(false);
-  const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const canSeeAnalytics = [profile?.role, ...(Array.isArray(profile?.roles) ? profile.roles : [])].some(r => ["superadmin", "admin", "subadmin", "organiser", "promoter"].includes(r));
   const [ytOn, setYtOn] = useState(() => new Set());
   const [modeState, setMode] = useState("series");
   const mode = only || modeState;
@@ -17748,12 +17745,17 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
     if (!vids?.length || mode !== "shorts") return;
     let cancelled = false;
     const ids = vids.map(v => String(v.id));
-    supabase.rpc("short_engagement_counts", { p_video_ids: ids }).then(({ data, error }) => {
+    supabase.from("short_engagement").select("video_id,user_id,liked,views").in("video_id", ids).then(({ data, error }) => {
       if (cancelled) return;
       if (error) { setEngagementError(true); return; }
       const counts = {};
       ids.forEach(id => { counts[id] = { likes: 0, views: 0, liked: false }; });
-      (data || []).forEach(row => { counts[row.video_id] = { likes: Number(row.likes) || 0, views: Number(row.views) || 0, shares: Number(row.shares) || 0, liked: !!row.liked_by_me }; });
+      (data || []).forEach(row => {
+        const c = counts[row.video_id]; if (!c) return;
+        c.likes += row.liked ? 1 : 0;
+        c.views += Number(row.views) || 0;
+        if (row.user_id === user.id) c.liked = !!row.liked;
+      });
       setEngagement(counts);
     });
     return () => { cancelled = true; };
@@ -17770,13 +17772,11 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
       : { ...previous, liked: !previous.liked, likes: Math.max(0, previous.likes + (previous.liked ? -1 : 1)) };
     setEngagement(s => ({ ...s, [id]: next }));
     const { data: existing, error: readError } = await supabase.from("short_engagement")
-      .select("liked,views,first_viewed_at,liked_at").eq("video_id", id).eq("user_id", user.id).maybeSingle();
+      .select("liked,views").eq("video_id", id).eq("user_id", user.id).maybeSingle();
     const { error } = readError ? { error: readError } : await supabase.from("short_engagement").upsert({
       video_id: id, user_id: user.id,
       liked: kind === "like" ? next.liked : !!existing?.liked,
-      views: (Number(existing?.views) || 0) + (kind === "view" ? 1 : 0),
-      first_viewed_at: kind === "view" ? (existing?.first_viewed_at || new Date().toISOString()) : (existing?.first_viewed_at || null),
-      liked_at: kind === "like" ? (next.liked ? new Date().toISOString() : null) : (existing?.liked_at || null)
+      views: (Number(existing?.views) || 0) + (kind === "view" ? 1 : 0)
     }, { onConflict: "video_id,user_id" });
     if (error) {
       setEngagement(s => ({ ...s, [id]: previous }));
@@ -17793,8 +17793,6 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
       if (navigator.share) await navigator.share({ title: v.title, text: `Watch this Glasswings reel: ${v.title}`, url: link });
       else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(link); window.alert("Reel link copied"); }
       else window.open(`https://wa.me/?text=${encodeURIComponent(link)}`, "_blank", "noopener,noreferrer");
-      const { error } = await supabase.from("short_shares").insert({ video_id: String(v.id), user_id: user.id });
-      if (!error) setEngagement(s => ({ ...s, [String(v.id)]: { ...(s[String(v.id)] || {}), shares: (s[String(v.id)]?.shares || 0) + 1 } }));
     } catch (err) { if (err?.name !== "AbortError") window.alert("Could not share this reel."); }
   };
   useEffect(() => {
@@ -17839,19 +17837,10 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
   }, [vids, mode]);
   useEffect(() => {
     if (mode !== "shorts" || !vids?.length) return;
-    const params = new URLSearchParams(window.location.search);
-    const reelId = params.get("reel") || localStorage.getItem("gw_open_reel");
-    const index = reelId ? vids.findIndex(v => String(v.id) === reelId) : 0;
-    if (index < 0) return;
+    const reelId = new URLSearchParams(window.location.search).get("reel");
+    const index = Math.max(0, vids.findIndex(v => String(v.id) === reelId));
     currentReel.current = index;
-    if (wrapRef.current) {
-      wrapRef.current.scrollTop = index * wrapRef.current.clientHeight;
-      requestAnimationFrame(() => { if (wrapRef.current) wrapRef.current.scrollTop = index * wrapRef.current.clientHeight; });
-    }
-    if (reelId) {
-      localStorage.removeItem("gw_open_reel");
-      if (params.has("reel")) { params.delete("reel"); const query = params.toString(); history.replaceState(null, "", window.location.pathname + (query ? "?" + query : "") + window.location.hash); }
-    }
+    if (wrapRef.current) wrapRef.current.scrollTop = index * wrapRef.current.clientHeight;
   }, [vids, mode]);
   const load = () => supabase.rpc("shorts_list").then(({ data }) => setVids(data || []));
   const loadCredits = () => supabase.from("profiles").select("game_credits").eq("id", user.id).maybeSingle().then(({ data }) => setCredits(Number(data?.game_credits) || 0));
@@ -17888,7 +17877,6 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
       <div style={{ position: "sticky", top: 0, zIndex: 6, display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: "linear-gradient(120deg,#0b0b12,#1a1030)", color: "#fff" }}>
         {only ? <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{only === "series" ? "🎬 Movies" : "⚡ Reels"}</div> : <>{tab("series", "🎬 Movies")}{tab("shorts", "⚡ Reels")}<span style={{ flex: 1 }} /></>}
         <span style={{ fontSize: 12.5, fontWeight: 700, opacity: .9 }}>🪙 {credits}</span>
-        {canSeeAnalytics && mode === "shorts" && <button onClick={() => setAnalyticsOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 10px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>📊 Analytics</button>}
         {isStaff && <button onClick={() => setAdminOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>＋ Add</button>}
       </div>
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
@@ -17935,7 +17923,6 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
                         <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.likes ?? 0}</span>
                         <button aria-label="Share reel" onClick={() => shareReel(v)} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer", filter: "drop-shadow(0 2px 3px #000)" }}><Share2 size={29} /></button>
                         <span style={{ fontSize: 12, marginTop: -13 }}>Share</span>
-                        <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.shares ?? 0}</span>
                         <span title="Views" style={{ fontSize: 12, textShadow: "0 2px 5px #000" }}>👁 {engagement[String(v.id)]?.views ?? 0}</span>
                       </div>
                       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
@@ -17950,55 +17937,6 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
           </div>
         )}
       {adminOpen && <ShortsAdmin onClose={() => setAdminOpen(false)} onChanged={load} meId={user.id} />}
-      {analyticsOpen && <ShortsAnalytics vids={vids || []} onClose={() => setAnalyticsOpen(false)} />}
-    </div>
-  );
-}
-function ShortsAnalytics({ vids, onClose }) {
-  const [selected, setSelected] = useState("");
-  const [kind, setKind] = useState("views");
-  const [rows, setRows] = useState(null);
-  const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  useEffect(() => { if (vids.length && !selected) setSelected(String(vids[0].id)); }, [vids, selected]);
-  useEffect(() => {
-    if (!selected) return;
-    let active = true;
-    setRows(null); setError("");
-    supabase.rpc("short_engagement_analytics", { p_video_id: selected, p_kind: kind }).then(({ data, error: err }) => {
-      if (!active) return;
-      if (err) { setError(err.message || "Analytics unavailable"); setRows([]); }
-      else setRows(data || []);
-    });
-    return () => { active = false; };
-  }, [selected, kind]);
-  const filtered = (rows || []).filter(r => (r.full_name || "").toLowerCase().includes(search.toLowerCase()));
-  const dateText = value => value ? new Date(value).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
-  return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 210, background: "rgba(0,0,0,.72)", display: "flex", justifyContent: "center", alignItems: "flex-end" }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 500, height: "min(85dvh,750px)", background: "#fff", borderRadius: "20px 20px 0 0", padding: 16, display: "flex", flexDirection: "column", color: W.ink }}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 13 }}>
-          <strong style={{ fontSize: 18, flex: 1 }}>📊 Reels analytics</strong>
-          <button onClick={onClose} aria-label="Close analytics" style={{ border: 0, background: W.bg, borderRadius: 8, padding: 7, cursor: "pointer" }}><X size={19} /></button>
-        </div>
-        <select value={selected} onChange={e => setSelected(e.target.value)} style={{ padding: 11, border: `1px solid ${W.line}`, borderRadius: 10, fontSize: 14, marginBottom: 12 }}>
-          {vids.map(v => <option value={String(v.id)} key={v.id}>{v.title}</option>)}
-        </select>
-        <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
-          {[["views", "👁 Viewed"], ["likes", "♥ Liked"], ["shares", "↗ Shared"]].map(([key, label]) =>
-            <button key={key} onClick={() => setKind(key)} style={{ flex: 1, padding: "10px 4px", border: 0, borderRadius: 9, background: kind === key ? W.teal : W.bg, color: kind === key ? "#fff" : W.ink, fontWeight: 800, cursor: "pointer" }}>{label}</button>)}
-        </div>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search member name" style={{ padding: 11, border: `1px solid ${W.line}`, borderRadius: 10, marginBottom: 9, fontSize: 14 }} />
-        <div style={{ color: W.soft, fontSize: 12, marginBottom: 9 }}>{kind === "views" ? "One recorded view per member" : kind === "shares" ? "Share actions, including copied links. Recipients are not visible." : "Members who currently like this reel"}</div>
-        <div style={{ overflowY: "auto", flex: 1 }}>
-          {error ? <div style={{ color: "#C0392B", padding: 14 }}>{error}</div> : rows === null ? <div style={{ padding: 14 }}>Loading…</div> : !filtered.length ? <div style={{ color: W.soft, padding: 14 }}>No members found.</div> : filtered.map((r, index) =>
-            <div key={`${r.user_id}-${r.occurred_at}-${index}`} style={{ display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${W.line}`, padding: "10px 2px" }}>
-              {r.avatar_url ? <img src={r.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 36, height: 36, borderRadius: "50%", background: W.bg, display: "grid", placeItems: "center" }}>👤</div>}
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 750, fontSize: 14 }}>{r.full_name || "Member"}</div><div style={{ fontSize: 11, color: W.soft }}>{dateText(r.occurred_at)}</div></div>
-              {kind === "shares" && r.total > 1 && <div style={{ fontSize: 12, fontWeight: 800 }}>×{r.total}</div>}
-            </div>)}
-        </div>
-      </div>
     </div>
   );
 }
