@@ -3259,6 +3259,13 @@ function Main({ user }) {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
+    const zoneController = new AbortController();
+    const zoneTimeout = setTimeout(() => zoneController.abort(), 8000);
+    try {
+      const { error } = await supabase.rpc("gw_sync_my_subscribers_zone").abortSignal(zoneController.signal);
+      if (error) console.warn("Subscribers Zone sync:", error.message);
+    } catch (err) { console.warn("Subscribers Zone sync:", err); }
+    finally { clearTimeout(zoneTimeout); }
     const [{ data: prof }, { data: rm }, { data: ev }, { data: sb }, { data: tk }, { data: md }, { data: emd }, { data: cnt }, { data: ecnt }, { data: opts }, { data: tt }, { data: dm }, { data: estat }, { data: tsold }, { data: stg }, { data: rp }, { data: pk }, { data: ad }, { data: egm }, { data: sgm }, { data: osc }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("rooms").select("*").order("created_at", { ascending: true }),
@@ -3540,7 +3547,7 @@ function Main({ user }) {
     await load();
   };
   const cancelSub = async (roomId) => {
-    if (!window.confirm("Cancel this subscription? You'll stop being charged and leave the room.")) return;
+    if (!window.confirm("Cancel this subscription? Future charges stop and this subscription's membership access ends.")) return;
     const { data: { session } } = await supabase.auth.getSession();
     try {
       const r = await fetch("/api/razorpay/cancel-sub", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, room_id: roomId }) });
@@ -11071,7 +11078,7 @@ function SegmentsAdmin({ organiserScoped = false }) {
     load();
   };
   const refreshSeg = async (s) => {
-    const { data, error } = await supabase.rpc("segment_refresh", { p_segment: s.id });
+    const { data, error } = s.name === "Subscribers Zone" ? await supabase.rpc("gw_refresh_subscribers_zone") : await supabase.rpc("segment_refresh", { p_segment: s.id });
     if (error) return alert(error.message);
     alert(`🤖 Recomputed — ${data} member${data === 1 ? "" : "s"} ✓`);
     load(); if (openSeg === s.id && panel === "members") loadMembers(s.id);
@@ -11147,10 +11154,10 @@ function SegmentsAdmin({ organiserScoped = false }) {
         <div key={s.id} style={{ background: "#fff", borderRadius: 15, border: `1px solid ${s.color || "#7C3AED"}33`, borderLeft: `6px solid ${s.color || "#7C3AED"}`, padding: 14, marginBottom: 11, boxShadow: `0 5px 17px ${s.color || "#7C3AED"}12` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ width: 38, height: 38, borderRadius: 11, background: `${s.color || "#7C3AED"}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{s.emoji || "🎯"}</span>
-            <span style={{ flex: 1, minWidth: 130, fontWeight: 850, fontSize: 15, color: W.ink }}>{s.name} {s.rule && <span style={{ background: "#F3EBFF", color: "#6D28D9", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10, verticalAlign: "middle" }}>🤖 AUTO</span>}{s.description && <span style={{ display: "block", color: W.soft, fontSize: 11.5, lineHeight: 1.35, fontWeight: 550, marginTop: 2 }}>{s.description}</span>}</span>
+            <span style={{ flex: 1, minWidth: 130, fontWeight: 850, fontSize: 15, color: W.ink }}>{s.name} {(s.rule || s.name === "Subscribers Zone") && <span style={{ background: "#F3EBFF", color: "#6D28D9", fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 10, verticalAlign: "middle" }}>🤖 AUTO</span>}{s.description && <span style={{ display: "block", color: W.soft, fontSize: 11.5, lineHeight: 1.35, fontWeight: 550, marginTop: 2 }}>{s.description}</span>}</span>
             <span style={{ fontSize: 12.5, color: W.soft, fontWeight: 700 }}>{counts[s.id] || 0} 👥</span>
             {s.rule && <button onClick={() => refreshSeg(s)} style={{ ...btn("#fff", "#6D28D9"), border: "1px solid #E4D5FB", padding: "5px 9px", fontSize: 12 }}>↻</button>}
-            <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => delSeg(s)} />
+            {s.name !== "Subscribers Zone" && <Trash2 size={16} color="#C0392B" style={{ cursor: "pointer" }} onClick={() => delSeg(s)} />}
           </div>
           {s.rule && s.auto_updated_at && <div style={{ fontSize: 11, color: W.soft, marginTop: 3 }}>last refreshed {new Date(s.auto_updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</div>}
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 9 }}>
@@ -11163,7 +11170,7 @@ function SegmentsAdmin({ organiserScoped = false }) {
           {openSeg === s.id && (
             <div style={{ marginTop: 10, background: W.bg, borderRadius: 10, padding: 11 }}>
               {panel === "members" && (<>
-                <>
+                {s.name !== "Subscribers Zone" && <>
                   <div style={{ position: "relative" }}><input value={sq} onChange={e => setSq(e.target.value)} placeholder="Search by name, email or phone…" style={{ ...inp, paddingRight: 42 }} />{searchBusy && <span style={{ position: "absolute", right: 13, top: 10, fontSize: 13, color: "#6D28D9" }}>●●●</span>}</div>
                   {sq.trim().length > 0 && sq.trim().length < 2 && <div style={{ color: W.soft, fontSize: 11.5, marginTop: 5 }}>Type at least 2 letters or numbers.</div>}
                   {sMatches.map(m => (
@@ -11174,14 +11181,15 @@ function SegmentsAdmin({ organiserScoped = false }) {
                     </div>
                   ))}
                   {!searchBusy && sq.trim().length >= 2 && sMatches.length === 0 && <div style={{ color: W.soft, fontSize: 12, marginTop: 8 }}>No eligible member found. {organiserScoped ? "Only people who bought through your events can be added." : "Try another name, email or phone."}</div>}
-                </>
+                </>}
+                {s.name === "Subscribers Zone" && <div style={{ fontSize: 12, color: "#6D28D9", fontWeight: 700 }}>💎 Membership is automatic. Add or remove subscriptions under Subs; this list updates automatically.</div>}
                 {s.rule && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700, marginTop: 7 }}>🤖 Auto members are refreshed by the rule. Members you add manually are kept.</div>}
                 <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft, marginTop: 8 }}>In this segment ({members.length})</div>
                 {members.map(m => (
                   <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 2px", borderBottom: `1px solid ${W.line}` }}>
                     <PersonAvatar url={m.avatar_url} name={m.full_name} size={30} />
                     <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: W.ink }}><b>{m.full_name || "Member"}</b><span style={{ display: "block", color: W.soft, fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{[m.email, m.phone, m.city].filter(Boolean).join(" · ")}</span></span>
-                    <span onClick={async () => { const { error } = await supabase.rpc("segment_remove_member", { p_segment: s.id, p_user: m.id }); if (error) return alert(error.message); loadMembers(s.id); load(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>
+                    {s.name !== "Subscribers Zone" && <span onClick={async () => { const { error } = await supabase.rpc("segment_remove_member", { p_segment: s.id, p_user: m.id }); if (error) return alert(error.message); loadMembers(s.id); load(); }} style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, cursor: "pointer" }}>Remove</span>}
                   </div>
                 ))}
                 {members.length === 0 && <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>No members yet.</div>}
@@ -15301,12 +15309,10 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
           <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer" }} />
           <div style={{ fontWeight: 800, fontSize: 18 }}>💎 Glasswings Membership</div>
         </div>
-        <div style={{ fontSize: 13, opacity: .92, marginTop: 8, lineHeight: 1.45 }}>One membership. Every room, every game, and serious ticket discounts. 🎉</div>
+        <div style={{ fontSize: 13, opacity: .92, marginTop: 8, lineHeight: 1.45 }}>One membership. Subscribers Zone, games, and member ticket discounts. 🎉</div>
       </div>
       <div style={{ padding: 14 }}>
         {active.map(pl => {
-          const myRoomIds = planRooms.filter(x => x.plan_id === pl.id).map(x => x.room_id);
-          const roomNames = rooms.filter(r => myRoomIds.includes(r.id));
           const mine = myPlans.find(m => m.plan_id === pl.id);
           const dl = mine?.expires_at ? Math.max(0, Math.ceil((new Date(mine.expires_at).getTime() - Date.now()) / 86400000)) : null;
           const prices = [[1, pl.price_1m], [3, pl.price_3m], [6, pl.price_6m], [12, pl.price_12m]].filter(([, p]) => Number(p) > 0);
@@ -15319,12 +15325,12 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
                   <div style={{ fontWeight: 800, color: W.ink, fontSize: 17 }}>{pl.name}</div>
                   {pl.tagline && <div style={{ fontSize: 12, color: W.soft }}>{pl.tagline}</div>}
                 </div>
-                {hot && <span style={{ background: "#FCE7F3", color: "#BE185D", fontSize: 10.5, fontWeight: 800, padding: "4px 9px", borderRadius: 9 }}>UNLOCKS THIS ROOM</span>}
+                {hot && <span style={{ background: "#FCE7F3", color: "#BE185D", fontSize: 10.5, fontWeight: 800, padding: "4px 9px", borderRadius: 9 }}>MEMBER BENEFITS</span>}
               </div>
               {mine && <div style={{ background: "#E7F6EF", color: "#0d6e58", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, margin: "10px 0 2px" }}>✅ You're a member{mine.expires_at ? ` — ⌛ ${dl} days left (till ${new Date(mine.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})` : ""}. Buying again extends your validity.</div>}
               <div style={{ margin: "12px 0 4px" }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>🎟️</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>Up to 100% OFF on event tickets<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Member pricing on parties, meetups & getaways</div></div></div>
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>🔓</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>{roomNames.length} exclusive room{roomNames.length === 1 ? "" : "s"}<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>{roomNames.map(r => `${r.emoji} ${r.name}`).join(" · ") || "Rooms being added"}</div></div></div>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>💎</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>Subscribers Zone<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Automatic membership while your subscription is active. Invitations appear in Private Parties when available.</div></div></div>
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>💘</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>All games, fully unlocked<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Unlimited Vibe Checks · 🎲 random match · 🎭 Blind Banter</div></div></div>
               </div>
               {isWoman && pl.women_free ? (
@@ -15715,9 +15721,22 @@ function AccountsAdmin() {
 }
 function SubscribersAdmin() {
   const [rows, setRows] = useState(null);
-  const [flt, setFlt] = useState("all"); // all | plan | room | expiring
+  const [flt, setFlt] = useState("all"); // all | expiring
   const [q, setQ] = useState("");
-  useEffect(() => { supabase.rpc("subscribers_list").then(({ data, error }) => setRows(error ? [] : (data || []))); }, []);
+  const [syncError, setSyncError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const loadSubscribers = async () => {
+    setRefreshing(true); setSyncError("");
+    try {
+      const { error: syncErr } = await supabase.rpc("gw_refresh_subscribers_zone");
+      if (syncErr) throw syncErr;
+      const { data, error } = await supabase.rpc("gw_subscribers_zone_list");
+      if (error) throw error;
+      setRows(data || []);
+    } catch (err) { setSyncError(err.message || "Could not load subscribers."); setRows(r => r || []); }
+    finally { setRefreshing(false); }
+  };
+  useEffect(() => { loadSubscribers(); }, []);
   if (rows === null) return <div style={{ padding: 24, textAlign: "center", color: W.soft }}>Loading subscribers…</div>;
   const active = rows.filter(r => r.days_left === null || r.days_left > 0);
   const view = active.filter(r => {
@@ -15730,6 +15749,8 @@ function SubscribersAdmin() {
   const pill = (k, label) => <button onClick={() => setFlt(k)} style={{ ...btn(flt === k ? W.teal : "#fff", flt === k ? "#fff" : W.ink), border: `1px solid ${flt === k ? W.teal : W.line}`, padding: "7px 13px", fontSize: 12.5 }}>{label}</button>;
   return (
     <div style={{ padding: 14 }}>
+      <div style={{ background: "linear-gradient(120deg,#4C1D95,#9D174D)", color: "#fff", borderRadius: 14, padding: 16, marginBottom: 14 }}><div style={{ fontSize: 19, fontWeight: 900 }}>💎 Subscribers Zone</div><div style={{ fontSize: 12.5, lineHeight: 1.5, marginTop: 6 }}>Active subscribers join this segment automatically. Create private parties for this segment under Segments. Expired memberships are removed automatically.</div><button disabled={refreshing} onClick={loadSubscribers} style={{ ...btn("#fff", "#4C1D95"), marginTop: 10, fontSize: 12 }}>{refreshing ? "Syncing…" : "↻ Refresh subscribers"}</button></div>
+      {syncError && <div role="alert" style={{ padding: 12, borderRadius: 10, background: "#FDECEA", color: "#A12A24", marginBottom: 12 }}>Subscribers Zone could not sync: {syncError}. If this is your first update, run the R13 Subscribers Zone SQL setup.</div>}
       <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
         {stat("💎 ACTIVE SUBSCRIBERS", active.length, "#6D28D9")}
         {stat("⏳ EXPIRING ≤7D", expN, "#C2185B")}
@@ -15747,7 +15768,7 @@ function SubscribersAdmin() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: W.ink }}>{r.member || "Member"}</div>
-                <div style={{ fontSize: 12.5, color: W.soft, marginTop: 1 }}>{r.kind === "plan" ? "💎" : "💬"} {r.item}{r.auto ? " · 🔄 auto-renew" : ""}</div>
+                <div style={{ fontSize: 12.5, color: W.soft, marginTop: 1 }}>💎 {r.item}{r.auto ? " · 🔄 auto-renew" : ""}</div>
                 {r.expires_at && <div style={{ fontSize: 11.5, color: W.soft, marginTop: 1 }}>expires {new Date(r.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>}
               </div>
               <span style={{ background: tone.bg, color: tone.c, fontSize: 11.5, fontWeight: 800, padding: "5px 11px", borderRadius: 10, whiteSpace: "nowrap" }}>{tone.t}</span>
@@ -15777,9 +15798,8 @@ function SubscribersAdmin() {
     </div>
   );
 }
-function PlansAdmin({ rooms }) {
+function PlansAdmin() {
   const [plans, setPlans] = useState(null);
-  const [planRooms, setPlanRooms] = useState([]);
   const [open, setOpen] = useState(false);
   const [exp, setExp] = useState(null); // expanded plan id
   const [newName, setNewName] = useState("");
@@ -15787,11 +15807,8 @@ function PlansAdmin({ rooms }) {
   const [members, setMembers] = useState({});
   const [q, setQ] = useState(""); const [found, setFound] = useState([]); const [enrollMo, setEnrollMo] = useState("1");
   const load = async () => {
-    const [{ data: pl }, { data: pr }] = await Promise.all([
-      supabase.from("plans").select("*").order("position").order("created_at"),
-      supabase.from("plan_rooms").select("plan_id, room_id"),
-    ]);
-    setPlans(pl || []); setPlanRooms(pr || []);
+    const { data: pl } = await supabase.from("plans").select("*").order("position").order("created_at");
+    setPlans(pl || []);
   };
   useEffect(() => { load(); }, []);
   const loadMembers = (pid) => supabase.rpc("plan_members", { p_plan: pid }).then(({ data }) => setMembers(m => ({ ...m, [pid]: data || [] })));
@@ -15823,11 +15840,6 @@ function PlansAdmin({ rooms }) {
     if (error) return alert(error.message);
     setEdit(ed => ({ ...ed, [pl.id]: {} })); load();
   };
-  const toggleRoom = async (pid, rid, has) => {
-    if (has) await supabase.from("plan_rooms").delete().eq("plan_id", pid).eq("room_id", rid);
-    else await supabase.from("plan_rooms").insert({ plan_id: pid, room_id: rid });
-    load();
-  };
   const enroll = async (pid, uid, name) => {
     const { error } = await supabase.rpc("admin_enroll_plan", { p_user: uid, p_plan: pid, p_months: Number(enrollMo) });
     if (error) return alert(error.message);
@@ -15858,14 +15870,13 @@ function PlansAdmin({ rooms }) {
         </div>
         {(plans || []).map(pl => {
           const e = E(pl.id);
-          const myRooms = planRooms.filter(x => x.plan_id === pl.id).map(x => x.room_id);
           const isExp = exp === pl.id;
           return (
             <div key={pl.id} style={{ background: "#fff", border: "1px solid #E5DDF5", borderRadius: 12, padding: "11px 13px", marginBottom: 9 }}>
               <div onClick={() => setExp(isExp ? null : pl.id)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                 <span style={{ fontSize: 17 }}>{pl.emoji || "💎"}</span>
                 <div style={{ flex: 1, fontWeight: 800, color: W.ink, fontSize: 14 }}>{pl.name}{!pl.active && <span style={{ color: "#B3433B", fontSize: 11, marginLeft: 7 }}>(inactive)</span>}</div>
-                <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{myRooms.length} rooms · {(members[pl.id] || []).length || "…"} members</div>
+                <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>{(members[pl.id] || []).length || "…"} members</div>
               </div>
               {isExp && <div style={{ marginTop: 11 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#4C3585", marginBottom: 5 }}>Prices (₹) — blank = not offered</div>
@@ -15883,20 +15894,13 @@ function PlansAdmin({ rooms }) {
                 </div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 11 }}>
                   <button onClick={() => savePlan(pl)} style={{ ...btn("#6D28D9", "#fff"), padding: "9px 16px", fontSize: 12.5 }}>Save plan</button>
-                  <button onClick={() => window.gwConfirm(`Delete "${pl.name}" permanently? All its subscribers lose access immediately and its room locks are removed. This cannot be undone.`, async () => {
+                  <button onClick={() => window.gwConfirm(`Delete "${pl.name}" permanently? Its subscribers lose this plan and may lose Subscribers Zone access. This cannot be undone.`, async () => {
                     const { error } = await supabase.from("plans").delete().eq("id", pl.id);
                     if (error) return alert(error.message);
                     setExp(null); load();
                   })} style={{ ...btn("#fff", "#B3433B"), border: "1px solid #E5B5B2", padding: "9px 14px", fontSize: 12.5 }}>🗑️ Delete plan</button>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#4C3585", marginBottom: 5 }}>Rooms this plan unlocks</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 11 }}>
-                  {rooms.map(r => (
-                    <label key={r.id} style={{ fontSize: 13, fontWeight: 600, color: W.ink, display: "flex", gap: 7, alignItems: "center" }}>
-                      <input type="checkbox" checked={myRooms.includes(r.id)} onChange={() => toggleRoom(pl.id, r.id, myRooms.includes(r.id))} />{r.emoji} {r.name}
-                    </label>
-                  ))}
-                </div>
+                <div style={{ padding: 12, background: "#F3EBFF", borderRadius: 10, color: "#4C3585", fontSize: 12.5, marginBottom: 12 }}><strong>💎 Subscribers Zone · Automatic</strong><div style={{ marginTop: 5 }}>Active subscribers are added automatically. Manage exclusive invitations under Segments → Subscribers Zone.</div></div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#4C3585", marginBottom: 5 }}>Enroll a member (pre-app payers welcome)</div>
                 <div style={{ display: "flex", gap: 7, marginBottom: 6 }}>
                   <input value={q} onChange={ev => setQ(ev.target.value)} placeholder="Search member…" style={{ flex: 1, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13, outline: "none" }} />
@@ -17061,10 +17065,10 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
         {paidSubs.length > 0 && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16 }}>
             <div style={{ fontWeight: 700, color: W.ink, marginBottom: 4 }}>Your subscriptions</div>
-            <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Cancel anytime — billing stops and you'll leave the room.</div>
+            <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 12 }}>Cancel anytime — future charges stop and this subscription’s membership access ends.</div>
             {paidSubs.map(s => (
               <div key={s.room_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 0", borderTop: `1px solid ${W.line}` }}>
-                <span style={{ fontSize: 14.5, color: W.ink, fontWeight: 600, minWidth: 0 }}>{s.name}</span>
+                <span style={{ fontSize: 14.5, color: W.ink, fontWeight: 600, minWidth: 0 }}>Subscribers Zone membership</span>
                 <button onClick={() => onCancelSub && onCancelSub(s.room_id)} style={{ ...btn("#fff", "#C0392B"), border: `1px solid #F2C4C0` }}>Cancel</button>
               </div>
             ))}
@@ -18007,7 +18011,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], t
       </div>
       {isStaff && mode === "shorts" && <div style={{ padding: "10px 14px", background: "#E6FFF5", borderBottom: "2px solid #008069", position: "relative", zIndex: 7 }}>
         <button onClick={() => setAdminOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", border: 0, borderRadius: 10, padding: "13px 14px", background: "#008069", color: "#fff", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
-          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R12</span>
+          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R13</span>
         </button>
       </div>}
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
