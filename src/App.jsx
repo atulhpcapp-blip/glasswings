@@ -17831,9 +17831,9 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], t
   const [activeIndex, setActiveIndex] = useState(0);
   const playbackPositions = useRef({});
   const [eventLinks, setEventLinks] = useState({});
-  useEffect(() => { supabase.from("reel_event_links").select("video_id,event_id").then(({ data }) => { const map = {}; (data || []).forEach(r => { map[r.video_id] = r.event_id; }); setEventLinks(map); }); }, []);
+  useEffect(() => { supabase.from("reel_event_links").select("video_id,event_id,coming_soon").then(({ data }) => { const map = {}; (data || []).forEach(r => { map[r.video_id] = r.coming_soon ? "coming_soon" : r.event_id; }); setEventLinks(map); }); }, []);
   const linkEvent = async (videoId, eventId) => {
-    const result = eventId ? await supabase.from("reel_event_links").upsert({ video_id: String(videoId), event_id: eventId }, { onConflict: "video_id" }) : await supabase.from("reel_event_links").delete().eq("video_id", String(videoId));
+    const result = eventId ? await supabase.from("reel_event_links").upsert({ video_id: String(videoId), event_id: eventId === "coming_soon" ? null : eventId, coming_soon: eventId === "coming_soon" }, { onConflict: "video_id" }) : await supabase.from("reel_event_links").delete().eq("video_id", String(videoId));
     if (result.error) return window.alert("Could not save event link: " + result.error.message);
     setEventLinks(old => ({ ...old, [videoId]: eventId }));
   };
@@ -18007,7 +18007,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], t
       </div>
       {isStaff && mode === "shorts" && <div style={{ padding: "10px 14px", background: "#E6FFF5", borderBottom: "2px solid #008069", position: "relative", zIndex: 7 }}>
         <button onClick={() => setAdminOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", border: 0, borderRadius: 10, padding: "13px 14px", background: "#008069", color: "#fff", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
-          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R11</span>
+          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R12</span>
         </button>
       </div>}
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
@@ -18018,6 +18018,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], t
             {vids.map((v, reelIndex) => {
               const segLocked = !!v.seg_locked;
               const locked = v.is_paid && !v.unlocked;
+              const comingSoon = eventLinks[v.id] === "coming_soon";
               const linkedParty = upcomingParties.find(e => String(e.id) === String(eventLinks[v.id]));
               const partyPrices = linkedParty ? (ticketTypes[linkedParty.id] || []).filter(t => !t.hidden && t.active !== false && t.price != null && Number.isFinite(Number(t.price))).map(t => Number(t.price)) : [];
               const partyPrice = partyPrices.length ? Math.min(...partyPrices) : (linkedParty?.ticket_price != null && Number.isFinite(Number(linkedParty.ticket_price)) ? Number(linkedParty.ticket_price) : null);
@@ -18054,9 +18055,9 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], t
                     <>
                       {Math.abs(reelIndex - activeIndex) <= 1 && <SmoothReelPlayer v={v} active={reelIndex === activeIndex && !adminOpen && !analyticsOpen} muted={muted} setMuted={setMuted} onLike={() => { if (!engagementRef.current[String(v.id)]?.liked) saveEngagement(v, "like"); }} onViewed={() => saveEngagement(v, "view")} resumeAt={playbackPositions.current[v.id] || 0} onProgress={time => { if (Number.isFinite(time)) playbackPositions.current[v.id] = time; }} />}
                       <div style={{ position: "absolute", left: 12, top: 12, zIndex: 5, maxWidth: "72%" }}>
-                        {canSeeAnalytics && <select aria-label="Link reel to event" value={upcomingParties.some(e => String(e.id) === String(eventLinks[v.id])) ? eventLinks[v.id] : ""} onChange={e => linkEvent(v.id, e.target.value)} style={{ display: "block", maxWidth: "100%", marginTop: 6, padding: 6, borderRadius: 8, fontSize: 11 }}><option value="">Link a party…</option>{upcomingParties.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select>}
+                        {canSeeAnalytics && <select aria-label="Link reel to event" value={eventLinks[v.id] === "coming_soon" ? "coming_soon" : upcomingParties.some(e => String(e.id) === String(eventLinks[v.id])) ? eventLinks[v.id] : ""} onChange={e => linkEvent(v.id, e.target.value)} style={{ display: "block", maxWidth: "100%", marginTop: 6, padding: 6, borderRadius: 8, fontSize: 11 }}><option value="">No banner</option><option value="coming_soon">✨ Coming Soon</option>{upcomingParties.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select>}
                       </div>
-                      <div style={{ position: "absolute", right: 12, bottom: linkedParty ? 184 : 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
+                      <div style={{ position: "absolute", right: 12, bottom: linkedParty ? 184 : comingSoon ? 158 : 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
                         <button aria-label={engagement[String(v.id)]?.liked ? "Unlike reel" : "Like reel"} onClick={() => saveEngagement(v, "like")} style={{ border: 0, background: "transparent", color: engagement[String(v.id)]?.liked ? "#ff4d76" : "#fff", cursor: "pointer", fontSize: 29, textShadow: "0 2px 5px #000" }}>♥</button>
                         <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.likes ?? 0}</span>
                         <button aria-label="Share reel" onClick={() => shareReel(v)} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer", filter: "drop-shadow(0 2px 3px #000)" }}><Share2 size={29} /></button>
@@ -18064,6 +18065,10 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], t
                         <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.shares ?? 0}</span>
                         <span title="Views" style={{ fontSize: 12, textShadow: "0 2px 5px #000" }}>👁 {engagement[String(v.id)]?.views ?? 0}</span>
                       </div>
+                      {comingSoon && <div role="status" style={{ position: "absolute", left: 14, right: 14, bottom: 20, zIndex: 6, minHeight: 100, boxSizing: "border-box", display: "flex", alignItems: "center", gap: 12, padding: "16px", border: "1px solid rgba(255,230,154,.65)", borderRadius: 18, background: "linear-gradient(110deg,#41128A 0%,#9C237C 65%,#BD4F40 100%)", color: "#fff", boxShadow: "0 6px 24px rgba(156,35,124,.4)", pointerEvents: "none" }}>
+                        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 44, height: 44, flexShrink: 0, borderRadius: 12, background: "#FFE69A", transform: "rotate(-9deg)", fontSize: 26 }}>🎉</span>
+                        <span style={{ minWidth: 0 }}><span style={{ display: "block", color: "#FFE69A", fontSize: 20, fontWeight: 900, letterSpacing: 1.5 }}>COMING SOON ✨</span><span style={{ display: "block", marginTop: 5, fontSize: 12, lineHeight: 1.5 }}>The next party is on its way.<br />Bookings open soon. Stay tuned!</span></span>
+                      </div>}
                       {linkedParty && <button
                         aria-label={"Book this party: " + linkedParty.title}
                         onClick={() => openReelParty(v, linkedParty)}
@@ -18078,7 +18083,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], t
                         </span>
                         <span aria-hidden="true" style={{ borderLeft: "1px dashed rgba(255,255,255,.6)", paddingLeft: 13, fontSize: 26, fontWeight: 900 }}>↗</span>
                       </button>}
-                      <div style={{ position: "absolute", left: 0, right: 0, bottom: linkedParty ? 154 : 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
+                      <div style={{ position: "absolute", left: 0, right: 0, bottom: linkedParty ? 154 : comingSoon ? 128 : 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
                         <div style={{ fontWeight: 900, fontSize: 18 }}>{v.title}{v.is_paid && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.25)", padding: "2px 8px", borderRadius: 20 }}>✓ Unlocked</span>}</div>
                         {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
                       </div>
@@ -18228,16 +18233,17 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
           {editId && <button onClick={() => { setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); setSeriesId(""); setEditId(null); }} style={{ background: "#EEF1F3", color: W.soft, border: "none", borderRadius: 8, padding: "6px 11px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Cancel</button>}
         </div>
         <div style={{ background: "#ECFDF5", border: "2px solid #008069", borderRadius: 12, padding: 14, marginBottom: 14 }}>
-          <div style={{ fontWeight: 900, color: W.teal, fontSize: 16, marginBottom: 7 }}>🎟 Book this party button</div>
-          {!editId ? <div style={{ fontSize: 13, color: W.ink }}>Publish your reel first, then tap Edit to choose its booking event.</div>
+          <div style={{ fontWeight: 900, color: W.teal, fontSize: 16, marginBottom: 7 }}>🎉 Reel bottom banner</div>
+          {!editId ? <div style={{ fontSize: 13, color: W.ink }}>Publish your reel first, then tap Edit to choose Coming Soon or a booking party.</div>
             : !onLinkEvent ? <div style={{ fontSize: 13, color: W.ink }}>Your account can edit reels but does not have permission to change booking links. An admin can link this reel to an event.</div>
             : <>
-              <div style={{ fontSize: 13, color: W.ink, marginBottom: 9 }}>Choose the party this reel should open. No URL needed. Your selection saves immediately.</div>
-              <select aria-label="Book this party event" value={events.some(e => String(e.id) === String(eventLinks[editId])) ? eventLinks[editId] : ""} onChange={e => onLinkEvent(editId, e.target.value)} style={{ ...ip, marginBottom: 5, background: "#fff" }}>
-                <option value="">No booking button</option>
+              <div style={{ fontSize: 13, color: W.ink, marginBottom: 9 }}>Choose Coming Soon to tease your next party, or select an upcoming party to enable bookings. Your selection saves immediately.</div>
+              <select aria-label="Book this party event" value={eventLinks[editId] === "coming_soon" ? "coming_soon" : events.some(e => String(e.id) === String(eventLinks[editId])) ? eventLinks[editId] : ""} onChange={e => onLinkEvent(editId, e.target.value)} style={{ ...ip, marginBottom: 5, background: "#fff" }}>
+                <option value="">No banner</option><option value="coming_soon">✨ Coming Soon — bookings not open yet</option>
                 {events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}
               </select>
-              {!events.length && <div style={{ fontSize: 12, color: W.soft }}>No upcoming parties are available. Create a party with a future date under Events first.</div>}
+              {eventLinks[editId] === "coming_soon" && <div style={{ fontSize: 12, color: W.teal, fontWeight: 800 }}>✓ Coming Soon banner enabled. Select a party here when bookings open.</div>}
+              {!events.length && <div style={{ fontSize: 12, color: W.soft }}>You can use Coming Soon now. To enable bookings, create a party with a future date under Events.</div>}
               {events.some(e => String(e.id) === String(eventLinks[editId])) && <div style={{ fontSize: 12, color: W.teal, fontWeight: 800 }}>✓ Booking button enabled for this reel</div>}
             </>}
         </div>
@@ -18270,7 +18276,7 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
         {!rows.length ? <div style={{ color: W.soft, fontSize: 13 }}>None yet.</div> : rows.map(r => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
             <div style={{ width: 40, height: 54, borderRadius: 7, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{r.poster_url ? <img src={r.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎬</div>}</div>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in movie" : ""}{r.published ? "" : " · hidden"}</div>{onLinkEvent && <label style={{ display: "block", fontSize: 11, color: W.teal, fontWeight: 800, marginTop: 8 }}>🎟 Book this party button<select aria-label={"Booking party for " + r.title} value={events.some(e => String(e.id) === String(eventLinks[r.id])) ? eventLinks[r.id] : ""} onChange={e => onLinkEvent(r.id, e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, border: `1px solid ${W.line}`, borderRadius: 8, padding: 8, fontSize: 12 }}><option value="">Choose party (button hidden)</option>{events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>}</div>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in movie" : ""}{r.published ? "" : " · hidden"}</div>{onLinkEvent && <label style={{ display: "block", fontSize: 11, color: W.teal, fontWeight: 800, marginTop: 8 }}>🎉 Reel bottom banner<select aria-label={"Booking party for " + r.title} value={eventLinks[r.id] === "coming_soon" ? "coming_soon" : events.some(e => String(e.id) === String(eventLinks[r.id])) ? eventLinks[r.id] : ""} onChange={e => onLinkEvent(r.id, e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, border: `1px solid ${W.line}`, borderRadius: 8, padding: 8, fontSize: 12 }}><option value="">No banner</option><option value="coming_soon">✨ Coming Soon</option>{events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>}</div>
             <button onClick={() => editShort(r)} style={{ ...btn("#EEF1F3", W.ink), padding: "7px 11px", fontSize: 12.5 }}>Edit</button>
             <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 11px", fontSize: 12.5 }}>Del</button>
           </div>
