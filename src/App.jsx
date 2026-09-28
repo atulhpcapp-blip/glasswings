@@ -2897,22 +2897,34 @@ function RestrictedGate({ user, profile, reviewFlag, reload }) {
   const [phone, setPhone] = useState("");
   const [uploading, setUploading] = useState(false), [busy, setBusy] = useState(false), [err, setErr] = useState("");
   const fileRef = useRef(null);
+  const [savedMessage, setSavedMessage] = useState("");
   useEffect(() => { supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data?.phone) setPhone(data.phone); }); }, [user.id]);
   const pick = async (e) => { const f = e.target.files?.[0]; if (!f) return; setErr(""); setUploading(true); try { setAvatar(await uploadPhoto(user.id, f)); } catch (x) { setErr("Photo upload failed: " + (x.message || x)); } setUploading(false); };
   const phoneDigits = (phone || "").replace(/\D/g, "");
   const bothReady = !!avatar && phoneDigits.length >= 10;
   const save = async () => {
-    setErr("");
+    if (busy) return;
+    setErr(""); setSavedMessage("");
     if (!avatar) return setErr("Please add a clear profile photo.");
     if (phoneDigits.length < 10) return setErr("Please enter a valid mobile number.");
     setBusy(true);
+    const controller = new AbortController();
+    let timer;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error("The update took too long. Please check your connection and try again.")); }, 20000); });
     try {
-      await supabase.from("member_phone").upsert({ user_id: user.id, phone });
-      const { error } = await supabase.from("profiles").update({ avatar_url: avatar }).eq("id", user.id);
-      if (error) throw error;
+      await Promise.race([(async () => {
+        const { error: phoneError } = await supabase.from("member_phone").upsert({ user_id: user.id, phone: phone.trim() }).abortSignal(controller.signal);
+        if (phoneError) throw phoneError;
+        const { error: photoError } = await supabase.from("profiles").update({ avatar_url: avatar }).eq("id", user.id).abortSignal(controller.signal);
+        if (photoError) throw photoError;
+      })(), timeout]);
+      clearTimeout(timer);
       try { localStorage.removeItem("gw_lite"); } catch {}
-      reload();
-    } catch (x) { setErr(x.message || String(x)); setBusy(false); }
+      setSavedMessage("Your photo and phone number have been saved. If this screen remains, your account is still awaiting review by the admin team.");
+      Promise.resolve().then(() => reload()).catch(() => setErr("Your details were saved, but the account status could not refresh. Please reload the page."));
+    } catch (x) {
+      setErr(x.message || "Could not save your details. Please try again.");
+    } finally { clearTimeout(timer); setBusy(false); }
   };
   return (
     <div style={{ minHeight: "calc(100vh - 120px)", background: "linear-gradient(160deg,#1a1030,#3a1846)", padding: "26px 20px 60px" }}>
@@ -2924,7 +2936,7 @@ function RestrictedGate({ user, profile, reviewFlag, reload }) {
         <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", borderRadius: 12, padding: "13px 15px", margin: "16px 0", color: "#8a2a20", fontSize: 13.5, lineHeight: 1.6 }}>
           Glasswings is a <b>real community with real people</b> — genuine faces and reachable numbers keep everyone safe and the vibe trusted. Your {reviewFlag === "phone" ? "phone number" : reviewFlag === "photo" ? "profile photo" : "profile"} was flagged for review.
           <br /><br />
-          Until you update <b>both your photo and phone number</b>, access is restricted — you can still browse Events and buy tickets, but everything else is locked. <b>Unverified accounts are deactivated after 2 weeks.</b>
+          Until you update <b>both your photo and phone number</b>, access is restricted — you can still browse Events, buy tickets, and open Profile to edit your details or log out. <b>Unverified accounts are deactivated after 2 weeks.</b>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 16 }}>
           <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", borderRadius: "50%", border: `3px solid ${avatar ? W.teal : "#C0392B"}` }}>
@@ -2937,9 +2949,10 @@ function RestrictedGate({ user, profile, reviewFlag, reload }) {
         </div>
         <div style={{ fontSize: 12.5, color: W.soft, fontWeight: 700, marginBottom: 5 }}>Mobile number</div>
         <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^\d+ ]/g, ""))} inputMode="tel" placeholder="10-digit mobile number" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${phoneDigits.length >= 10 ? W.teal : "#E5B4AE"}`, borderRadius: 10, padding: "12px 14px", fontSize: 15, outline: "none" }} />
-        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 5 }}>Your number stays private — only the organiser can see it.</div>
+        <div style={{ background: "#E7F8F0", border: "2px solid #008069", borderRadius: 10, padding: "12px 14px", color: "#075E4B", fontSize: 13.5, lineHeight: 1.55, marginTop: 10 }}><b>🔒 Your phone number is private.</b><br />It is not visible to other members. Only authorised admin team members can access it.</div>
+        {savedMessage && <div role="status" style={{ background: "#E7F8F0", color: "#075E4B", padding: 12, borderRadius: 10, marginTop: 12, fontSize: 13 }}>{savedMessage}</div>}
         {err && <div style={{ color: "#C0392B", fontSize: 13, marginTop: 12, textAlign: "center" }}>{err}</div>}
-        <button onClick={save} disabled={busy || uploading || !bothReady} style={{ width: "100%", marginTop: 18, padding: 15, borderRadius: 12, border: "none", cursor: bothReady ? "pointer" : "not-allowed", background: bothReady ? "linear-gradient(95deg,#008069,#04B08F)" : "#C9D2CF", color: "#fff", fontWeight: 900, fontSize: 15.5, opacity: busy ? .6 : 1 }}>{busy ? "Updating…" : "Update & unlock my account"}</button>
+        <button onClick={save} disabled={busy || uploading || !bothReady} style={{ width: "100%", marginTop: 18, padding: 15, borderRadius: 12, border: "none", cursor: bothReady ? "pointer" : "not-allowed", background: bothReady ? "linear-gradient(95deg,#008069,#04B08F)" : "#C9D2CF", color: "#fff", fontWeight: 900, fontSize: 15.5, opacity: busy ? .6 : 1 }}>{busy ? "Updating…" : "Save details & check status"}</button>
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, textAlign: "center", lineHeight: 1.5 }}>Both a photo and a phone number are required to unlock. Need help? Reach the Glasswings team on WhatsApp.</div>
       </div>
     </div>
@@ -3784,7 +3797,7 @@ function Main({ user }) {
       if (e) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     }
   }
-  if (chatEl && !wide) return reviewFlag ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => { load(); refreshReview(); }} /> : needPhoto ? <PhotoGate user={user} profile={profile} reload={load} onBack={() => setOpen(null)} /> : chatEl;
+  if (chatEl && !wide) return reviewFlag ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => Promise.all([load(), refreshReview()])} /> : needPhoto ? <PhotoGate user={user} profile={profile} reload={load} onBack={() => setOpen(null)} /> : chatEl;
 
   const myChats = [
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
@@ -3825,7 +3838,7 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
-      {reviewFlag && tab !== "events" ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => { load(); refreshReview(); }} /> : (<>
+      {reviewFlag && !["events", "profile"].includes(tab) ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => Promise.all([load(), refreshReview()])} /> : (<>
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
@@ -3915,9 +3928,9 @@ function Main({ user }) {
 
   return (
     <>
-      {reviewFlag && (
+      {reviewFlag && tab !== "profile" && (
         <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, zIndex: 1400, background: "linear-gradient(95deg,#6D28D9,#9333EA)", color: "#fff", padding: "10px 14px", fontSize: 12.5, lineHeight: 1.45, boxShadow: "0 2px 10px rgba(109,40,217,.4)" }}>
-          <b>🔒 Access restricted.</b> Update your photo &amp; phone to unlock everything — you can still buy tickets on Events. Unverified accounts are deactivated in 2 weeks.
+          <b>🔒 Access restricted.</b> Update your photo &amp; phone to unlock everything — Events and Profile remain available, including profile editing and logout. Unverified accounts are deactivated in 2 weeks.
         </div>
       )}
       {notice && <Notice text={notice} onClose={() => setNotice("")} />}
@@ -16733,6 +16746,7 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
           </div>
         </div>
         {inp("Phone number (private — staff only)", phone, setPhone, "tel")}
+        <div style={{ background: "#E7F8F0", border: "2px solid #008069", borderRadius: 10, padding: 12, color: "#075E4B", fontSize: 13, lineHeight: 1.5 }}><b>🔒 Your phone number is private.</b> It is not visible to other members. Only authorised admin team members can access it.</div>
         {inp("Age", age, setAge, "number")}
         {inp("Area / locality", area, setArea)}
         {inp("City", city, setCity)}
@@ -17982,7 +17996,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
       </div>
       {isStaff && mode === "shorts" && <div style={{ padding: "10px 14px", background: "#E6FFF5", borderBottom: "2px solid #008069", position: "relative", zIndex: 7 }}>
         <button onClick={() => setAdminOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", border: 0, borderRadius: 10, padding: "13px 14px", background: "#008069", color: "#fff", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
-          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R8</span>
+          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R9</span>
         </button>
       </div>}
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
