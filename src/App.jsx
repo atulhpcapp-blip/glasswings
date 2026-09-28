@@ -353,7 +353,7 @@ function AppRoot() {
   const [session, setSession] = useState(null);
   const [recovery, setRecovery] = useState(false);
   useEffect(() => {
-    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const gm = sp.get("game"); if (gm) localStorage.setItem("gw_open_game", gm.trim()); const spk = sp.get("spark"); if (spk) localStorage.setItem("gw_open_spark", spk.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); } catch {}
+    try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const gm = sp.get("game"); if (gm) localStorage.setItem("gw_open_game", gm.trim()); const spk = sp.get("spark"); if (spk) localStorage.setItem("gw_open_spark", spk.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); const reel = sp.get("reel"); if (reel) localStorage.setItem("gw_open_reel", reel.trim()); } catch {}
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -3020,9 +3020,10 @@ function Main({ user }) {
     window.addEventListener("focus", loadBadge);
     return () => { window.removeEventListener("gwmeet", loadBadge); window.removeEventListener("focus", loadBadge); };
   }, []);
-  useEffect(() => { try { const ev = localStorage.getItem("gw_event"); if (ev) { localStorage.removeItem("gw_event"); setTab("events"); setEventPage(ev); } } catch {} }, []);
+  useEffect(() => { try { const ev = localStorage.getItem("gw_event"); const reel = new URLSearchParams(window.location.search).get("reel") || localStorage.getItem("gw_open_reel"); if (ev && !reel) { localStorage.removeItem("gw_event"); setTab("events"); setEventPage(ev); } } catch {} }, []);
   useEffect(() => { loadRazorpay(); }, []);
   const [tab, setTab] = useState(() => {
+    try { if (new URLSearchParams(window.location.search).get("reel") || localStorage.getItem("gw_open_reel")) return "shorts"; } catch {}
     try { if (localStorage.getItem("gw_open_explore") === "1") { localStorage.removeItem("gw_open_explore"); return "events"; } } catch {}
     return "meet";
   });
@@ -3832,7 +3833,7 @@ function Main({ user }) {
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "door" && isStaff && <DoorCheckin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} ticketTypes={ticketTypes} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} onUpdateEvent={updateEvent} />}
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
-      {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" />}
+      {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" events={events} onOpenEvent={openEvent} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><MeetVerifyBanner user={user} profile={profile} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "profile" && <div style={{ padding: "14px 14px 0", maxWidth: 640, margin: "0 auto" }}><VerificationPanel user={user} profile={profile} /></div>}
@@ -17722,12 +17723,97 @@ function SeriesPlayer({ series, user, isStaff, credits, onCredits, onBack }) {
     </div>
   );
 }
-function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
+function SmoothReelPlayer({ v, active, muted, setMuted, onLike, onViewed, resumeAt = 0, onProgress }) {
+  const ref = useRef(null), tap = useRef(null), hold = useRef(null), wasPlaying = useRef(false), held = useRef(false);
+  const viewed = useRef(false), viewCallback = useRef(onViewed), activeRef = useRef(active);
+  const [paused, setPaused] = useState(true), [loading, setLoading] = useState(true), [error, setError] = useState(false);
+  const [progress, setProgress] = useState(0), [duration, setDuration] = useState(0), [heart, setHeart] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [soundBlocked, setSoundBlocked] = useState(false);
+  const [quality, setQuality] = useState(0);
+  const progressCallback = useRef(onProgress); progressCallback.current = onProgress;
+  viewCallback.current = onViewed; activeRef.current = active;
+  const play = () => { const video = ref.current; if (!video || !activeRef.current) return; video.muted = muted; video.volume = 1; video.play().then(() => setSoundBlocked(false)).catch(err => { if (err.name === "NotAllowedError") setSoundBlocked(true); setPaused(true); setLoading(false); }); };
+  useEffect(() => {
+    const video = ref.current; if (!video) return;
+    let hls, cancelled = false;
+    setError(false); setLoading(true);
+    (async () => {
+      if (/\.m3u8(\?|#|$)/i.test(v.video_url) && !video.canPlayType("application/vnd.apple.mpegurl")) {
+        await loadHls(); if (cancelled) return;
+        if (window.Hls?.isSupported()) {
+          hls = new window.Hls({ maxBufferLength: 15, backBufferLength: 5 });
+          hls.loadSource(v.video_url); hls.attachMedia(video);
+          hls.on(window.Hls.Events.ERROR, (_, data) => { if (data.fatal) { setError(true); setLoading(false); } });
+        } else video.src = v.video_url;
+      } else video.src = v.video_url;
+    })();
+    return () => { cancelled = true; progressCallback.current?.(video.currentTime); hls?.destroy(); video.pause(); video.removeAttribute("src"); video.load(); };
+  }, [v.video_url, retry]);
+  useEffect(() => {
+    if (active) play(); else { ref.current?.pause(); clearTimeout(tap.current); clearTimeout(hold.current); }
+  }, [active, muted, retry]);
+  useEffect(() => {
+    const visibility = () => { if (document.hidden) ref.current?.pause(); };
+    document.addEventListener("visibilitychange", visibility);
+    return () => { document.removeEventListener("visibilitychange", visibility); clearTimeout(tap.current); clearTimeout(hold.current); };
+  }, []);
+  const click = () => {
+    if (held.current) { held.current = false; return; }
+    if (tap.current) {
+      clearTimeout(tap.current); tap.current = null;
+      onLike(); setHeart(true); setTimeout(() => setHeart(false), 700);
+      return;
+    }
+    const wasPaused = ref.current?.paused;
+    // Start audible playback within the actual tap, not a delayed timer.
+    if (wasPaused) play();
+    tap.current = setTimeout(() => { tap.current = null; if (!wasPaused) ref.current?.pause(); }, 300);
+  };
+  const toggleSound = () => {
+    const nextMuted = !muted;
+    if (ref.current) { ref.current.muted = nextMuted; ref.current.volume = 1; if (!nextMuted) ref.current.play().then(() => setSoundBlocked(false)).catch(() => setSoundBlocked(true)); }
+    setMuted(nextMuted);
+  };
+  if (!_isDirectVideo(v.video_url)) return <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={active ? new Set([v.id]) : new Set()} setYtOn={() => {}} />;
+  return <>
+    <style>{`@keyframes gwReelHeart {0%{transform:scale(.3);opacity:0}35%{transform:scale(1.2);opacity:1}70%{transform:scale(1);opacity:1}100%{transform:scale(1.1);opacity:0}}`}</style>
+    <video ref={ref} poster={v.poster_url || undefined} loop muted={muted} playsInline preload="auto"
+      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+      onCanPlay={() => { setLoading(false); if (active) play(); }} onWaiting={() => setLoading(true)}
+      onError={() => { setError(true); setLoading(false); }}
+      onPlaying={() => { setLoading(false); setPaused(false); }} onPause={() => setPaused(true)}
+      onLoadedMetadata={e => { const video = e.currentTarget; const length = Number.isFinite(video.duration) ? video.duration : 0; setDuration(length); if (resumeAt > 0 && resumeAt < length - .3) { video.currentTime = resumeAt; setProgress(resumeAt); } }}
+      onTimeUpdate={e => { const video = e.currentTarget; setProgress(video.currentTime); setQuality(Math.min(video.videoHeight || 0, video.videoWidth || 0)); progressCallback.current?.(video.currentTime); if (active && !video.paused && video.currentTime >= 1 && !viewed.current) { viewed.current = true; viewCallback.current(); } }}
+      onClick={click} onPointerDown={() => { held.current = false; wasPlaying.current = !ref.current?.paused; hold.current = setTimeout(() => { held.current = true; ref.current?.pause(); }, 350); }}
+      onPointerMove={() => clearTimeout(hold.current)} onPointerUp={() => { clearTimeout(hold.current); if (held.current && wasPlaying.current) play(); }} onPointerCancel={() => { clearTimeout(hold.current); if (held.current && wasPlaying.current) play(); }} />
+    <button onClick={toggleSound} aria-label={muted ? "Turn sound on" : "Mute"} style={{ position: "absolute", top: 14, right: 14, zIndex: 6, border: 0, borderRadius: 30, background: "rgba(0,0,0,.55)", color: "white", padding: 10, fontSize: 20 }}>{muted ? "🔇" : "🔊"}</button>
+    {active && paused && !error && <button onClick={click} style={{ position: "absolute", left: "50%", top: "45%", transform: "translate(-50%,-50%)", border: 0, borderRadius: 30, padding: "14px 20px", color: "white", background: "rgba(0,0,0,.6)" }}>{soundBlocked ? "🔊 Tap to enable sound" : "▶ Tap to play"}</button>}
+    {quality > 0 && <span style={{ position: "absolute", right: 12, top: 66, color: "#fff", background: "rgba(0,0,0,.5)", borderRadius: 8, padding: "3px 7px", fontSize: 10, pointerEvents: "none" }}>{/\.m3u8(\?|#|$)/i.test(v.video_url) ? "Auto · " : ""}{quality}p</span>}
+    {active && loading && !paused && <div style={{ position: "absolute", top: "45%", color: "white", pointerEvents: "none" }}>Loading…</div>}
+    {error && <button onClick={() => setRetry(n => n + 1)} style={{ position: "absolute", top: "45%", padding: 16, borderRadius: 12 }}>Retry video</button>}
+    {heart && <div style={{ position: "absolute", top: "35%", fontSize: 95, animation: "gwReelHeart .7s ease both", color: "#ff4778", pointerEvents: "none", filter: "drop-shadow(0 3px 12px #000)" }}>♥</div>}
+    <input aria-label="Video progress" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(progress, duration || 1)} onChange={e => { if (ref.current && duration) { ref.current.currentTime = Number(e.target.value); setProgress(Number(e.target.value)); } }} style={{ position: "absolute", bottom: 0, left: "2%", width: "96%", margin: 0, zIndex: 7, accentColor: "#fff" }} />
+  </>;
+}
+
+function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], onOpenEvent }) {
   const [vids, setVids] = useState(null);
   const [credits, setCredits] = useState(0);
   const [busy, setBusy] = useState(null);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const playbackPositions = useRef({});
+  const [eventLinks, setEventLinks] = useState({});
+  useEffect(() => { supabase.from("reel_event_links").select("video_id,event_id").then(({ data }) => { const map = {}; (data || []).forEach(r => { map[r.video_id] = r.event_id; }); setEventLinks(map); }); }, []);
+  const linkEvent = async (videoId, eventId) => {
+    const result = eventId ? await supabase.from("reel_event_links").upsert({ video_id: String(videoId), event_id: eventId }, { onConflict: "video_id" }) : await supabase.from("reel_event_links").delete().eq("video_id", String(videoId));
+    if (result.error) return window.alert("Could not save event link: " + result.error.message);
+    setEventLinks(old => ({ ...old, [videoId]: eventId }));
+  };
   const [adminOpen, setAdminOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const canSeeAnalytics = [profile?.role, ...(Array.isArray(profile?.roles) ? profile.roles : [])].some(r => ["superadmin", "admin", "subadmin", "organiser", "promoter"].includes(r));
   const [ytOn, setYtOn] = useState(() => new Set());
   const [modeState, setMode] = useState("series");
   const mode = only || modeState;
@@ -17740,29 +17826,26 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
   const seenReels = useRef(new Set());
   const engagementRef = useRef({});
   const engagementBusy = useRef(new Set());
+  const pendingReelLikes = useRef(new Map());
   useEffect(() => { engagementRef.current = engagement; }, [engagement]);
   useEffect(() => {
     if (!vids?.length || mode !== "shorts") return;
     let cancelled = false;
     const ids = vids.map(v => String(v.id));
-    supabase.from("short_engagement").select("video_id,user_id,liked,views").in("video_id", ids).then(({ data, error }) => {
+    supabase.rpc("short_engagement_counts", { p_video_ids: ids }).then(({ data, error }) => {
       if (cancelled) return;
       if (error) { setEngagementError(true); return; }
       const counts = {};
       ids.forEach(id => { counts[id] = { likes: 0, views: 0, liked: false }; });
-      (data || []).forEach(row => {
-        const c = counts[row.video_id]; if (!c) return;
-        c.likes += row.liked ? 1 : 0;
-        c.views += Number(row.views) || 0;
-        if (row.user_id === user.id) c.liked = !!row.liked;
-      });
+      (data || []).forEach(row => { counts[row.video_id] = { likes: Number(row.likes) || 0, views: Number(row.views) || 0, shares: Number(row.shares) || 0, liked: !!row.liked_by_me }; });
       setEngagement(counts);
     });
     return () => { cancelled = true; };
   }, [vids, mode, user.id]);
   const saveEngagement = async (v, kind) => {
     const id = String(v.id);
-    if (engagementError || engagementBusy.current.has(id)) return;
+    if (engagementError) return;
+    if (engagementBusy.current.has(id)) { if (kind === "like") pendingReelLikes.current.set(id, v); return; }
     if (kind === "view" && seenReels.current.has(id)) return;
     engagementBusy.current.add(id);
     if (kind === "view") seenReels.current.add(id);
@@ -17770,13 +17853,16 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
     const next = kind === "view"
       ? { ...previous, views: previous.views + 1 }
       : { ...previous, liked: !previous.liked, likes: Math.max(0, previous.likes + (previous.liked ? -1 : 1)) };
+    engagementRef.current = { ...engagementRef.current, [id]: next };
     setEngagement(s => ({ ...s, [id]: next }));
     const { data: existing, error: readError } = await supabase.from("short_engagement")
-      .select("liked,views").eq("video_id", id).eq("user_id", user.id).maybeSingle();
+      .select("liked,views,first_viewed_at,liked_at").eq("video_id", id).eq("user_id", user.id).maybeSingle();
     const { error } = readError ? { error: readError } : await supabase.from("short_engagement").upsert({
       video_id: id, user_id: user.id,
       liked: kind === "like" ? next.liked : !!existing?.liked,
-      views: (Number(existing?.views) || 0) + (kind === "view" ? 1 : 0)
+      views: (Number(existing?.views) || 0) + (kind === "view" ? 1 : 0),
+      first_viewed_at: kind === "view" ? (existing?.first_viewed_at || new Date().toISOString()) : (existing?.first_viewed_at || null),
+      liked_at: kind === "like" ? (next.liked ? new Date().toISOString() : null) : (existing?.liked_at || null)
     }, { onConflict: "video_id,user_id" });
     if (error) {
       setEngagement(s => ({ ...s, [id]: previous }));
@@ -17784,6 +17870,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
       setEngagementError(true);
     }
     engagementBusy.current.delete(id);
+    if (pendingReelLikes.current.has(id)) { const pending = pendingReelLikes.current.get(id); pendingReelLikes.current.delete(id); if (!error) saveEngagement(pending, "like"); }
   };
   const shareReel = async v => {
     const url = new URL(window.location.href);
@@ -17793,72 +17880,84 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
       if (navigator.share) await navigator.share({ title: v.title, text: `Watch this Glasswings reel: ${v.title}`, url: link });
       else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(link); window.alert("Reel link copied"); }
       else window.open(`https://wa.me/?text=${encodeURIComponent(link)}`, "_blank", "noopener,noreferrer");
+      const { error } = await supabase.from("short_shares").insert({ video_id: String(v.id), user_id: user.id });
+      if (!error) setEngagement(s => ({ ...s, [String(v.id)]: { ...(s[String(v.id)] || {}), shares: (s[String(v.id)]?.shares || 0) + 1 } }));
     } catch (err) { if (err?.name !== "AbortError") window.alert("Could not share this reel."); }
   };
   useEffect(() => {
     if (mode !== "shorts" || !vids?.length || !wrapRef.current) return;
     const el = wrapRef.current;
-    let startY = null, lastWheel = 0, timer;
-    const go = direction => {
-      if (movingReel.current) return;
+    let startY = null, startTime = 0, origin = 0, frame = 0, wheelTimer, wheelUsed = false;
+    const settle = direction => {
       const next = Math.max(0, Math.min(vids.length - 1, currentReel.current + direction));
-      if (next === currentReel.current) return;
+      const from = el.scrollTop, to = next * el.clientHeight, started = performance.now();
       movingReel.current = true;
-      currentReel.current = next;
-      el.scrollTo({ top: next * el.clientHeight, behavior: "smooth" });
-      clearTimeout(timer);
-      timer = setTimeout(() => { el.scrollTop = next * el.clientHeight; movingReel.current = false; }, 480);
+      const animate = now => {
+        const t = Math.min(1, (now - started) / 290);
+        el.scrollTop = from + (to - from) * (1 - Math.pow(1 - t, 3));
+        if (t < 1) frame = requestAnimationFrame(animate);
+        else { currentReel.current = next; setActiveIndex(next); movingReel.current = false; }
+      };
+      cancelAnimationFrame(frame); frame = requestAnimationFrame(animate);
     };
-    const onStart = e => { startY = e.touches[0]?.clientY ?? null; };
-    const onMove = e => { if (startY !== null && Math.abs(e.touches[0].clientY - startY) > 8) e.preventDefault(); };
+    const onStart = e => {
+      if (movingReel.current || e.touches.length !== 1 || e.target.closest("button,input,select,a")) return;
+      delete el.dataset.dragged; startY = e.touches[0].clientY; startTime = performance.now(); origin = currentReel.current * el.clientHeight;
+    };
+    const onMove = e => {
+      if (startY === null) return;
+      const delta = startY - e.touches[0].clientY;
+      if (Math.abs(delta) > 7) { e.preventDefault(); el.dataset.dragged = "1"; }
+      el.scrollTop = origin + Math.max(-el.clientHeight, Math.min(el.clientHeight, delta));
+    };
     const onEnd = e => {
       if (startY === null) return;
       const delta = startY - (e.changedTouches[0]?.clientY ?? startY);
+      const velocity = Math.abs(delta) / Math.max(1, performance.now() - startTime);
       startY = null;
-      if (Math.abs(delta) > 35) go(delta > 0 ? 1 : -1);
+      if (Math.abs(delta) < 8) return;
+      settle(Math.abs(delta) > el.clientHeight * .16 || (Math.abs(delta) > 35 && velocity > .35) ? (delta > 0 ? 1 : -1) : 0);
     };
+    const onCancel = () => { startY = null; settle(0); };
+    const onClick = e => { if (el.dataset.dragged === "1") { e.preventDefault(); e.stopPropagation(); delete el.dataset.dragged; } };
     const onWheel = e => {
-      e.preventDefault();
-      if (Math.abs(e.deltaY) < 10 || Date.now() - lastWheel < 520) return;
-      lastWheel = Date.now();
-      go(e.deltaY > 0 ? 1 : -1);
+      if (e.target.closest("input,select")) return;
+      e.preventDefault(); clearTimeout(wheelTimer); wheelTimer = setTimeout(() => { wheelUsed = false; }, 180);
+      if (wheelUsed || movingReel.current || Math.abs(e.deltaY) < 10) return;
+      wheelUsed = true; settle(e.deltaY > 0 ? 1 : -1);
     };
+    const onKey = e => { if (e.target.closest("input,select,button")) return; if (["ArrowDown","ArrowUp"].includes(e.key)) { e.preventDefault(); if (!movingReel.current) settle(e.key === "ArrowDown" ? 1 : -1); } };
     el.addEventListener("touchstart", onStart, { passive: true });
     el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchend", onEnd); el.addEventListener("touchcancel", onCancel);
+    el.addEventListener("click", onClick, true); el.addEventListener("keydown", onKey);
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
-      clearTimeout(timer); movingReel.current = false;
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
-      el.removeEventListener("wheel", onWheel);
+      cancelAnimationFrame(frame); clearTimeout(wheelTimer); movingReel.current = false;
+      el.removeEventListener("touchstart", onStart); el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd); el.removeEventListener("touchcancel", onCancel);
+      el.removeEventListener("click", onClick, true); el.removeEventListener("keydown", onKey); el.removeEventListener("wheel", onWheel);
     };
   }, [vids, mode]);
   useEffect(() => {
     if (mode !== "shorts" || !vids?.length) return;
-    const reelId = new URLSearchParams(window.location.search).get("reel");
-    const index = Math.max(0, vids.findIndex(v => String(v.id) === reelId));
-    currentReel.current = index;
-    if (wrapRef.current) wrapRef.current.scrollTop = index * wrapRef.current.clientHeight;
+    const params = new URLSearchParams(window.location.search);
+    const reelId = params.get("reel") || localStorage.getItem("gw_open_reel");
+    const index = reelId ? vids.findIndex(v => String(v.id) === reelId) : Math.min(currentReel.current, vids.length - 1);
+    if (index < 0) return;
+    currentReel.current = index; setActiveIndex(index);
+    if (wrapRef.current) {
+      wrapRef.current.scrollTop = index * wrapRef.current.clientHeight;
+      requestAnimationFrame(() => { if (wrapRef.current) wrapRef.current.scrollTop = index * wrapRef.current.clientHeight; });
+    }
+    if (reelId) {
+      localStorage.removeItem("gw_open_reel");
+      if (params.has("reel")) { params.delete("reel"); const query = params.toString(); history.replaceState(null, "", window.location.pathname + (query ? "?" + query : "") + window.location.hash); }
+    }
   }, [vids, mode]);
   const load = () => supabase.rpc("shorts_list").then(({ data }) => setVids(data || []));
   const loadCredits = () => supabase.from("profiles").select("game_credits").eq("id", user.id).maybeSingle().then(({ data }) => setCredits(Number(data?.game_credits) || 0));
   useEffect(() => { load(); loadCredits(); }, []);
-  useEffect(() => {
-    if (!vids || !vids.length) return;
-    const io = new IntersectionObserver(ents => ents.forEach(e => {
-      const v = e.target.querySelector("video");
-      if (e.isIntersecting && e.intersectionRatio > 0.55) {
-        const reel = vids.find(item => String(item.id) === e.target.dataset.reelId);
-        if (reel && !reel.seg_locked && (!reel.is_paid || reel.unlocked) && reel.video_url) saveEngagement(reel, "view");
-        v?.play().catch(() => {});
-      } else { v?.pause(); }
-    }), { threshold: [0, 0.55, 1] });
-    const els = wrapRef.current ? wrapRef.current.querySelectorAll("[data-slide]") : [];
-    els.forEach(el => io.observe(el));
-    return () => io.disconnect();
-  }, [vids, muted]);
   const unlockCredits = async (v) => {
     setBusy(v.id);
     const { data, error } = await supabase.rpc("unlock_video_credits", { p_video: v.id });
@@ -17877,14 +17976,20 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
       <div style={{ position: "sticky", top: 0, zIndex: 6, display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: "linear-gradient(120deg,#0b0b12,#1a1030)", color: "#fff" }}>
         {only ? <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{only === "series" ? "🎬 Movies" : "⚡ Reels"}</div> : <>{tab("series", "🎬 Movies")}{tab("shorts", "⚡ Reels")}<span style={{ flex: 1 }} /></>}
         <span style={{ fontSize: 12.5, fontWeight: 700, opacity: .9 }}>🪙 {credits}</span>
-        {isStaff && <button onClick={() => setAdminOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>＋ Add</button>}
+        {canSeeAnalytics && mode === "shorts" && <button onClick={() => setAnalyticsOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 10px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>📊 Analytics</button>}
+        {isStaff && mode !== "shorts" && <button onClick={() => setAdminOpen(true)} style={{ background: "rgba(255,255,255,.2)", color: "#fff", border: "none", borderRadius: 9, padding: "7px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Manage reels</button>}
       </div>
+      {isStaff && mode === "shorts" && <div style={{ padding: "10px 14px", background: "#E6FFF5", borderBottom: "2px solid #008069", position: "relative", zIndex: 7 }}>
+        <button onClick={() => setAdminOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", border: 0, borderRadius: 10, padding: "13px 14px", background: "#008069", color: "#fff", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
+          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R7</span>
+        </button>
+      </div>}
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
         : vids === null ? <div style={{ color: "#fff", textAlign: "center", padding: 40 }}>Loading…</div>
-        : vids.length === 0 ? <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No reels yet.{isStaff ? " Tap ＋ Add to upload the first one." : " Check back soon 🎬"}</div>
+        : vids.length === 0 ? <div style={{ color: "#bbb", textAlign: "center", padding: 40, fontSize: 14 }}>No reels yet.{isStaff ? " Tap Manage reels to upload the first one." : " Check back soon 🎬"}</div>
         : (
-          <div ref={wrapRef} style={{ height: "calc(100dvh - 108px)", overflowY: "hidden", scrollSnapType: "y mandatory", maxWidth: 460, margin: "0 auto", overscrollBehavior: "contain", touchAction: "pan-x" }}>
-            {vids.map(v => {
+          <div ref={wrapRef} tabIndex={0} aria-label="Reels. Swipe or use arrow keys." style={{ height: isStaff ? "calc(100svh - 178px)" : "calc(100svh - 108px)", overflowY: "hidden", maxWidth: 460, margin: "0 auto", overscrollBehavior: "contain", touchAction: "pan-x" }}>
+            {vids.map((v, reelIndex) => {
               const segLocked = !!v.seg_locked;
               const locked = v.is_paid && !v.unlocked;
               return (
@@ -17917,12 +18022,17 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
                     </>
                   ) : (
                     <>
-                      <ShortMedia v={v} muted={muted} setMuted={setMuted} ytOn={ytOn} setYtOn={setYtOn} />
+                      {Math.abs(reelIndex - activeIndex) <= 1 && <SmoothReelPlayer v={v} active={reelIndex === activeIndex && !adminOpen && !analyticsOpen} muted={muted} setMuted={setMuted} onLike={() => { if (!engagementRef.current[String(v.id)]?.liked) saveEngagement(v, "like"); }} onViewed={() => saveEngagement(v, "view")} resumeAt={playbackPositions.current[v.id] || 0} onProgress={time => { if (Number.isFinite(time)) playbackPositions.current[v.id] = time; }} />}
+                      <div style={{ position: "absolute", left: 12, top: 12, zIndex: 5, maxWidth: "72%" }}>
+                        {eventLinks[v.id] && events.some(e => String(e.id) === String(eventLinks[v.id])) && <button onClick={() => { wrapRef.current?.querySelectorAll("video").forEach(video => video.pause()); onOpenEvent?.(eventLinks[v.id]); }} style={{ ...btn(W.teal, "#fff"), padding: "9px 12px", fontSize: 13 }}>🎟 Book this party</button>}
+                        {canSeeAnalytics && <select aria-label="Link reel to event" value={eventLinks[v.id] || ""} onChange={e => linkEvent(v.id, e.target.value)} style={{ display: "block", maxWidth: "100%", marginTop: 6, padding: 6, borderRadius: 8, fontSize: 11 }}><option value="">Link a party…</option>{events.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select>}
+                      </div>
                       <div style={{ position: "absolute", right: 12, bottom: 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
                         <button aria-label={engagement[String(v.id)]?.liked ? "Unlike reel" : "Like reel"} onClick={() => saveEngagement(v, "like")} style={{ border: 0, background: "transparent", color: engagement[String(v.id)]?.liked ? "#ff4d76" : "#fff", cursor: "pointer", fontSize: 29, textShadow: "0 2px 5px #000" }}>♥</button>
                         <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.likes ?? 0}</span>
                         <button aria-label="Share reel" onClick={() => shareReel(v)} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer", filter: "drop-shadow(0 2px 3px #000)" }}><Share2 size={29} /></button>
                         <span style={{ fontSize: 12, marginTop: -13 }}>Share</span>
+                        <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.shares ?? 0}</span>
                         <span title="Views" style={{ fontSize: 12, textShadow: "0 2px 5px #000" }}>👁 {engagement[String(v.id)]?.views ?? 0}</span>
                       </div>
                       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
@@ -17936,11 +18046,60 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only }) {
             })}
           </div>
         )}
-      {adminOpen && <ShortsAdmin onClose={() => setAdminOpen(false)} onChanged={load} meId={user.id} />}
+      {adminOpen && <ShortsAdmin onClose={() => setAdminOpen(false)} onChanged={load} meId={user.id} events={events} eventLinks={eventLinks} onLinkEvent={canSeeAnalytics ? linkEvent : null} />}
+      {analyticsOpen && <ShortsAnalytics vids={vids || []} onClose={() => setAnalyticsOpen(false)} />}
     </div>
   );
 }
-function ShortsAdmin({ onClose, onChanged, meId }) {
+function ShortsAnalytics({ vids, onClose }) {
+  const [selected, setSelected] = useState("");
+  const [kind, setKind] = useState("views");
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  useEffect(() => { if (vids.length && !selected) setSelected(String(vids[0].id)); }, [vids, selected]);
+  useEffect(() => {
+    if (!selected) return;
+    let active = true;
+    setRows(null); setError("");
+    supabase.rpc("short_engagement_analytics", { p_video_id: selected, p_kind: kind }).then(({ data, error: err }) => {
+      if (!active) return;
+      if (err) { setError(err.message || "Analytics unavailable"); setRows([]); }
+      else setRows(data || []);
+    });
+    return () => { active = false; };
+  }, [selected, kind]);
+  const filtered = (rows || []).filter(r => (r.full_name || "").toLowerCase().includes(search.toLowerCase()));
+  const dateText = value => value ? new Date(value).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 210, background: "rgba(0,0,0,.72)", display: "flex", justifyContent: "center", alignItems: "flex-end" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 500, height: "min(85dvh,750px)", background: "#fff", borderRadius: "20px 20px 0 0", padding: 16, display: "flex", flexDirection: "column", color: W.ink }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 13 }}>
+          <strong style={{ fontSize: 18, flex: 1 }}>📊 Reels analytics</strong>
+          <button onClick={onClose} aria-label="Close analytics" style={{ border: 0, background: W.bg, borderRadius: 8, padding: 7, cursor: "pointer" }}><X size={19} /></button>
+        </div>
+        <select value={selected} onChange={e => setSelected(e.target.value)} style={{ padding: 11, border: `1px solid ${W.line}`, borderRadius: 10, fontSize: 14, marginBottom: 12 }}>
+          {vids.map(v => <option value={String(v.id)} key={v.id}>{v.title}</option>)}
+        </select>
+        <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
+          {[["views", "👁 Viewed"], ["likes", "♥ Liked"], ["shares", "↗ Shared"]].map(([key, label]) =>
+            <button key={key} onClick={() => setKind(key)} style={{ flex: 1, padding: "10px 4px", border: 0, borderRadius: 9, background: kind === key ? W.teal : W.bg, color: kind === key ? "#fff" : W.ink, fontWeight: 800, cursor: "pointer" }}>{label}</button>)}
+        </div>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search member name" style={{ padding: 11, border: `1px solid ${W.line}`, borderRadius: 10, marginBottom: 9, fontSize: 14 }} />
+        <div style={{ color: W.soft, fontSize: 12, marginBottom: 9 }}>{kind === "views" ? "One recorded view per member" : kind === "shares" ? "Share actions, including copied links. Recipients are not visible." : "Members who currently like this reel"}</div>
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          {error ? <div style={{ color: "#C0392B", padding: 14 }}>{error}</div> : rows === null ? <div style={{ padding: 14 }}>Loading…</div> : !filtered.length ? <div style={{ color: W.soft, padding: 14 }}>No members found.</div> : filtered.map((r, index) =>
+            <div key={`${r.user_id}-${r.occurred_at}-${index}`} style={{ display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${W.line}`, padding: "10px 2px" }}>
+              {r.avatar_url ? <img src={r.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 36, height: 36, borderRadius: "50%", background: W.bg, display: "grid", placeItems: "center" }}>👤</div>}
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 750, fontSize: 14 }}>{r.full_name || "Member"}</div><div style={{ fontSize: 11, color: W.soft }}>{dateText(r.occurred_at)}</div></div>
+              {kind === "shares" && r.total > 1 && <div style={{ fontSize: 12, fontWeight: 800 }}>×{r.total}</div>}
+            </div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, onLinkEvent }) {
   const [rows, setRows] = useState([]);
   const [title, setTitle] = useState(""), [desc, setDesc] = useState(""), [vurl, setVurl] = useState(""), [purl, setPurl] = useState("");
   const [paid, setPaid] = useState(true), [price, setPrice] = useState(24), [busy, setBusy] = useState(false), [up, setUp] = useState("");
@@ -18024,6 +18183,20 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
           <div style={{ fontWeight: 900, fontSize: 17, flex: 1 }}>{editId ? "✏️ Edit episode / reel" : "🎬 Add a reel"}</div>
           {editId && <button onClick={() => { setTitle(""); setDesc(""); setVurl(""); setPurl(""); setEpNo(""); setSeriesId(""); setEditId(null); }} style={{ background: "#EEF1F3", color: W.soft, border: "none", borderRadius: 8, padding: "6px 11px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Cancel</button>}
         </div>
+        <div style={{ background: "#ECFDF5", border: "2px solid #008069", borderRadius: 12, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontWeight: 900, color: W.teal, fontSize: 16, marginBottom: 7 }}>🎟 Book this party button</div>
+          {!editId ? <div style={{ fontSize: 13, color: W.ink }}>Publish your reel first, then tap Edit to choose its booking event.</div>
+            : !onLinkEvent ? <div style={{ fontSize: 13, color: W.ink }}>Your account can edit reels but does not have permission to change booking links. An admin can link this reel to an event.</div>
+            : <>
+              <div style={{ fontSize: 13, color: W.ink, marginBottom: 9 }}>Choose the party this reel should open. No URL needed. Your selection saves immediately.</div>
+              <select aria-label="Book this party event" value={eventLinks[editId] || ""} onChange={e => onLinkEvent(editId, e.target.value)} style={{ ...ip, marginBottom: 5, background: "#fff" }}>
+                <option value="">No booking button</option>
+                {events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}
+              </select>
+              {!events.length && <div style={{ fontSize: 12, color: W.soft }}>No events are available for this account. Create a party under Events first.</div>}
+              {eventLinks[editId] && <div style={{ fontSize: 12, color: W.teal, fontWeight: 800 }}>✓ Booking button enabled for this reel</div>}
+            </>}
+        </div>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" style={ip} />
         <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{ ...ip, resize: "vertical", fontFamily: "inherit" }} />
         <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
@@ -18053,7 +18226,7 @@ function ShortsAdmin({ onClose, onChanged, meId }) {
         {!rows.length ? <div style={{ color: W.soft, fontSize: 13 }}>None yet.</div> : rows.map(r => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
             <div style={{ width: 40, height: 54, borderRadius: 7, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{r.poster_url ? <img src={r.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎬</div>}</div>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in movie" : ""}{r.published ? "" : " · hidden"}</div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in movie" : ""}{r.published ? "" : " · hidden"}</div>{onLinkEvent && <label style={{ display: "block", fontSize: 11, color: W.teal, fontWeight: 800, marginTop: 8 }}>🎟 Book this party button<select aria-label={"Booking party for " + r.title} value={eventLinks[r.id] || ""} onChange={e => onLinkEvent(r.id, e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, border: `1px solid ${W.line}`, borderRadius: 8, padding: 8, fontSize: 12 }}><option value="">Choose party (button hidden)</option>{events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>}</div>
             <button onClick={() => editShort(r)} style={{ ...btn("#EEF1F3", W.ink), padding: "7px 11px", fontSize: 12.5 }}>Edit</button>
             <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 11px", fontSize: 12.5 }}>Del</button>
           </div>
