@@ -17799,6 +17799,7 @@ function SmoothReelPlayer({ v, active, muted, setMuted, onLike, onViewed, resume
 
 function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], onOpenEvent }) {
   const [vids, setVids] = useState(null);
+  const upcomingParties = events.filter(e => e.event_at && Number.isFinite(Date.parse(e.event_at)) && Date.parse(e.event_at) >= Date.now()).sort((a, b) => Date.parse(a.event_at) - Date.parse(b.event_at));
   const [credits, setCredits] = useState(0);
   const [busy, setBusy] = useState(null);
   const [muted, setMuted] = useState(false);
@@ -17981,7 +17982,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
       </div>
       {isStaff && mode === "shorts" && <div style={{ padding: "10px 14px", background: "#E6FFF5", borderBottom: "2px solid #008069", position: "relative", zIndex: 7 }}>
         <button onClick={() => setAdminOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", border: 0, borderRadius: 10, padding: "13px 14px", background: "#008069", color: "#fff", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
-          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R7</span>
+          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R8</span>
         </button>
       </div>}
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
@@ -18024,8 +18025,8 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
                     <>
                       {Math.abs(reelIndex - activeIndex) <= 1 && <SmoothReelPlayer v={v} active={reelIndex === activeIndex && !adminOpen && !analyticsOpen} muted={muted} setMuted={setMuted} onLike={() => { if (!engagementRef.current[String(v.id)]?.liked) saveEngagement(v, "like"); }} onViewed={() => saveEngagement(v, "view")} resumeAt={playbackPositions.current[v.id] || 0} onProgress={time => { if (Number.isFinite(time)) playbackPositions.current[v.id] = time; }} />}
                       <div style={{ position: "absolute", left: 12, top: 12, zIndex: 5, maxWidth: "72%" }}>
-                        {eventLinks[v.id] && events.some(e => String(e.id) === String(eventLinks[v.id])) && <button onClick={() => { wrapRef.current?.querySelectorAll("video").forEach(video => video.pause()); onOpenEvent?.(eventLinks[v.id]); }} style={{ ...btn(W.teal, "#fff"), padding: "9px 12px", fontSize: 13 }}>🎟 Book this party</button>}
-                        {canSeeAnalytics && <select aria-label="Link reel to event" value={eventLinks[v.id] || ""} onChange={e => linkEvent(v.id, e.target.value)} style={{ display: "block", maxWidth: "100%", marginTop: 6, padding: 6, borderRadius: 8, fontSize: 11 }}><option value="">Link a party…</option>{events.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select>}
+                        {eventLinks[v.id] && upcomingParties.some(e => String(e.id) === String(eventLinks[v.id])) && <button onClick={() => { wrapRef.current?.querySelectorAll("video").forEach(video => video.pause()); onOpenEvent?.(eventLinks[v.id]); }} style={{ ...btn(W.teal, "#fff"), padding: "9px 12px", fontSize: 13 }}>🎟 Book this party</button>}
+                        {canSeeAnalytics && <select aria-label="Link reel to event" value={upcomingParties.some(e => String(e.id) === String(eventLinks[v.id])) ? eventLinks[v.id] : ""} onChange={e => linkEvent(v.id, e.target.value)} style={{ display: "block", maxWidth: "100%", marginTop: 6, padding: 6, borderRadius: 8, fontSize: 11 }}><option value="">Link a party…</option>{upcomingParties.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select>}
                       </div>
                       <div style={{ position: "absolute", right: 12, bottom: 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
                         <button aria-label={engagement[String(v.id)]?.liked ? "Unlike reel" : "Like reel"} onClick={() => saveEngagement(v, "like")} style={{ border: 0, background: "transparent", color: engagement[String(v.id)]?.liked ? "#ff4d76" : "#fff", cursor: "pointer", fontSize: 29, textShadow: "0 2px 5px #000" }}>♥</button>
@@ -18046,7 +18047,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
             })}
           </div>
         )}
-      {adminOpen && <ShortsAdmin onClose={() => setAdminOpen(false)} onChanged={load} meId={user.id} events={events} eventLinks={eventLinks} onLinkEvent={canSeeAnalytics ? linkEvent : null} />}
+      {adminOpen && <ShortsAdmin onClose={() => setAdminOpen(false)} onChanged={load} meId={user.id} events={upcomingParties} eventLinks={eventLinks} onLinkEvent={canSeeAnalytics ? linkEvent : null} />}
       {analyticsOpen && <ShortsAnalytics vids={vids || []} onClose={() => setAnalyticsOpen(false)} />}
     </div>
   );
@@ -18189,12 +18190,12 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
             : !onLinkEvent ? <div style={{ fontSize: 13, color: W.ink }}>Your account can edit reels but does not have permission to change booking links. An admin can link this reel to an event.</div>
             : <>
               <div style={{ fontSize: 13, color: W.ink, marginBottom: 9 }}>Choose the party this reel should open. No URL needed. Your selection saves immediately.</div>
-              <select aria-label="Book this party event" value={eventLinks[editId] || ""} onChange={e => onLinkEvent(editId, e.target.value)} style={{ ...ip, marginBottom: 5, background: "#fff" }}>
+              <select aria-label="Book this party event" value={events.some(e => String(e.id) === String(eventLinks[editId])) ? eventLinks[editId] : ""} onChange={e => onLinkEvent(editId, e.target.value)} style={{ ...ip, marginBottom: 5, background: "#fff" }}>
                 <option value="">No booking button</option>
                 {events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}
               </select>
-              {!events.length && <div style={{ fontSize: 12, color: W.soft }}>No events are available for this account. Create a party under Events first.</div>}
-              {eventLinks[editId] && <div style={{ fontSize: 12, color: W.teal, fontWeight: 800 }}>✓ Booking button enabled for this reel</div>}
+              {!events.length && <div style={{ fontSize: 12, color: W.soft }}>No upcoming parties are available. Create a party with a future date under Events first.</div>}
+              {events.some(e => String(e.id) === String(eventLinks[editId])) && <div style={{ fontSize: 12, color: W.teal, fontWeight: 800 }}>✓ Booking button enabled for this reel</div>}
             </>}
         </div>
         <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" style={ip} />
@@ -18226,7 +18227,7 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
         {!rows.length ? <div style={{ color: W.soft, fontSize: 13 }}>None yet.</div> : rows.map(r => (
           <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
             <div style={{ width: 40, height: 54, borderRadius: 7, overflow: "hidden", background: W.bg, flexShrink: 0 }}>{r.poster_url ? <img src={r.poster_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🎬</div>}</div>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in movie" : ""}{r.published ? "" : " · hidden"}</div>{onLinkEvent && <label style={{ display: "block", fontSize: 11, color: W.teal, fontWeight: 800, marginTop: 8 }}>🎟 Book this party button<select aria-label={"Booking party for " + r.title} value={eventLinks[r.id] || ""} onChange={e => onLinkEvent(r.id, e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, border: `1px solid ${W.line}`, borderRadius: 8, padding: 8, fontSize: 12 }}><option value="">Choose party (button hidden)</option>{events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>}</div>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 700, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.series_id ? `Ep ${r.episode_no || "?"} · ` : ""}{r.title}</div><div style={{ fontSize: 11.5, color: W.soft }}>{r.is_paid ? `₹${r.price_inr}` : "Free"}{r.series_id ? " · in movie" : ""}{r.published ? "" : " · hidden"}</div>{onLinkEvent && <label style={{ display: "block", fontSize: 11, color: W.teal, fontWeight: 800, marginTop: 8 }}>🎟 Book this party button<select aria-label={"Booking party for " + r.title} value={events.some(e => String(e.id) === String(eventLinks[r.id])) ? eventLinks[r.id] : ""} onChange={e => onLinkEvent(r.id, e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, border: `1px solid ${W.line}`, borderRadius: 8, padding: 8, fontSize: 12 }}><option value="">Choose party (button hidden)</option>{events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label>}</div>
             <button onClick={() => editShort(r)} style={{ ...btn("#EEF1F3", W.ink), padding: "7px 11px", fontSize: 12.5 }}>Edit</button>
             <button onClick={() => del(r.id)} style={{ ...btn("#FCE9E9", "#C0392B"), padding: "7px 11px", fontSize: 12.5 }}>Del</button>
           </div>
