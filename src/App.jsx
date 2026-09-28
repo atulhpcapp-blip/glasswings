@@ -3846,7 +3846,7 @@ function Main({ user }) {
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "door" && isStaff && <DoorCheckin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} ticketTypes={ticketTypes} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} onUpdateEvent={updateEvent} />}
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
-      {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" events={events} onOpenEvent={openEvent} />}
+      {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" events={events} ticketTypes={ticketTypes} onOpenEvent={openEvent} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><MeetVerifyBanner user={user} profile={profile} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "profile" && <div style={{ padding: "14px 14px 0", maxWidth: 640, margin: "0 auto" }}><VerificationPanel user={user} profile={profile} /></div>}
@@ -17811,8 +17811,19 @@ function SmoothReelPlayer({ v, active, muted, setMuted, onLike, onViewed, resume
   </>;
 }
 
-function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], onOpenEvent }) {
+function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], ticketTypes = {}, onOpenEvent }) {
   const [vids, setVids] = useState(null);
+  const bookingClickBusy = useRef(new Set());
+  const openReelParty = (reel, party) => {
+    wrapRef.current?.querySelectorAll("video").forEach(video => video.pause());
+    if (!bookingClickBusy.current.has(reel.id)) {
+      bookingClickBusy.current.add(reel.id);
+      supabase.from("reel_booking_clicks").insert({ video_id: String(reel.id), event_id: party.id, user_id: user.id })
+        .then(({ error }) => { if (error) console.warn("Booking click could not be recorded:", error.message); })
+        .catch(() => {}).finally(() => { setTimeout(() => bookingClickBusy.current.delete(reel.id), 1500); });
+    }
+    onOpenEvent?.(party.id);
+  };
   const upcomingParties = events.filter(e => e.event_at && Number.isFinite(Date.parse(e.event_at)) && Date.parse(e.event_at) >= Date.now()).sort((a, b) => Date.parse(a.event_at) - Date.parse(b.event_at));
   const [credits, setCredits] = useState(0);
   const [busy, setBusy] = useState(null);
@@ -17996,7 +18007,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
       </div>
       {isStaff && mode === "shorts" && <div style={{ padding: "10px 14px", background: "#E6FFF5", borderBottom: "2px solid #008069", position: "relative", zIndex: 7 }}>
         <button onClick={() => setAdminOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", border: 0, borderRadius: 10, padding: "13px 14px", background: "#008069", color: "#fff", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
-          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R10</span>
+          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R11</span>
         </button>
       </div>}
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
@@ -18008,6 +18019,9 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
               const segLocked = !!v.seg_locked;
               const locked = v.is_paid && !v.unlocked;
               const linkedParty = upcomingParties.find(e => String(e.id) === String(eventLinks[v.id]));
+              const partyPrices = linkedParty ? (ticketTypes[linkedParty.id] || []).filter(t => !t.hidden && t.active !== false && t.price != null && Number.isFinite(Number(t.price))).map(t => Number(t.price)) : [];
+              const partyPrice = partyPrices.length ? Math.min(...partyPrices) : (linkedParty?.ticket_price != null && Number.isFinite(Number(linkedParty.ticket_price)) ? Number(linkedParty.ticket_price) : null);
+              const partyDate = linkedParty?.event_at ? new Date(linkedParty.event_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }) + " IST" : "";
               return (
                 <div key={v.id} data-slide data-reel-id={String(v.id)} style={{ position: "relative", height: "100%", scrollSnapAlign: "start", scrollSnapStop: "always", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {segLocked ? (
@@ -18042,7 +18056,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
                       <div style={{ position: "absolute", left: 12, top: 12, zIndex: 5, maxWidth: "72%" }}>
                         {canSeeAnalytics && <select aria-label="Link reel to event" value={upcomingParties.some(e => String(e.id) === String(eventLinks[v.id])) ? eventLinks[v.id] : ""} onChange={e => linkEvent(v.id, e.target.value)} style={{ display: "block", maxWidth: "100%", marginTop: 6, padding: 6, borderRadius: 8, fontSize: 11 }}><option value="">Link a party…</option>{upcomingParties.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select>}
                       </div>
-                      <div style={{ position: "absolute", right: 12, bottom: linkedParty ? 124 : 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
+                      <div style={{ position: "absolute", right: 12, bottom: linkedParty ? 184 : 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
                         <button aria-label={engagement[String(v.id)]?.liked ? "Unlike reel" : "Like reel"} onClick={() => saveEngagement(v, "like")} style={{ border: 0, background: "transparent", color: engagement[String(v.id)]?.liked ? "#ff4d76" : "#fff", cursor: "pointer", fontSize: 29, textShadow: "0 2px 5px #000" }}>♥</button>
                         <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.likes ?? 0}</span>
                         <button aria-label="Share reel" onClick={() => shareReel(v)} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer", filter: "drop-shadow(0 2px 3px #000)" }}><Share2 size={29} /></button>
@@ -18052,16 +18066,19 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
                       </div>
                       {linkedParty && <button
                         aria-label={"Book this party: " + linkedParty.title}
-                        onClick={() => { wrapRef.current?.querySelectorAll("video").forEach(video => video.pause()); onOpenEvent?.(linkedParty.id); }}
-                        style={{ position: "absolute", left: 14, right: 14, bottom: 20, zIndex: 6, minHeight: 70, display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", border: "1px solid rgba(255,255,255,.5)", borderRadius: 18, background: "linear-gradient(110deg,#651CC9 0%,#C41D79 65%,#A61356 100%)", color: "#fff", boxShadow: "0 6px 24px rgba(201,30,120,.45), inset 0 1px 0 rgba(255,255,255,.25)", textAlign: "left", cursor: "pointer", overflow: "hidden" }}>
+                        onClick={() => openReelParty(v, linkedParty)}
+                        style={{ position: "absolute", left: 14, right: 14, bottom: 20, zIndex: 6, minHeight: 126, display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", border: "1px solid rgba(255,255,255,.5)", borderRadius: 18, background: "linear-gradient(110deg,#651CC9 0%,#C41D79 65%,#A61356 100%)", color: "#fff", boxShadow: "0 6px 24px rgba(201,30,120,.45), inset 0 1px 0 rgba(255,255,255,.25)", textAlign: "left", cursor: "pointer", overflow: "hidden" }}>
                         <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 42, height: 42, flexShrink: 0, borderRadius: 12, background: "#FFE69A", transform: "rotate(-9deg)", fontSize: 25 }}>🎟️</span>
                         <span style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ display: "block", fontSize: 17, fontWeight: 900, letterSpacing: .2 }}>Book this party ✨</span>
-                          <span style={{ display: "block", marginTop: 3, fontSize: 11.5, opacity: .95, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{linkedParty.title}</span>
+                          <span style={{ display: "block", marginTop: 4, fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{linkedParty.title}</span>
+                          <span style={{ display: "block", marginTop: 5, fontSize: 11, opacity: .95 }}>📅 {partyDate}</span>
+                          <span style={{ display: "block", marginTop: 3, fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📍 {[linkedParty.venue, linkedParty.city].filter(Boolean).join(", ") || "Venue details inside"}</span>
+                          <span style={{ display: "inline-block", marginTop: 6, fontSize: 11, fontWeight: 900, background: "#FFE69A", color: "#32104A", padding: "3px 8px", borderRadius: 20 }}>{partyPrice === null ? "See ticket options" : partyPrice === 0 ? "Free tickets available" : `From ₹${partyPrice.toLocaleString("en-IN")}`}</span>
                         </span>
                         <span aria-hidden="true" style={{ borderLeft: "1px dashed rgba(255,255,255,.6)", paddingLeft: 13, fontSize: 26, fontWeight: 900 }}>↗</span>
                       </button>}
-                      <div style={{ position: "absolute", left: 0, right: 0, bottom: linkedParty ? 94 : 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
+                      <div style={{ position: "absolute", left: 0, right: 0, bottom: linkedParty ? 154 : 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
                         <div style={{ fontWeight: 900, fontSize: 18 }}>{v.title}{v.is_paid && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.25)", padding: "2px 8px", borderRadius: 20 }}>✓ Unlocked</span>}</div>
                         {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
                       </div>
@@ -18088,7 +18105,7 @@ function ShortsAnalytics({ vids, onClose }) {
     if (!selected) return;
     let active = true;
     setRows(null); setError("");
-    supabase.rpc("short_engagement_analytics", { p_video_id: selected, p_kind: kind }).then(({ data, error: err }) => {
+    supabase.rpc(kind === "clicks" ? "reel_booking_click_analytics" : "short_engagement_analytics", kind === "clicks" ? { p_video_id: selected } : { p_video_id: selected, p_kind: kind }).then(({ data, error: err }) => {
       if (!active) return;
       if (err) { setError(err.message || "Analytics unavailable"); setRows([]); }
       else setRows(data || []);
@@ -18108,17 +18125,18 @@ function ShortsAnalytics({ vids, onClose }) {
           {vids.map(v => <option value={String(v.id)} key={v.id}>{v.title}</option>)}
         </select>
         <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
-          {[["views", "👁 Viewed"], ["likes", "♥ Liked"], ["shares", "↗ Shared"]].map(([key, label]) =>
+          {[["views", "👁 Viewed"], ["likes", "♥ Liked"], ["shares", "↗ Shared"], ["clicks", "🎟 Clicks"]].map(([key, label]) =>
             <button key={key} onClick={() => setKind(key)} style={{ flex: 1, padding: "10px 4px", border: 0, borderRadius: 9, background: kind === key ? W.teal : W.bg, color: kind === key ? "#fff" : W.ink, fontWeight: 800, cursor: "pointer" }}>{label}</button>)}
         </div>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search member name" style={{ padding: 11, border: `1px solid ${W.line}`, borderRadius: 10, marginBottom: 9, fontSize: 14 }} />
-        <div style={{ color: W.soft, fontSize: 12, marginBottom: 9 }}>{kind === "views" ? "One recorded view per member" : kind === "shares" ? "Share actions, including copied links. Recipients are not visible." : "Members who currently like this reel"}</div>
+        <div style={{ color: W.soft, fontSize: 12, marginBottom: 9 }}>{kind === "clicks" ? "Booking-button clicks, not confirmed ticket purchases." : kind === "views" ? "One recorded view per member" : kind === "shares" ? "Share actions, including copied links. Recipients are not visible." : "Members who currently like this reel"}</div>
+        {kind === "clicks" && rows !== null && !error && <div style={{ background: "#F4EDFF", color: "#562694", borderRadius: 10, padding: 12, marginBottom: 10, fontWeight: 800, fontSize: 13 }}>{rows.reduce((sum, r) => sum + Number(r.total || 0), 0)} clicks · {new Set(rows.map(r => r.user_id)).size} members</div>}
         <div style={{ overflowY: "auto", flex: 1 }}>
           {error ? <div style={{ color: "#C0392B", padding: 14 }}>{error}</div> : rows === null ? <div style={{ padding: 14 }}>Loading…</div> : !filtered.length ? <div style={{ color: W.soft, padding: 14 }}>No members found.</div> : filtered.map((r, index) =>
             <div key={`${r.user_id}-${r.occurred_at}-${index}`} style={{ display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${W.line}`, padding: "10px 2px" }}>
               {r.avatar_url ? <img src={r.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} /> : <div style={{ width: 36, height: 36, borderRadius: "50%", background: W.bg, display: "grid", placeItems: "center" }}>👤</div>}
-              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 750, fontSize: 14 }}>{r.full_name || "Member"}</div><div style={{ fontSize: 11, color: W.soft }}>{dateText(r.occurred_at)}</div></div>
-              {kind === "shares" && r.total > 1 && <div style={{ fontSize: 12, fontWeight: 800 }}>×{r.total}</div>}
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 750, fontSize: 14 }}>{r.full_name || "Member"}</div><div style={{ fontSize: 11, color: W.soft }}>{dateText(r.occurred_at)}</div>{kind === "clicks" && <div style={{ color: W.teal, fontSize: 11, marginTop: 3 }}>{r.event_title || "Linked party"}</div>}</div>
+              {["shares", "clicks"].includes(kind) && r.total > 1 && <div style={{ fontSize: 12, fontWeight: 800 }}>×{r.total}</div>}
             </div>)}
         </div>
       </div>
