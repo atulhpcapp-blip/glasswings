@@ -17996,7 +17996,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
       </div>
       {isStaff && mode === "shorts" && <div style={{ padding: "10px 14px", background: "#E6FFF5", borderBottom: "2px solid #008069", position: "relative", zIndex: 7 }}>
         <button onClick={() => setAdminOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", border: 0, borderRadius: 10, padding: "13px 14px", background: "#008069", color: "#fff", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
-          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R9</span>
+          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R10</span>
         </button>
       </div>}
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
@@ -18007,6 +18007,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
             {vids.map((v, reelIndex) => {
               const segLocked = !!v.seg_locked;
               const locked = v.is_paid && !v.unlocked;
+              const linkedParty = upcomingParties.find(e => String(e.id) === String(eventLinks[v.id]));
               return (
                 <div key={v.id} data-slide data-reel-id={String(v.id)} style={{ position: "relative", height: "100%", scrollSnapAlign: "start", scrollSnapStop: "always", background: "#000", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {segLocked ? (
@@ -18039,10 +18040,9 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
                     <>
                       {Math.abs(reelIndex - activeIndex) <= 1 && <SmoothReelPlayer v={v} active={reelIndex === activeIndex && !adminOpen && !analyticsOpen} muted={muted} setMuted={setMuted} onLike={() => { if (!engagementRef.current[String(v.id)]?.liked) saveEngagement(v, "like"); }} onViewed={() => saveEngagement(v, "view")} resumeAt={playbackPositions.current[v.id] || 0} onProgress={time => { if (Number.isFinite(time)) playbackPositions.current[v.id] = time; }} />}
                       <div style={{ position: "absolute", left: 12, top: 12, zIndex: 5, maxWidth: "72%" }}>
-                        {eventLinks[v.id] && upcomingParties.some(e => String(e.id) === String(eventLinks[v.id])) && <button onClick={() => { wrapRef.current?.querySelectorAll("video").forEach(video => video.pause()); onOpenEvent?.(eventLinks[v.id]); }} style={{ ...btn(W.teal, "#fff"), padding: "9px 12px", fontSize: 13 }}>🎟 Book this party</button>}
                         {canSeeAnalytics && <select aria-label="Link reel to event" value={upcomingParties.some(e => String(e.id) === String(eventLinks[v.id])) ? eventLinks[v.id] : ""} onChange={e => linkEvent(v.id, e.target.value)} style={{ display: "block", maxWidth: "100%", marginTop: 6, padding: 6, borderRadius: 8, fontSize: 11 }}><option value="">Link a party…</option>{upcomingParties.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select>}
                       </div>
-                      <div style={{ position: "absolute", right: 12, bottom: 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
+                      <div style={{ position: "absolute", right: 12, bottom: linkedParty ? 124 : 96, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", color: "#fff", zIndex: 4 }}>
                         <button aria-label={engagement[String(v.id)]?.liked ? "Unlike reel" : "Like reel"} onClick={() => saveEngagement(v, "like")} style={{ border: 0, background: "transparent", color: engagement[String(v.id)]?.liked ? "#ff4d76" : "#fff", cursor: "pointer", fontSize: 29, textShadow: "0 2px 5px #000" }}>♥</button>
                         <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.likes ?? 0}</span>
                         <button aria-label="Share reel" onClick={() => shareReel(v)} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer", filter: "drop-shadow(0 2px 3px #000)" }}><Share2 size={29} /></button>
@@ -18050,7 +18050,18 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], o
                         <span style={{ fontSize: 12, marginTop: -16 }}>{engagement[String(v.id)]?.shares ?? 0}</span>
                         <span title="Views" style={{ fontSize: 12, textShadow: "0 2px 5px #000" }}>👁 {engagement[String(v.id)]?.views ?? 0}</span>
                       </div>
-                      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
+                      {linkedParty && <button
+                        aria-label={"Book this party: " + linkedParty.title}
+                        onClick={() => { wrapRef.current?.querySelectorAll("video").forEach(video => video.pause()); onOpenEvent?.(linkedParty.id); }}
+                        style={{ position: "absolute", left: 14, right: 14, bottom: 20, zIndex: 6, minHeight: 70, display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", border: "1px solid rgba(255,255,255,.5)", borderRadius: 18, background: "linear-gradient(110deg,#651CC9 0%,#C41D79 65%,#A61356 100%)", color: "#fff", boxShadow: "0 6px 24px rgba(201,30,120,.45), inset 0 1px 0 rgba(255,255,255,.25)", textAlign: "left", cursor: "pointer", overflow: "hidden" }}>
+                        <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 42, height: 42, flexShrink: 0, borderRadius: 12, background: "#FFE69A", transform: "rotate(-9deg)", fontSize: 25 }}>🎟️</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: 17, fontWeight: 900, letterSpacing: .2 }}>Book this party ✨</span>
+                          <span style={{ display: "block", marginTop: 3, fontSize: 11.5, opacity: .95, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{linkedParty.title}</span>
+                        </span>
+                        <span aria-hidden="true" style={{ borderLeft: "1px dashed rgba(255,255,255,.6)", paddingLeft: 13, fontSize: 26, fontWeight: 900 }}>↗</span>
+                      </button>}
+                      <div style={{ position: "absolute", left: 0, right: 0, bottom: linkedParty ? 94 : 0, padding: "34px 75px 18px 16px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", color: "#fff", pointerEvents: "none" }}>
                         <div style={{ fontWeight: 900, fontSize: 18 }}>{v.title}{v.is_paid && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.25)", padding: "2px 8px", borderRadius: 20 }}>✓ Unlocked</span>}</div>
                         {v.description && <div style={{ fontSize: 13, opacity: .92, marginTop: 4, lineHeight: 1.45 }}>{v.description}</div>}
                       </div>
