@@ -382,7 +382,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -3851,6 +3851,7 @@ function Main({ user }) {
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "coupons" && isStaff && <div><TopBar title="🏷️ Coupons" /><CouponsAdmin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} /></div>}
       {tab === "door" && isStaff && <DoorCheckin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} ticketTypes={ticketTypes} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} onUpdateEvent={updateEvent} />}
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
       {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" events={events} ticketTypes={ticketTypes} onOpenEvent={openEvent} />}
@@ -10895,24 +10896,27 @@ function CreditsAdmin() {
 function CouponsAdmin({ events }) {
   const [list, setList] = useState(null);
   const [uses, setUses] = useState({});
-  const [f, setF] = useState({ code: "", kind: "percent", value: "", scope: "all", min: "", expiry: "", maxUses: "", once: true });
+  const [f, setF] = useState({ code: "", kind: "percent", value: "", scope: "", min: "", expiry: "", maxUses: "", once: true });
   const [busy, setBusy] = useState(false);
   const load = () => {
     supabase.from("event_coupons").select("*").order("created_at", { ascending: false }).then(({ data }) => setList(data || []));
     supabase.from("coupon_uses").select("coupon_id").then(({ data }) => { const m = {}; (data || []).forEach(r => { m[r.coupon_id] = (m[r.coupon_id] || 0) + 1; }); setUses(m); });
   };
   useEffect(load, []);
-  const liveEvents = (events || []).filter(e => e.approved !== false);
+  const isUpcomingCouponEvent = e => e.approved !== false && e.event_at && Number.isFinite(Date.parse(e.event_at)) && Date.parse(e.event_at) > Date.now();
+  const liveEvents = (events || []).filter(isUpcomingCouponEvent).sort((a, b) => Date.parse(a.event_at) - Date.parse(b.event_at));
   const create = async () => {
     const code = f.code.trim().toUpperCase().replace(/\s+/g, "");
     const value = Math.trunc(Number(f.value));
     if (!code) return alert("Give the coupon a code, e.g. FRIDAY20.");
     if (!value || value <= 0) return alert("Enter the discount value.");
     if (f.kind === "percent" && value > 100) return alert("Percent discount can't be more than 100.");
+    const selectedEvent = (events || []).find(e => String(e.id) === String(f.scope));
+    if (!selectedEvent || !isUpcomingCouponEvent(selectedEvent)) return alert("Choose an upcoming event. Past events cannot receive new coupons.");
     setBusy(true);
     const { error } = await supabase.from("event_coupons").insert({
       code, kind: f.kind, value,
-      scope_event: f.scope === "all" ? null : f.scope,
+      scope_event: selectedEvent.id,
       min_amount: Math.max(0, Math.trunc(Number(f.min)) || 0),
       expires_at: f.expiry ? new Date(f.expiry + "T23:59:59").toISOString() : null,
       max_uses: f.maxUses ? Math.max(1, Math.trunc(Number(f.maxUses))) : null,
@@ -10920,7 +10924,7 @@ function CouponsAdmin({ events }) {
     });
     setBusy(false);
     if (error) return alert(error.code === "23505" ? "A coupon with that code already exists." : error.message);
-    setF({ code: "", kind: "percent", value: "", scope: "all", min: "", expiry: "", maxUses: "", once: true });
+    setF({ code: "", kind: "percent", value: "", scope: "", min: "", expiry: "", maxUses: "", once: true });
     load();
   };
   const inp = { width: "100%", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", boxSizing: "border-box", background: "#fff" };
@@ -10945,11 +10949,12 @@ function CouponsAdmin({ events }) {
             <input value={f.value} onChange={e => setF({ ...f, value: e.target.value.replace(/\D/g, "") })} inputMode="numeric" placeholder={f.kind === "percent" ? "20" : "100"} style={inp} />
           </div>
         </div>
-        <div style={lbl}>WORKS ON</div>
+        <div style={lbl}>UPCOMING EVENT</div>
         <select value={f.scope} onChange={e => setF({ ...f, scope: e.target.value })} style={inp}>
-          <option value="all">🎟️ All events</option>
-          {liveEvents.map(e => <option key={e.id} value={e.id}>{e.emoji || "🎟️"} {e.title}</option>)}
+          <option value="">Choose an upcoming event…</option>
+          {liveEvents.map(e => <option key={e.id} value={e.id}>{e.emoji || "🎟️"} {e.title} · {new Date(e.event_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}</option>)}
         </select>
+        {!liveEvents.length && <div style={{ color: W.soft, fontSize: 12, marginTop: 7 }}>No upcoming events available. Create an upcoming event before generating a coupon.</div>}
         <div style={{ display: "flex", gap: 8 }}>
           <div style={{ flex: 1 }}>
             <div style={lbl}>MIN ORDER ₹ (optional)</div>
@@ -11763,13 +11768,14 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...((canApprove || caps.door) ? [["door", "🚪 EVENT DOOR"]] : []),
     ...(!organiserStaff ? [["verify", "✔ Verify"]] : []),
     ...((caps.broadcast && !myEventsOnly) ? [["broadcast", "Send"]] : []),
-    ...((caps.members && !myEventsOnly) ? [["inbox", "Inbox"], ["members", "Members"], ["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
+    ...((caps.members && !myEventsOnly) ? [["inbox", "Inbox"], ["members", "Members"]] : []),
+    ...((isSuper || caps.host) ? [["segments", "🎯 Segments"]] : []),
+    ...((caps.members && !myEventsOnly) ? [["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
     ...(isSuper ? [["accounts", "📊 Accounts"]] : []),
     ...(isSuper ? [["subcoupons", "🏷️ Sub coupons"]] : []),
-    ...((isSuper || caps.host) ? [["segments", "🎯 Segments"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
     ...(isSuper ? [["team", "Team"]] : []),
     ...((canApprove || caps.analytics) ? [["analytics", "Analytics"]] : []),
@@ -11778,6 +11784,14 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
     ...(isSuper ? [["orgapps", "🏢 Organisers"]] : []),
     ...(canApprove ? [["filters", "Filters"]] : []),
   ];
+  // Keep Segments adjacent to whichever Members view this staff role can use.
+  const segmentsIndex = tabs.findIndex(t => t[0] === "segments");
+  const membersIndex = tabs.findIndex(t => t[0] === "members" || t[0] === "orgmembers");
+  if (segmentsIndex >= 0 && membersIndex >= 0) {
+    const [segmentsTab] = tabs.splice(segmentsIndex, 1);
+    const targetIndex = tabs.findIndex(t => t[0] === "members" || t[0] === "orgmembers");
+    tabs.splice(targetIndex + 1, 0, segmentsTab);
+  }
   const [seg, setSeg] = useState(tabs[0]?.[0] || "none");
   if (!tabs.length) return <div><TopBar title="Staff" /><Center>You don't have any staff tools enabled yet.</Center></div>;
   return (
@@ -18011,7 +18025,7 @@ function ShortsFeed({ user, profile, isStaff, startPayment, only, events = [], t
       </div>
       {isStaff && mode === "shorts" && <div style={{ padding: "10px 14px", background: "#E6FFF5", borderBottom: "2px solid #008069", position: "relative", zIndex: 7 }}>
         <button onClick={() => setAdminOpen(true)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, width: "100%", border: 0, borderRadius: 10, padding: "13px 14px", background: "#008069", color: "#fff", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
-          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R13</span>
+          <span>⚙ Manage reels &amp; booking links</span><span style={{ fontSize: 10, background: "rgba(255,255,255,.2)", padding: "3px 6px", borderRadius: 5 }}>R14</span>
         </button>
       </div>}
       {mode === "series" ? <SeriesGrid onOpen={setOpenSeries} />
@@ -18368,6 +18382,7 @@ function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
     { id: "series", icon: Film, label: "Movies", c: "#E4572E" },
     { id: "games", icon: Gamepad2, label: "Games", c: "#2563EB" },
     { id: "gallery", icon: ImageIcon, label: "Gallery", c: "#0EA5A3" },
+    ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons", c: "#D97706" }] : []),
     ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Door", c: "#0F766E" }] : []),
     ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin", c: "#DB2777" }] : []),
     { id: "profile", icon: User, label: "Profile", c: "#6D28D9" },
