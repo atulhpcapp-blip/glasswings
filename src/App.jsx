@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { supabase } from "./supabaseClient.js";
+import SupplierDirectory from "./SupplierDirectory.jsx";
 import * as appCfg from "./config.js";
 import {
   MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
@@ -3850,7 +3851,7 @@ function Main({ user }) {
       {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
-      {tab === "admin" && isStaff && <Admin caps={caps} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin caps={caps} canUseDirectory={[profile?.role, ...(profile?.roles || [])].some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r))} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "coupons" && isStaff && <div><TopBar title="🏷️ Coupons" /><CouponsAdmin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} /></div>}
       {tab === "door" && isStaff && <DoorCheckin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} ticketTypes={ticketTypes} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} onUpdateEvent={updateEvent} />}
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
@@ -4832,11 +4833,12 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         {p.avatar_url && <span style={{ position: "absolute", top: 8, left: 8, display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(8,18,24,.62)", color: "#fff", fontSize: 10.5, fontWeight: 900, padding: "3px 8px", borderRadius: 20, backdropFilter: "blur(2px)" }}>💞 {cm}%</span>}
         {isVerified(p.id) && <span style={{ position: "absolute", top: 34, left: 8 }}><TickBadge size={20} /></span>}
         {p.spotlighted && <span style={{ position: "absolute", bottom: 8, left: 8, background: "rgba(245,158,11,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>✨ Spotlight</span>}
-        {isAdmin && p.review_flag && <span style={{ position: "absolute", bottom: 8, right: 8, background: "rgba(192,57,43,.95)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🚩 {p.review_flag}</span>}
+        
         {online && <span style={{ position: "absolute", bottom: 8, right: 8, display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(8,18,24,.62)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 20 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 6px #22C55E" }} />online</span>}
         {isNewbie(p.joined) && !online && <span style={{ position: "absolute", bottom: 8, right: 8, background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🆕 NEW</span>}
         {p.waved_me && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
       </div>
+      {isAdmin && p.review_flag && <div aria-label={"Flagged member: " + p.review_flag} style={{ background: "#B91C1C", color: "white", padding: "9px 11px", fontSize: 12, fontWeight: 900, borderTop: "2px solid #FCA5A5", overflowWrap: "anywhere" }}>🚩 FLAGGED · {p.review_flag}</div>}
       <div style={{ padding: "9px 11px" }}>
         <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVip(p.id) ? vipBadge : null}</div>
         {isVerified(p.id) && <VerifiedLine />}
@@ -11757,8 +11759,9 @@ function VerificationsAdmin() {
     </div>
   );
 }
-function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
+function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
   const tabs = [
+    ...(canUseDirectory ? [["directory", "☎️ Directory"]] : []),
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(caps.host ? [["events", "Events"]] : []),
@@ -11803,7 +11806,8 @@ function Admin({ caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, ev
           <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
         ))}
       </div>
-      {seg === "reports" ? <ReportsAdmin />
+      {seg === "directory" && canUseDirectory ? <SupplierDirectory />
+        : seg === "reports" ? <ReportsAdmin />
         : seg === "subcoupons" ? <PlanCouponsAdmin />
         : seg === "accounts" ? <AccountsAdmin />
         : seg === "subscribers" ? <SubscribersAdmin />
