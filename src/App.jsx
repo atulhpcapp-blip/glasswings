@@ -11759,6 +11759,53 @@ function VerificationsAdmin() {
     </div>
   );
 }
+const GW_ADMIN_GROUPS = [
+  ['Overview', ['dash','analytics']],
+  ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
+  ['Events', ['events','private','door','directory','rooms']],
+  ['Money', ['accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
+  ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
+];
+const GW_ADMIN_ICONS = {dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+function AdminNavigation({ tabs, selected, onSelect, children }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const dialog = useRef(null), trigger = useRef(null);
+  const label = id => tabs.find(t => t[0] === id)?.[1] || id;
+  const choose = id => { onSelect(id); dialog.current?.close(); };
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)');
+    const close = () => { if (mq.matches) dialog.current?.close(); };
+    mq.addEventListener('change', close);
+    return () => mq.removeEventListener('change', close);
+  }, []);
+  const item = ([id, title]) => <button key={id} type="button" title={title} aria-label={title} aria-current={selected === id ? 'page' : undefined} className={'gw-an-item'+(selected===id?' active':'')} onClick={()=>choose(id)}><span aria-hidden="true">{GW_ADMIN_ICONS[id] || '•'}</span><span className="gw-an-label">{title.replace(/^[^\p{L}\p{N}]+/u,'')}</span></button>;
+  const groups = () => GW_ADMIN_GROUPS.map(([title, ids]) => {
+    const visible = ids.flatMap(id => tabs.filter(t=>t[0]===id));
+    return visible.length ? <section key={title}><h3>{title}</h3>{visible.map(item)}</section> : null;
+  });
+  return <div className={'gw-admin-layout'+(collapsed?' gw-admin-collapsed':'')}>
+    <style>{`
+      .gw-admin-layout{display:grid;grid-template-columns:240px minmax(0,1fr);align-items:start;background:#f4f7f8;min-width:0}
+      .gw-admin-sidebar{position:sticky;top:60px;max-height:calc(100dvh - 140px);overflow-y:auto;background:#fff;border-right:1px solid #dfE7e8;padding:14px 10px;scrollbar-width:thin}
+      .gw-admin-sidebar header{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 14px;color:#075d50;font-size:14px}
+      .gw-admin-sidebar header button,.gw-admin-mobilebar button,.gw-admin-drawer header button{border:0;background:#e5f3ee;color:#075d50;border-radius:10px;min-height:44px;min-width:44px;cursor:pointer;font:inherit;font-weight:800}
+      .gw-an-item{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:10px 12px;margin:3px 0;border:1px solid transparent;border-radius:11px;background:transparent;color:#405660;cursor:pointer;font:inherit;font-size:13px;font-weight:650;text-align:left}
+      .gw-an-item>span:first-child{width:24px;flex-shrink:0;text-align:center;font-size:18px}
+      .gw-an-item:hover{background:#f0f6f3}.gw-an-item.active{background:#dff3eb;color:#005b48;border-color:#b4ddce;box-shadow:inset 3px 0 #008069;font-weight:850}
+      .gw-admin-layout :focus-visible,.gw-admin-drawer :focus-visible{outline:3px solid #e9a132;outline-offset:2px}
+      .gw-admin-sidebar h3,.gw-admin-drawer h3{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#778c93;margin:22px 12px 9px}
+      .gw-admin-content{min-width:0;overflow-wrap:anywhere}.gw-admin-mobilebar{display:none}
+      .gw-admin-collapsed{grid-template-columns:76px minmax(0,1fr)}.gw-admin-collapsed .gw-admin-sidebar .gw-an-label,.gw-admin-collapsed .gw-admin-sidebar header strong{display:none}.gw-admin-collapsed .gw-admin-sidebar h3{font-size:0;border-top:1px solid #e3ebeb;margin:16px 8px 8px}
+      .gw-admin-drawer{position:fixed;inset:0 auto 0 0;margin:0;width:min(360px,90vw);height:100dvh;max-height:100dvh;max-width:90vw;border:0;padding:18px 14px calc(24px + env(safe-area-inset-bottom));background:#fff;color:#172b32;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box}
+      .gw-admin-drawer::backdrop{background:rgba(7,29,32,.55)}.gw-admin-drawer header{display:flex;justify-content:space-between;align-items:center;color:#075d50;font-size:20px}.gw-admin-drawer header button{font-size:24px}.gw-admin-quick{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:12px}.gw-admin-quick .gw-an-item{background:#f0f6f3;font-size:12px;padding:9px 6px;gap:5px}
+      @media(max-width:999px){.gw-admin-layout,.gw-admin-collapsed{display:block}.gw-admin-sidebar{display:none}.gw-admin-mobilebar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:white;border-bottom:1px solid #e2e9ea;position:sticky;top:53px;z-index:9}.gw-admin-mobilebar button{padding:10px 12px;white-space:nowrap}.gw-admin-mobilebar strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+    `}</style>
+    <aside className="gw-admin-sidebar"><header><strong>ADMIN WORKSPACE</strong><button type="button" aria-label={collapsed?'Expand admin sidebar':'Collapse admin sidebar'} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>{collapsed?'»':'«'}</button></header><nav aria-label="Admin navigation">{groups()}</nav></aside>
+    <div className="gw-admin-content"><div className="gw-admin-mobilebar"><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>dialog.current?.showModal()}>☰ Admin Menu</button><strong>{label(selected)}</strong></div>{children}</div>
+    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['dash','members','orgmembers','events','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
+  </div>;
+}
+
 function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
   const tabs = [
     ...(canUseDirectory ? [["directory", "☎️ Directory"]] : []),
@@ -11801,11 +11848,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     <div>
       <TopBar title={isSuper ? "Superadmin Panel" : organiserStaff ? `${organiserStaff.organiser_name} · ${organiserStaff.job_title}` : "Organiser Panel"} />
       {myCity && !isSuper && <div style={{ background: "#FEF3C7", color: "#92400E", fontSize: 12.5, fontWeight: 600, padding: "7px 14px", textAlign: "center" }}>Scoped to {myCity}</div>}
-      <div style={{ display: "flex", background: "#fff", borderBottom: `1px solid ${W.line}`, position: "sticky", top: 53, zIndex: 9, overflowX: "auto" }}>
-        {tabs.map(([v, l]) => (
-          <button key={v} onClick={() => setSeg(v)} style={{ flex: "1 0 auto", padding: "13px 14px", border: "none", background: "none", cursor: "pointer", fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", color: seg === v ? W.teal : W.soft, borderBottom: `3px solid ${seg === v ? W.teal : "transparent"}` }}>{l}</button>
-        ))}
-      </div>
+      <AdminNavigation tabs={tabs} selected={seg} onSelect={setSeg}>
       {seg === "directory" && canUseDirectory ? <SupplierDirectory />
         : seg === "reports" ? <ReportsAdmin />
         : seg === "subcoupons" ? <PlanCouponsAdmin />
@@ -11834,6 +11877,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
                 : seg === "credits" ? <CreditsAdmin />
                 : seg === "manage" ? <><PendingSignups isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
                   : <MembersOverview isSuper={isSuper} />}
+      </AdminNavigation>
     </div>
   );
 }
