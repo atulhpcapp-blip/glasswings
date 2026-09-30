@@ -1383,7 +1383,7 @@ async function exportGuestListPdf(ev) {
       profs = data || [];
     }
     const rows = profs.map(p => ({ name: p.full_name || "Member", pax: byUser[p.id] || 1, g: p.gender === "female" ? "F" : p.gender === "male" ? "M" : "—", type: "Member" }));
-    (gres?.data || []).forEach(g => rows.push({ name: (g.name || g.full_name || "Guest"), pax: g.qty || g.quantity || 1, g: "—", type: "Guest" }));
+    (gres?.data || []).forEach(g => rows.push({ name: (g.name || g.full_name || "Guest"), pax: g.qty || g.quantity || 1, g: g.door_gender === "female" ? "F" : g.door_gender === "male" ? "M" : "—", type: "Guest" }));
     if (!rows.length) return alert("No bookings yet for this event.");
     rows.sort((a, b) => a.name.localeCompare(b.name));
     const women = rows.filter(r => r.g === "F");
@@ -1729,7 +1729,29 @@ function HereNow({ eventId, onOpenDM }) {
 function EventGoers({ eventId, onOpenDM }) {
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(null);
-  useEffect(() => { supabase.rpc("event_meet_list", { p_event: eventId }).then(({ data }) => setRows(data || [])); }, [eventId]);
+  useEffect(() => {
+    let live = true;
+    Promise.all([
+      supabase.rpc("event_meet_list", { p_event: eventId }).then(({ data }) => data || []).catch(() => []),
+      supabase.rpc("guest_list", { p_event: eventId }).then(({ data, error }) => error ? [] : (data || [])).catch(() => []),
+    ]).then(([members, guests]) => {
+      if (!live) return;
+      const doorGuests = guests
+        .filter(g => ["cash", "upi"].includes(String(g.method || "").toLowerCase()))
+        .map(g => ({
+          id: `guest-${g.id}`,
+          guest_id: g.id,
+          name: g.name || g.full_name || "Guest",
+          avatar_url: g.door_photo || g.avatar_url || "",
+          gender: g.door_gender || g.gender || "",
+          is_door_guest: true,
+          waved_by_me: false,
+          waved_me: false,
+        }));
+      setRows([...(members || []), ...doorGuests]);
+    });
+    return () => { live = false; };
+  }, [eventId]);
   const wave = async (p) => {
     setBusy(p.id);
     const { data, error } = await supabase.rpc("wave_to", { p_user: p.id });
@@ -1755,9 +1777,13 @@ function EventGoers({ eventId, onOpenDM }) {
               {typeof window !== "undefined" && window.__gwVerified && window.__gwVerified.has(p.id) && <span style={{ position: "absolute", bottom: -3, right: -3 }}><TickBadge size={18} /></span>}
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
-            <button onClick={() => mutual ? (onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])) : wave(p)} disabled={busy === p.id || (p.waved_by_me && !mutual)} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: mutual ? "linear-gradient(95deg,#6D28D9,#008069)" : p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "#EC4899" : W.teal), color: p.waved_by_me && !mutual ? "#0d6e58" : "#fff" }}>
-              {busy === p.id ? "…" : mutual ? "💬 Msg" : p.waved_by_me ? "✓" : (p.waved_me ? "Wave back" : "👋 Wave")}
-            </button>
+            {p.is_door_guest ? (
+              <div style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, fontWeight: 800, fontSize: 10.5, background: "#FFF5E6", color: "#9A6700" }}>🚪 Door guest</div>
+            ) : (
+              <button onClick={() => mutual ? (onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])) : wave(p)} disabled={busy === p.id || (p.waved_by_me && !mutual)} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: mutual ? "linear-gradient(95deg,#6D28D9,#008069)" : p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "#EC4899" : W.teal), color: p.waved_by_me && !mutual ? "#0d6e58" : "#fff" }}>
+                {busy === p.id ? "…" : mutual ? "💬 Msg" : p.waved_by_me ? "✓" : (p.waved_me ? "Wave back" : "👋 Wave")}
+              </button>
+            )}
           </div>
         ); })}
       </div>
@@ -13629,19 +13655,16 @@ function CheckInSheet({ event, onClose }) {
             }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 11px", fontSize: 12 }}>🖨️ Print checklist</button>}
           </div>
           <div style={{ fontSize: 12, color: W.soft, marginBottom: 10 }}>Free entry for non-members — add them here. If you enter an email, the ticket is emailed automatically; WhatsApp works too. Tick them in at the door.</div>
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 6 }}>
-            <input value={gName} onChange={e => setGName(e.target.value)} placeholder="Guest name *" style={{ flex: "1 1 140px", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
-            <input value={gPhone} onChange={e => setGPhone(e.target.value)} placeholder="Phone" inputMode="tel" style={{ flex: "1 1 120px", border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8, marginBottom: 8 }}>
+            <input value={gName} onChange={e => setGName(e.target.value)} placeholder="Guest name *" style={{ width: "100%", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 11px", fontSize: 13.5, outline: "none" }} />
+            <input value={gPhone} onChange={e => setGPhone(e.target.value)} placeholder="Phone" inputMode="tel" style={{ width: "100%", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 11px", fontSize: 13.5, outline: "none" }} />
+            <input value={gEmail} onChange={e => setGEmail(e.target.value)} placeholder="Email (optional)" type="email" style={{ width: "100%", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 11px", fontSize: 13.5, outline: "none" }} />
+            <input value={gAge} onChange={e => setGAge(e.target.value.replace(/\D/g, ""))} placeholder="Age" inputMode="numeric" style={{ width: "100%", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 11px", fontSize: 13.5, outline: "none" }} />
+            <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ width: "100%", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 11px", fontSize: 13.5, outline: "none" }} />
+            <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ width: "100%", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 11px", fontSize: 13.5, outline: "none" }} />
           </div>
-          <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
-            <input value={gEmail} onChange={e => setGEmail(e.target.value)} placeholder="Email (optional)" type="email" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
-            <input value={gAge} onChange={e => setGAge(e.target.value.replace(/\D/g, ""))} placeholder="Age" inputMode="numeric" style={{ width: 56, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", textAlign: "center" }} />
-          </div>
-          <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
-            <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
-            <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ width: 58, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", textAlign: "center" }} />
-            <DoorPortraitFields photo={gPhoto} gender={gGender} onPhoto={setGPhoto} onGender={setGGender} onBusy={setGPhotoBusy} disabled={gBusy}/><button onClick={addGuest} disabled={gBusy||gPhotoBusy} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, opacity: gBusy ? .6 : 1 }}>{gBusy ? "…" : "+ Add"}</button>
-          </div>
+          <DoorPortraitFields photo={gPhoto} gender={gGender} onPhoto={setGPhoto} onGender={setGGender} onBusy={setGPhotoBusy} disabled={gBusy}/>
+          <button onClick={addGuest} disabled={gBusy||gPhotoBusy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "11px 16px", fontSize: 14, marginBottom: 10, opacity: (gBusy||gPhotoBusy) ? .6 : 1 }}>{gBusy ? "Adding…" : "+ Add guest"}</button>
           {guests.map(g => { const tm = gtm(g); return (
             <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}`, borderLeft: `4px solid ${tm[2]}`, paddingLeft: 9 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
