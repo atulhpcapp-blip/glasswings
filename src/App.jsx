@@ -140,11 +140,11 @@ function DoorPortraitFields({photo,gender,onPhoto,onGender,disabled=false,onBusy
   {err&&<div role="alert" style={{color:'#a33'}}>{err}</div>}
  </fieldset>;
 }
-async function gwInvitationBlob(event,name,photo,message){
- const c=document.createElement('canvas');c.width=1000;c.height=1400;const x=c.getContext('2d');
- const bg=x.createLinearGradient(0,0,1000,1400);bg.addColorStop(0,'#063f35');bg.addColorStop(1,'#071e21');x.fillStyle=bg;x.fillRect(0,0,1000,1400);
- x.strokeStyle='#cbb67b';x.lineWidth=2;rr(x,30,30,940,1340,28);x.stroke();
- for(let i=0;i<28;i++){x.fillStyle=i%2?'#cbb67b55':'#8df2ce44';x.beginPath();x.arc(55+(i*173)%890,65+(i*97)%1270,2+i%4,0,Math.PI*2);x.fill();}
+async function gwInvitationBlob(event,name,photo,message,code){
+ const c=document.createElement('canvas');c.width=1000;c.height=1600;const x=c.getContext('2d');
+ const bg=x.createLinearGradient(0,0,1000,1600);bg.addColorStop(0,'#063f35');bg.addColorStop(1,'#071e21');x.fillStyle=bg;x.fillRect(0,0,1000,1600);
+ x.strokeStyle='#cbb67b';x.lineWidth=2;rr(x,30,30,940,1540,28);x.stroke();
+ for(let i=0;i<32;i++){x.fillStyle=i%2?'#cbb67b55':'#8df2ce44';x.beginPath();x.arc(55+(i*173)%890,65+(i*97)%1470,2+i%4,0,Math.PI*2);x.fill();}
  x.textAlign='center';x.fillStyle='#d7c68f';x.font='700 22px system-ui';x.fillText('G L A S S W I N G S',500,105);
  x.fillStyle='#fff4d7';x.font='italic 56px Georgia,serif';x.fillText('An evening, made better by you.',500,195,880);
  x.font='700 18px system-ui';x.fillStyle='#aee2ca';x.fillText('Y O U ’ R E   I N V I T E D',500,246);
@@ -155,36 +155,60 @@ async function gwInvitationBlob(event,name,photo,message){
  for(const line of wrapLines(x,event.title||'A Glasswings celebration',820).slice(0,2)){x.fillText(line,500,y);y+=46;}
  x.fillStyle='#f0f4ed';x.font='26px Georgia';y=842;
  for(const line of wrapLines(x,message,790).slice(0,7)){x.fillText(line,500,y);y+=37;}
- x.strokeStyle='#cbb67b66';x.beginPath();x.moveTo(160,1126);x.lineTo(840,1126);x.stroke();
- x.font='700 25px system-ui';x.fillStyle='#dfcf9d';x.fillText(fitText(x,event.event_date||'',840),500,1175);
- x.font='23px system-ui';x.fillStyle='#fff4d7';x.fillText(fitText(x,[event.venue,event.city].filter(Boolean).join(' · '),840),500,1220);
- x.font='italic 23px Georgia';x.fillText('With warmth, the Glasswings family',500,1275);
- x.font='17px system-ui';x.fillStyle='#aac7bb';x.fillText('PERSONAL INVITATION · ENTRY REQUIRES A VALID TICKET',500,1323);
- return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('Could not create card.')),'image/png'));
+ x.strokeStyle='#cbb67b66';x.beginPath();x.moveTo(160,1112);x.lineTo(840,1112);x.stroke();
+ x.font='700 25px system-ui';x.fillStyle='#dfcf9d';x.fillText(fitText(x,event.event_date||'',840),500,1155);
+ x.font='23px system-ui';x.fillStyle='#fff4d7';x.fillText(fitText(x,[event.venue,event.city].filter(Boolean).join(' · '),840),500,1195);
+ x.font='italic 23px Georgia';x.fillText('With warmth, the Glasswings family',500,1240);
+ if(code){
+  const q=235,qx=(1000-q)/2,qy=1275;x.fillStyle='#fff';rr(x,qx-14,qy-14,q+28,q+28,18);x.fill();
+  try{const qr=await loadImg('https://api.qrserver.com/v1/create-qr-code/?size=700x700&margin=0&data='+encodeURIComponent(code));x.drawImage(qr,qx,qy,q,q);}catch(e){x.fillStyle='#071e21';x.font='800 28px ui-monospace,monospace';x.fillText(code,500,qy+135);}
+  x.fillStyle='#aee2ca';x.font='800 19px system-ui';x.fillText('SCAN THIS INVITATION AT ENTRY',500,1538);
+  x.fillStyle='#dfcf9d';x.font='700 15px ui-monospace,monospace';x.fillText('INVITATION CODE  '+code,500,1567);
+ }
+ return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('Could not create invitation.')),'image/png'));
 }
 function InvitationButton({event,guest,memberId=null,label="💌 Invite"}){
- const [open,setOpen]=useState(false),[name,setName]=useState(''),[photo,setPhoto]=useState(''),[message,setMessage]=useState(''),[preview,setPreview]=useState(''),[file,setFile]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const [open,setOpen]=useState(false),[name,setName]=useState(''),[phone,setPhone]=useState(''),[photo,setPhoto]=useState(''),[message,setMessage]=useState(''),[preview,setPreview]=useState(''),[file,setFile]=useState(null),[inviteCode,setInviteCode]=useState(''),[inviteId,setInviteId]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState('');
  const dialog=useRef(null);
  useEffect(()=>{if(open){dialog.current?.showModal();}else dialog.current?.close();},[open]);
  useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview);},[preview]);
- const start=()=>{setName(guest?.name||guest?.full_name||'');setPhoto(guest?.door_photo||guest?.avatar_url||'');setMessage('Some evenings become memories because of the people who share them. We would love you to be part of ours. Come for the music, stay for the laughter, and let us make a little more room for joy — together.');setPreview('');setFile(null);setErr('');setOpen(true);};
+ const start=()=>{setName(guest?.name||guest?.full_name||'');setPhone(guest?.phone||'');setPhoto(guest?.door_photo||guest?.avatar_url||'');setMessage('Some evenings become memories because of the people who share them. We would love you to be part of ours. Come for the music, stay for the laughter, and let us make a little more room for joy — together.');setPreview('');setFile(null);setInviteCode('');setInviteId(null);setErr('');setOpen(true);};
  const edit=fn=>value=>{fn(value);setPreview('');setFile(null);};
- const text=`Dear ${name},\n\n${message}\n\n${event.title}\n${event.event_date||''}\n${[event.venue,event.city].filter(Boolean).join(', ')}\n\nWith warmth, Glasswings\nInvitation only; a valid ticket is required for entry.`;
+ const invitationLink=inviteCode?`${window.location.origin}/?gt=${encodeURIComponent(inviteCode)}`:'';
+ const text=[`Dear ${name},`,message,event.title,event.event_date||'',[event.venue,event.city].filter(Boolean).join(', '),inviteCode?`Your personal invitation: ${invitationLink}`:'','Please show or scan this invitation at entry.','With warmth, Glasswings'].filter(Boolean).join('\n\n');
+ const createInvitation=async()=>{
+  setBusy(true);setErr('');
+  try{
+   let code=inviteCode,id=inviteId;
+   if(!code){
+    const {data:gNew,error}=await supabase.rpc('add_guest_ticket',{p_event:event.id,p_name:name.trim(),p_phone:phone.trim(),p_email:'',p_qty:1,p_age:null,p_location:null,p_type:'guest',p_note:'Personal invitation'});
+    if(error)throw error;
+    id=gNew?.id||null;code=gNew?.code||'';
+    if(!code&&id){const {data:gl,error:ge}=await supabase.rpc('guest_list',{p_event:event.id});if(ge)throw ge;const row=(gl||[]).find(x=>x.id===id);code=row?.code||'';}
+    if(!code)throw Error('Invitation was created but its QR code could not be loaded. Please reopen this guest from the guest list.');
+    setInviteId(id);setInviteCode(code);
+    if(id&&photo){try{await supabase.rpc('gw_guest_portrait',{p_id:id,p_gender:'',p_photo:photo});}catch(e){}}
+   }
+   const blob=await gwInvitationBlob(event,name,photo,message,code);const f=new File([blob],'glasswings-invitation.png',{type:'image/png'});setFile(f);setPreview(URL.createObjectURL(blob));
+  }catch(e){setErr(e.message||'Could not create invitation.');}finally{setBusy(false);}
+ };
  return <>
   <button type="button" onClick={start} style={btn('#fff0db','#78521b')}>{label}</button>
   <dialog ref={dialog} onCancel={()=>setOpen(false)} onClose={()=>setOpen(false)} style={{border:0,borderRadius:20,padding:20,width:'min(560px, calc(100vw - 32px))',maxHeight:'90dvh',boxSizing:'border-box',color:'#17392e'}}>
    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><h3>💌 A personal invitation</h3><button aria-label="Close invitation" onClick={()=>setOpen(false)} style={btn('#eee','#333')}>✕</button></div>
-   <p style={{fontSize:13}}>Create a warm invitation before or after booking. This does not issue a ticket.</p>
-   <label>Guest name<input value={name} maxLength={90} onChange={e=>edit(setName)(e.target.value)} style={gwField}/></label>
+   <p style={{fontSize:13}}>Create the guest’s personal invitation. Its QR is scanned directly at entry.</p>
+   <label>Guest name<input value={name} maxLength={90} disabled={!!inviteCode} onChange={e=>edit(setName)(e.target.value)} style={gwField}/></label>
+   {!memberId&&<label style={{display:'block',marginTop:10}}>Phone (optional)<input value={phone} maxLength={20} disabled={!!inviteCode} onChange={e=>setPhone(e.target.value)} placeholder="For WhatsApp sharing" style={gwField}/></label>}
    <DoorPortraitFields photo={photo} onPhoto={edit(setPhoto)} disabled={busy}/>
    <label>Your message<textarea value={message} maxLength={350} rows={5} onChange={e=>edit(setMessage)(e.target.value)} style={gwField}/></label>
-   {err&&<p role="alert" style={{color:'#a33'}}>{err}</p>}
-   <button disabled={busy||!name.trim()||!message.trim()} onClick={async()=>{setBusy(true);setErr('');try{const blob=await gwInvitationBlob(event,name,photo,message);setFile(new File([blob],'glasswings-invitation.png',{type:'image/png'}));setPreview(URL.createObjectURL(blob));}catch(e){setErr(e.message);}finally{setBusy(false);}}} style={{...btn('#08765b','#fff'),margin:'12px 0'}}>{busy?'Creating…':'Preview invitation'}</button>
+   {err&&<p role="alert" style={{color:err.startsWith('✅')?'#08765b':'#a33'}}>{err}</p>}
+   <button disabled={busy||!name.trim()||!message.trim()} onClick={createInvitation} style={{...btn('#08765b','#fff'),margin:'12px 0',width:'100%',justifyContent:'center'}}>{busy?'Creating…':inviteCode?'Refresh invitation card':'Create invitation + QR'}</button>
+   {inviteCode&&<div style={{background:'#E8F7F1',color:'#075e46',fontSize:12.5,fontWeight:800,padding:'10px 12px',borderRadius:10,marginBottom:10}}>✓ Invitation ready · Code {inviteCode}</div>}
    {preview&&<><img src={preview} alt={`Invitation for ${name}`} style={{display:'block',width:'100%',borderRadius:14}}/><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
-    <button onClick={async()=>{try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:event.title,text});}else{setErr('Download the card, then attach it in WhatsApp.');}}catch(e){if(e.name!=='AbortError')setErr('Please use Download card and attach it in WhatsApp.');}}} style={btn('#08765b','#fff')}>Share invitation</button>
-    <a href={preview} download="glasswings-invitation.png" style={btn('#eee','#17392e')}>Download card</a>
-    {memberId&&<button onClick={async()=>{setErr('');try{const {data:tid,error:te}=await supabase.rpc('get_dm_thread',{p_other:memberId});if(te)throw te;const me=(await supabase.auth.getUser()).data.user?.id;if(!me)throw Error('Please sign in again.');const link=window.location.origin+'/e/'+event.id;const place=[event.venue,event.city].filter(Boolean).join(', ');const body=['💌 A personal invitation to '+event.title,'Dear '+name,message,event.event_date||'',place,'Open event: '+link,'With warmth, Glasswings'].filter(Boolean).join('\n\n');const {error}=await supabase.from('messages').insert({group_type:'p2p',group_id:tid,sender_id:me,body,media_type:'broadcast'});if(error)throw error;setErr('✅ Invitation sent to this member in Glasswings.');}catch(e){setErr(e.message||'Could not send in app.');}}} style={btn('#6D28D9','#fff')}>Send in app</button>}
-    <a href={`https://wa.me/${waNum(guest?.phone)}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer" style={btn('#e1f6e8','#075e46')}>WhatsApp message</a>
+    <button onClick={async()=>{try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:event.title,text});}else{setErr('Download the invitation, then attach it in WhatsApp.');}}catch(e){if(e.name!=='AbortError')setErr('Please use Download invitation and attach it in WhatsApp.');}}} style={btn('#08765b','#fff')}>Share invitation</button>
+    <a href={preview} download="glasswings-invitation.png" style={btn('#eee','#17392e')}>Download invitation</a>
+    {memberId&&<button onClick={async()=>{setErr('');try{const {data:tid,error:te}=await supabase.rpc('get_dm_thread',{p_other:memberId});if(te)throw te;const me=(await supabase.auth.getUser()).data.user?.id;if(!me)throw Error('Please sign in again.');const place=[event.venue,event.city].filter(Boolean).join(', ');const body=['💌 A personal invitation to '+event.title,'Dear '+name,message,event.event_date||'',place,'Open your invitation: '+invitationLink,'Show or scan this invitation at entry.','With warmth, Glasswings'].filter(Boolean).join('\n\n');const {error}=await supabase.from('messages').insert({group_type:'p2p',group_id:tid,sender_id:me,body,media_type:'broadcast'});if(error)throw error;setErr('✅ Invitation sent to this member in Glasswings.');}catch(e){setErr(e.message||'Could not send in app.');}}} style={btn('#6D28D9','#fff')}>Send in app</button>}
+    <a href={`https://wa.me/${waNum(phone||guest?.phone)}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer" style={btn('#e1f6e8','#075e46')}>WhatsApp invitation</a>
    </div></>}
   </dialog>
  </>;
@@ -195,13 +219,13 @@ function EventInvitesTab({event}){
  const needle=q.trim().toLowerCase();
  const matches=needle.length<2?[]:members.filter(m=>`${m.full_name||''} ${m.city||''} ${m.area||''}`.toLowerCase().includes(needle)).slice(0,12);
  return <div style={{marginTop:4}}>
-  <div style={{background:'linear-gradient(135deg,#FFF8EA,#FFF0F6)',border:'1px solid #F2D7B6',borderRadius:16,padding:16,marginBottom:14}}><div style={{fontSize:19,fontWeight:900,color:'#5B3A18'}}>💌 Personal invitations</div><div style={{fontSize:12.5,color:'#755B43',lineHeight:1.55,marginTop:5}}>Send a warm invitation before issuing a ticket. The invitation card is personal; entry still requires a valid ticket.</div></div>
+  <div style={{background:'linear-gradient(135deg,#FFF8EA,#FFF0F6)',border:'1px solid #F2D7B6',borderRadius:16,padding:16,marginBottom:14}}><div style={{fontSize:19,fontWeight:900,color:'#5B3A18'}}>💌 Personal invitations</div><div style={{fontSize:12.5,color:'#755B43',lineHeight:1.55,marginTop:5}}>Each invitation is the guest’s entry pass. A unique QR is generated automatically and scanned at the door.</div></div>
   <div style={{display:'flex',gap:8,marginBottom:14}}>
    <button onClick={()=>setMode('guest')} style={{flex:1,padding:'12px 10px',borderRadius:12,border:`2px solid ${mode==='guest'?'#B7791F':'#F1E2CD'}`,background:mode==='guest'?'#B7791F':'#FFF8EC',color:mode==='guest'?'#fff':'#8A5A18',fontWeight:900,cursor:'pointer'}}>👤 Send to guest</button>
    <button onClick={()=>setMode('member')} style={{flex:1,padding:'12px 10px',borderRadius:12,border:`2px solid ${mode==='member'?'#6D28D9':'#E6DCF8'}`,background:mode==='member'?'#6D28D9':'#F7F2FF',color:mode==='member'?'#fff':'#6D28D9',fontWeight:900,cursor:'pointer'}}>✨ Send to member</button>
   </div>
-  {mode==='guest'&&<div style={{background:'#fff',border:`1px solid ${W.line}`,borderRadius:14,padding:14}}><div style={{fontWeight:850,color:W.ink,marginBottom:5}}>Guest / outsider</div><div style={{fontSize:12.5,color:W.soft,lineHeight:1.5,marginBottom:12}}>Enter the guest's name, optionally add their photo, personalise the message, then share the invitation card or WhatsApp message.</div><InvitationButton event={event} label="💌 Create guest invitation"/></div>}
-  {mode==='member'&&<div style={{background:'#fff',border:`1px solid ${W.line}`,borderRadius:14,padding:14}}><div style={{fontWeight:850,color:W.ink,marginBottom:5}}>Glasswings member</div><div style={{fontSize:12.5,color:W.soft,lineHeight:1.5,marginBottom:10}}>Search an existing member. You can personalise the card and send the invitation directly inside Glasswings.</div><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search member by name, city or area…" style={{...gwField,marginBottom:8}}/>{loading&&<div style={{fontSize:12.5,color:W.soft,padding:'8px 0'}}>Loading members…</div>}{!loading&&needle.length>0&&needle.length<2&&<div style={{fontSize:12,color:W.soft,padding:'6px 0'}}>Type at least 2 characters.</div>}{!loading&&needle.length>=2&&!matches.length&&<div style={{fontSize:12.5,color:W.soft,padding:'9px 0'}}>No matching member found.</div>}{matches.map(m=><div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',borderTop:`1px solid ${W.line}`,flexWrap:'wrap'}}><PersonAvatar url={m.avatar_url} name={m.full_name} size={42}/><div style={{flex:1,minWidth:130}}><div style={{fontWeight:800,color:W.ink,fontSize:14}}>{m.full_name||'Member'}</div><div style={{fontSize:11.5,color:W.soft}}>{[m.city,m.area].filter(Boolean).join(' · ')||'Glasswings member'}</div></div><InvitationButton event={event} guest={{...m,name:m.full_name}} memberId={m.id} label="💌 Invite member"/></div>)}</div>}
+  {mode==='guest'&&<div style={{background:'#fff',border:`1px solid ${W.line}`,borderRadius:14,padding:14}}><div style={{fontWeight:850,color:W.ink,marginBottom:5}}>Guest / outsider</div><div style={{fontSize:12.5,color:W.soft,lineHeight:1.5,marginBottom:12}}>Enter the guest’s name, optionally add their photo/phone, personalise the message, then create and share their scannable invitation.</div><InvitationButton event={event} label="💌 Create guest invitation"/></div>}
+  {mode==='member'&&<div style={{background:'#fff',border:`1px solid ${W.line}`,borderRadius:14,padding:14}}><div style={{fontWeight:850,color:W.ink,marginBottom:5}}>Glasswings member</div><div style={{fontSize:12.5,color:W.soft,lineHeight:1.5,marginBottom:10}}>Search an existing member. Their personal invitation gets its own QR and can be sent directly inside Glasswings.</div><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search member by name, city or area…" style={{...gwField,marginBottom:8}}/>{loading&&<div style={{fontSize:12.5,color:W.soft,padding:'8px 0'}}>Loading members…</div>}{!loading&&needle.length>0&&needle.length<2&&<div style={{fontSize:12,color:W.soft,padding:'6px 0'}}>Type at least 2 characters.</div>}{!loading&&needle.length>=2&&!matches.length&&<div style={{fontSize:12.5,color:W.soft,padding:'9px 0'}}>No matching member found.</div>}{matches.map(m=><div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',borderTop:`1px solid ${W.line}`,flexWrap:'wrap'}}><PersonAvatar url={m.avatar_url} name={m.full_name} size={42}/><div style={{flex:1,minWidth:130}}><div style={{fontWeight:800,color:W.ink,fontSize:14}}>{m.full_name||'Member'}</div><div style={{fontSize:11.5,color:W.soft}}>{[m.city,m.area].filter(Boolean).join(' · ')||'Glasswings member'}</div></div><InvitationButton event={event} guest={{...m,name:m.full_name}} memberId={m.id} label="💌 Invite member"/></div>)}</div>}
  </div>;
 }
 
@@ -11961,7 +11985,12 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
 }
 
 function AdminInviteHub({ events = [] }) {
-  const usable = (events || []).filter(e => e && e.id);
+  const now = Date.now();
+  const usable = (events || []).filter(e => {
+    if (!e?.id) return false;
+    const t = Date.parse(e.event_at || "");
+    return Number.isFinite(t) && t >= now;
+  }).sort((a,b)=>Date.parse(a.event_at)-Date.parse(b.event_at));
   const [eventId, setEventId] = useState(usable[0]?.id || "");
   useEffect(() => {
     if (!usable.some(e => e.id === eventId)) setEventId(usable[0]?.id || "");
@@ -11974,8 +12003,8 @@ function AdminInviteHub({ events = [] }) {
         <div style={{ fontSize: 25, fontWeight: 950, marginTop: 4 }}>💌 Personal Invitations</div>
         <div style={{ fontSize: 13.5, lineHeight: 1.55, marginTop: 6, opacity: .95 }}>Choose an event, then send a warm personal invitation to an outside guest or directly to a Glasswings member.</div>
       </div>
-      {!usable.length ? <Center>No events available for invitations yet.</Center> : <>
-        <label style={{ display: "block", fontSize: 13, fontWeight: 850, color: W.ink, marginBottom: 6 }}>Choose event</label>
+      {!usable.length ? <Center>No upcoming events available for invitations.</Center> : <>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 850, color: W.ink, marginBottom: 6 }}>Choose upcoming event</label>
         <select value={eventId} onChange={e => setEventId(e.target.value)} style={{ ...gwField, marginBottom: 14, fontWeight: 750 }}>
           {usable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
         </select>
