@@ -162,7 +162,7 @@ async function gwInvitationBlob(event,name,photo,message){
  x.font='17px system-ui';x.fillStyle='#aac7bb';x.fillText('PERSONAL INVITATION · ENTRY REQUIRES A VALID TICKET',500,1323);
  return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('Could not create card.')),'image/png'));
 }
-function InvitationButton({event,guest}){
+function InvitationButton({event,guest,memberId=null,label="💌 Invite"}){
  const [open,setOpen]=useState(false),[name,setName]=useState(''),[photo,setPhoto]=useState(''),[message,setMessage]=useState(''),[preview,setPreview]=useState(''),[file,setFile]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState('');
  const dialog=useRef(null);
  useEffect(()=>{if(open){dialog.current?.showModal();}else dialog.current?.close();},[open]);
@@ -171,7 +171,7 @@ function InvitationButton({event,guest}){
  const edit=fn=>value=>{fn(value);setPreview('');setFile(null);};
  const text=`Dear ${name},\n\n${message}\n\n${event.title}\n${event.event_date||''}\n${[event.venue,event.city].filter(Boolean).join(', ')}\n\nWith warmth, Glasswings\nInvitation only; a valid ticket is required for entry.`;
  return <>
-  <button type="button" onClick={start} style={btn('#fff0db','#78521b')}>💌 Invite</button>
+  <button type="button" onClick={start} style={btn('#fff0db','#78521b')}>{label}</button>
   <dialog ref={dialog} onCancel={()=>setOpen(false)} onClose={()=>setOpen(false)} style={{border:0,borderRadius:20,padding:20,width:'min(560px, calc(100vw - 32px))',maxHeight:'90dvh',boxSizing:'border-box',color:'#17392e'}}>
    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><h3>💌 A personal invitation</h3><button aria-label="Close invitation" onClick={()=>setOpen(false)} style={btn('#eee','#333')}>✕</button></div>
    <p style={{fontSize:13}}>Create a warm invitation before or after booking. This does not issue a ticket.</p>
@@ -183,11 +183,28 @@ function InvitationButton({event,guest}){
    {preview&&<><img src={preview} alt={`Invitation for ${name}`} style={{display:'block',width:'100%',borderRadius:14}}/><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
     <button onClick={async()=>{try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:event.title,text});}else{setErr('Download the card, then attach it in WhatsApp.');}}catch(e){if(e.name!=='AbortError')setErr('Please use Download card and attach it in WhatsApp.');}}} style={btn('#08765b','#fff')}>Share invitation</button>
     <a href={preview} download="glasswings-invitation.png" style={btn('#eee','#17392e')}>Download card</a>
+    {memberId&&<button onClick={async()=>{setErr('');try{const {data:tid,error:te}=await supabase.rpc('get_dm_thread',{p_other:memberId});if(te)throw te;const me=(await supabase.auth.getUser()).data.user?.id;if(!me)throw Error('Please sign in again.');const link=window.location.origin+'/e/'+event.id;const place=[event.venue,event.city].filter(Boolean).join(', ');const body=['💌 A personal invitation to '+event.title,'Dear '+name,message,event.event_date||'',place,'Open event: '+link,'With warmth, Glasswings'].filter(Boolean).join('\n\n');const {error}=await supabase.from('messages').insert({group_type:'p2p',group_id:tid,sender_id:me,body,media_type:'broadcast'});if(error)throw error;setErr('✅ Invitation sent to this member in Glasswings.');}catch(e){setErr(e.message||'Could not send in app.');}}} style={btn('#6D28D9','#fff')}>Send in app</button>}
     <a href={`https://wa.me/${waNum(guest?.phone)}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer" style={btn('#e1f6e8','#075e46')}>WhatsApp message</a>
    </div></>}
   </dialog>
  </>;
 }
+function EventInvitesTab({event}){
+ const [mode,setMode]=useState('guest'),[q,setQ]=useState(''),[members,setMembers]=useState([]),[loading,setLoading]=useState(false);
+ useEffect(()=>{if(mode!=='member')return;setLoading(true);supabase.rpc('staff_directory').then(({data,error})=>{if(!error)setMembers(data||[]);}).finally(()=>setLoading(false));},[mode]);
+ const needle=q.trim().toLowerCase();
+ const matches=needle.length<2?[]:members.filter(m=>`${m.full_name||''} ${m.city||''} ${m.area||''}`.toLowerCase().includes(needle)).slice(0,12);
+ return <div style={{marginTop:4}}>
+  <div style={{background:'linear-gradient(135deg,#FFF8EA,#FFF0F6)',border:'1px solid #F2D7B6',borderRadius:16,padding:16,marginBottom:14}}><div style={{fontSize:19,fontWeight:900,color:'#5B3A18'}}>💌 Personal invitations</div><div style={{fontSize:12.5,color:'#755B43',lineHeight:1.55,marginTop:5}}>Send a warm invitation before issuing a ticket. The invitation card is personal; entry still requires a valid ticket.</div></div>
+  <div style={{display:'flex',gap:8,marginBottom:14}}>
+   <button onClick={()=>setMode('guest')} style={{flex:1,padding:'12px 10px',borderRadius:12,border:`2px solid ${mode==='guest'?'#B7791F':'#F1E2CD'}`,background:mode==='guest'?'#B7791F':'#FFF8EC',color:mode==='guest'?'#fff':'#8A5A18',fontWeight:900,cursor:'pointer'}}>👤 Send to guest</button>
+   <button onClick={()=>setMode('member')} style={{flex:1,padding:'12px 10px',borderRadius:12,border:`2px solid ${mode==='member'?'#6D28D9':'#E6DCF8'}`,background:mode==='member'?'#6D28D9':'#F7F2FF',color:mode==='member'?'#fff':'#6D28D9',fontWeight:900,cursor:'pointer'}}>✨ Send to member</button>
+  </div>
+  {mode==='guest'&&<div style={{background:'#fff',border:`1px solid ${W.line}`,borderRadius:14,padding:14}}><div style={{fontWeight:850,color:W.ink,marginBottom:5}}>Guest / outsider</div><div style={{fontSize:12.5,color:W.soft,lineHeight:1.5,marginBottom:12}}>Enter the guest's name, optionally add their photo, personalise the message, then share the invitation card or WhatsApp message.</div><InvitationButton event={event} label="💌 Create guest invitation"/></div>}
+  {mode==='member'&&<div style={{background:'#fff',border:`1px solid ${W.line}`,borderRadius:14,padding:14}}><div style={{fontWeight:850,color:W.ink,marginBottom:5}}>Glasswings member</div><div style={{fontSize:12.5,color:W.soft,lineHeight:1.5,marginBottom:10}}>Search an existing member. You can personalise the card and send the invitation directly inside Glasswings.</div><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search member by name, city or area…" style={{...gwField,marginBottom:8}}/>{loading&&<div style={{fontSize:12.5,color:W.soft,padding:'8px 0'}}>Loading members…</div>}{!loading&&needle.length>0&&needle.length<2&&<div style={{fontSize:12,color:W.soft,padding:'6px 0'}}>Type at least 2 characters.</div>}{!loading&&needle.length>=2&&!matches.length&&<div style={{fontSize:12.5,color:W.soft,padding:'9px 0'}}>No matching member found.</div>}{matches.map(m=><div key={m.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',borderTop:`1px solid ${W.line}`,flexWrap:'wrap'}}><PersonAvatar url={m.avatar_url} name={m.full_name} size={42}/><div style={{flex:1,minWidth:130}}><div style={{fontWeight:800,color:W.ink,fontSize:14}}>{m.full_name||'Member'}</div><div style={{fontSize:11.5,color:W.soft}}>{[m.city,m.area].filter(Boolean).join(' · ')||'Glasswings member'}</div></div><InvitationButton event={event} guest={{...m,name:m.full_name}} memberId={m.id} label="💌 Invite member"/></div>)}</div>}
+ </div>;
+}
+
 async function gwSaveNewGuestPortrait(guest, gender, photo) {
   if (!gender && !photo) return true;
   if (!guest?.id) { alert("Ticket created, but no guest ID was returned to attach the photo. Do not create the ticket again."); return false; }
@@ -11939,8 +11956,33 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
     `}</style>
     <aside className="gw-admin-sidebar"><header><strong>ADMIN WORKSPACE</strong><button type="button" aria-label={collapsed?'Expand admin sidebar':'Collapse admin sidebar'} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>{collapsed?'»':'«'}</button></header><nav aria-label="Admin navigation">{groups()}</nav></aside>
     <div className="gw-admin-content"><div className="gw-admin-mobilebar"><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>dialog.current?.showModal()}>☰ Admin Menu</button><strong>{label(selected)}</strong></div>{children}</div>
-    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['dash','members','orgmembers','events','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
+    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['dash','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
   </div>;
+}
+
+function AdminInviteHub({ events = [] }) {
+  const usable = (events || []).filter(e => e && e.id);
+  const [eventId, setEventId] = useState(usable[0]?.id || "");
+  useEffect(() => {
+    if (!usable.some(e => e.id === eventId)) setEventId(usable[0]?.id || "");
+  }, [events, eventId]);
+  const event = usable.find(e => e.id === eventId) || null;
+  return (
+    <div style={{ padding: 14, maxWidth: 860, margin: "0 auto" }}>
+      <div style={{ background: "linear-gradient(135deg,#6F4A00,#B7791F)", color: "#fff", borderRadius: 18, padding: 18, marginBottom: 14, boxShadow: "0 8px 24px rgba(120,82,27,.18)" }}>
+        <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1.3, opacity: .85 }}>GLASSWINGS</div>
+        <div style={{ fontSize: 25, fontWeight: 950, marginTop: 4 }}>💌 Personal Invitations</div>
+        <div style={{ fontSize: 13.5, lineHeight: 1.55, marginTop: 6, opacity: .95 }}>Choose an event, then send a warm personal invitation to an outside guest or directly to a Glasswings member.</div>
+      </div>
+      {!usable.length ? <Center>No events available for invitations yet.</Center> : <>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 850, color: W.ink, marginBottom: 6 }}>Choose event</label>
+        <select value={eventId} onChange={e => setEventId(e.target.value)} style={{ ...gwField, marginBottom: 14, fontWeight: 750 }}>
+          {usable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
+        </select>
+        {event && <EventInvitesTab event={event} />}
+      </>}
+    </div>
+  );
 }
 
 function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
@@ -11948,7 +11990,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     ...(canUseDirectory ? [["directory", "☎️ Directory"]] : []),
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
-    ...(caps.host ? [["events", "Events"]] : []),
+    ...(caps.host ? [["events", "Events"], ["invite", "💌 INVITE"]] : []),
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
     ...((myEventsOnly && caps.privateMembers) ? [["orgmembers", "👥 My Members"]] : []),
@@ -12005,6 +12047,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
         : seg === "orgstaff" ? <OrganiserStaffPanel />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
+        : seg === "invite" ? <AdminInviteHub events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} />
         : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => !gwIsPrivateEvent(ev))} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "private" ? <AdminEvents privateOnly memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => gwIsPrivateEvent(ev))} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
@@ -14501,6 +14544,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const [mSeg, setMSeg] = useState("details");
   const MSEGS = [
     ["details", "📝", "Details", "#008069", "#E7F6EF"],
+    ["invite", "💌", "Invite", "#B7791F", "#FFF4DE"],
     ["media", "🖼️", "Media & share", "#2563EB", "#EAF1FE"],
     ["tickets", "🎟️", "Tickets", "#7C3AED", "#F3EEFE"],
     ["sales", "💰", "Sales", "#059669", "#E3F7EF"],
@@ -14986,6 +15030,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
               <button onClick={() => onBroadcastEvent(e)} title={privateOnly ? "Notify only the invited segments" : "Post to all group chats"} style={{ ...btn(privateOnly ? "#6D28D9" : W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />{privateOnly ? "Notify segments" : "Post"}</button>
+              <button onClick={(ev) => { ev.stopPropagation(); setManage(e.id); setMSeg("invite"); }} title="Send a personal invitation to a guest or Glasswings member" style={{ ...btn("#B7791F", "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5, fontWeight: 850 }}><span style={{fontSize:14}}>💌</span>Invite</button>
               <button onClick={() => setMembersFor(e)} title="Who's coming — list, contact, withdraw" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Members</button>
               <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Check-in</button>
               {!privateOnly && <button onClick={() => setSendFor(e)} title="Message members" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Send size={14} />Notify</button>}
@@ -15054,6 +15099,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
                   {mSeg === "analytics" && <EventAnalyticsTab event={e} />}
                   {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} isSuper={isSuper} />}
+                  {mSeg === "invite" && <EventInvitesTab event={e} />}
                   {mSeg === "guests" && (<>
                     <GuestTickets event={e} />
                   </>)}
@@ -15245,7 +15291,6 @@ function GuestTickets({ event }) {
           <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8 }}>Members get a real in-app ticket. For a VIP, Team or Instagram Subscriber pass, use “Add outsider” — it works for members too, just type their name.</div>
         </div>
       )}
-      <div style={{margin:"12px 0"}}><InvitationButton event={event}/></div>
       {guests.length > 0 && <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink, margin: "6px 0 8px" }}>Invited ({guests.length})</div>}
       {guests.map(g => { const tm = tmeta(gwGuestTier(g)); return (
         <div key={g.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 11px", marginBottom: 8, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${tm[3]}`, borderRadius: 11 }}>
@@ -15260,7 +15305,7 @@ function GuestTickets({ event }) {
               {TIERS.map(([k, ic, lbl]) => <option key={k} value={k}>{ic} {lbl}</option>)}
             </select>
           </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap:"wrap", maxWidth:140 }}><InvitationButton event={event} guest={g}/>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap:"wrap", maxWidth:140 }}>
             {g.email && <button onClick={() => emailGuest(g)} title="Email the ticket" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>}
             <button onClick={() => shareGuest(g)} title="Send ticket on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12 }}><MessageCircle size={13} /></button>
             <button onClick={() => { if (window.confirm(`Remove ${g.name}?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 9px", fontSize: 12 }}><Trash2 size={13} /></button>
