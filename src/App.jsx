@@ -86,12 +86,16 @@ async function makeTicketBlob(d) {
   if ((d.terms || "").trim()) { x.fillStyle = "rgba(255,255,255,.5)"; x.font = "600 15px system-ui,Arial"; x.fillText(fitText(x, "Terms apply \u2014 " + d.terms.replace(/\s+/g, " ").trim(), 600), 48, 452); }
   x.strokeStyle = "rgba(255,255,255,.25)"; x.setLineDash([12, 10]); x.beginPath(); x.moveTo(Wd - 320, 30); x.lineTo(Wd - 320, Ht - 30); x.stroke(); x.setLineDash([]);
   x.fillStyle = "#2FD4A8"; x.font = "800 19px system-ui,Arial"; x.fillText("ATTENDEE", 48, 256);
-  x.fillStyle = "#ffffff"; x.font = "800 36px system-ui,Arial"; x.fillText(fitText(x, d.name || "", 560), 48, 300);
+  x.fillStyle = "#ffffff"; x.font = "800 36px system-ui,Arial"; x.fillText(fitText(x, d.name || "", d.photo ? 430 : 560), 48, 300);
+  if (d.photo) { try { const im=await loadImg(d.photo); x.save(); rr(x,520,225,110,110,18); x.clip(); const z=Math.max(110/im.width,110/im.height); x.drawImage(im,575-im.width*z/2,280-im.height*z/2,im.width*z,im.height*z); x.restore(); } catch {} }
   x.fillStyle = "rgba(255,255,255,.55)"; x.font = "700 18px system-ui,Arial"; x.fillText("TICKETS", 48, 372);
   x.fillStyle = "#ffffff"; x.font = "800 34px system-ui,Arial"; x.fillText(String(d.qty), 48, 416);
   x.fillStyle = "rgba(255,255,255,.55)"; x.font = "700 18px system-ui,Arial"; x.fillText("CODE", 230, 372);
   x.fillStyle = "#2FD4A8"; x.font = "800 28px ui-monospace,monospace"; x.fillText(d.code, 230, 414);
-  x.fillStyle = "rgba(255,255,255,.5)"; x.font = "500 18px system-ui,Arial"; x.fillText("Show this ticket at entry", 48, 500);
+  x.fillStyle = "rgba(255,255,255,.5)"; x.font = "500 18px system-ui,Arial"; x.fillText("Show this ticket at entry", 48, 479);
+  x.fillStyle="#b7e5ce"; x.font="italic 17px Georgia,serif";
+  x.fillText("You’re not just on our guest list—you’re part of what makes",48,507);
+  x.fillText("this evening special. We can’t wait to welcome you. ♡",48,531);
   x.fillStyle = "#ffffff"; rr(x, Wd - 268, Ht / 2 - 110, 210, 210, 16); x.fill();
   try {
     const qrImg = await loadImg("https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=0&data=" + encodeURIComponent(d.code));
@@ -103,6 +107,108 @@ async function makeTicketBlob(d) {
   x.fillStyle = "rgba(255,255,255,.6)"; x.font = "600 16px system-ui,Arial"; x.textAlign = "center";
   x.fillText("SCAN AT ENTRY", Wd - 268 + 105, Ht / 2 + 132); x.textAlign = "left";
   return await new Promise(res => c.toBlob(res, "image/png"));
+}
+
+// R19 — door portraits, existing-ticket history and personal invitations.
+const gwField = {width:'100%',boxSizing:'border-box',border:'1px solid #dbe5e0',borderRadius:10,padding:11,fontSize:14,background:'#fff',color:'#142e27'};
+function DoorPortraitFields({photo,gender,onPhoto,onGender,disabled=false,onBusy}) {
+ const [busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const pick=async file=>{
+  if(!file)return; setBusy(true);onBusy?.(true);setErr('');
+  let url;
+  try {
+   if(!file.type.startsWith('image/'))throw Error('Please choose a photo.');
+   url=URL.createObjectURL(file);const img=await loadImg(url);
+   const c=document.createElement('canvas');c.width=360;c.height=360;
+   const ctx=c.getContext('2d');const side=Math.min(img.width,img.height);
+   ctx.drawImage(img,(img.width-side)/2,(img.height-side)/2,side,side,0,0,360,360);
+   const data=c.toDataURL('image/jpeg',.78);
+   if(data.length>220000)throw Error('Please choose a smaller photo.');onPhoto(data);
+  }catch(e){setErr(e.message||'Could not open that photo. Try a JPG.');}
+  finally{if(url)URL.revokeObjectURL(url);setBusy(false);onBusy?.(false);}
+ };
+ return <fieldset disabled={disabled||busy} style={{border:'1px solid #dbe5e0',borderRadius:12,padding:12,margin:'10px 0'}}>
+  <legend style={{fontWeight:750,fontSize:13}}>Guest details</legend>
+  {onGender&&<label style={{display:'block',fontSize:13}}>Gender<select style={{...gwField,marginTop:5}} value={gender||''} onChange={e=>onGender(e.target.value)}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>}
+  <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginTop:10}}>
+   <PersonAvatar url={photo} name="Guest" size={64}/>
+   <label style={{...btn('#e5f5ed','#075e46'),cursor:'pointer'}}>📷 {photo?'Retake photo':'Take photo'}<input type="file" accept="image/*" capture="user" disabled={disabled||busy} style={{display:'none'}} onChange={e=>{pick(e.target.files?.[0]);e.target.value='';}}/></label>
+   <label style={{...btn('#f0f2f5','#263c35'),cursor:'pointer'}}>Choose photo<input type="file" accept="image/*" disabled={disabled||busy} style={{display:'none'}} onChange={e=>{pick(e.target.files?.[0]);e.target.value='';}}/></label>
+   {photo&&<button type="button" onClick={()=>onPhoto('')} style={btn('#fff','#a33')}>Remove</button>}
+  </div>
+  <div style={{fontSize:12,color:'#62766e',marginTop:7}}>{busy?'Preparing photo…':'Optional. Ask the guest before taking a photo; it appears on their card.'}</div>
+  {err&&<div role="alert" style={{color:'#a33'}}>{err}</div>}
+ </fieldset>;
+}
+async function gwInvitationBlob(event,name,photo,message){
+ const c=document.createElement('canvas');c.width=1000;c.height=1400;const x=c.getContext('2d');
+ const bg=x.createLinearGradient(0,0,1000,1400);bg.addColorStop(0,'#063f35');bg.addColorStop(1,'#071e21');x.fillStyle=bg;x.fillRect(0,0,1000,1400);
+ x.strokeStyle='#cbb67b';x.lineWidth=2;rr(x,30,30,940,1340,28);x.stroke();
+ for(let i=0;i<28;i++){x.fillStyle=i%2?'#cbb67b55':'#8df2ce44';x.beginPath();x.arc(55+(i*173)%890,65+(i*97)%1270,2+i%4,0,Math.PI*2);x.fill();}
+ x.textAlign='center';x.fillStyle='#d7c68f';x.font='700 22px system-ui';x.fillText('G L A S S W I N G S',500,105);
+ x.fillStyle='#fff4d7';x.font='italic 56px Georgia,serif';x.fillText('An evening, made better by you.',500,195,880);
+ x.font='700 18px system-ui';x.fillStyle='#aee2ca';x.fillText('Y O U ’ R E   I N V I T E D',500,246);
+ if(photo){const img=await loadImg(photo);x.save();x.beginPath();x.arc(500,430,134,0,Math.PI*2);x.clip();const z=Math.max(268/img.width,268/img.height);x.drawImage(img,500-img.width*z/2,430-img.height*z/2,img.width*z,img.height*z);x.restore();x.strokeStyle='#d7c68f';x.lineWidth=4;x.beginPath();x.arc(500,430,143,0,Math.PI*2);x.stroke();}
+ else {x.fillStyle='#d7c68f';x.font='90px Georgia';x.fillText('♡',500,462);}
+ x.fillStyle='#fff4d7';x.font='700 44px system-ui';x.fillText(fitText(x,name||'Our special guest',840),500,640);
+ x.fillStyle='#b7f1d8';x.font='700 38px system-ui';let y=708;
+ for(const line of wrapLines(x,event.title||'A Glasswings celebration',820).slice(0,2)){x.fillText(line,500,y);y+=46;}
+ x.fillStyle='#f0f4ed';x.font='26px Georgia';y=842;
+ for(const line of wrapLines(x,message,790).slice(0,7)){x.fillText(line,500,y);y+=37;}
+ x.strokeStyle='#cbb67b66';x.beginPath();x.moveTo(160,1126);x.lineTo(840,1126);x.stroke();
+ x.font='700 25px system-ui';x.fillStyle='#dfcf9d';x.fillText(fitText(x,event.event_date||'',840),500,1175);
+ x.font='23px system-ui';x.fillStyle='#fff4d7';x.fillText(fitText(x,[event.venue,event.city].filter(Boolean).join(' · '),840),500,1220);
+ x.font='italic 23px Georgia';x.fillText('With warmth, the Glasswings family',500,1275);
+ x.font='17px system-ui';x.fillStyle='#aac7bb';x.fillText('PERSONAL INVITATION · ENTRY REQUIRES A VALID TICKET',500,1323);
+ return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('Could not create card.')),'image/png'));
+}
+function InvitationButton({event,guest}){
+ const [open,setOpen]=useState(false),[name,setName]=useState(''),[photo,setPhoto]=useState(''),[message,setMessage]=useState(''),[preview,setPreview]=useState(''),[file,setFile]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const dialog=useRef(null);
+ useEffect(()=>{if(open){dialog.current?.showModal();}else dialog.current?.close();},[open]);
+ useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview);},[preview]);
+ const start=()=>{setName(guest?.name||guest?.full_name||'');setPhoto(guest?.door_photo||guest?.avatar_url||'');setMessage('Some evenings become memories because of the people who share them. We would love you to be part of ours. Come for the music, stay for the laughter, and let us make a little more room for joy — together.');setPreview('');setFile(null);setErr('');setOpen(true);};
+ const edit=fn=>value=>{fn(value);setPreview('');setFile(null);};
+ const text=`Dear ${name},\n\n${message}\n\n${event.title}\n${event.event_date||''}\n${[event.venue,event.city].filter(Boolean).join(', ')}\n\nWith warmth, Glasswings\nInvitation only; a valid ticket is required for entry.`;
+ return <>
+  <button type="button" onClick={start} style={btn('#fff0db','#78521b')}>💌 Invite</button>
+  <dialog ref={dialog} onCancel={()=>setOpen(false)} onClose={()=>setOpen(false)} style={{border:0,borderRadius:20,padding:20,width:'min(560px, calc(100vw - 32px))',maxHeight:'90dvh',boxSizing:'border-box',color:'#17392e'}}>
+   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}><h3>💌 A personal invitation</h3><button aria-label="Close invitation" onClick={()=>setOpen(false)} style={btn('#eee','#333')}>✕</button></div>
+   <p style={{fontSize:13}}>Create a warm invitation before or after booking. This does not issue a ticket.</p>
+   <label>Guest name<input value={name} maxLength={90} onChange={e=>edit(setName)(e.target.value)} style={gwField}/></label>
+   <DoorPortraitFields photo={photo} onPhoto={edit(setPhoto)} disabled={busy}/>
+   <label>Your message<textarea value={message} maxLength={350} rows={5} onChange={e=>edit(setMessage)(e.target.value)} style={gwField}/></label>
+   {err&&<p role="alert" style={{color:'#a33'}}>{err}</p>}
+   <button disabled={busy||!name.trim()||!message.trim()} onClick={async()=>{setBusy(true);setErr('');try{const blob=await gwInvitationBlob(event,name,photo,message);setFile(new File([blob],'glasswings-invitation.png',{type:'image/png'}));setPreview(URL.createObjectURL(blob));}catch(e){setErr(e.message);}finally{setBusy(false);}}} style={{...btn('#08765b','#fff'),margin:'12px 0'}}>{busy?'Creating…':'Preview invitation'}</button>
+   {preview&&<><img src={preview} alt={`Invitation for ${name}`} style={{display:'block',width:'100%',borderRadius:14}}/><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
+    <button onClick={async()=>{try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:event.title,text});}else{setErr('Download the card, then attach it in WhatsApp.');}}catch(e){if(e.name!=='AbortError')setErr('Please use Download card and attach it in WhatsApp.');}}} style={btn('#08765b','#fff')}>Share invitation</button>
+    <a href={preview} download="glasswings-invitation.png" style={btn('#eee','#17392e')}>Download card</a>
+    <a href={`https://wa.me/${waNum(guest?.phone)}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer" style={btn('#e1f6e8','#075e46')}>WhatsApp message</a>
+   </div></>}
+  </dialog>
+ </>;
+}
+function DoorSalesHistory({event,refresh=0}){
+ const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[q,setQ]=useState(''),[genderFilter,setGenderFilter]=useState(''),[editing,setEditing]=useState(null),[saving,setSaving]=useState(false);
+ const load=async()=>{setBusy(true);setErr('');try{const {data,error}=await supabase.rpc('guest_list',{p_event:event.id});if(error)throw error;setRows((data||[]).filter(g=>['cash','upi'].includes(g.method)));}catch(e){setErr(e.message);}finally{setBusy(false);}};
+ useEffect(()=>{setRows([]);setQ('');setEditing(null);load();},[event.id,refresh]);
+ const filtered=rows.filter(g=>(!genderFilter||g.door_gender===genderFilter)&&`${g.name||''} ${g.phone||''} ${g.code||''}`.toLowerCase().includes(q.toLowerCase()));
+ return <section style={{background:'#f5faf7',border:'1px solid #dbe5e0',borderRadius:16,padding:14,margin:'16px 0'}}>
+  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><h3 style={{margin:'0 0 8px'}}>Door sales history</h3><button onClick={load} disabled={busy} style={btn('#fff','#08765b')}>Refresh</button><InvitationButton event={event}/></div>
+  <p style={{fontSize:12,color:'#62766e'}}>Existing tickets for this event. Resending keeps the same code and payment.</p>
+  <input aria-label="Search door sales" placeholder="Search name, phone or ticket code" value={q} onChange={e=>setQ(e.target.value)} style={gwField}/>
+  <select aria-label="Filter gender" value={genderFilter} onChange={e=>setGenderFilter(e.target.value)} style={{...gwField,marginTop:8}}><option value="">All genders</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
+  {err&&<p role="alert" style={{color:'#a33'}}>{err}</p>}{busy&&<p>Loading sales…</p>}{!busy&&!err&&!filtered.length&&<p>No matching door sales.</p>}
+  {filtered.map(g=><article key={g.id} style={{borderTop:'1px solid #dbe5e0',padding:'14px 0',marginTop:8}}>
+   <div style={{display:'flex',gap:10,alignItems:'center'}}><PersonAvatar url={g.door_photo} name={g.name} size={54}/><div style={{minWidth:0}}><b>{g.name}</b><div style={{fontSize:12,color:'#62766e'}}>{g.door_gender||'Gender not specified'} · {g.quantity||1} entries · {g.checked_in?'Checked in':'Not checked in'}</div><div style={{fontSize:12,overflowWrap:'anywhere'}}>{g.phone||'No phone'} · {g.code}</div><div style={{fontSize:12}}>₹{g.amount||0} · {g.method} · {g.created_at?new Date(g.created_at).toLocaleString('en-IN'):''}</div></div></div>
+   <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:10}}>
+    <a href={`https://wa.me/${waNum(g.phone)}?text=${encodeURIComponent(`Your ticket for ${event.title}\nhttps://glass-wings.com/?gt=${encodeURIComponent(g.code)}\nShow this ticket at the door.\n\nYou’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡\n— Glasswings`)}`} target="_blank" rel="noreferrer" style={btn('#08765b','#fff')}>Resend ticket</a>
+    <button onClick={async()=>{try{const blob=await makeTicketBlob({title:event.title,dateStr:event.event_date,place:[event.venue,event.city].filter(Boolean).join(', '),name:g.name,qty:g.quantity||1,code:g.code,photo:g.door_photo});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='glasswings-ticket.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),15000);}catch(e){setErr('Could not create ticket image. Use Resend ticket.');}}} style={btn('#fff','#17392e')}>Download ticket</button>
+    <button onClick={()=>setEditing({...g})} style={btn('#fff','#17392e')}>Photo / gender</button><InvitationButton event={event} guest={g}/>
+   </div>
+   {editing?.id===g.id&&<div><DoorPortraitFields photo={editing.door_photo} gender={editing.door_gender} onPhoto={v=>setEditing(x=>({...x,door_photo:v}))} onGender={v=>setEditing(x=>({...x,door_gender:v}))} disabled={saving}/><button disabled={saving} onClick={async()=>{setSaving(true);setErr('');try{const {error}=await supabase.rpc('gw_guest_portrait',{p_id:g.id,p_gender:editing.door_gender||'',p_photo:editing.door_photo||''});if(error)throw error;setEditing(null);await load();}catch(e){setErr(e.message);}finally{setSaving(false);}}} style={btn('#08765b','#fff')}>{saving?'Saving…':'Save details'}</button><button disabled={saving} onClick={()=>setEditing(null)} style={btn('#fff','#333')}>Cancel</button></div>}
+  </article>)}
+ </section>;
 }
 
 function wrapLines(x, text, maxW) {
@@ -275,7 +381,7 @@ function PushToggle({ user }) {
 function GuestTicketPage({ code }) {
   const [t, setT] = useState(undefined);
   const [showGT, setShowGT] = useState(false);
-  useEffect(() => { supabase.rpc("guest_ticket_public", { p_code: code }).then(({ data, error }) => setT(error ? null : (data || null))); }, [code]);
+  useEffect(() => { supabase.rpc("gw_guest_ticket_v2", { p_code: code }).then(({ data, error }) => setT(error ? null : (data || null))); }, [code]);
   if (t === undefined) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#5d6f6b", fontSize: 14 }}>Loading your ticket…</div>;
   if (!t) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#eef2f1", padding: 20 }}>
@@ -306,13 +412,13 @@ function GuestTicketPage({ code }) {
             <img src={qr} alt="Entry QR" width={132} height={132} style={{ background: "#fff", padding: 8, borderRadius: 10, flexShrink: 0 }} />
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", fontWeight: 700 }}>GUEST</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: "#fff" }}>{t.name}</div>
+              {t.door_photo && <img src={t.door_photo} alt="Guest portrait" style={{width:64,height:64,borderRadius:14,objectFit:"cover",marginBottom:6}}/>}<div style={{ fontSize: 17, fontWeight: 800, color: "#fff" }}>{t.name}</div>
               <div style={{ fontSize: 10, letterSpacing: 1.5, color: "rgba(255,255,255,.55)", fontWeight: 700, marginTop: 8 }}>ENTRIES</div>
               <div style={{ fontSize: 17, fontWeight: 800, color: "#fff" }}>{t.qty}{t.ticket_type ? ` · ${t.ticket_type}` : ""}</div>
               <div style={{ display: "inline-block", marginTop: 10, fontSize: 16, fontWeight: 800, color: "#08130F", background: "#2FD4A8", fontFamily: "ui-monospace,monospace", letterSpacing: 1, padding: "5px 12px", borderRadius: 8 }}>{t.code}</div>
             </div>
           </div>
-          <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>{t.checked_in ? "✓ Already checked in" : "Show this QR at the door"}</div>
+          <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>{t.checked_in ? "✓ Already checked in" : "Show this QR at the door"}</div><div style={{padding:"14px 22px",color:"#b7e5ce",fontSize:13,textAlign:"center",lineHeight:1.6}}>You’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡</div>
         </div>
         {(t.terms || "").trim() && (
           <div style={{ background: "#fff", borderRadius: 14, marginTop: 12, overflow: "hidden", border: "1px solid #e3eae7" }}>
@@ -10045,6 +10151,7 @@ function AnalyticsPanel({ events, myEventsOnly, meId, initialEventId = "", initi
         <option value="">Choose event…</option>
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
       </select>
+      {ev && <DoorSalesHistory key={ev.id} event={ev}/>}
       {a === undefined && <Center>crunching numbers…</Center>}
       {a === null && evId && aErr && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "11px 14px", fontSize: 13 }}>⚠️ {aErr}</div>}
       {a === null && evId && !aErr && <Center>No data yet.</Center>}
@@ -10246,7 +10353,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   };
   const manageableAll = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
   // Door picker shows only upcoming / ongoing events — ended ones are hidden.
-  const manageable = manageableAll.filter(e => !gwIsEnded(e));
+  const manageable = [...manageableAll].sort((a,b)=>Number(gwIsEnded(a))-Number(gwIsEnded(b)));
   const [evId, setEvId] = useState("");
   const ev = manageableAll.find(e => e.id === evId);
   const eventEnded = gwIsEnded(ev);
@@ -10266,6 +10373,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     setRes(r); setLog(l => [r, ...l].slice(0, 30)); setManual("");
     if (navigator.vibrate) try { navigator.vibrate(r.status === "ok" ? 90 : [60, 60, 60]); } catch (e2) {}
   };
+  const [doorPhotoBusy,setDoorPhotoBusy]=useState(false); const [doorGender,setDoorGender]=useState(""); const [doorPhoto,setDoorPhoto]=useState(""); const [historyVersion,setHistoryVersion]=useState(0); const saleRequest=useRef(null); const saleLock=useRef(false);
   const [saleOpen, setSaleOpen] = useState(false);
   const [sName, setSName] = useState(""); const [sPhone, setSPhone] = useState(""); const [sQty, setSQty] = useState("1");
   const [sType, setSType] = useState(""); const [sMethod, setSMethod] = useState("cash"); const [sAmt, setSAmt] = useState("0");
@@ -10326,53 +10434,40 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     let used = 0;
     return lines.map((l, i) => { if (i === lines.length - 1) return Math.max(0, final - used); const a = Math.round(final * l.gross / g); used += a; return a; });
   };
-  const resetSaleForm = () => { setCart([]); setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setSType(""); setMSel(null); setMq(""); setSBase("0"); setSDisc("0"); setGNames(""); };
-  const submitGroupSale = async () => {
-    const final = Number(sAmt) || 0;
-    if (gMode === "each") {
-      const rows = gNames.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      if (!rows.length) return alert("Add at least one name (one per line).");
-      const names = [], phones = [];
-      rows.forEach(l => { const parts = l.split(/[,\t]/).map(s => s.trim()); names.push(parts[0]); phones.push(parts.find(x => /\d/.test(x) && x !== parts[0]) || ""); });
-      setSBusy(true);
-      const { data, error } = await supabase.rpc("door_group_sale", { p_event: ev.id, p_type: selType ? selType.name : "Door entry", p_method: sMethod, p_total: final, p_mode: "each", p_names: names, p_phones: phones, p_size: names.length });
-      setSBusy(false);
-      if (error) return alert(error.message);
-      setGResults(data?.tickets || []); resetSaleForm();
-      return;
-    }
-    if (!sName.trim()) return alert("Enter the group lead's name.");
-    const lines = saleLines(); const amts = splitAmounts(lines, final);
-    setSBusy(true);
-    const out = [];
-    for (let i = 0; i < lines.length; i++) {
-      const { data, error } = await supabase.rpc("door_group_sale", { p_event: ev.id, p_type: lines[i].name, p_method: sMethod, p_total: amts[i], p_mode: "one", p_names: [sName.trim()], p_phones: [sPhone || ""], p_size: lines[i].qty });
-      if (error) { setSBusy(false); return alert(error.message); }
-      const t = (data?.tickets || [])[0]; if (t) out.push({ name: `${sName.trim()} · ${lines[i].name} ×${lines[i].qty}`, code: t.code, phone: sPhone });
-    }
-    setSBusy(false);
-    setGResults(out); resetSaleForm();
-  };
+  const resetSaleForm = () => { setDoorGender(""); setDoorPhoto(""); setCart([]); setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setSType(""); setMSel(null); setMq(""); setSBase("0"); setSDisc("0"); setGNames(""); };
   const submitSale = async () => {
-    if (linkMode === "group") return submitGroupSale();
-    const isMember = linkMode === "member";
-    if (isMember && !mSel) return alert("Search and pick the member this sale is for.");
-    const buyerName = isMember ? (mSel.full_name || "Member") : sName.trim();
-    if (!buyerName) return alert("Buyer name is required.");
-    const lines = saleLines(); const amts = splitAmounts(lines, Number(sAmt) || 0);
-    setSBusy(true);
-    const out = [];
-    for (let i = 0; i < lines.length; i++) {
-      let data, error;
-      if (isMember) ({ data, error } = await supabase.rpc("member_offline_sale", { p_event: ev.id, p_user: mSel.id, p_name: buyerName, p_type: lines[i].name, p_qty: lines[i].qty, p_method: sMethod, p_amount: amts[i] }));
-      else ({ data, error } = await supabase.rpc("door_sale", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_type: lines[i].name, p_qty: lines[i].qty, p_method: sMethod, p_amount: amts[i] }));
-      if (error) { setSBusy(false); return alert(error.message); }
-      out.push({ name: lines.length > 1 ? `${buyerName} · ${lines[i].name} ×${lines[i].qty}` : buyerName, code: data && data.code, phone: sPhone, qty: lines[i].qty });
+    if(saleLock.current || !ev || eventEnded)return;
+    const isMember=linkMode==='member';
+    if(isMember&&!mSel)return alert('Search and pick a member.');
+    let rows=[];
+    if(linkMode==='group'&&gMode==='each') {
+      const people=gNames.split(/\r?\n/).map(v=>v.split(/[,\t]/).map(x=>x.trim())).filter(v=>v[0]);
+      if(!people.length)return alert('Add at least one guest name.');
+      const cents=Math.round((Number(sAmt)||0)*100),base=Math.floor(cents/people.length);
+      rows=people.map((v,i)=>({name:v[0],phone:v[1]||'',gender:['male','female','other'].includes((v[2]||'').toLowerCase())?v[2].toLowerCase():'',photo:'',qty:1,type:selType?.name||'Door entry',method:sMethod,amount:(base+(i===0?cents-base*people.length:0))/100,checked_in:false}));
+    }else{
+      const name=isMember?(mSel.full_name||'Member'):sName.trim();
+      if(!name)return alert('Enter the guest name.');
+      const lines=saleLines(),amts=splitAmounts(lines,Number(sAmt)||0);
+      rows=lines.map((line,i)=>({name,phone:sPhone,user_id:isMember?mSel.id:null,gender:doorGender,photo:doorPhoto,qty:line.qty,type:line.name,method:sMethod,amount:amts[i],checked_in:linkMode==='walkin'}));
     }
-    setSBusy(false);
-    if (!isMember) { try { await supabase.rpc("add_door_lead", { p_event: ev.id, p_name: buyerName, p_phone: sPhone, p_email: sEmail }); loadLeads(ev.id); } catch (e2) {} }
-    if (out.length === 1) { setSDone({ code: out[0].code, name: out[0].name, qty: out[0].qty || 1, phone: out[0].phone, member: isMember }); resetSaleForm(); }
-    else { setGResults(out); resetSaleForm(); }
+    const signature=JSON.stringify([ev.id,rows]);
+    if(saleRequest.current?.signature!==signature)saleRequest.current={signature,id:crypto.randomUUID()};
+    saleLock.current=true;setSBusy(true);
+    try{
+      const {data,error}=await supabase.rpc('gw_door_sale_v2',{p_event:ev.id,p_request:saleRequest.current.id,p_rows:rows});
+      if(error)throw error;
+      const tickets=data?.tickets||[];
+      if(!tickets.length)throw Error('No ticket returned. Refresh history before retrying.');
+      saleRequest.current=null;
+      if(tickets.length===1)setSDone({...tickets[0],member:isMember});else setGResults(tickets);
+      setHistoryVersion(v=>v+1);
+      if(linkMode==='walkin'){
+        supabase.rpc('add_door_lead',{p_event:ev.id,p_name:rows[0].name,p_phone:sPhone,p_email:sEmail}).then(({error})=>{if(!error)loadLeads(ev.id);});
+      }
+      resetSaleForm();
+    }catch(e){alert('Sale could not be confirmed: '+e.message+'\nRetry with the same details to safely retrieve or finish this sale.');}
+    finally{saleLock.current=false;setSBusy(false);}
   };
   const [qrs, setQrs] = useState([]); const [qrSel, setQrSel] = useState("");
   const loadQrs = (eid) => supabase.rpc("event_payment_qrs", { p_event: eid }).then(({ data, error }) => { if (!error) { setQrs(data || []); setQrSel(c => (data || []).some(q => q.id === c) ? c : ((data && data[0] && data[0].id) || "")); } });
@@ -10403,10 +10498,11 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
       <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>Scan ticket QRs to admit, or sell at the door with cash / your UPI QR.</div>
       <HelpBox title="How the door works" tips={["Pick the event first from the dropdown below.", "Tap ‘Scan tickets’ and point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the code (from the WhatsApp/email ticket) in the box and tap Check.", "‘Door sale’ lets you sell a ticket on the spot and take cash or UPI.", "Every scan and sale is recorded — see running counts and recent scans below."]} />
       <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: "#EEF6FF", border: "1px solid #CFE2FA", color: "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 14 }}>📖 Organiser guide — how event bookings work</a>
-      <select value={evId} onChange={e => { setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); setGResults(null); setCart([]); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
+      <select disabled={sBusy} value={evId} onChange={e => { resetSaleForm(); saleRequest.current=null; setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); setGResults(null); setCart([]); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
         <option value="">Choose event…</option>
-        {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
+        {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}{gwIsEnded(e) ? " · Past event (history)" : ""}</option>)}
       </select>
+      {ev && <DoorSalesHistory key={ev.id} event={ev} refresh={historyVersion}/>}
       {ev && eventEnded && (
         <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", borderRadius: 12, padding: "14px 16px", color: "#B23B2E", fontWeight: 700, fontSize: 13.5, lineHeight: 1.5 }}>
           🔒 This event has ended — door check-in is closed.<div style={{ fontWeight: 500, color: "#8a4a42", marginTop: 4, fontSize: 12.5 }}>Guests already scanned still show as checked in. Reopen isn't possible from here; edit the event's end time if it ran longer.</div>
@@ -10441,12 +10537,12 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                   <div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{sDone.member ? "✓ Recorded & linked to member" : "✓ Sold & checked in"}</div>
                   <div style={{ fontSize: 14, color: W.ink, marginTop: 4 }}>{sDone.name} · {sDone.qty} entr{sDone.qty === 1 ? "y" : "ies"} · code <b style={{ fontFamily: "ui-monospace,monospace" }}>{sDone.code}</b></div>
                   {sDone.member ? <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>The ticket now shows in their app and the amount is in your P&L.</div>
-                    : <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>Saved to Door leads — invite them to join the community below.</div>}
+                    : <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>Saved in Door sales history — resend this ticket any time.</div>}
                   <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
                     <button onClick={async () => {
                       const text = `🎟️ ${ev.title}\nYour ticket — show the QR at the door.\nCode: ${sDone.code}\nTicket: https://glass-wings.com/?gt=${sDone.code}\n— Glasswings Events`;
                       try {
-                        const blob = await makeTicketBlob({ emoji: "🎟️", title: ev.title, dateStr: ev.event_date, place: [ev.venue, ev.city].filter(Boolean).join(", "), name: sDone.name, qty: sDone.qty, code: sDone.code, category: ev.category, entryBadge: ev.entry_badge, dressCode: ev.dress_code, terms: ev.terms });
+                        const blob = await makeTicketBlob({ emoji: "🎟️", title: ev.title, dateStr: ev.event_date, place: [ev.venue, ev.city].filter(Boolean).join(", "), name: sDone.name, photo: sDone.door_photo, qty: sDone.qty, code: sDone.code, category: ev.category, entryBadge: ev.entry_badge, dressCode: ev.dress_code, terms: ev.terms });
                         const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
                         if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: ev.title, text }); return; }
                       } catch (e2) {}
@@ -10469,7 +10565,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       <button onClick={async () => {
                         const text = `🎟️ ${ev.title}\nYour ticket — show the QR at the door.\nCode: ${t.code}\nTicket: https://glass-wings.com/?gt=${t.code}\n— Glasswings Events`;
                         try {
-                          const blob = await makeTicketBlob({ emoji: "🎟️", title: ev.title, dateStr: ev.event_date, place: [ev.venue, ev.city].filter(Boolean).join(", "), name: t.name, qty: 1, code: t.code, category: ev.category, entryBadge: ev.entry_badge, dressCode: ev.dress_code, terms: ev.terms });
+                          const blob = await makeTicketBlob({ emoji: "🎟️", title: ev.title, dateStr: ev.event_date, place: [ev.venue, ev.city].filter(Boolean).join(", "), name: t.name, photo: t.door_photo, qty: t.qty || 1, code: t.code, category: ev.category, entryBadge: ev.entry_badge, dressCode: ev.dress_code, terms: ev.terms });
                           const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
                           if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: ev.title, text }); return; }
                         } catch (e2) {}
@@ -10537,6 +10633,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       <input value={sEmail} onChange={e => setSEmail(e.target.value)} placeholder="Email (optional)" inputMode="email" style={{ ...ip2, flex: "1 1 100px" }} />
                     </div>
                   )}
+                  {linkMode==='group'&&gMode==='each' ? <div style={{fontSize:12,color:W.soft,marginBottom:10}}>Each line: Name, phone, male/female. Add each person’s photo using Photo / gender in Door sales history after saving.</div> : <><DoorPortraitFields photo={doorPhoto} gender={doorGender} onPhoto={setDoorPhoto} onGender={setDoorGender} onBusy={setDoorPhotoBusy} disabled={sBusy}/>{linkMode==='group'&&<div style={{fontSize:12,color:W.soft}}>Photo and gender belong to the group lead.</div>}</>}
                   {(linkMode === "group" && gMode === "each") ? (
                     <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
                       <select value={sType} onChange={e => setSType(e.target.value)} style={{ ...ip2, flex: 1, minWidth: 0 }}>
@@ -10614,7 +10711,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       )}
                     </div>
                   )}
-                  <button onClick={submitSale} disabled={sBusy} style={{ ...btn("#7C3AED", "#fff"), width: "100%", justifyContent: "center", opacity: sBusy ? .6 : 1 }}>{sBusy ? "Saving…" : linkMode === "group" ? (gMode === "each" ? "Create tickets for the group" : "Create group ticket") : linkMode === "member" ? `Record ${sMethod === "upi" ? "UPI" : "cash"} — link to member` : `Mark ${sMethod === "upi" ? "UPI" : "cash"} received — admit`}</button>
+                  <button onClick={submitSale} disabled={sBusy||doorPhotoBusy} style={{ ...btn("#7C3AED", "#fff"), width: "100%", justifyContent: "center", opacity: sBusy ? .6 : 1 }}>{sBusy ? "Saving…" : linkMode === "group" ? (gMode === "each" ? "Create tickets for the group" : "Create group ticket") : linkMode === "member" ? `Record ${sMethod === "upi" ? "UPI" : "cash"} — link to member` : `Mark ${sMethod === "upi" ? "UPI" : "cash"} received — admit`}</button>
                 </>
               )}
             </div>
@@ -12612,7 +12709,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
           <div class="lbl">Tickets</div><div class="val">${qty}</div>
           <div class="lbl">Ticket code</div><div class="code">${code}</div>
         </div></div>
-        <div class="ft">Show this ticket at entry · Glasswings community</div>
+        <div class="ft">Show this ticket at entry · Glasswings community</div><div class="ft">You’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡</div>
       </div></div>${printDetailHtml}${printTermsHtml}
       <script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`);
     w.document.close();
@@ -12626,7 +12723,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
   const shareWhatsApp = async () => {
     setBusy(true);
     try {
-      const blob = await makeTicketBlob({ emoji: e.emoji, title: e.title, dateStr: e.event_date, place, name, qty, code, category: e.category, entryBadge: e.entry_badge, dressCode: e.dress_code, terms: e.terms });
+      const blob = await makeTicketBlob({ emoji: e.emoji, title: e.title, dateStr: e.event_date, place, name, photo: rows[0]?.door_photo || profile?.avatar_url, qty, code, category: e.category, entryBadge: e.entry_badge, dressCode: e.dress_code, terms: e.terms });
       const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: e.title, text: summary });
@@ -12674,7 +12771,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
             </div>
           </div>
         </div>
-        <div style={{ background: "#08130F", color: "rgba(255,255,255,.68)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .4 }}>Show this ticket at entry · Ticket details &amp; terms below</div>
+        <div style={{ background: "#08130F", color: "rgba(255,255,255,.68)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .4 }}>Show this ticket at entry · Ticket details &amp; terms below</div><div style={{padding:"14px 22px",color:"#b7e5ce",fontSize:13,textAlign:"center",lineHeight:1.6}}>You’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡</div>
       </div>
       {displayTicketTypes.length > 0 && (
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginTop: 12 }}>
@@ -13371,6 +13468,7 @@ function EventMembersSheet({ event, onClose }) {
           <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
         <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} member${rows.length === 1 ? "" : "s"} · ${totQty} ticket${totQty === 1 ? "" : "s"} · ${rows.filter(r => r.checked_in).length} checked in`}</div>
+        <DoorSalesHistory event={event}/>
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
                 {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
           <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
@@ -13444,7 +13542,7 @@ function CheckInSheet({ event, onClose }) {
   const shareGuest = async (g) => {
     const text = `🎟️ ${event.title}\nGuest ticket for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}\nCode: ${g.code}\nTicket: https://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
     try {
-      const blob = await makeTicketBlob({ emoji: "🎟️", title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
+      const blob = await makeTicketBlob({ emoji: "🎟️", title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, photo: g.door_photo, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
       const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: event.title, text }); return; }
     } catch (e2) {}
@@ -13530,7 +13628,7 @@ function CheckInSheet({ event, onClose }) {
           {guests.map(g => { const tm = gtm(g); return (
             <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}`, borderLeft: `4px solid ${tm[2]}`, paddingLeft: 9 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span><span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><PersonAvatar url={g.door_photo} name={g.name} size={42}/><span style={{fontSize:11}}>{g.door_gender||""}</span><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span><span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
                 <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
                 {gwGuestNote(g) && <div style={{ fontSize: 12, color: tm[2], fontWeight: 700, marginTop: 2 }}>📌 {gwGuestNote(g)}</div>}
               </div>
@@ -14966,7 +15064,7 @@ function GuestTickets({ event }) {
   const shareGuest = async (g) => {
     const text = `🎟️ ${event.title}\n${label(g)} for ${g.name}${(g.quantity || 1) > 1 ? ` (${g.quantity} entries)` : ""}${noteLine(g)}\nCode: ${g.code}\nTicket: https://glass-wings.com/?gt=${g.code}\n— Glasswings Events`;
     try {
-      const blob = await makeTicketBlob({ emoji: tmeta(gwGuestTier(g))[1], title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
+      const blob = await makeTicketBlob({ emoji: tmeta(gwGuestTier(g))[1], title: event.title, dateStr: event.event_date, place: [event.venue, event.city].filter(Boolean).join(", "), name: g.name, photo: g.door_photo, qty: g.quantity || 1, code: g.code, category: event.category, entryBadge: event.entry_badge, dressCode: event.dress_code, terms: event.terms });
       const file = new File([blob], "glasswings-ticket.png", { type: "image/png" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: event.title, text }); return; }
     } catch (e) {}
@@ -15104,13 +15202,14 @@ function GuestTickets({ event }) {
           <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8 }}>Members get a real in-app ticket. For a VIP, Team or Instagram Subscriber pass, use “Add outsider” — it works for members too, just type their name.</div>
         </div>
       )}
+      <div style={{margin:"12px 0"}}><InvitationButton event={event}/></div>
       {guests.length > 0 && <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink, margin: "6px 0 8px" }}>Invited ({guests.length})</div>}
       {guests.map(g => { const tm = tmeta(gwGuestTier(g)); return (
         <div key={g.id} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 11px", marginBottom: 8, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${tm[3]}`, borderRadius: 11 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
               <span style={{ background: tm[4], color: tm[3], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 9 }}>{tm[1]} {tm[2]}</span>
-              <b style={{ fontSize: 14.5, color: W.ink }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</b>
+              <PersonAvatar url={g.door_photo} name={g.name} size={42}/><span style={{fontSize:11}}>{g.door_gender||""}</span><b style={{ fontSize: 14.5, color: W.ink }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</b>
             </div>
             <div style={{ fontSize: 11.5, color: W.soft, wordBreak: "break-all", marginTop: 3 }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
             <div onClick={() => editNote(g)} title="Tap to edit note" style={{ fontSize: 12, marginTop: 5, cursor: "pointer", color: gwGuestNote(g) ? tm[3] : W.soft, fontWeight: gwGuestNote(g) ? 700 : 500 }}>{gwGuestNote(g) ? `📌 ${gwGuestNote(g)}` : "＋ Add reserved table / note"}</div>
@@ -15118,7 +15217,7 @@ function GuestTickets({ event }) {
               {TIERS.map(([k, ic, lbl]) => <option key={k} value={k}>{ic} {lbl}</option>)}
             </select>
           </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap:"wrap", maxWidth:140 }}><InvitationButton event={event} guest={g}/>
             {g.email && <button onClick={() => emailGuest(g)} title="Email the ticket" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>}
             <button onClick={() => shareGuest(g)} title="Send ticket on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12 }}><MessageCircle size={13} /></button>
             <button onClick={() => { if (window.confirm(`Remove ${g.name}?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 9px", fontSize: 12 }}><Trash2 size={13} /></button>
