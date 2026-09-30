@@ -176,7 +176,8 @@ export default async function handler(req, res) {
           <div style="font-size:19px;font-weight:800;color:#0b1f1c;margin-bottom:12px">${esc(subject)}</div>
           ${msgHtml}
         </td></tr>
-        ${communityHtml(x.rooms)}
+        <tr><td style="padding:4px 24px 22px;text-align:center;color:#08765b;font-size:14px;line-height:1.6">You’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡</td></tr>
+    ${communityHtml(x.rooms)}
         ${upcomingHtml(x.ups, null)}`;
       const html = wrap(inner);
 
@@ -346,6 +347,7 @@ export default async function handler(req, res) {
         </div>
         <div style="font-size:12px;margin-top:8px"><a href="https://glass-wings.com/?gt=${esc(g.code)}" style="color:#008069;font-weight:700">Open your ticket online →</a></div>
       </td></tr>
+      <tr><td style="padding:4px 24px 22px;text-align:center;color:#08765b;font-size:14px;line-height:1.6">You’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡</td></tr>
       ${communityHtml(gx.rooms)}
       ${marketingHtml(gx.mktUrl)}
       ${upcomingHtml(gx.ups, g.event_id)}
