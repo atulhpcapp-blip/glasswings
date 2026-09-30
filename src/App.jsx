@@ -127,13 +127,13 @@ function DoorPortraitFields({photo,gender,onPhoto,onGender,disabled=false,onBusy
   }catch(e){setErr(e.message||'Could not open that photo. Try a JPG.');}
   finally{if(url)URL.revokeObjectURL(url);setBusy(false);onBusy?.(false);}
  };
- return <fieldset disabled={disabled||busy} style={{border:'1px solid #dbe5e0',borderRadius:12,padding:12,margin:'10px 0'}}>
-  <legend style={{fontWeight:750,fontSize:13}}>Guest details</legend>
+ return <fieldset disabled={disabled||busy} style={{border:'1px solid #dbe5e0',borderRadius:12,padding:12,margin:'10px 0',minWidth:0,width:'100%',boxSizing:'border-box',flexBasis:'100%'}}>
+  <legend style={{fontWeight:800,fontSize:15}}>📷 Guest photo</legend>
   {onGender&&<label style={{display:'block',fontSize:13}}>Gender<select style={{...gwField,marginTop:5}} value={gender||''} onChange={e=>onGender(e.target.value)}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>}
   <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',marginTop:10}}>
    <PersonAvatar url={photo} name="Guest" size={64}/>
    <label style={{...btn('#e5f5ed','#075e46'),cursor:'pointer'}}>📷 {photo?'Retake photo':'Take photo'}<input type="file" accept="image/*" capture="user" disabled={disabled||busy} style={{display:'none'}} onChange={e=>{pick(e.target.files?.[0]);e.target.value='';}}/></label>
-   <label style={{...btn('#f0f2f5','#263c35'),cursor:'pointer'}}>Choose photo<input type="file" accept="image/*" disabled={disabled||busy} style={{display:'none'}} onChange={e=>{pick(e.target.files?.[0]);e.target.value='';}}/></label>
+   <label style={{display:"block",width:"100%",fontWeight:700,fontSize:13}}>Choose from gallery / computer<input type="file" accept="image/*" disabled={disabled||busy} style={{display:"block",width:"100%",marginTop:8,fontSize:14}} onChange={e=>{pick(e.target.files?.[0]);e.target.value='';}}/></label>
    {photo&&<button type="button" onClick={()=>onPhoto('')} style={btn('#fff','#a33')}>Remove</button>}
   </div>
   <div style={{fontSize:12,color:'#62766e',marginTop:7}}>{busy?'Preparing photo…':'Optional. Ask the guest before taking a photo; it appears on their card.'}</div>
@@ -187,6 +187,15 @@ function InvitationButton({event,guest}){
    </div></>}
   </dialog>
  </>;
+}
+async function gwSaveNewGuestPortrait(guest, gender, photo) {
+  if (!gender && !photo) return true;
+  if (!guest?.id) { alert("Ticket created, but no guest ID was returned to attach the photo. Do not create the ticket again."); return false; }
+  try {
+    const {error}=await supabase.rpc("gw_guest_portrait",{p_id:guest.id,p_gender:gender||"",p_photo:photo||""});
+    if(error)throw error;
+    return true;
+  } catch(e) { alert("Ticket created, but photo/gender could not be saved: "+e.message+". Do not create the ticket again."); return false; }
 }
 function DoorSalesHistory({event,refresh=0}){
  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[q,setQ]=useState(''),[genderFilter,setGenderFilter]=useState(''),[editing,setEditing]=useState(null),[saving,setSaving]=useState(false);
@@ -10348,12 +10357,17 @@ function QrScanner({ onCode }) {
 function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent }) {
   const gwIsEnded = (e) => {
     if (!e) return false;
-    const endTs = e.end_at ? new Date(e.end_at).getTime() : (e.event_at ? new Date(e.event_at).getTime() + 6 * 3600000 : null);
-    return endTs != null && endTs < Date.now();
+    const end = Date.parse(e.end_at || "");
+    if (Number.isFinite(end)) return end < Date.now();
+    const start = Date.parse(e.event_at || "");
+    if (Number.isFinite(start)) return start + 6 * 3600000 < Date.now();
+    const dateOnly = String(e.event_date || "").trim();
+    const fallback = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? dateOnly + "T23:59:59+05:30" : dateOnly);
+    return !Number.isFinite(fallback) || fallback < Date.now();
   };
   const manageableAll = (events || []).filter(e => !myEventsOnly || e.host_id === meId);
   // Door picker shows only upcoming / ongoing events — ended ones are hidden.
-  const manageable = [...manageableAll].sort((a,b)=>Number(gwIsEnded(a))-Number(gwIsEnded(b)));
+  const manageable = manageableAll.filter(e => !gwIsEnded(e));
   const [evId, setEvId] = useState("");
   const ev = manageableAll.find(e => e.id === evId);
   const eventEnded = gwIsEnded(ev);
@@ -10373,7 +10387,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     setRes(r); setLog(l => [r, ...l].slice(0, 30)); setManual("");
     if (navigator.vibrate) try { navigator.vibrate(r.status === "ok" ? 90 : [60, 60, 60]); } catch (e2) {}
   };
-  const [doorPhotoBusy,setDoorPhotoBusy]=useState(false); const [doorGender,setDoorGender]=useState(""); const [doorPhoto,setDoorPhoto]=useState(""); const [historyVersion,setHistoryVersion]=useState(0); const saleRequest=useRef(null); const saleLock=useRef(false);
+  const [groupPortraits,setGroupPortraits]=useState({}); const [doorPhotoBusy,setDoorPhotoBusy]=useState(false); const [doorGender,setDoorGender]=useState(""); const [doorPhoto,setDoorPhoto]=useState(""); const [historyVersion,setHistoryVersion]=useState(0); const saleRequest=useRef(null); const saleLock=useRef(false);
   const [saleOpen, setSaleOpen] = useState(false);
   const [sName, setSName] = useState(""); const [sPhone, setSPhone] = useState(""); const [sQty, setSQty] = useState("1");
   const [sType, setSType] = useState(""); const [sMethod, setSMethod] = useState("cash"); const [sAmt, setSAmt] = useState("0");
@@ -10434,7 +10448,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     let used = 0;
     return lines.map((l, i) => { if (i === lines.length - 1) return Math.max(0, final - used); const a = Math.round(final * l.gross / g); used += a; return a; });
   };
-  const resetSaleForm = () => { setDoorGender(""); setDoorPhoto(""); setCart([]); setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setSType(""); setMSel(null); setMq(""); setSBase("0"); setSDisc("0"); setGNames(""); };
+  const resetSaleForm = () => { setGroupPortraits({}); setDoorGender(""); setDoorPhoto(""); setCart([]); setSName(""); setSPhone(""); setSEmail(""); setSQty("1"); setSType(""); setMSel(null); setMq(""); setSBase("0"); setSDisc("0"); setGNames(""); };
   const submitSale = async () => {
     if(saleLock.current || !ev || eventEnded)return;
     const isMember=linkMode==='member';
@@ -10444,7 +10458,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
       const people=gNames.split(/\r?\n/).map(v=>v.split(/[,\t]/).map(x=>x.trim())).filter(v=>v[0]);
       if(!people.length)return alert('Add at least one guest name.');
       const cents=Math.round((Number(sAmt)||0)*100),base=Math.floor(cents/people.length);
-      rows=people.map((v,i)=>({name:v[0],phone:v[1]||'',gender:['male','female','other'].includes((v[2]||'').toLowerCase())?v[2].toLowerCase():'',photo:'',qty:1,type:selType?.name||'Door entry',method:sMethod,amount:(base+(i===0?cents-base*people.length:0))/100,checked_in:false}));
+      rows=people.map((v,i)=>({name:v[0],phone:v[1]||'',gender:groupPortraits[i+':'+v[0]]?.gender ?? (['male','female','other'].includes((v[2]||'').toLowerCase())?v[2].toLowerCase():''),photo:groupPortraits[i+':'+v[0]]?.photo||'',qty:1,type:selType?.name||'Door entry',method:sMethod,amount:(base+(i===0?cents-base*people.length:0))/100,checked_in:false}));
     }else{
       const name=isMember?(mSel.full_name||'Member'):sName.trim();
       if(!name)return alert('Enter the guest name.');
@@ -10500,7 +10514,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
       <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: "#EEF6FF", border: "1px solid #CFE2FA", color: "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 14 }}>📖 Organiser guide — how event bookings work</a>
       <select disabled={sBusy} value={evId} onChange={e => { resetSaleForm(); saleRequest.current=null; setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); setGResults(null); setCart([]); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
         <option value="">Choose event…</option>
-        {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}{gwIsEnded(e) ? " · Past event (history)" : ""}</option>)}
+        {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
       </select>
       {ev && <DoorSalesHistory key={ev.id} event={ev} refresh={historyVersion}/>}
       {ev && eventEnded && (
@@ -10633,7 +10647,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
                       <input value={sEmail} onChange={e => setSEmail(e.target.value)} placeholder="Email (optional)" inputMode="email" style={{ ...ip2, flex: "1 1 100px" }} />
                     </div>
                   )}
-                  {linkMode==='group'&&gMode==='each' ? <div style={{fontSize:12,color:W.soft,marginBottom:10}}>Each line: Name, phone, male/female. Add each person’s photo using Photo / gender in Door sales history after saving.</div> : <><DoorPortraitFields photo={doorPhoto} gender={doorGender} onPhoto={setDoorPhoto} onGender={setDoorGender} onBusy={setDoorPhotoBusy} disabled={sBusy}/>{linkMode==='group'&&<div style={{fontSize:12,color:W.soft}}>Photo and gender belong to the group lead.</div>}</>}
+                  {linkMode==='group'&&gMode==='each' ? <div style={{marginBottom:10}}><div style={{fontSize:12,color:W.soft}}>Each line: Name, phone, male/female. Each guest has their own photo below.</div>{gNames.split(/\r?\n/).map(v=>v.split(/[,\t]/).map(x=>x.trim())).filter(v=>v[0]).map((v,i)=>{const key=i+':'+v[0],details=groupPortraits[key]||{};return <div key={key}><b>{v[0]}</b><DoorPortraitFields photo={details.photo||''} gender={details.gender??(v[2]||'').toLowerCase()} onPhoto={photo=>setGroupPortraits(x=>({...x,[key]:{...x[key],photo}}))} onGender={gender=>setGroupPortraits(x=>({...x,[key]:{...x[key],gender}}))} onBusy={setDoorPhotoBusy} disabled={sBusy}/></div>;})}</div> : <><DoorPortraitFields photo={doorPhoto} gender={doorGender} onPhoto={setDoorPhoto} onGender={setDoorGender} onBusy={setDoorPhotoBusy} disabled={sBusy}/>{linkMode==='group'&&<div style={{fontSize:12,color:W.soft}}>Photo and gender belong to the group lead.</div>}</>}
                   {(linkMode === "group" && gMode === "each") ? (
                     <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
                       <select value={sType} onChange={e => setSType(e.target.value)} style={{ ...ip2, flex: 1, minWidth: 0 }}>
@@ -13504,6 +13518,7 @@ function CheckInSheet({ event, onClose }) {
   const [gName, setGName] = useState(""); const [gPhone, setGPhone] = useState(""); const [gEmail, setGEmail] = useState(""); const [gQty, setGQty] = useState("1");
   const [gAge, setGAge] = useState(""); const [gLoc, setGLoc] = useState("");
   const [gBusy, setGBusy] = useState(false);
+  const [gPhoto,setGPhoto]=useState(""); const [gGender,setGGender]=useState(""); const [gPhotoBusy,setGPhotoBusy]=useState(false);
   const TMETA = { guest: ["🎟️", "Guest", "#008069", "#E7F6EF"], vip: ["💎", "VIP", "#B7791F", "#FBF3DC"], team: ["🛡️", "Team", "#475569", "#EDF1F6"], instagram: ["📸", "Instagram Subscriber", "#C13584", "#FCE7F3"] };
   const gtm = (g) => TMETA[gwGuestTier(g)] || TMETA.guest;
   const gcount = (k) => guests.filter(g => gwGuestTier(g) === k).length;
@@ -13511,11 +13526,13 @@ function CheckInSheet({ event, onClose }) {
   const load = () => { supabase.rpc("event_attendees", { p_event: event.id }).then(({ data, error }) => { setErr(error ? (error.message || "Could not load attendees.") : ""); setList(data || []); }); loadGuests(); };
   useEffect(() => { load(); }, [event.id]);
   const addGuest = async () => {
+    if(gBusy||gPhotoBusy)return;
     if (!gName.trim()) return alert("Guest name is required.");
     setGBusy(true);
     const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc });
+    if (error) { setGBusy(false); return alert(error.message); }
+    const portraitSaved = await gwSaveNewGuestPortrait(gNew,gGender,gPhoto);
     setGBusy(false);
-    if (error) return alert(error.message);
     if (gEmail.trim() && gNew?.id) {
       try {
         const token = (await supabase.auth.getSession()).data.session?.access_token;
@@ -13523,14 +13540,14 @@ function CheckInSheet({ event, onClose }) {
       } catch (e2) {}
     }
     // auto-share the ticket on WhatsApp right after adding
-    let gShare = { name: gName.trim(), phone: gPhone, quantity: Number(gQty) || 1, code: gNew?.code };
+    let gShare = { door_photo: portraitSaved ? gPhoto : "", door_gender: portraitSaved ? gGender : "", name: gName.trim(), phone: gPhone, quantity: Number(gQty) || 1, code: gNew?.code };
     if (!gShare.code && gNew?.id) {
       const { data: gl } = await supabase.rpc("guest_list", { p_event: event.id });
       const row = (gl || []).find(x => x.id === gNew.id);
       if (row) gShare = { ...row };
       setGuests(gl || []);
     }
-    setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc("");
+    setGPhoto(""); setGGender(""); setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc("");
     loadGuests();
     if (gShare.code) window.gwConfirm(`✅ ${gShare.name} added to the guest list.\n\nShare their ticket on WhatsApp now?`, () => shareGuest(gShare));
   };
@@ -13623,7 +13640,7 @@ function CheckInSheet({ event, onClose }) {
           <div style={{ display: "flex", gap: 7, marginBottom: 10 }}>
             <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none" }} />
             <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ width: 58, border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, outline: "none", textAlign: "center" }} />
-            <button onClick={addGuest} disabled={gBusy} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, opacity: gBusy ? .6 : 1 }}>{gBusy ? "…" : "+ Add"}</button>
+            <DoorPortraitFields photo={gPhoto} gender={gGender} onPhoto={setGPhoto} onGender={setGGender} onBusy={setGPhotoBusy} disabled={gBusy}/><button onClick={addGuest} disabled={gBusy||gPhotoBusy} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, opacity: gBusy ? .6 : 1 }}>{gBusy ? "…" : "+ Add"}</button>
           </div>
           {guests.map(g => { const tm = gtm(g); return (
             <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}`, borderLeft: `4px solid ${tm[2]}`, paddingLeft: 9 }}>
@@ -15048,6 +15065,7 @@ function GuestTickets({ event }) {
   const [tier, setTier] = useState("guest");
   const [gName, setGName] = useState(""), [gPhone, setGPhone] = useState(""), [gEmail, setGEmail] = useState(""), [gQty, setGQty] = useState("1"), [gAge, setGAge] = useState(""), [gLoc, setGLoc] = useState(""), [gNote, setGNote] = useState("");
   const [gBusy, setGBusy] = useState(false);
+  const [gPhoto,setGPhoto]=useState(""); const [gGender,setGGender]=useState(""); const [gPhotoBusy,setGPhotoBusy]=useState(false);
   const [guests, setGuests] = useState([]);
   const [bulkText, setBulkText] = useState(""), [bulkBusy, setBulkBusy] = useState(false), [bulkMsg, setBulkMsg] = useState("");
   const [q, setQ] = useState(""); const [list, setList] = useState([]); const [given, setGiven] = useState({}); const [added, setAdded] = useState({}); const [msg, setMsg] = useState("");
@@ -15079,17 +15097,19 @@ function GuestTickets({ event }) {
     } catch (e) { alert("Could not send the email."); }
   };
   const addGuest = async () => {
+    if(gBusy||gPhotoBusy)return;
     if (!gName.trim()) return alert("Guest name is required.");
     setGBusy(true);
     const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc, p_type: tier === "instagram" ? "guest" : tier, p_note: gwStoredGuestNote(tier, gNote) });
+    if (error) { setGBusy(false); return alert(error.message); }
+    const portraitSaved = await gwSaveNewGuestPortrait(gNew,gGender,gPhoto);
     setGBusy(false);
-    if (error) return alert(error.message);
     if (gEmail.trim() && gNew?.id) { try { const token = (await supabase.auth.getSession()).data.session?.access_token; fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "guest", access_token: token, guest_id: gNew.id }) }); } catch (e) {} }
     const { data: gl } = await supabase.rpc("guest_list", { p_event: event.id });
     setGuests(gl || []);
     const row = (gl || []).find(x => x.id === gNew?.id);
     const tn = tmeta(tier)[2];
-    setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc(""); setGNote("");
+    setGPhoto(""); setGGender(""); setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc(""); setGNote("");
     if (row?.code) window.gwConfirm(`✅ ${row.name} added as ${tn}.\n\nShare their ticket on WhatsApp now?`, () => shareGuest(row));
   };
   const changeTier = async (g, t) => { const storedNote = gwStoredGuestNote(t, gwGuestNote(g)); const baseType = t === "instagram" ? "guest" : t; setGuests(gs => gs.map(x => x.id === g.id ? { ...x, guest_type: baseType, note: storedNote } : x)); const [{ error: typeError }, { error: noteError }] = await Promise.all([supabase.rpc("set_guest_type", { p_id: g.id, p_type: baseType }), supabase.rpc("set_guest_note", { p_id: g.id, p_note: storedNote })]); if (typeError || noteError) { alert((typeError || noteError).message); loadGuests(); } };
@@ -15175,7 +15195,7 @@ function GuestTickets({ event }) {
           </div>
           <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ ...ip, width: "100%", marginBottom: 7 }} />
           <input value={gNote} onChange={e => setGNote(e.target.value)} placeholder={tier === "vip" ? "Reserved table / area / note (e.g. Table 4, near stage)" : "Note (optional) — e.g. reserved table, special instruction"} style={{ ...ip, width: "100%", marginBottom: 9 }} />
-          <button onClick={addGuest} disabled={gBusy} style={{ ...btn(tmeta(tier)[3], "#fff"), width: "100%", justifyContent: "center", opacity: gBusy ? .6 : 1, fontSize: 14.5 }}>{gBusy ? "Adding…" : `${tmeta(tier)[1]} Add ${tmeta(tier)[2]} & send ticket`}</button>
+          <DoorPortraitFields photo={gPhoto} gender={gGender} onPhoto={setGPhoto} onGender={setGGender} onBusy={setGPhotoBusy} disabled={gBusy}/><button onClick={addGuest} disabled={gBusy||gPhotoBusy} style={{ ...btn(tmeta(tier)[3], "#fff"), width: "100%", justifyContent: "center", opacity: gBusy ? .6 : 1, fontSize: 14.5 }}>{gBusy ? "Adding…" : `${tmeta(tier)[1]} Add ${tmeta(tier)[2]} & send ticket`}</button>
         </div>
       )}
       {mode === "bulk" && (
