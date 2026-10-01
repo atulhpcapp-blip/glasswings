@@ -5447,8 +5447,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
       </div>
       <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", overflowX: "auto" }}>
         {[
-          ["discover", "✨ Discover"],
-          ["community", "🟢 Live Room"],
+          ["discover", "👥 Meet Me"],
+          ["community", "💬 Group Chat"],
           ...(isStaff ? [["newmembers", "🆕 New Members"]] : []),
           ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]
         ].map(([k, l]) => (
@@ -5459,10 +5459,10 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ position: "relative", width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg,#008069,#6D28D9)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>💬<span style={{ position: "absolute", width: 10, height: 10, borderRadius: "50%", background: "#22C55E", border: "2px solid #fff", right: -1, top: -1 }} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 950, color: W.ink, fontSize: 15 }}>Live Community Room <span style={{ color: "#16A34A", fontSize: 11 }}>● LIVE</span></div>
-            <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>Everyone online chats together · text only · subscribers chat unlimited</div>
+            <div style={{ fontWeight: 950, color: W.ink, fontSize: 15 }}>Group Chat <span style={{ color: "#16A34A", fontSize: 11 }}>● LIVE</span></div>
+            <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>One common room for everyone online · text only · no attachments</div>
           </div>
-          <div style={{ color: "#6D28D9", fontWeight: 900, fontSize: 12, flexShrink: 0 }}>ENTER ›</div>
+          <div style={{ color: "#6D28D9", fontWeight: 900, fontSize: 12, flexShrink: 0 }}>OPEN ›</div>
         </div>
       </div>}
       {mtab === "community" && <CommunityLiveRoom user={user} profile={profile} onUpgrade={onUpgrade} />}
