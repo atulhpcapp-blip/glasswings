@@ -1527,20 +1527,36 @@ function gwInInvitedSegments(e, memberSegmentIds) {
 }
 async function exportGuestListPdf(ev) {
   try {
-    const [{ data: tix }, gres] = await Promise.all([
-      supabase.from("event_tickets").select("user_id, quantity").eq("event_id", ev.id),
+    const [mres, gres] = await Promise.all([
+      supabase.rpc("event_member_list", { p_event: ev.id }).then(r => r, () => ({ data: [] })),
       supabase.rpc("guest_list", { p_event: ev.id }).then(r => r, () => ({ data: [] })),
     ]);
-    const byUser = {};
-    (tix || []).forEach(t => { if (t.user_id) byUser[t.user_id] = (byUser[t.user_id] || 0) + (t.quantity || 1); });
-    const ids = Object.keys(byUser);
-    let profs = [];
-    if (ids.length) {
-      const { data } = await supabase.from("profiles").select("id, full_name, gender").in("id", ids);
-      profs = data || [];
-    }
-    const rows = profs.map(p => ({ name: p.full_name || "Member", pax: byUser[p.id] || 1, g: p.gender === "female" ? "F" : p.gender === "male" ? "M" : "—", type: "Member" }));
-    (gres?.data || []).forEach(g => rows.push({ name: (g.name || g.full_name || "Guest"), pax: g.qty || g.quantity || 1, g: g.door_gender === "female" ? "F" : g.door_gender === "male" ? "M" : "—", type: "Guest" }));
+    const normPhone = v => String(v || "").replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "").slice(-10);
+    const normName = v => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const members = (mres?.data || []).map(m => ({
+      name: m.full_name || m.name || "Member",
+      pax: Number(m.qty || m.quantity || 1) || 1,
+      g: gwGender(m.gender) === "female" ? "F" : gwGender(m.gender) === "male" ? "M" : "—",
+      type: "Member",
+      phone: normPhone(m.phone),
+      keyName: normName(m.full_name || m.name),
+    }));
+    const memberPhones = new Set(members.map(r => r.phone).filter(Boolean));
+    const memberNames = new Set(members.map(r => r.keyName).filter(Boolean));
+    const guestRows = (gres?.data || []).filter(g => {
+      const ph = normPhone(g.phone);
+      const nm = normName(g.name || g.full_name);
+      // If the same person exists as a genuine member ticket, keep that member ticket and suppress the duplicate guest/door row.
+      return !(ph && memberPhones.has(ph)) && !(nm && memberNames.has(nm));
+    }).map(g => ({
+      name: g.name || g.full_name || "Guest",
+      pax: Number(g.qty || g.quantity || 1) || 1,
+      g: gwGender(g.door_gender || g.gender) === "female" ? "F" : gwGender(g.door_gender || g.gender) === "male" ? "M" : "—",
+      type: "Guest",
+      phone: normPhone(g.phone),
+      keyName: normName(g.name || g.full_name),
+    }));
+    const rows = [...members, ...guestRows];
     if (!rows.length) return alert("No bookings yet for this event.");
     rows.sort((a, b) => a.name.localeCompare(b.name));
     const women = rows.filter(r => r.g === "F");
@@ -13820,8 +13836,26 @@ function CheckInSheet({ event, onClose }) {
   const TMETA = { guest: ["🎟️", "Guest", "#008069", "#E7F6EF"], vip: ["💎", "VIP", "#B7791F", "#FBF3DC"], team: ["🛡️", "Team", "#475569", "#EDF1F6"], instagram: ["📸", "Instagram Subscriber", "#C13584", "#FCE7F3"] };
   const gtm = (g) => TMETA[gwGuestTier(g)] || TMETA.guest;
   const gcount = (k) => guests.filter(g => gwGuestTier(g) === k).length;
-  const loadGuests = () => supabase.rpc("guest_list", { p_event: event.id }).then(({ data, error }) => { if (!error) setGuests(data || []); });
-  const load = () => { supabase.rpc("event_attendees", { p_event: event.id }).then(({ data, error }) => { setErr(error ? (error.message || "Could not load attendees.") : ""); setList(data || []); }); loadGuests(); };
+  const load = async () => {
+    const [mr, gr] = await Promise.all([
+      supabase.rpc("event_member_list", { p_event: event.id }),
+      supabase.rpc("guest_list", { p_event: event.id }),
+    ]);
+    if (mr.error) setErr(mr.error.message || "Could not load attendees."); else setErr("");
+    const members = (mr.data || []).map(m => ({ ...m, present: !!(m.present ?? m.checked_in) }));
+    const normPhone = v => String(v || "").replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "").slice(-10);
+    const normName = v => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const memberPhones = new Set(members.map(m => normPhone(m.phone)).filter(Boolean));
+    const memberNames = new Set(members.map(m => normName(m.full_name || m.name)).filter(Boolean));
+    const cleanGuests = (gr.data || []).filter(g => {
+      const ph = normPhone(g.phone);
+      const nm = normName(g.name || g.full_name);
+      return !(ph && memberPhones.has(ph)) && !(nm && memberNames.has(nm));
+    });
+    setList(members);
+    setGuests(cleanGuests);
+  };
+  const loadGuests = load;
   useEffect(() => { load(); }, [event.id]);
   const addGuest = async () => {
     if(gBusy||gPhotoBusy)return;
@@ -13976,7 +14010,7 @@ function CheckInSheet({ event, onClose }) {
                 } catch (e2) { alert("Could not send the email."); }
               }} title="Email the ticket" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>}
               <button onClick={() => shareGuest(g)} title="Send ticket with QR on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12 }}><MessageCircle size={13} /></button>
-              <button onClick={() => { if (window.confirm(`Remove ${gwGuestName(g)} from the guest list?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove guest" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
+              <button onClick={() => { if (window.confirm(`Remove ${gwGuestName(g)} from the guest list?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : load()); }} title="Remove guest" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
               <div onClick={() => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, checked_in: !g.checked_in } : x)); supabase.rpc("set_guest_checkin", { p_id: g.id, p_in: !g.checked_in }); }} style={{ width: 26, height: 26, borderRadius: "50%", border: `2px solid ${g.checked_in ? W.teal : W.line}`, background: g.checked_in ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>{g.checked_in && <Check size={15} />}</div>
             </div>
           ); })}
@@ -15567,7 +15601,7 @@ function GuestTickets({ event }) {
           <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap:"wrap", maxWidth:140 }}>
             {g.email && <button onClick={() => emailGuest(g)} title="Email the ticket" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>}
             <button onClick={() => shareGuest(g)} title="Send ticket on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12 }}><MessageCircle size={13} /></button>
-            <button onClick={() => { if (window.confirm(`Remove ${g.name}?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 9px", fontSize: 12 }}><Trash2 size={13} /></button>
+            <button onClick={() => { if (window.confirm(`Remove ${g.name}?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : load()); }} title="Remove" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 9px", fontSize: 12 }}><Trash2 size={13} /></button>
           </div>
         </div>
       ); })}
