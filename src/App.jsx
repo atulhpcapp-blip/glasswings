@@ -18132,11 +18132,18 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
   const [stamps, setStamps] = useState(null);
   const [ref, setRef] = useState(null); const [copied, setCopied] = useState(false);
   const [edit, setEdit] = useState(false);
+  const [selfDetails, setSelfDetails] = useState(null);
   const isPromoter = (profile?.roles || []).includes("promoter");
+  const loadSelfDetails = useCallback(() => {
+    if (!user?.id) return;
+    supabase.from("member_details").select("age,city,area,profession,bio,interests,photos,looking_for,icebreaker,prompts").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => setSelfDetails(data || {}));
+  }, [user?.id]);
   useEffect(() => {
     supabase.rpc("my_stamps").then(({ data }) => setStamps(data ?? 0));
     if (isPromoter) supabase.rpc("my_referral").then(({ data }) => setRef(data?.[0] || null));
-  }, []);
+    loadSelfDetails();
+  }, [loadSelfDetails]);
   const change = async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     setBusy(true);
@@ -18172,26 +18179,70 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
       <TopBar title="Profile" right={<button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer", flexShrink: 0 }}><LogOut size={17} />Log out</button>} />
       <div style={{ padding: 16 }}>
         <div style={{ margin: "0 0 14px" }}><WaCommunityBanner url={waGroup} /></div>
-        <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 20, display: "flex", alignItems: "center", gap: 16 }}>
-          <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", flexShrink: 0 }}>
-            <PersonAvatar url={profile?.avatar_url} name={profile?.full_name} size={64} />
-            <div style={{ position: "absolute", bottom: -2, right: -2, width: 24, height: 24, borderRadius: "50%", background: W.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #fff" }}>{busy ? "…" : <Camera size={12} />}</div>
-          </div>
-          <input ref={fileRef} type="file" accept="image/*" onChange={change} style={{ display: "none" }} />
-          <div>
-            <div style={{ fontSize: 21, fontWeight: 700, color: W.ink }}>{profile?.full_name || "—"}</div>
-            <div style={{ color: W.soft, fontSize: 14 }}>{user.email}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#E7F6EF", color: W.teal, fontSize: 12.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>{_isStaffey && <Crown size={13} />}{roleLabel}</span>
-              {isVIP && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "linear-gradient(95deg,#7C3AED,#C026D3)", color: "#fff", fontSize: 12.5, fontWeight: 800, padding: "4px 11px", borderRadius: 20 }}>⭐ VIP</span>}
+        <div style={{background:"linear-gradient(135deg,#ECFEFF 0%,#F5F3FF 48%,#FDF2F8 100%)",borderRadius:22,padding:10,border:"1px solid #E9D5FF"}}>
+          <div style={{background:"#fff",borderRadius:18,overflow:"hidden",boxShadow:"0 10px 30px rgba(51,65,85,.10)"}}>
+            <div style={{position:"relative",aspectRatio:"4 / 5",maxHeight:560,background:"linear-gradient(135deg,#CCFBF1,#EDE9FE,#FCE7F3)"}}>
+              {profile?.avatar_url
+                ? <img src={profile.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                : <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:92}}>{profile?.gender==="female"?"👩":profile?.gender==="male"?"👨":"🙂"}</div>}
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg,rgba(0,0,0,0) 45%,rgba(15,23,42,.82) 100%)"}}/>
+              <div style={{position:"absolute",left:18,right:18,bottom:18,color:"#fff"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <div style={{fontSize:30,fontWeight:950,lineHeight:1.05,textShadow:"0 2px 12px rgba(0,0,0,.25)"}}>{profile?.full_name || "Member"}{selfDetails?.age ? `, ${selfDetails.age}` : ""}</div>
+                  {isVIP && <span style={{background:"linear-gradient(95deg,#7C3AED,#C026D3)",borderRadius:999,padding:"5px 9px",fontSize:11,fontWeight:900}}>⭐ VIP</span>}
+                </div>
+                <div style={{fontSize:13.5,marginTop:7,fontWeight:650,opacity:.95}}>{[selfDetails?.area || selfDetails?.city, selfDetails?.profession].filter(Boolean).join(" · ")}</div>
+              </div>
+              <button onClick={() => fileRef.current?.click()} title="Change profile photo" style={{position:"absolute",right:14,top:14,width:42,height:42,borderRadius:14,border:"1px solid rgba(255,255,255,.45)",background:"rgba(17,24,39,.38)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",backdropFilter:"blur(8px)"}}>{busy ? "…" : <Camera size={18}/>}</button>
+              <input ref={fileRef} type="file" accept="image/*" onChange={change} style={{display:"none"}}/>
+            </div>
+
+            <div style={{padding:"17px 17px 20px",background:"linear-gradient(180deg,#fff 0%,#FCFCFF 60%,#F8FAFC 100%)"}}>
+              <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                <span style={{display:"inline-flex",alignItems:"center",gap:5,background:"#ECFDF5",border:"1px solid #D1FAE5",color:"#047857",borderRadius:999,padding:"6px 10px",fontSize:12,fontWeight:850}}>🪽 Glasswings member</span>
+                <span style={{display:"inline-flex",alignItems:"center",gap:5,background:"#F5F3FF",border:"1px solid #E9D5FF",color:"#6D28D9",borderRadius:999,padding:"6px 10px",fontSize:12,fontWeight:850}}>{_isStaffey && <Crown size={13}/>} {roleLabel}</span>
+              </div>
+
+              {(selfDetails?.profession || selfDetails?.looking_for) && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:9,marginTop:13}}>
+                {selfDetails?.profession && <div style={{background:"linear-gradient(135deg,#ECFEFF,#F0FDFA)",border:"1px solid #CCFBF1",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.5}}>PROFESSION</div><div style={{fontSize:14,fontWeight:800,color:W.ink,marginTop:4}}>💼 {selfDetails.profession}</div></div>}
+                {selfDetails?.looking_for && <div style={{background:"linear-gradient(135deg,#F5F3FF,#FDF2F8)",border:"1px solid #E9D5FF",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:10.5,fontWeight:950,color:"#7C3AED",letterSpacing:.5}}>HERE FOR</div><div style={{fontSize:14,fontWeight:800,color:W.ink,marginTop:4}}>✨ {selfDetails.looking_for}</div></div>}
+              </div>}
+
+              {selfDetails?.bio && <div style={{marginTop:13,background:"linear-gradient(135deg,#FFF7ED,#FFF1F2)",border:"1px solid #FED7AA",borderRadius:16,padding:"13px 14px"}}>
+                <div style={{fontSize:10.5,fontWeight:950,color:"#C2410C",letterSpacing:.6}}>ABOUT ME</div>
+                <div style={{fontSize:15,color:W.ink,marginTop:6,lineHeight:1.6,whiteSpace:"pre-wrap",fontWeight:550}}>{selfDetails.bio}</div>
+              </div>}
+
+              {Array.isArray(selfDetails?.interests) && selfDetails.interests.length > 0 && <div style={{marginTop:13,background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1px solid #DDD6FE",borderRadius:16,padding:"13px 14px"}}>
+                <div style={{fontSize:10.5,fontWeight:950,color:"#6D28D9",letterSpacing:.6,marginBottom:8}}>INTERESTS & VIBES</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:7}}>{selfDetails.interests.map(it=><span key={it} style={{background:"#fff",border:"1px solid #E9D5FF",color:"#5B21B6",borderRadius:999,padding:"7px 11px",fontSize:12.5,fontWeight:750}}>✦ {it}</span>)}</div>
+              </div>}
+
+              {selfDetails?.icebreaker && <div style={{marginTop:13,background:"linear-gradient(120deg,#FDF2F8,#F5F3FF)",border:"1px solid #F5D0FE",borderRadius:16,padding:"13px 14px"}}>
+                <div style={{fontSize:10.5,fontWeight:950,color:"#7C3AED",letterSpacing:.6}}>💬 EASY CONVERSATION STARTER</div>
+                <div style={{fontSize:15.5,color:W.ink,marginTop:5,lineHeight:1.5,fontWeight:700}}>{selfDetails.icebreaker}</div>
+              </div>}
+
+              {Array.isArray(selfDetails?.prompts) && selfDetails.prompts.filter(x=>x && x.a).length > 0 && <div style={{marginTop:14}}>
+                <div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.6,marginBottom:7}}>MORE ABOUT ME</div>
+                <div style={{display:"grid",gap:8}}>
+                  {selfDetails.prompts.filter(x=>x && x.a).map((x,i)=><div key={i} style={{background:i%2===0?"linear-gradient(135deg,#EFF6FF,#F5F3FF)":"linear-gradient(135deg,#ECFDF5,#ECFEFF)",border:"1px solid rgba(148,163,184,.22)",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:11,fontWeight:900,color:i%2===0?"#6D28D9":"#0F766E"}}>{x.q}</div><div style={{fontSize:15,color:W.ink,marginTop:4,lineHeight:1.5,fontWeight:650}}>{x.a}</div></div>)}
+                </div>
+              </div>}
+
+              {Array.isArray(selfDetails?.photos) && selfDetails.photos.length > 0 && <div style={{marginTop:15}}>
+                <div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.6,marginBottom:8}}>MORE PHOTOS</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>{selfDetails.photos.map((url,i)=><img key={i} src={url} alt="" style={{width:"100%",aspectRatio:"1 / 1.08",borderRadius:15,objectFit:"cover",boxShadow:"0 4px 14px rgba(15,23,42,.08)"}}/>)}</div>
+              </div>}
+
+              <div style={{display:"flex",gap:9,marginTop:16,flexWrap:"wrap"}}>
+                <button onClick={() => setEdit(true)} style={{...btn("linear-gradient(95deg,#0F766E,#2563EB)","#fff"),flex:"1 1 150px",justifyContent:"center",fontWeight:900}}><Pencil size={15}/>Edit Profile</button>
+                <button onClick={shareMyProfile} style={{...btn("linear-gradient(95deg,#7C3AED,#DB2777)","#fff"),flex:"1 1 150px",justifyContent:"center",fontWeight:900}}><Share2 size={15}/>Share My Profile</button>
+              </div>
             </div>
           </div>
         </div>
-        <div style={{display:"flex",gap:9,marginTop:12,flexWrap:"wrap"}}>
-          <button onClick={() => setEdit(true)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex:"1 1 150px", justifyContent: "center" }}><Pencil size={15} />Edit profile</button>
-          <button onClick={shareMyProfile} style={{ ...btn("#ECFDF5","#047857"), border:"1px solid #A7F3D0", flex:"1 1 150px", justifyContent:"center", fontWeight:900 }}><Share2 size={15}/>Share My Profile</button>
-        </div>
-        {edit && <EditProfileSheet user={user} profile={profile} onClose={() => setEdit(false)} reload={reload} />}
+        {edit && <EditProfileSheet user={user} profile={profile} onClose={() => {setEdit(false);loadSelfDetails();}} reload={() => {reload();loadSelfDetails();}} />}
         <OrganiserApplicationCard user={user} profile={profile} onApproved={reload} />
         {stamps !== null && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
