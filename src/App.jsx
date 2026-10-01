@@ -17807,11 +17807,14 @@ function Gallery({ isAdmin, events = [], onOpenEvent }) {
     </div>
   );
 }
-function EditProfileSheet({ user, profile, onClose, reload }) {
+function EditProfileSheet({ user, profile, onClose, reload, focusSection = "top" }) {
   const [name, setName] = useState(profile.full_name || "");
   const [gender, setGender] = useState(profile.gender || "male");
   const [phone, setPhone] = useState(""), [age, setAge] = useState(""), [area, setArea] = useState(""), [prof, setProf] = useState(""), [city, setCity] = useState("");
   const [bio, setBio] = useState(""), [interests, setInterests] = useState([]);
+  const [lookingFor, setLookingFor] = useState("");
+  const [icebreaker, setIcebreaker] = useState("");
+  const [prompts, setPrompts] = useState([{q:"",a:""},{q:"",a:""},{q:"",a:""}]);
   const [photos, setPhotos] = useState([]);
   const [galBusy, setGalBusy] = useState(false);
   const galRef = useRef(null);
@@ -17831,7 +17834,7 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const fileRef = useRef(null);
   useEffect(() => {
-    supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); setBio(data.bio || ""); setInterests(Array.isArray(data.interests) ? data.interests : []); setPhotos(Array.isArray(data.photos) ? data.photos : []); } });
+    supabase.from("member_details").select("*").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data) { setAge(data.age || ""); setArea(data.area || ""); setProf(data.profession || ""); setCity(data.city || ""); setBio(data.bio || ""); setInterests(Array.isArray(data.interests) ? data.interests : []); setLookingFor(data.looking_for || ""); setIcebreaker(data.icebreaker || ""); setPrompts(Array.isArray(data.prompts) && data.prompts.length ? [...data.prompts.slice(0,3), ...Array(Math.max(0,3-data.prompts.length)).fill(null).map(()=>({q:"",a:""}))] : [{q:"",a:""},{q:"",a:""},{q:"",a:""}]); setPhotos(Array.isArray(data.photos) ? data.photos : []); } });
     supabase.from("member_phone").select("phone").eq("user_id", user.id).maybeSingle().then(({ data }) => { if (data?.phone) setPhone(data.phone); });
   }, [user.id]);
   const pick = async (e) => {
@@ -17843,7 +17846,7 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
   const save = async () => {
     setErr(""); if (!name.trim()) return setErr("Please enter your name.");
     setBusy(true);
-    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city, bio: bio.trim() || null, interests: interests.length ? interests : null, photos: photos.length ? photos : null });
+    const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area, profession: prof, city, bio: bio.trim() || null, interests: interests.length ? interests : null, looking_for: lookingFor.trim() || null, icebreaker: icebreaker.trim() || null, prompts: prompts.filter(x => x && (String(x.q||"").trim() || String(x.a||"").trim())).map(x => ({q:String(x.q||"").trim(),a:String(x.a||"").trim()})), photos: photos.length ? photos : null });
     if (phone) await supabase.from("member_phone").upsert({ user_id: user.id, phone });
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name.trim(), gender, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
@@ -17857,6 +17860,15 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
     reload(); onClose();
   };
   const inp = (ph, v, s, t = "text") => <input value={v} onChange={e => s(e.target.value)} placeholder={ph} type={t} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink, boxSizing: "border-box" }} />;
+  const sectionRefs = useRef({});
+  useEffect(() => {
+    if (!focusSection || focusSection === "top") return;
+    const t = setTimeout(() => sectionRefs.current[focusSection]?.scrollIntoView?.({behavior:"smooth",block:"center"}), 180);
+    return () => clearTimeout(t);
+  }, [focusSection]);
+  const markSection = key => ({ref:el=>{sectionRefs.current[key]=el;}});
+  const editLabel = {fontSize:12.5,color:W.soft,marginBottom:6,fontWeight:700};
+  const cardEdit = {background:"#FAFCFB",border:`1px solid ${W.line}`,borderRadius:12,padding:11};
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, marginBottom: 14 }}>Edit profile</div>
@@ -17883,16 +17895,36 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
         </div>
         {inp("Phone number (private — staff only)", phone, setPhone, "tel")}
         <div style={{ background: "#E7F8F0", border: "2px solid #008069", borderRadius: 10, padding: 12, color: "#075E4B", fontSize: 13, lineHeight: 1.5 }}><b>🔒 Your phone number is private.</b> It is not visible to other members. Only authorised admin team members can access it.</div>
-        {inp("Age", age, setAge, "number")}
-        {inp("Area / locality", area, setArea)}
-        {inp("City", city, setCity)}
-        {inp("Profession", prof, setProf)}
-        <div>
+        <div {...markSection("location")} style={cardEdit}>
+          <div style={editLabel}>Age & location</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
+            {inp("Age", age, setAge, "number")}
+            {inp("City", city, setCity)}
+            {inp("Area / locality", area, setArea)}
+          </div>
+        </div>
+        <div {...markSection("profession")} style={cardEdit}>
+          <div style={editLabel}>Profession</div>
+          {inp("e.g. Doctor, Entrepreneur, Designer", prof, setProf)}
+        </div>
+        <div {...markSection("looking")} style={cardEdit}>
+          <div style={editLabel}>Here for</div>
+          <select value={lookingFor} onChange={e=>setLookingFor(e.target.value)} style={{width:"100%",padding:"12px 14px",borderRadius:10,border:`1px solid ${W.line}`,fontSize:14.5,background:"#fff",color:W.ink}}>
+            <option value="">Choose what brings you to Glasswings</option>
+            <option value="New friends">New friends</option>
+            <option value="Events & parties">Events & parties</option>
+            <option value="Networking">Networking</option>
+            <option value="Activity partners">Activity partners</option>
+            <option value="Dating / meaningful connections">Dating / meaningful connections</option>
+            <option value="Just exploring the community">Just exploring the community</option>
+          </select>
+        </div>
+        <div {...markSection("bio")} style={cardEdit}>
           <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6, fontWeight: 600 }}>About me <span style={{ fontWeight: 400 }}>— one line to introduce yourself</span></div>
           <textarea value={bio} onChange={e => setBio(e.target.value.slice(0, 150))} placeholder="e.g. Foodie & live-music addict, always up for a Sunday brunch 🎶" rows={2} style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${W.line}`, fontSize: 15, outline: "none", color: W.ink, boxSizing: "border-box", resize: "none" }} />
           <div style={{ fontSize: 11, color: W.soft, textAlign: "right" }}>{bio.length}/150</div>
         </div>
-        <div>
+        <div {...markSection("interests")} style={cardEdit}>
           <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8, fontWeight: 600 }}>My interests <span style={{ fontWeight: 400 }}>— pick up to 6</span></div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
             {INTERESTS.map(([emo, label]) => { const on = interests.includes(label); return (
@@ -17900,7 +17932,21 @@ function EditProfileSheet({ user, profile, onClose, reload }) {
             ); })}
           </div>
         </div>
-        <div>
+        <div {...markSection("icebreaker")} style={cardEdit}>
+          <div style={editLabel}>Conversation starter</div>
+          <textarea value={icebreaker} onChange={e=>setIcebreaker(e.target.value.slice(0,120))} placeholder="e.g. Ask me about the best biryani in Hyderabad 😄" rows={2} style={{width:"100%",padding:"12px 14px",borderRadius:10,border:`1px solid ${W.line}`,fontSize:14.5,outline:"none",resize:"none",boxSizing:"border-box"}}/>
+          <div style={{fontSize:11,color:W.soft,textAlign:"right"}}>{icebreaker.length}/120</div>
+        </div>
+        <div {...markSection("prompts")} style={cardEdit}>
+          <div style={editLabel}>Profile prompts <span style={{fontWeight:400}}>— up to 3</span></div>
+          <div style={{display:"grid",gap:9}}>
+            {prompts.map((x,i)=><div key={i} style={{background:"#fff",border:`1px solid ${W.line}`,borderRadius:10,padding:9}}>
+              <input value={x.q||""} onChange={e=>setPrompts(ps=>ps.map((p,j)=>j===i?{...p,q:e.target.value}:p))} placeholder={i===0?"Prompt e.g. My ideal Sunday":i===1?"Prompt e.g. A skill I want to learn":"Prompt e.g. You should ask me about"} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${W.line}`,fontSize:13.5,boxSizing:"border-box",marginBottom:7}}/>
+              <textarea value={x.a||""} onChange={e=>setPrompts(ps=>ps.map((p,j)=>j===i?{...p,a:e.target.value.slice(0,160)}:p))} placeholder="Your answer…" rows={2} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${W.line}`,fontSize:13.5,boxSizing:"border-box",resize:"none"}}/>
+            </div>)}
+          </div>
+        </div>
+        <div {...markSection("photos")} style={cardEdit}>
           <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 8, fontWeight: 600 }}>Your photos <span style={{ fontWeight: 400 }}>— a few pics so people recognise you at events (up to 5)</span></div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
             {photos.map((url, i) => (
@@ -18132,6 +18178,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
   const [stamps, setStamps] = useState(null);
   const [ref, setRef] = useState(null); const [copied, setCopied] = useState(false);
   const [edit, setEdit] = useState(false);
+  const [editSection, setEditSection] = useState("top");
   const [selfDetails, setSelfDetails] = useState(null);
   const isPromoter = (profile?.roles || []).includes("promoter");
   const loadSelfDetails = useCallback(() => {
@@ -18203,46 +18250,86 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
                 <span style={{display:"inline-flex",alignItems:"center",gap:5,background:"#F5F3FF",border:"1px solid #E9D5FF",color:"#6D28D9",borderRadius:999,padding:"6px 10px",fontSize:12,fontWeight:850}}>{_isStaffey && <Crown size={13}/>} {roleLabel}</span>
               </div>
 
-              {(selfDetails?.profession || selfDetails?.looking_for) && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:9,marginTop:13}}>
-                {selfDetails?.profession && <div style={{background:"linear-gradient(135deg,#ECFEFF,#F0FDFA)",border:"1px solid #CCFBF1",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.5}}>PROFESSION</div><div style={{fontSize:14,fontWeight:800,color:W.ink,marginTop:4}}>💼 {selfDetails.profession}</div></div>}
-                {selfDetails?.looking_for && <div style={{background:"linear-gradient(135deg,#F5F3FF,#FDF2F8)",border:"1px solid #E9D5FF",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:10.5,fontWeight:950,color:"#7C3AED",letterSpacing:.5}}>HERE FOR</div><div style={{fontSize:14,fontWeight:800,color:W.ink,marginTop:4}}>✨ {selfDetails.looking_for}</div></div>}
-              </div>}
-
-              {selfDetails?.bio && <div style={{marginTop:13,background:"linear-gradient(135deg,#FFF7ED,#FFF1F2)",border:"1px solid #FED7AA",borderRadius:16,padding:"13px 14px"}}>
-                <div style={{fontSize:10.5,fontWeight:950,color:"#C2410C",letterSpacing:.6}}>ABOUT ME</div>
-                <div style={{fontSize:15,color:W.ink,marginTop:6,lineHeight:1.6,whiteSpace:"pre-wrap",fontWeight:550}}>{selfDetails.bio}</div>
-              </div>}
-
-              {Array.isArray(selfDetails?.interests) && selfDetails.interests.length > 0 && <div style={{marginTop:13,background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1px solid #DDD6FE",borderRadius:16,padding:"13px 14px"}}>
-                <div style={{fontSize:10.5,fontWeight:950,color:"#6D28D9",letterSpacing:.6,marginBottom:8}}>INTERESTS & VIBES</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:7}}>{selfDetails.interests.map(it=><span key={it} style={{background:"#fff",border:"1px solid #E9D5FF",color:"#5B21B6",borderRadius:999,padding:"7px 11px",fontSize:12.5,fontWeight:750}}>✦ {it}</span>)}</div>
-              </div>}
-
-              {selfDetails?.icebreaker && <div style={{marginTop:13,background:"linear-gradient(120deg,#FDF2F8,#F5F3FF)",border:"1px solid #F5D0FE",borderRadius:16,padding:"13px 14px"}}>
-                <div style={{fontSize:10.5,fontWeight:950,color:"#7C3AED",letterSpacing:.6}}>💬 EASY CONVERSATION STARTER</div>
-                <div style={{fontSize:15.5,color:W.ink,marginTop:5,lineHeight:1.5,fontWeight:700}}>{selfDetails.icebreaker}</div>
-              </div>}
-
-              {Array.isArray(selfDetails?.prompts) && selfDetails.prompts.filter(x=>x && x.a).length > 0 && <div style={{marginTop:14}}>
-                <div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.6,marginBottom:7}}>MORE ABOUT ME</div>
-                <div style={{display:"grid",gap:8}}>
-                  {selfDetails.prompts.filter(x=>x && x.a).map((x,i)=><div key={i} style={{background:i%2===0?"linear-gradient(135deg,#EFF6FF,#F5F3FF)":"linear-gradient(135deg,#ECFDF5,#ECFEFF)",border:"1px solid rgba(148,163,184,.22)",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:11,fontWeight:900,color:i%2===0?"#6D28D9":"#0F766E"}}>{x.q}</div><div style={{fontSize:15,color:W.ink,marginTop:4,lineHeight:1.5,fontWeight:650}}>{x.a}</div></div>)}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:9,marginTop:13}}>
+                <div style={{background:"linear-gradient(135deg,#EFF6FF,#ECFEFF)",border:"1px solid #BFDBFE",borderRadius:15,padding:"12px 13px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <div style={{fontSize:10.5,fontWeight:950,color:"#2563EB",letterSpacing:.5}}>AGE & LOCATION</div>
+                    <button onClick={()=>{setEditSection("location");setEdit(true);}} style={{border:"none",background:"#fff",color:"#2563EB",borderRadius:999,padding:"4px 8px",fontSize:10.5,fontWeight:900,cursor:"pointer"}}>Edit</button>
+                  </div>
+                  <div style={{fontSize:14,fontWeight:800,color:(selfDetails?.age||selfDetails?.city||selfDetails?.area)?W.ink:W.soft,marginTop:5}}>{[selfDetails?.age ? `${selfDetails.age} yrs` : "", selfDetails?.area, selfDetails?.city].filter(Boolean).join(" · ") || "Add age, city & area"}</div>
                 </div>
-              </div>}
 
-              {Array.isArray(selfDetails?.photos) && selfDetails.photos.length > 0 && <div style={{marginTop:15}}>
-                <div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.6,marginBottom:8}}>MORE PHOTOS</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>{selfDetails.photos.map((url,i)=><img key={i} src={url} alt="" style={{width:"100%",aspectRatio:"1 / 1.08",borderRadius:15,objectFit:"cover",boxShadow:"0 4px 14px rgba(15,23,42,.08)"}}/>)}</div>
-              </div>}
+                <div style={{background:"linear-gradient(135deg,#ECFEFF,#F0FDFA)",border:"1px solid #CCFBF1",borderRadius:15,padding:"12px 13px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.5}}>PROFESSION</div>
+                    <button onClick={()=>{setEditSection("profession");setEdit(true);}} style={{border:"none",background:"#fff",color:"#0F766E",borderRadius:999,padding:"4px 8px",fontSize:10.5,fontWeight:900,cursor:"pointer"}}>Edit</button>
+                  </div>
+                  <div style={{fontSize:14,fontWeight:800,color:selfDetails?.profession?W.ink:W.soft,marginTop:5}}>💼 {selfDetails?.profession || "Add your profession"}</div>
+                </div>
+
+                <div style={{background:"linear-gradient(135deg,#F5F3FF,#FDF2F8)",border:"1px solid #E9D5FF",borderRadius:15,padding:"12px 13px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <div style={{fontSize:10.5,fontWeight:950,color:"#7C3AED",letterSpacing:.5}}>HERE FOR</div>
+                    <button onClick={()=>{setEditSection("looking");setEdit(true);}} style={{border:"none",background:"#fff",color:"#7C3AED",borderRadius:999,padding:"4px 8px",fontSize:10.5,fontWeight:900,cursor:"pointer"}}>Edit</button>
+                  </div>
+                  <div style={{fontSize:14,fontWeight:800,color:selfDetails?.looking_for?W.ink:W.soft,marginTop:5}}>✨ {selfDetails?.looking_for || "Add what you're here for"}</div>
+                </div>
+              </div>
+
+              <div style={{marginTop:13,background:"linear-gradient(135deg,#FFF7ED,#FFF1F2)",border:"1px solid #FED7AA",borderRadius:16,padding:"13px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                  <div style={{fontSize:10.5,fontWeight:950,color:"#C2410C",letterSpacing:.6}}>ABOUT ME</div>
+                  <button onClick={()=>{setEditSection("bio");setEdit(true);}} style={{border:"none",background:"#fff",color:"#C2410C",borderRadius:999,padding:"4px 8px",fontSize:10.5,fontWeight:900,cursor:"pointer"}}>Edit</button>
+                </div>
+                <div style={{fontSize:15,color:selfDetails?.bio?W.ink:W.soft,marginTop:6,lineHeight:1.6,whiteSpace:"pre-wrap",fontWeight:550}}>{selfDetails?.bio || "Add a short introduction about yourself"}</div>
+              </div>
+
+              <div style={{marginTop:13,background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1px solid #DDD6FE",borderRadius:16,padding:"13px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                  <div style={{fontSize:10.5,fontWeight:950,color:"#6D28D9",letterSpacing:.6}}>INTERESTS & VIBES</div>
+                  <button onClick={()=>{setEditSection("interests");setEdit(true);}} style={{border:"none",background:"#fff",color:"#6D28D9",borderRadius:999,padding:"4px 8px",fontSize:10.5,fontWeight:900,cursor:"pointer"}}>Edit</button>
+                </div>
+                {Array.isArray(selfDetails?.interests) && selfDetails.interests.length > 0
+                  ? <div style={{display:"flex",flexWrap:"wrap",gap:7}}>{selfDetails.interests.map(it=><span key={it} style={{background:"#fff",border:"1px solid #E9D5FF",color:"#5B21B6",borderRadius:999,padding:"7px 11px",fontSize:12.5,fontWeight:750}}>✦ {it}</span>)}</div>
+                  : <div style={{fontSize:14,color:W.soft,fontWeight:650}}>Add your interests — music, travel, food, sports and more</div>}
+              </div>
+
+              <div style={{marginTop:13,background:"linear-gradient(120deg,#FDF2F8,#F5F3FF)",border:"1px solid #F5D0FE",borderRadius:16,padding:"13px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                  <div style={{fontSize:10.5,fontWeight:950,color:"#7C3AED",letterSpacing:.6}}>💬 CONVERSATION STARTER</div>
+                  <button onClick={()=>{setEditSection("icebreaker");setEdit(true);}} style={{border:"none",background:"#fff",color:"#7C3AED",borderRadius:999,padding:"4px 8px",fontSize:10.5,fontWeight:900,cursor:"pointer"}}>Edit</button>
+                </div>
+                <div style={{fontSize:15.5,color:selfDetails?.icebreaker?W.ink:W.soft,marginTop:5,lineHeight:1.5,fontWeight:700}}>{selfDetails?.icebreaker || "Add something people can easily ask you about"}</div>
+              </div>
+
+              <div style={{marginTop:14,background:"#fff",border:"1px solid #DDE7E3",borderRadius:16,padding:"13px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:7}}>
+                  <div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.6}}>PROFILE PROMPTS</div>
+                  <button onClick={()=>{setEditSection("prompts");setEdit(true);}} style={{border:"none",background:"#ECFDF5",color:"#0F766E",borderRadius:999,padding:"4px 8px",fontSize:10.5,fontWeight:900,cursor:"pointer"}}>Edit</button>
+                </div>
+                {Array.isArray(selfDetails?.prompts) && selfDetails.prompts.filter(x=>x && x.a).length > 0
+                  ? <div style={{display:"grid",gap:8}}>{selfDetails.prompts.filter(x=>x && x.a).map((x,i)=><div key={i} style={{background:i%2===0?"linear-gradient(135deg,#EFF6FF,#F5F3FF)":"linear-gradient(135deg,#ECFDF5,#ECFEFF)",border:"1px solid rgba(148,163,184,.22)",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:11,fontWeight:900,color:i%2===0?"#6D28D9":"#0F766E"}}>{x.q}</div><div style={{fontSize:15,color:W.ink,marginTop:4,lineHeight:1.5,fontWeight:650}}>{x.a}</div></div>)}</div>
+                  : <div style={{fontSize:14,color:W.soft,fontWeight:650}}>Add a few fun prompts so members know how to start a conversation</div>}
+              </div>
+
+              <div style={{marginTop:15,background:"#fff",border:"1px solid #DDE7E3",borderRadius:16,padding:"13px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                  <div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.6}}>MORE PHOTOS</div>
+                  <button onClick={()=>{setEditSection("photos");setEdit(true);}} style={{border:"none",background:"#ECFDF5",color:"#0F766E",borderRadius:999,padding:"4px 8px",fontSize:10.5,fontWeight:900,cursor:"pointer"}}>Edit</button>
+                </div>
+                {Array.isArray(selfDetails?.photos) && selfDetails.photos.length > 0
+                  ? <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>{selfDetails.photos.map((url,i)=><img key={i} src={url} alt="" style={{width:"100%",aspectRatio:"1 / 1.08",borderRadius:15,objectFit:"cover",boxShadow:"0 4px 14px rgba(15,23,42,.08)"}}/>)}</div>
+                  : <div style={{fontSize:14,color:W.soft,fontWeight:650}}>Add more photos to make your profile feel complete</div>}
+              </div>
 
               <div style={{display:"flex",gap:9,marginTop:16,flexWrap:"wrap"}}>
-                <button onClick={() => setEdit(true)} style={{...btn("linear-gradient(95deg,#0F766E,#2563EB)","#fff"),flex:"1 1 150px",justifyContent:"center",fontWeight:900}}><Pencil size={15}/>Edit Profile</button>
+                <button onClick={() => {setEditSection("top");setEdit(true);}} style={{...btn("linear-gradient(95deg,#0F766E,#2563EB)","#fff"),flex:"1 1 150px",justifyContent:"center",fontWeight:950,padding:"12px 14px"}}><Pencil size={16}/>Edit / Complete Profile</button>
                 <button onClick={shareMyProfile} style={{...btn("linear-gradient(95deg,#7C3AED,#DB2777)","#fff"),flex:"1 1 150px",justifyContent:"center",fontWeight:900}}><Share2 size={15}/>Share My Profile</button>
               </div>
             </div>
           </div>
         </div>
-        {edit && <EditProfileSheet user={user} profile={profile} onClose={() => {setEdit(false);loadSelfDetails();}} reload={() => {reload();loadSelfDetails();}} />}
+        {edit && <EditProfileSheet user={user} profile={profile} focusSection={editSection} onClose={() => {setEdit(false);loadSelfDetails();}} reload={() => {reload();loadSelfDetails();}} />}
         <OrganiserApplicationCard user={user} profile={profile} onApproved={reload} />
         {stamps !== null && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
