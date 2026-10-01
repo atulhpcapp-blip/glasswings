@@ -13747,9 +13747,16 @@ function EventMembersSheet({ event, onClose }) {
   };
   useEffect(() => { load(); }, [event.id]);
   const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
-  const withdraw = (m) => {
-    if (!window.confirm(`Withdraw ${m.full_name || "this member"}'s ticket${m.qty > 1 ? "s" : ""}? They'll be removed from this event.`)) return;
-    supabase.rpc("withdraw_ticket", { p_event: event.id, p_user: m.user_id }).then(({ error }) => error ? alert(error.message) : load());
+  const withdraw = async (m) => {
+    const who = m.full_name || "this member";
+    const qty = Number(m.qty) || 1;
+    const paidHint = m.amount != null ? `\n\nRecorded amount: ₹${Number(m.amount) || 0}.` : "";
+    if (!window.confirm(`Cancel ${who}'s active entr${qty === 1 ? "y" : "ies"}?\n\nThis removes them from the event and their current entry will no longer be valid.${paidHint}\n\nIf a refund is due, return the payment separately.`)) return;
+    const { error } = await supabase.rpc("withdraw_ticket", { p_event: event.id, p_user: m.user_id });
+    if (error) return alert(error.message);
+    await load();
+    setGuestRefresh(x => x + 1);
+    alert(`${who} cancelled ✅${paidHint ? "\n\nRefund, if applicable, must be processed separately." : ""}`);
   };
   const totQty = (rows || []).reduce((a, r) => a + (r.qty || 0), 0);
   return (
@@ -13790,7 +13797,7 @@ function EventMembersSheet({ event, onClose }) {
                 alert(r.ok ? (out.skipped ? "Not sent: " + out.skipped : `Ticket email sent to ${m.full_name || "member"} ✅`) : (out.error || "Could not send."));
               } catch (e2) { alert("Could not send the email."); }
             }} title="Resend ticket email" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>
-            <button onClick={() => withdraw(m)} title="Withdraw ticket" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
+            <button onClick={() => withdraw(m)} title="Cancel this member's event entry" style={{ ...btn("#FFF1F0", "#B42318"), border: "1px solid #F6C7C3", padding: "7px 10px", fontSize: 12, fontWeight: 850, whiteSpace: "nowrap" }}>✕ Cancel / Refund</button>
           </div>
         ))}
       </div>
@@ -13887,6 +13894,7 @@ function CheckInSheet({ event, onClose }) {
   const totalPresent=present+guestPresent;
   const totalGuys=guys.length+guestGuys.length;
   const totalGirls=girls.length+guestGirls.length;
+  const totalOther=others.length+guestOther.length;
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: "24px 12px" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 560, width: "100%", padding: "20px 20px 28px", margin: "auto" }}>
@@ -13896,19 +13904,19 @@ function CheckInSheet({ event, onClose }) {
         </div>
         <div style={{ fontSize: 13, color: W.soft, marginBottom: 8 }}>{list === null ? "Loading…" : `${totalPresent} of ${totalExpected} checked in`}</div>
         {list!==null&&<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:16}}>
-          <span style={{background:"#E8F2FB",color:"#1B6FB8",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>👨 Guys {totalGuys}</span>
-          <span style={{background:"#FBE9F2",color:"#C0246E",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>👩 Girls {totalGirls}</span>
-          <span style={{background:"#FFF0DB",color:"#78521B",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>💌 Guest list {guests.length}</span>
-          {guestOther.length>0&&<span style={{background:"#F1F3F2",color:W.soft,fontSize:11.5,fontWeight:800,padding:"5px 9px",borderRadius:999}}>Unspecified sex {guestOther.length}</span>}
+          <span style={{background:"#E8F2FB",color:"#1B6FB8",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>👨 Total guys {totalGuys}</span>
+          <span style={{background:"#FBE9F2",color:"#C0246E",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>👩 Total girls {totalGirls}</span>
+          <span style={{background:"#FFF0DB",color:"#78521B",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>💌 Guest / door entries {guests.length}</span>
+          {totalOther>0&&<span style={{background:"#F1F3F2",color:W.soft,fontSize:11.5,fontWeight:800,padding:"5px 9px",borderRadius:999}}>Sex not specified {totalOther}</span>}
         </div>}
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
         {list !== null && present > 1 && <Introductions eventId={event.id} refreshKey={present} />}
         {list === null ? <Center>loading…</Center> : list.length === 0 ? <Center>No ticket holders yet.</Center> : (
-          <>{seg("Guys", guys)}{seg("Girls", girls)}{others.length > 0 && seg("Other", others)}</>
+          <>{seg("Ticket holders — Guys", guys)}{seg("Ticket holders — Girls", girls)}{others.length > 0 && seg("Ticket holders — Other / unspecified", others)}</>
         )}
         <div style={{ marginTop: 18, borderTop: `2px solid ${W.line}`, paddingTop: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest list {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guestPresent}/{guests.length} in · 👨{guestGuys.length} 👩{guestGirls.length} · 🎟️{gcount("guest")} 💎{gcount("vip")} 🛡️{gcount("team")} 📸{gcount("instagram")}</span>}</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest & door entries {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guestPresent}/{guests.length} in · 👨{guestGuys.length} 👩{guestGirls.length} · 🎟️{gcount("guest")} 💎{gcount("vip")} 🛡️{gcount("team")} 📸{gcount("instagram")}</span>}</div>
             {guests.length > 0 && <button onClick={() => {
               const w = window.open("", "_blank", "width=800,height=940"); if (!w) return;
               const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
