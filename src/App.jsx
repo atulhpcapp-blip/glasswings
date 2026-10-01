@@ -5181,7 +5181,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); setPeekPrompts(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); supabase.rpc("meet_prompts", { p_user: p.id }).then(({ data }) => setPeekPrompts(Array.isArray(data) ? data : [])); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
   const shareMemberProfile = async (p) => {
     if (!p?.id) return;
-    const url = `${window.location.origin}/?profile=${encodeURIComponent(p.id)}`;
+    const url = `${window.location.origin}/api/p/${encodeURIComponent(p.id)}`;
     const first = String(p.name || "this member").trim();
     const title = `${first} on Glasswings`;
     const text = `Check out ${first}'s profile on Glasswings`;
