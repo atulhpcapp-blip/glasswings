@@ -75,7 +75,7 @@ function ticketStatus(t, e, stats, typeSold, profile) {
 
   // Men:Women balancing only limits a male buyer on tickets that men are allowed to buy.
   // It must never make a Women-only ticket look closed. Women are never balance-limited.
-  if (buyer === "male" && restrict !== "female") {
+  if (buyer === "male" && restrict === "male") {
     const mb = menBudget(e, stats);
     if (mb && mb.remaining <= 0) return { ok: false, label: "Opens as women join", reason: "balance" };
   }
@@ -2194,7 +2194,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
         const q = qtyMap[t.id] || 0;
         const audience = ticketAudience(t);
-        const balanceHeadroom = audience === "female" ? Infinity : (menRemain == null ? Infinity : Math.max(0, menRemain - selQty));
+        const balanceHeadroom = audience === "male" ? (menRemain == null ? Infinity : Math.max(0, menRemain - selQty)) : Infinity;
         const headroom = Math.min(MAX_TIX - selQty, balanceHeadroom);
         const max = Math.min(q + headroom, left == null ? MAX_TIX : left);
         return (
@@ -3800,7 +3800,7 @@ function Main({ user }) {
     if (gwGender(profile?.gender) === "male") {
       const mb = menBudget(e, eventStats);
       if (mb) {
-        const wantQty = cart.reduce((a, c) => a + (c.qty || 0), 0);
+        const wantQty = cart.reduce((a, c) => a + (c.type && ticketAudience(c.type) === "male" ? (c.qty || 0) : 0), 0);
         if (wantQty > mb.remaining) { setBuyTarget(null); return setNotice(mb.remaining <= 0 ? "Men's tickets aren't open yet — they release as more women join." : `Only ${mb.remaining} men's ticket${mb.remaining === 1 ? "" : "s"} open right now — more open as women join.`); }
       }
     }
@@ -3855,7 +3855,7 @@ function Main({ user }) {
     if (gwGender(profile?.gender) === "male") {
       const mb = menBudget(e, eventStats);
       if (mb) {
-        const wantQty = cart.reduce((a, c) => a + (c.qty || 0), 0);
+        const wantQty = cart.reduce((a, c) => a + (c.type && ticketAudience(c.type) === "male" ? (c.qty || 0) : 0), 0);
         if (wantQty > mb.remaining) { setBuyTarget(null); return setNotice(mb.remaining <= 0 ? "Men’s tickets aren’t open yet — they release as more women join." : `Only ${mb.remaining} men’s ticket${mb.remaining === 1 ? "" : "s"} open right now — more open as women join.`); }
       }
     }
@@ -12967,6 +12967,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   const [segsList, setSegsList] = useState([]);
   useEffect(() => { supabase.from("segments").select("id, name").order("created_at").then(({ data }) => setSegsList(data || [])); }, []);
   const [seg, setSeg] = useState("");
+  const [audience, setAudience] = useState("any");
   const [name, setName] = useState(""); const [price, setPrice] = useState(""); const [cap, setCap] = useState("");
   const [wf, setWf] = useState(""); const [wm, setWm] = useState("");
   const [credit, setCredit] = useState("");
@@ -12985,8 +12986,8 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   };
   const add = async () => {
     if (!name.trim()) return;
-    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: "any", capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null });
-    setName(""); setPrice(""); setCap(""); setWf(""); setWm(""); setCredit(""); setInclusions(""); setExclusions(""); setNotes(""); setDRoom(""); setDKind("percent"); setDVal(""); setSeg("");
+    await onAdd(eventId, { name: name.trim(), price: Number(price) || 0, gender_restrict: audience, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null });
+    setName(""); setPrice(""); setCap(""); setAudience("any"); setWf(""); setWm(""); setCredit(""); setInclusions(""); setExclusions(""); setNotes(""); setDRoom(""); setDKind("percent"); setDVal(""); setSeg("");
   };
   const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
   const audBadge = (gr) => {
@@ -12997,7 +12998,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
-      <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
+      <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity. Choose Anyone / Men only / Women only for every ticket.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
         {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
@@ -13005,6 +13006,9 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
       <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 9px", color: "#7C3AED", fontWeight: 800, fontSize: 14.5, letterSpacing: .3, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}><Plus size={17} />CREATE NEW TICKET TYPE</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Men)" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
+        <select value={audience} onChange={e => setAudience(e.target.value)} title="Who can buy this ticket" style={{ ...ip, width: 122 }}>
+          <option value="any">Anyone</option><option value="male">Men only</option><option value="female">Women only</option>
+        </select>
         <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 74 }} />
         <input value={wf} onChange={e => setWf(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♀ % off" title="Optional discount for women, e.g. 20" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Optional discount for men" inputMode="decimal" style={{ ...ip, width: 76 }} />
