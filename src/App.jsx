@@ -5179,6 +5179,40 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     setPeek(pk => (pk && pk.id === p.id) ? null : pk);
   };
   const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); setPeekPrompts(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); supabase.rpc("meet_prompts", { p_user: p.id }).then(({ data }) => setPeekPrompts(Array.isArray(data) ? data : [])); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
+  const shareMemberProfile = async (p) => {
+    if (!p?.id) return;
+    const url = `${window.location.origin}/?profile=${encodeURIComponent(p.id)}`;
+    const first = String(p.name || "this member").trim();
+    const title = `${first} on Glasswings`;
+    const text = `Check out ${first}'s profile on Glasswings`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text, url });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        window.gwConfirm("🔗 Profile link copied. You can paste it in WhatsApp or anywhere you like.", () => {});
+      } else {
+        window.prompt("Copy this profile link:", url);
+      }
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        try { await navigator.clipboard?.writeText(url); } catch {}
+      }
+    }
+  };
+  const sharedProfileOpened = useRef(false);
+  useEffect(() => {
+    if (!rows || sharedProfileOpened.current) return;
+    let pid = "";
+    try { pid = new URLSearchParams(window.location.search).get("profile") || ""; } catch {}
+    if (!pid) return;
+    const p = (rows || []).find(x => String(x.id) === String(pid));
+    if (!p) return;
+    sharedProfileOpened.current = true;
+    setMtab("discover");
+    openPeek(p);
+  }, [rows]);
+
   const flagProfile = (p, kind) => {
     window.gwConfirm(`🚩 Flag ${p.name?.split(" ")[0] || "this member"}'s ${kind} as not acceptable?\n\nTheir profile will be hidden from other members until they fix their ${kind}. They'll see a notice to update it.`, async () => {
       const { error } = await supabase.rpc("admin_flag_profile", { p_user: p.id, p_kind: kind, p_note: null });
@@ -5964,8 +5998,9 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                   <div style={{ fontSize: 10.5, color: W.soft, marginTop: 7, lineHeight: 1.4 }}>Flagging hides this profile from other members until they fix it. It auto-clears when they update the flagged item.</div>
                 </div>
               )}
-              <div style={{ display: "flex", gap: 9, marginTop: 14 }}>
-                <button onClick={() => setPeek(null)} style={{ flex: 1, padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
+              <div style={{ display: "flex", gap: 9, marginTop: 14, flexWrap: "wrap" }}>
+                <button onClick={() => shareMemberProfile(peek)} style={{ flex: "1 1 145px", padding: 12, borderRadius: 11, border: "1px solid #A7F3D0", background: "#ECFDF5", color: "#047857", fontWeight: 900, cursor: "pointer" }}>🔗 Share Profile</button>
+                <button onClick={() => setPeek(null)} style={{ flex: "1 1 90px", padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
                 {peek.waved_by_me && peek.waved_me ? (
                   <button onClick={() => { onOpenDM && onOpenDM(peek.id, (peek.name || "Member").split(" ")[0]); setPeek(null); }} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>💬 Message</button>
                 ) : peek.waved_by_me ? (
