@@ -4992,6 +4992,8 @@ function CommunityLiveRoom({ user, profile, onUpgrade, onlineMembers = [], onNud
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [onlineCount, setOnlineCount] = useState(1);
+  const [onlineGuys, setOnlineGuys] = useState(0);
+  const [onlineGirls, setOnlineGirls] = useState(0);
   const [err, setErr] = useState("");
   const [limitPopup, setLimitPopup] = useState(false);
   const [canModerate, setCanModerate] = useState(false);
@@ -5020,17 +5022,28 @@ function CommunityLiveRoom({ user, profile, onUpgrade, onlineMembers = [], onNud
     ch.on("presence", { event: "sync" }, () => {
       try {
         const st = ch.presenceState() || {};
-        setOnlineCount(Object.keys(st).length || 1);
-      } catch { setOnlineCount(1); }
+        const people = [];
+        Object.values(st).forEach(arr => {
+          const p = Array.isArray(arr) ? arr[arr.length - 1] : arr;
+          if (p) people.push(p);
+        });
+        setOnlineCount(people.length || 1);
+        setOnlineGuys(people.filter(p => String(p.gender || "").toLowerCase() === "male").length);
+        setOnlineGirls(people.filter(p => String(p.gender || "").toLowerCase() === "female").length);
+      } catch {
+        setOnlineCount(1);
+        setOnlineGuys(String(profile?.gender || "").toLowerCase() === "male" ? 1 : 0);
+        setOnlineGirls(String(profile?.gender || "").toLowerCase() === "female" ? 1 : 0);
+      }
     });
     ch.on("postgres_changes", { event: "*", schema: "public", table: "community_chat_messages" }, () => load());
     ch.subscribe(async state => {
       if (state === "SUBSCRIBED") {
-        try { await ch.track({ user_id: user.id, name: profile?.full_name || "Member", avatar_url: profile?.avatar_url || "", at: new Date().toISOString() }); } catch {}
+        try { await ch.track({ user_id: user.id, name: profile?.full_name || "Member", avatar_url: profile?.avatar_url || "", gender: String(profile?.gender || "").toLowerCase(), at: new Date().toISOString() }); } catch {}
       }
     });
     return () => { try { ch.untrack(); } catch {} supabase.removeChannel(ch); };
-  }, [user?.id, profile?.full_name, profile?.avatar_url, load]);
+  }, [user?.id, profile?.full_name, profile?.avatar_url, profile?.gender, load]);
 
   const send = async () => {
     const body = text.trim();
@@ -5092,7 +5105,11 @@ function CommunityLiveRoom({ user, profile, onUpgrade, onlineMembers = [], onNud
           <div style={{ fontWeight: 950, fontSize: 18 }}>Glasswings Live Room</div>
           <div style={{ fontSize: 12.5, opacity: .92, marginTop: 3 }}>One room. Everyone online. Pure conversation.</div>
         </div>
-        <div style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.25)", borderRadius: 999, padding: "6px 10px", fontSize: 11.5, fontWeight: 900, whiteSpace: "nowrap" }}>🟢 {onlineCount} online</div>
+        <div style={{display:"flex",flexWrap:"wrap",justifyContent:"flex-end",gap:5,maxWidth:220}}>
+          <div style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.25)", borderRadius: 999, padding: "5px 8px", fontSize: 10.5, fontWeight: 900, whiteSpace: "nowrap" }}>🟢 {onlineCount} in room</div>
+          <div style={{ background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.22)", borderRadius: 999, padding: "5px 8px", fontSize: 10.5, fontWeight: 850, whiteSpace: "nowrap" }}>👨 {onlineGuys} Guys</div>
+          <div style={{ background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.22)", borderRadius: 999, padding: "5px 8px", fontSize: 10.5, fontWeight: 850, whiteSpace: "nowrap" }}>👩 {onlineGirls} Girls</div>
+        </div>
       </div>
       <div style={{ marginTop: 12, display: "flex", gap: 7, flexWrap: "wrap" }}>
         <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>Text only</span>
