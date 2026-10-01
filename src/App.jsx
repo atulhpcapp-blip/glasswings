@@ -17131,6 +17131,24 @@ function AdminAddMemberDialog({ open, onClose, cities = [], onCreated }) {
   useEffect(()=>{ if(open){ setName('');setEmail('');setPhone('');setGender('');setAge('');setCity('');setArea('');setProfession('');setPhoto('');setErr(''); } },[open]);
   if(!open) return null;
   const fld={width:'100%',boxSizing:'border-box',border:`1px solid ${W.line}`,borderRadius:10,padding:'11px 12px',fontSize:14,outline:'none',background:'#fff',color:W.ink};
+  const cityOpts=(()=>{
+    const m=new Map();
+    [...IN_CITIES,...(cities||[])].forEach(c=>{
+      const cn=canonCity(c);
+      const k=_norm(cn);
+      if(k&&!m.has(k))m.set(k,cn);
+    });
+    return [...m.values()].sort((a,b)=>a.localeCompare(b));
+  })();
+  const areaOpts=(()=>{
+    const m=new Map();
+    [...curatedAreas(city), ...(area ? [area] : [])].forEach(a=>{
+      const v=_tcase(a);
+      const k=_norm(v);
+      if(k&&!m.has(k))m.set(k,v);
+    });
+    return [...m.values()].sort((a,b)=>a.localeCompare(b));
+  })();
   const pickPhoto=async(file)=>{
     if(!file)return; setErr('');
     try{
@@ -17170,8 +17188,16 @@ function AdminAddMemberDialog({ open, onClose, cities = [], onCreated }) {
         <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Phone<input value={phone} onChange={e=>setPhone(e.target.value)} style={{...fld,marginTop:5}} placeholder="10-digit / +91..." inputMode="tel"/></label>
         <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Gender<select value={gender} onChange={e=>setGender(e.target.value)} style={{...fld,marginTop:5}}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label>
         <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Age<input value={age} onChange={e=>setAge(e.target.value.replace(/\D/g,''))} style={{...fld,marginTop:5}} inputMode="numeric" placeholder="Age"/></label>
-        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>City<input list="gw-admin-member-cities" value={city} onChange={e=>setCity(e.target.value)} style={{...fld,marginTop:5}} placeholder="City"/><datalist id="gw-admin-member-cities">{(cities||[]).map(c=><option key={c} value={c}/>)}</datalist></label>
-        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Area<input value={area} onChange={e=>setArea(e.target.value)} style={{...fld,marginTop:5}} placeholder="Area / locality"/></label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>City
+          <div style={{marginTop:5}}>
+            <LocPick icon="🏙️" placeholder="Select city" value={city} options={cityOpts} accent="#2563EB" canon={canonCity} onPick={v=>{setCity(v==="all"?"":v);setArea("");}} />
+          </div>
+        </label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Area / locality
+          <div style={{marginTop:5}}>
+            <LocPick icon="📍" placeholder={city ? "Select area / locality" : "Select city first"} value={area} options={city ? areaOpts : []} accent="#008069" onPick={v=>setArea(v==="all"?"":v)} />
+          </div>
+        </label>
         <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Profession<input value={profession} onChange={e=>setProfession(e.target.value)} style={{...fld,marginTop:5}} placeholder="Profession / work"/></label>
       </div>
       <div style={{marginTop:12,border:`1px solid ${W.line}`,borderRadius:12,padding:12}}>
