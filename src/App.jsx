@@ -55,11 +55,8 @@ function ticketAudience(t) {
   return "any";
 }
 function ticketGenderAllowed(t, profile) {
-  const restrict = ticketAudience(t);
-  const buyer = gwGender(profile?.gender);
-  if (!restrict || restrict === "any") return true;
-  if (restrict === "female") return buyer === "female";
-  if (restrict === "male") return buyer === "male";
+  // Ticket audience describes the attendee/entry category, not who may purchase it.
+  // Example: a male account may purchase a Women Pass for a female guest.
   return true;
 }
 function ticketStatus(t, e, stats, typeSold, profile) {
@@ -69,13 +66,11 @@ function ticketStatus(t, e, stats, typeSold, profile) {
   if (hasCap && cap - sold <= 0) return { ok: false, label: "Sold out", reason: "capacity" };
 
   const restrict = ticketAudience(t);
-  const buyer = gwGender(profile?.gender);
-  if (restrict === "female" && buyer && buyer !== "female") return { ok: false, label: "Women only", reason: "gender" };
-  if (restrict === "male" && buyer && buyer !== "male") return { ok: false, label: "Men only", reason: "gender" };
 
-  // Men:Women balancing only limits a male buyer on tickets that men are allowed to buy.
-  // It must never make a Women-only ticket look closed. Women are never balance-limited.
-  if (buyer === "male" && restrict === "male") {
+  // Audience labels are attendee categories, not purchaser restrictions.
+  // Only MEN tickets are controlled by the Men:Women balance, regardless of who is logged in.
+  // Women, Couple and general tickets remain open unless their own capacity is exhausted.
+  if (restrict === "male") {
     const mb = menBudget(e, stats);
     if (mb && mb.remaining <= 0) return { ok: false, label: "Opens as women join", reason: "balance" };
   }
@@ -2101,6 +2096,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     .map(([k, q]) => ({ type: k === "__base" ? null : visTypes.find(t => t.id === k), qty: q }))
     .filter(c => c.type !== undefined || c.type === null);
   const selQty = cart.reduce((a, c) => a + c.qty, 0);
+  const selMaleQty = cart.reduce((a, c) => a + (c.type && ticketAudience(c.type) === "male" ? c.qty : 0), 0);
   const ticketTotal = cart.reduce((a, c) => a + (c.type ? genderNet(c.type, null, profile) : (e.ticket_price || 0)) * c.qty, 0);
   const addonTotal = realAddons.reduce((sum, a) => sum + (Number(a.price) || 0) * (addonQtyMap[a.id] || 0), 0);
   const selTotal = ticketTotal + addonTotal;
@@ -2128,7 +2124,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     }));
   };
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
-  const menRemain = gwGender(profile?.gender) === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
+  const menRemain = menBudget(e, stats)?.remaining ?? null; // null = no cap; number = MEN-ticket slots open now
   const cappedTypes = visTypes.filter(t => t.capacity != null && t.capacity !== "" && Number(t.capacity) > 0);
   const totalCapacity = cappedTypes.reduce((sum, t) => sum + Number(t.capacity), 0);
   const soldAcrossTypes = cappedTypes.reduce((sum, t) => sum + Number((typeSold && typeSold[t.id]) || 0), 0);
@@ -2194,7 +2190,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
         const q = qtyMap[t.id] || 0;
         const audience = ticketAudience(t);
-        const balanceHeadroom = audience === "male" ? (menRemain == null ? Infinity : Math.max(0, menRemain - selQty)) : Infinity;
+        const balanceHeadroom = audience === "male" ? (menRemain == null ? Infinity : Math.max(0, menRemain - selMaleQty)) : Infinity;
         const headroom = Math.min(MAX_TIX - selQty, balanceHeadroom);
         const max = Math.min(q + headroom, left == null ? MAX_TIX : left);
         return (
@@ -3706,7 +3702,6 @@ function Main({ user }) {
     for (const c of cart) {
       if (c.type) {
         if (c.type.segment_id && !isAdmin && !mySegs.includes(c.type.segment_id)) return setNotice("🔒 This ticket is restricted — it can only be bought by invited members.");
-        if (!ticketGenderAllowed(c.type, profile)) return setNotice(gwGender(c.type.gender_restrict) === "female" ? "This invitation is for women only." : "This ticket is for men only.");
       } else if ((ticketTypes[e.id] || []).length) {
         return setNotice("Please choose a ticket type for this event.");
       }
@@ -3797,7 +3792,7 @@ function Main({ user }) {
         }
       } else if ((ticketTypes[e.id] || []).length) { setBuyTarget(null); return setNotice("Please choose a ticket type for this event."); }
     }
-    if (gwGender(profile?.gender) === "male") {
+    {
       const mb = menBudget(e, eventStats);
       if (mb) {
         const wantQty = cart.reduce((a, c) => a + (c.type && ticketAudience(c.type) === "male" ? (c.qty || 0) : 0), 0);
@@ -3852,7 +3847,7 @@ function Main({ user }) {
         }
       }
     }
-    if (gwGender(profile?.gender) === "male") {
+    {
       const mb = menBudget(e, eventStats);
       if (mb) {
         const wantQty = cart.reduce((a, c) => a + (c.type && ticketAudience(c.type) === "male" ? (c.qty || 0) : 0), 0);
