@@ -22,7 +22,8 @@ function netPrice(t, subs) {
 }
 function genderNet(t, subs, profile) {
   let n = netPrice(t, subs);
-  const pct = profile?.gender === "female" ? Number(t.disc_female_pct) : profile?.gender === "male" ? Number(t.disc_male_pct) : 0;
+  const g = gwGender(profile?.gender);
+  const pct = g === "female" ? Number(t.disc_female_pct) : g === "male" ? Number(t.disc_male_pct) : 0;
   if (pct > 0) n = Math.max(0, Math.round(n * (100 - Math.min(pct, 100)) / 100));
   return n;
 }
@@ -39,16 +40,38 @@ function menBudget(e, stats) {
   const allowed = open + female * per;
   return { allowed, male, female, remaining: Math.max(0, allowed - male) };
 }
+function gwGender(v) {
+  const g = String(v || "").trim().toLowerCase();
+  if (["female", "woman", "women", "f"].includes(g)) return "female";
+  if (["male", "man", "men", "m"].includes(g)) return "male";
+  return g || "";
+}
+function ticketGenderAllowed(t, profile) {
+  const restrict = gwGender(t?.gender_restrict || "any");
+  const buyer = gwGender(profile?.gender);
+  if (!restrict || restrict === "any") return true;
+  if (restrict === "female") return buyer === "female";
+  if (restrict === "male") return buyer === "male";
+  return true;
+}
 function ticketStatus(t, e, stats, typeSold, profile) {
-  const sold = (typeSold && typeSold[t.id]) || 0;
-  const hasCap = t.capacity != null && t.capacity !== "";
-  if (hasCap && t.capacity - sold <= 0) return { ok: false, label: "Sold out" };
-  // Balance is by buyer gender: a man is capped no matter which ticket type. Women are never limited.
-  if (profile && profile.gender === "male") {
+  const sold = Number((typeSold && typeSold[t.id]) || 0);
+  const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
+  const hasCap = cap != null && Number.isFinite(cap);
+  if (hasCap && cap - sold <= 0) return { ok: false, label: "Sold out", reason: "capacity" };
+
+  const restrict = gwGender(t?.gender_restrict || "any");
+  const buyer = gwGender(profile?.gender);
+  if (restrict === "female" && buyer && buyer !== "female") return { ok: false, label: "Women only", reason: "gender" };
+  if (restrict === "male" && buyer && buyer !== "male") return { ok: false, label: "Men only", reason: "gender" };
+
+  // Men:Women balancing only limits a male buyer on tickets that men are allowed to buy.
+  // It must never make a Women-only ticket look closed. Women are never balance-limited.
+  if (buyer === "male" && restrict !== "female") {
     const mb = menBudget(e, stats);
-    if (mb && mb.remaining <= 0) return { ok: false, label: "Opens as women join" };
+    if (mb && mb.remaining <= 0) return { ok: false, label: "Opens as women join", reason: "balance" };
   }
-  return { ok: true, label: hasCap ? `${t.capacity - sold} left` : "" };
+  return { ok: true, label: hasCap ? `${Math.max(0, cap - sold)} left` : "", reason: null };
 }
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
 function loadRazorpay() {
@@ -2097,7 +2120,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     }));
   };
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
-  const menRemain = profile?.gender === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
+  const menRemain = gwGender(profile?.gender) === "male" ? (menBudget(e, stats)?.remaining ?? null) : null; // null = no cap; number = men slots open now
   const cappedTypes = visTypes.filter(t => t.capacity != null && t.capacity !== "" && Number(t.capacity) > 0);
   const totalCapacity = cappedTypes.reduce((sum, t) => sum + Number(t.capacity), 0);
   const soldAcrossTypes = cappedTypes.reduce((sum, t) => sum + Number((typeSold && typeSold[t.id]) || 0), 0);
@@ -2181,7 +2204,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {!canBuyType(t)
             ? <button disabled title="Restricted ticket" style={{ ...btn("#F3E8FF", "#7C3AED"), padding: "9px 15px", cursor: "not-allowed", fontWeight: 800 }}>🔒 Restricted</button>
             : !st.ok
-            ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : "Closed"}</button>
+            ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : (st.reason === "gender" ? st.label : "Closed")}</button>
             : q > 0 ? stepper(t.id, q, max) : addBtn(t.id)}
         </div>
       ); })}</>) : (
@@ -3671,6 +3694,7 @@ function Main({ user }) {
     for (const c of cart) {
       if (c.type) {
         if (c.type.segment_id && !isAdmin && !mySegs.includes(c.type.segment_id)) return setNotice("🔒 This ticket is restricted — it can only be bought by invited members.");
+        if (!ticketGenderAllowed(c.type, profile)) return setNotice(gwGender(c.type.gender_restrict) === "female" ? "This invitation is for women only." : "This ticket is for men only.");
       } else if ((ticketTypes[e.id] || []).length) {
         return setNotice("Please choose a ticket type for this event.");
       }
@@ -3753,10 +3777,15 @@ function Main({ user }) {
     for (const c of cart) {
       if (c.type) {
         const st = ticketStatus(c.type, e, eventStats, typeSold, profile);
-        if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? `"${c.type.name}" is sold out.` : "Men's tickets aren't open yet — they release as more women join."); }
+        if (!st.ok) {
+          setBuyTarget(null);
+          if (st.reason === "capacity") return setNotice(`"${c.type.name}" is sold out.`);
+          if (st.reason === "gender") return setNotice(st.label === "Women only" ? "This ticket is for women only." : "This ticket is for men only.");
+          return setNotice("Men's tickets aren't open yet — they release as more women join.");
+        }
       } else if ((ticketTypes[e.id] || []).length) { setBuyTarget(null); return setNotice("Please choose a ticket type for this event."); }
     }
-    if (profile?.gender === "male") {
+    if (gwGender(profile?.gender) === "male") {
       const mb = menBudget(e, eventStats);
       if (mb) {
         const wantQty = cart.reduce((a, c) => a + (c.qty || 0), 0);
@@ -3803,10 +3832,15 @@ function Main({ user }) {
     for (const c of cart) {
       if (c.type) {
         const st = ticketStatus(c.type, e, eventStats, typeSold, profile);
-        if (!st.ok) { setBuyTarget(null); return setNotice(st.label === "Sold out" ? `"${c.type.name}" is sold out.` : "Men’s tickets aren’t open yet — they release as more women join."); }
+        if (!st.ok) {
+          setBuyTarget(null);
+          if (st.reason === "capacity") return setNotice(`"${c.type.name}" is sold out.`);
+          if (st.reason === "gender") return setNotice(st.label === "Women only" ? "This ticket is for women only." : "This ticket is for men only.");
+          return setNotice("Men’s tickets aren’t open yet — they release as more women join.");
+        }
       }
     }
-    if (profile?.gender === "male") {
+    if (gwGender(profile?.gender) === "male") {
       const mb = menBudget(e, eventStats);
       if (mb) {
         const wantQty = cart.reduce((a, c) => a + (c.qty || 0), 0);
