@@ -3346,6 +3346,98 @@ function Main({ user }) {
     if (error) return setNotice(error.message);
     setOpen({ id: tid, type: "p2p", title: name });
   };
+  const [roomInvite, setRoomInvite] = useState(null);
+  const [lobbyOnline, setLobbyOnline] = useState([]);
+  const lobbyChannelRef = useRef(null);
+  const nudgeCooldownRef = useRef(new Map());
+
+  useEffect(() => {
+    if (!user?.id || !profile?.full_name) return;
+    const ch = supabase.channel("gw-community-lobby-v1", {
+      config: { presence: { key: user.id }, broadcast: { self: false } }
+    });
+    lobbyChannelRef.current = ch;
+
+    const syncOnline = () => {
+      try {
+        const st = ch.presenceState() || {};
+        const members = [];
+        Object.entries(st).forEach(([key, arr]) => {
+          const p = Array.isArray(arr) ? arr[arr.length - 1] : arr;
+          if (!p) return;
+          members.push({
+            user_id: p.user_id || key,
+            name: p.name || "Member",
+            avatar_url: p.avatar_url || "",
+            at: p.at || null
+          });
+        });
+        const seen = new Set();
+        setLobbyOnline(members.filter(m => {
+          if (!m.user_id || seen.has(m.user_id)) return false;
+          seen.add(m.user_id); return true;
+        }).sort((a,b) => (a.name || "").localeCompare(b.name || "")));
+      } catch { setLobbyOnline([]); }
+    };
+
+    ch.on("presence", { event: "sync" }, syncOnline);
+    ch.on("broadcast", { event: "room_nudge" }, ({ payload }) => {
+      if (!payload || payload.target_id !== user.id || payload.sender_id === user.id) return;
+      setRoomInvite({
+        sender_id: payload.sender_id,
+        sender_name: payload.sender_name || "A Glasswings member",
+        sent_at: payload.sent_at || new Date().toISOString()
+      });
+    });
+
+    ch.subscribe(async status => {
+      if (status === "SUBSCRIBED") {
+        try {
+          await ch.track({
+            user_id: user.id,
+            name: profile?.full_name || "Member",
+            avatar_url: profile?.avatar_url || "",
+            at: new Date().toISOString()
+          });
+        } catch {}
+      }
+    });
+
+    return () => {
+      try { ch.untrack(); } catch {}
+      try { supabase.removeChannel(ch); } catch {}
+      if (lobbyChannelRef.current === ch) lobbyChannelRef.current = null;
+    };
+  }, [user?.id, profile?.full_name, profile?.avatar_url]);
+
+  const nudgeToRoom = async (person) => {
+    if (!person?.user_id || person.user_id === user.id) return;
+    const now = Date.now();
+    const prev = nudgeCooldownRef.current.get(person.user_id) || 0;
+    if (now - prev < 60000) {
+      setNotice(`You already nudged ${person.name || "this member"} recently.`);
+      return;
+    }
+    const ch = lobbyChannelRef.current;
+    if (!ch) return setNotice("Live nudge is reconnecting. Try again in a moment.");
+    try {
+      await ch.send({
+        type: "broadcast",
+        event: "room_nudge",
+        payload: {
+          target_id: person.user_id,
+          sender_id: user.id,
+          sender_name: profile?.full_name || "A Glasswings member",
+          sent_at: new Date().toISOString()
+        }
+      });
+      nudgeCooldownRef.current.set(person.user_id, now);
+      setNotice(`💬 Nudge sent to ${person.name || "member"} — invited to Group Chat.`);
+    } catch {
+      setNotice("Could not send the room nudge right now.");
+    }
+  };
+
   const [meetBadge, setMeetBadge] = useState(0);
   useEffect(() => {
     const loadBadge = () => supabase.rpc("waves_unseen_count").then(({ data }) => setMeetBadge(data || 0)).catch(() => {});
@@ -4176,6 +4268,21 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
+      {roomInvite && tab !== "groupchat" && <div style={{
+        position:"fixed", left: wide ? SW + 18 : 10, right: wide ? 18 : 10,
+        top: 12, zIndex: 460, maxWidth: wide ? 540 : 410, margin:"0 auto",
+        background:"linear-gradient(110deg,#0F766E,#6D28D9)", color:"#fff",
+        borderRadius:16, padding:"12px 13px", boxShadow:"0 12px 32px rgba(31,41,55,.28)",
+        display:"flex", alignItems:"center", gap:10
+      }}>
+        <div style={{width:42,height:42,borderRadius:13,background:"rgba(255,255,255,.16)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>💬</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:950,fontSize:13.5}}>You’re invited to the Group Chat</div>
+          <div style={{fontSize:11.5,opacity:.92,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{roomInvite.sender_name} invited you to the room — please join.</div>
+        </div>
+        <button onClick={()=>{setTab("groupchat");setRoomInvite(null);}} style={{...btn("#fff","#0F766E"),padding:"8px 10px",fontSize:11.5,fontWeight:900,whiteSpace:"nowrap"}}>Join Room</button>
+        <button onClick={()=>setRoomInvite(null)} aria-label="Dismiss room invite" style={{border:"none",background:"transparent",color:"#fff",fontSize:18,cursor:"pointer",padding:2}}>×</button>
+      </div>}
       {reviewFlag && !["events", "profile"].includes(tab) ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => Promise.all([load(), refreshReview()])} /> : (<>
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
@@ -4188,7 +4295,7 @@ function Main({ user }) {
       {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" events={events} ticketTypes={ticketTypes} onOpenEvent={openEvent} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><MeetVerifyBanner user={user} profile={profile} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isStaff={isStaff} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
-      {tab === "groupchat" && <CommunityLiveRoom user={user} profile={profile} onUpgrade={() => setSubPage({ highlight: null })} />}
+      {tab === "groupchat" && <CommunityLiveRoom user={user} profile={profile} onlineMembers={lobbyOnline} onNudge={nudgeToRoom} onUpgrade={() => setSubPage({ highlight: null })} />}
       {tab === "profile" && <div style={{ padding: "14px 14px 0", maxWidth: 640, margin: "0 auto" }}><VerificationPanel user={user} profile={profile} /></div>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
@@ -4878,7 +4985,7 @@ function MatchCelebration({ me, p, onSayHi, onClose }) {
     </div>
   );
 }
-function CommunityLiveRoom({ user, profile, onUpgrade }) {
+function CommunityLiveRoom({ user, profile, onUpgrade, onlineMembers = [], onNudge }) {
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState({ unlimited: false, used_today: 0, limit: 10, remaining: 10 });
   const [text, setText] = useState("");
@@ -4889,6 +4996,7 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
   const [limitPopup, setLimitPopup] = useState(false);
   const [canModerate, setCanModerate] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [nudgingId, setNudgingId] = useState(null);
   const bottomRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -4958,6 +5066,12 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
     setMessages(xs => (xs || []).filter(x => x.id !== m.id));
   };
 
+  const nudge = async (p) => {
+    if (!onNudge || !p?.user_id || p.user_id === user?.id || nudgingId) return;
+    setNudgingId(p.user_id);
+    try { await onNudge(p); } finally { setTimeout(() => setNudgingId(null), 450); }
+  };
+
   const fmtTime = v => { try { return new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
   const remaining = status.unlimited ? null : Math.max(0, Number(status.remaining ?? (10 - Number(status.used_today || 0))));
   const blocked = !status.unlimited && remaining <= 0;
@@ -4986,6 +5100,24 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
         <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>No photos · no files · no videos</span>
       </div>
     </div>
+
+    {onlineMembers.filter(p => p.user_id !== user?.id).length > 0 && <div style={{background:"#fff",border:`1px solid ${W.line}`,borderRadius:16,padding:"11px 12px",marginBottom:12,boxShadow:"0 2px 10px rgba(17,27,33,.05)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
+        <div><div style={{fontSize:13.5,fontWeight:950,color:W.ink}}>🟢 Online now</div><div style={{fontSize:10.5,color:W.soft,marginTop:1}}>Invite someone into the room with a nudge.</div></div>
+        <div style={{fontSize:10.5,color:W.soft}}>{onlineMembers.filter(p=>p.user_id!==user?.id).length} available</div>
+      </div>
+      <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:2}}>
+        {onlineMembers.filter(p=>p.user_id!==user?.id).map(p=><div key={p.user_id} style={{minWidth:118,maxWidth:136,border:"1px solid #E7ECEA",borderRadius:13,padding:"8px 8px",background:"#FAFCFB",textAlign:"center"}}>
+          <div style={{width:42,height:42,borderRadius:"50%",margin:"0 auto 5px",overflow:"hidden",background:"#E8ECEB",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
+            {p.avatar_url?<img src={p.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"🙂"}
+          </div>
+          <div style={{fontSize:11.5,fontWeight:850,color:W.ink,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name||"Member"}</div>
+          <button onClick={()=>nudge(p)} disabled={nudgingId===p.user_id} style={{...btn("#E8F7F2","#087865"),width:"100%",justifyContent:"center",padding:"6px 7px",fontSize:10.5,marginTop:6,border:"1px solid #BEE7DA"}}>
+            {nudgingId===p.user_id?"Sent ✓":"🔔 Nudge"}
+          </button>
+        </div>)}
+      </div>
+    </div>}
 
     <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, overflow: "hidden", boxShadow: "0 3px 14px rgba(17,27,33,.06)" }}>
       <div style={{ height: "min(58vh,560px)", minHeight: 360, overflowY: "auto", padding: "12px 11px", background: "linear-gradient(#F7F5F2,#F2EEE8)", backgroundImage: WALL }}>
