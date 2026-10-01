@@ -18113,6 +18113,30 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
     try { const url = await uploadPhoto(user.id, file); await supabase.from("profiles").update({ avatar_url: url }).eq("id", user.id); reload(); } catch (x) { alert("Upload failed: " + x.message); }
     setBusy(false);
   };
+  const shareMyProfile = async () => {
+    if (!user?.id) return;
+    const url = `${window.location.origin}/?profile=${encodeURIComponent(user.id)}`;
+    const first = String(profile?.full_name || "My").trim();
+    const title = `${first} on Glasswings`;
+    const text = `Check out my profile on Glasswings`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text, url });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        window.gwConfirm("🔗 Your profile link is copied. Share it on WhatsApp, Instagram or anywhere you like.", () => {});
+      } else {
+        window.prompt("Copy your profile link:", url);
+      }
+    } catch (e) {
+      if (e?.name !== "AbortError") {
+        try {
+          await navigator.clipboard?.writeText(url);
+          window.gwConfirm("🔗 Your profile link is copied.", () => {});
+        } catch {}
+      }
+    }
+  };
   return (
     <div>
       <TopBar title="Profile" right={<button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer", flexShrink: 0 }}><LogOut size={17} />Log out</button>} />
@@ -18133,7 +18157,10 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             </div>
           </div>
         </div>
-        <button onClick={() => setEdit(true)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, width: "100%", justifyContent: "center", marginTop: 12 }}><Pencil size={15} />Edit profile</button>
+        <div style={{display:"flex",gap:9,marginTop:12,flexWrap:"wrap"}}>
+          <button onClick={() => setEdit(true)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex:"1 1 150px", justifyContent: "center" }}><Pencil size={15} />Edit profile</button>
+          <button onClick={shareMyProfile} style={{ ...btn("#ECFDF5","#047857"), border:"1px solid #A7F3D0", flex:"1 1 150px", justifyContent:"center", fontWeight:900 }}><Share2 size={15}/>Share My Profile</button>
+        </div>
         {edit && <EditProfileSheet user={user} profile={profile} onClose={() => setEdit(false)} reload={reload} />}
         <OrganiserApplicationCard user={user} profile={profile} onApproved={reload} />
         {stamps !== null && (
