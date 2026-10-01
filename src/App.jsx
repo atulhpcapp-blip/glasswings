@@ -10928,7 +10928,9 @@ function QrScanner({ onCode }) {
     ? <div style={{ background: "#FFF6E5", border: "1px solid #F2DFB8", color: "#9A6B00", borderRadius: 10, padding: "10px 13px", fontSize: 13 }}>📷 {err}</div>
     : <div style={{ textAlign: "center" }}><video ref={vref} muted playsInline style={{ width: "100%", maxWidth: 340, borderRadius: 14, background: "#000", aspectRatio: "3/4", objectFit: "cover" }} /><div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Point the camera at the ticket QR</div></div>;
 }
-function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent }) {
+function DoorCheckin({ mode = "checkin", events, ticketTypes, myEventsOnly, meId, onUpdateEvent }) {
+  const showCheckin = mode === "checkin";
+  const showSales = mode === "sales";
   const gwIsEnded = (e) => {
     if (!e) return false;
     const end = Date.parse(e.end_at || "");
@@ -10945,7 +10947,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const [evId, setEvId] = useState("");
   const ev = manageableAll.find(e => e.id === evId);
   const eventEnded = gwIsEnded(ev);
-  const [scanOn, setScanOn] = useState(false);
+  const [scanOn, setScanOn] = useState(showCheckin);
   const [manual, setManual] = useState("");
   const [res, setRes] = useState(null);
   const [log, setLog] = useState([]);
@@ -10962,7 +10964,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
     if (navigator.vibrate) try { navigator.vibrate(r.status === "ok" ? 90 : [60, 60, 60]); } catch (e2) {}
   };
   const [groupPortraits,setGroupPortraits]=useState({}); const [doorPhotoBusy,setDoorPhotoBusy]=useState(false); const [doorGender,setDoorGender]=useState(""); const [doorPhoto,setDoorPhoto]=useState(""); const [historyVersion,setHistoryVersion]=useState(0); const saleRequest=useRef(null); const saleLock=useRef(false);
-  const [saleOpen, setSaleOpen] = useState(false);
+  const [saleOpen, setSaleOpen] = useState(showSales);
   const [sName, setSName] = useState(""); const [sPhone, setSPhone] = useState(""); const [sQty, setSQty] = useState("1");
   const [sType, setSType] = useState(""); const [sMethod, setSMethod] = useState("cash"); const [sAmt, setSAmt] = useState("0");
   const [sBusy, setSBusy] = useState(false); const [sDone, setSDone] = useState(null);
@@ -11082,34 +11084,35 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
   const ip2 = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 13.5, outline: "none", background: "#fff", color: W.ink };
   return (
     <div style={{ padding: "16px 16px 40px", maxWidth: 620, margin: "0 auto" }}>
-      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>🚪 Event door</div>
-      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>Scan ticket QRs to admit, or sell at the door with cash / your UPI QR.</div>
-      <HelpBox title="How the door works" tips={["Pick the event first from the dropdown below.", "Tap ‘Scan tickets’ and point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the code (from the WhatsApp/email ticket) in the box and tap Check.", "‘Door sale’ lets you sell a ticket on the spot and take cash or UPI.", "Every scan and sale is recorded — see running counts and recent scans below."]} />
+      <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>{showCheckin ? "✅ Event Check-in" : "💵 Door Sales"}</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{showCheckin ? "Scan ticket QRs or enter a ticket code to admit guests." : "Sell tickets at the venue using cash or your UPI QR. Door-sale history stays here."}</div>
+      {showCheckin
+        ? <HelpBox title="How check-in works" tips={["Pick the event first from the dropdown below.", "Point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the ticket code and tap Check.", "Recent scans appear below for quick reference."]} />
+        : <HelpBox title="How door sales work" tips={["Pick the event first from the dropdown below.", "Enter the buyer or guest details and choose the ticket type.", "Take cash or UPI payment and record the sale.", "Door-sale history and walk-in leads stay on this screen."]} />}
       <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: "#EEF6FF", border: "1px solid #CFE2FA", color: "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 14 }}>📖 Organiser guide — how event bookings work</a>
-      <select disabled={sBusy} value={evId} onChange={e => { resetSaleForm(); saleRequest.current=null; setEvId(e.target.value); setRes(null); setLog([]); setScanOn(false); setSaleOpen(false); setSDone(null); setGResults(null); setCart([]); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
+      <select disabled={sBusy} value={evId} onChange={e => { resetSaleForm(); saleRequest.current=null; setEvId(e.target.value); setRes(null); setLog([]); setScanOn(showCheckin); setSaleOpen(showSales); setSDone(null); setGResults(null); setCart([]); }} style={{ ...ip2, width: "100%", marginBottom: 14 }}>
         <option value="">Choose event…</option>
         {manageable.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}
       </select>
-      {ev && <DoorSalesHistory key={ev.id} event={ev} refresh={historyVersion}/>}
+      {ev && showSales && <DoorSalesHistory key={ev.id} event={ev} refresh={historyVersion}/>}
       {ev && eventEnded && (
         <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", borderRadius: 12, padding: "14px 16px", color: "#B23B2E", fontWeight: 700, fontSize: 13.5, lineHeight: 1.5 }}>
-          🔒 This event has ended — door check-in is closed.<div style={{ fontWeight: 500, color: "#8a4a42", marginTop: 4, fontSize: 12.5 }}>Guests already scanned still show as checked in. Reopen isn't possible from here; edit the event's end time if it ran longer.</div>
+          🔒 This event has ended — {showCheckin ? "check-in" : "door sales"} are closed.<div style={{ fontWeight: 500, color: "#8a4a42", marginTop: 4, fontSize: 12.5 }}>{showCheckin ? "Guests already scanned still show as checked in." : "Existing door-sale history remains available above."} Edit the event's end time if it ran longer.</div>
         </div>
       )}
       {ev && !eventEnded && (
         <>
-          <div style={{ display: "flex", gap: 9, marginBottom: 12 }}>
-            <button onClick={() => { setScanOn(v => !v); setSaleOpen(false); }} style={{ ...btn(scanOn ? W.ink : W.teal, "#fff"), flex: 1, justifyContent: "center" }}>📷 {scanOn ? "Stop scanning" : "Scan tickets"}</button>
-            <button onClick={() => { setSaleOpen(v => !v); setScanOn(false); setSDone(null); setGResults(null); setCart([]); }} style={{ ...btn(saleOpen ? W.ink : "#7C3AED", "#fff"), flex: 1, justifyContent: "center" }}>💵 Door sale</button>
-          </div>
-          {scanOn && <div style={{ marginBottom: 12 }}><QrScanner onCode={check} /></div>}
-          {!saleOpen && (
+          {showCheckin && <div style={{ display:"flex", gap:9, marginBottom:12 }}>
+            <button onClick={() => setScanOn(v => !v)} style={{ ...btn(scanOn ? W.ink : W.teal, "#fff"), width:"100%", justifyContent:"center" }}>📷 {scanOn ? "Stop camera" : "Open QR scanner"}</button>
+          </div>}
+          {showCheckin && scanOn && <div style={{ marginBottom: 12 }}><QrScanner onCode={check} /></div>}
+          {showCheckin && (
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
               <input value={manual} onChange={e => setManual(e.target.value)} placeholder="Or type code (GW-… / guest code)" style={{ ...ip2, flex: 1, minWidth: 0, fontFamily: "ui-monospace,monospace" }} onKeyDown={e => { if (e.key === "Enter") check(manual); }} />
               <button onClick={() => check(manual)} style={{ ...btn(W.teal, "#fff"), padding: "10px 18px" }}>Check</button>
             </div>
           )}
-          {res && !saleOpen && (() => { const [bg, c, label] = stStyle(res.status); return (
+          {showCheckin && res && (() => { const [bg, c, label] = stStyle(res.status); return (
             <div style={{ background: bg, border: `1.5px solid ${c}`, borderRadius: 14, padding: "14px 16px", marginBottom: 14 }}>
               <div style={{ fontWeight: 900, color: c, fontSize: 15, letterSpacing: .5 }}>{label}</div>
               {res.status !== "notfound" && <div style={{ fontWeight: 800, color: W.ink, fontSize: 17, marginTop: 4 }}>{res.name}</div>}
@@ -11117,7 +11120,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
               {res.status === "notfound" && <div style={{ fontSize: 13, color: W.soft, marginTop: 4 }}>Code {res.code} isn't valid for this event.</div>}
             </div>
           ); })()}
-          {saleOpen && (
+          {showSales && saleOpen && (
             <div style={{ background: "#F7F4FD", border: "1px solid #E2D9F6", borderRadius: 14, padding: "14px 15px", marginBottom: 14 }}>
               <div style={{ fontWeight: 800, color: "#5B21B6", fontSize: 14.5, marginBottom: 10 }}>💵 Sell at the door</div>
               {sDone ? (
@@ -11304,7 +11307,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
               )}
             </div>
           )}
-          {!saleOpen && leads.length > 0 && (
+          {showSales && leads.length > 0 && (
             <div style={{ marginBottom: 14, background: "#F7F4FD", border: "1px solid #E2D9F6", borderRadius: 14, overflow: "hidden" }}>
               <div onClick={() => setLeadsOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", cursor: "pointer" }}>
                 <div style={{ fontWeight: 800, color: "#5B21B6", fontSize: 14, flex: 1 }}>📇 Door leads · {leads.length}</div>
@@ -11326,7 +11329,7 @@ function DoorCheckin({ events, ticketTypes, myEventsOnly, meId, onUpdateEvent })
               )}
             </div>
           )}
-          {log.length > 0 && !saleOpen && (
+          {showCheckin && log.length > 0 && (
             <div>
               <div style={{ fontSize: 12, color: W.soft, fontWeight: 800, marginBottom: 6 }}>RECENT SCANS</div>
               {log.map((r, i) => { const [, c, label] = stStyle(r.status); return (
@@ -12530,7 +12533,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
     ...((myEventsOnly && caps.privateMembers) ? [["orgmembers", "👥 My Members"]] : []),
-    ...((canApprove || caps.door) ? [["door", "🚪 EVENT DOOR"]] : []),
+    ...((canApprove || caps.door) ? [["checkin", "✅ Check-in"], ["doorsales", "💵 Door Sales"]] : []),
     ...(!organiserStaff ? [["verify", "✔ Verify"]] : []),
     ...((caps.broadcast && !myEventsOnly) ? [["broadcast", "Send"]] : []),
     ...((caps.members && !myEventsOnly) ? [["inbox", "Inbox"], ["members", "Members"]] : []),
@@ -12575,7 +12578,8 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard isSuper={isSuper} myEventsOnly={myEventsOnly} meId={meId} events={events} />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
-        : seg === "door" ? <DoorCheckin events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
+        : seg === "checkin" ? <DoorCheckin mode="checkin" events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
+        : seg === "doorsales" ? <DoorCheckin mode="sales" events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
         : seg === "verify" ? <VerificationsAdmin />
         : seg === "analytics" ? <AnalyticsPanel events={events} myEventsOnly={myEventsOnly} meId={meId} />
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
@@ -16984,7 +16988,6 @@ function MembersOverview({ isSuper }) {
   const [rows, setRows] = useState(null);
   const [seg, setSeg] = useState("all");
   const [q, setQ] = useState("");
-  const [roomF, setRoomF] = useState("all");
   const [composer, setComposer] = useState(null); // "broadcast" | "email"
   const [subj, setSubj] = useState("");
   const [msg, setMsg] = useState("");
@@ -17054,28 +17057,15 @@ function MembersOverview({ isSuper }) {
     ["new", "🆕 New (30d)", r => r.created_at && (now - new Date(r.created_at).getTime() < d30)],
     ["active", "🟢 Active (7d)", r => r.last_seen && (now - new Date(r.last_seen).getTime() < d7)],
     ["inactive", "😴 Inactive 30d+", r => !r.last_seen || (now - new Date(r.last_seen).getTime() > d30)],
-    ["subs", "💎 Room subscribers", r => (r.rooms || []).length > 0],
     ["buyers", "🎟️ Ticket buyers", r => (r.tickets || 0) > 0],
-    ["paysubs", "💳 Paying room subscribers", r => (Array.isArray(r.rooms_detail) && r.rooms_detail.some(d => d.paying)) || (r.spend_rooms || 0) > 0],
     ["planmembers", "💎 Plan members", r => !!planBadge[r.id]],
     ["paytix", "💸 Paid ticket buyers", r => (r.spend_tickets || 0) > 0],
-    ["churned", "⌛ Subscription expired", r => (r.spend_rooms || 0) > 0 && !(Array.isArray(r.rooms_detail) && r.rooms_detail.some(d => d.paying))],
     ["women", "♀ Women", r => r.gender === "female"],
     ["men", "♂ Men", r => r.gender === "male"],
-    ["noroom", "🚪 No room yet", r => !(r.rooms || []).length],
   ];
   const segFn = (segs.find(x => x[0] === seg) || segs[0])[2];
   const list = rows.filter(segFn)
-    .filter(r => roomF === "all" || (r.rooms || []).includes(roomF))
     .filter(r => !q.trim() || (r.full_name || "").toLowerCase().includes(q.trim().toLowerCase()));
-  const allRoomNames = [...new Set(rows.flatMap(r => r.rooms || []))].sort();
-  const roomsLine = r => {
-    const det = Array.isArray(r.rooms_detail) ? r.rooms_detail : [];
-    if (!det.length) return (r.rooms || []).join(", ");
-    const base = det.map(d => d.name + ((d.price || 0) > 0 && r.gender !== "female" ? (d.paying ? " (💳 paying)" : " (👑 added by admin)") : "")).join(", ");
-    const pb = planBadge[r.id];
-    return pb ? `${pb.label}${pb.days !== null ? ` (⌛${pb.days}d)` : ""}${base ? " · " + base : ""}` : base;
-  };
   const fmtD = ts => ts ? new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "—";
   const stat = (label, val) => (
     <div style={{ flex: "1 1 100px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "12px 13px" }}>
@@ -17148,13 +17138,8 @@ function MembersOverview({ isSuper }) {
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: W.soft, marginBottom: 7 }}>In paid rooms, men are labelled: (💳 paying) or (👑 added by admin). ⌛ Subscription expired = paid for a room before, not paying now.</div>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name…" style={{ flex: "1 1 160px", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 12px", fontSize: 13.5, outline: "none" }} />
-        <select value={roomF} onChange={e => setRoomF(e.target.value)} style={{ flex: "0 1 170px", border: `1px solid ${W.line}`, borderRadius: 10, padding: "9px 10px", fontSize: 13, outline: "none", background: "#fff", color: W.ink }}>
-          <option value="all">All rooms</option>
-          {allRoomNames.map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
         <button onClick={() => setComposer("broadcast")} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "9px 13px", fontSize: 12.5 }}>📢 Broadcast segment</button>
         {isSuper && <button onClick={() => setComposer("email")} style={{ ...btn(W.teal, "#fff"), padding: "9px 13px", fontSize: 12.5 }}>📧 Email segment</button>}
       </div>
@@ -17162,7 +17147,7 @@ function MembersOverview({ isSuper }) {
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead><tr style={{ textAlign: "left", color: W.soft, fontSize: 11.5 }}>
-              {["Member", "Contact", "Joined", "Last active", "Rooms", "Tickets", "Spend"].map(h => <th key={h} style={{ padding: "10px 12px", borderBottom: `1px solid ${W.line}` }}>{h}</th>)}
+              {["Member", "Contact", "Joined", "Last active", "Tickets", "Spend"].map(h => <th key={h} style={{ padding: "10px 12px", borderBottom: `1px solid ${W.line}` }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {list.map(r => (
@@ -17173,7 +17158,6 @@ function MembersOverview({ isSuper }) {
                   <td style={{ padding: "9px 12px", color: W.soft, fontSize: 12 }}>{r.phone ? <a href={"https://wa.me/" + r.phone.replace(/[^\d]/g, "").replace(/^0+/, "")} target="_blank" rel="noreferrer" style={{ color: "#1a8a4f", fontWeight: 700, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}><MessageCircle size={12} />{r.phone}</a> : "—"}<br />{r.email || ""}</td>
                   <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{fmtD(r.created_at)}</td>
                   <td style={{ padding: "9px 12px", whiteSpace: "nowrap" }}>{lastSeenStr(r.last_seen).replace("last seen ", "") || "—"}</td>
-                  <td style={{ padding: "9px 12px", fontSize: 12 }}>{roomsLine(r) || "—"}</td>
                   <td style={{ padding: "9px 12px", textAlign: "center" }}>{r.tickets || 0}</td>
                   <td style={{ padding: "9px 12px", fontWeight: 700, whiteSpace: "nowrap" }}>₹{Math.round((r.spend || 0) / 100)}</td>
                 </tr>
@@ -17191,7 +17175,6 @@ function MembersOverview({ isSuper }) {
               </div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>{r.phone || "no phone"} · {r.email || "no email"}</div>
               <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Joined {fmtD(r.created_at)} · 🎟️ {r.tickets || 0} · ₹{Math.round((r.spend || 0) / 100)}</div>
-              <div style={{ fontSize: 12, color: W.ink, marginTop: 3 }}>💬 {roomsLine(r) || "No rooms yet"}</div>
               {r.phone && <a href={"https://wa.me/" + r.phone.replace(/[^\d]/g, "").replace(/^0+/, "")} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "6px 12px", fontSize: 12, textDecoration: "none", marginTop: 8, display: "inline-flex" }}><MessageCircle size={13} />WhatsApp</a>}
             </div>
           ))}
