@@ -5364,7 +5364,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); setPeekPrompts(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); supabase.rpc("meet_prompts", { p_user: p.id }).then(({ data }) => setPeekPrompts(Array.isArray(data) ? data : [])); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
   const shareMemberProfile = async (p) => {
     if (!p?.id) return;
-    const url = `${window.location.origin}/?profile=${encodeURIComponent(p.id)}`;
+    const url = `${window.location.origin}/api/p/${encodeURIComponent(p.id)}`;
     const first = String(p.name || "this member").trim();
     const title = `${first} on Glasswings`;
     const text = `Check out ${first}'s profile on Glasswings`;
@@ -6088,16 +6088,37 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
       )}
       {peek && (
-        <div onClick={() => setPeek(null)} style={{ position: "fixed", inset: 0, zIndex: 170, background: "rgba(8,20,18,.6)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "22px 22px 0 0", width: "100%", maxWidth: 480, overflow: "hidden" }}>
-            <div style={{ width: "100%", aspectRatio: "1", maxHeight: 380, background: W.bg, position: "relative" }}>
-              {peek.avatar_url ? <img src={peek.avatar_url} alt="" onClick={() => setPhotoZoom(peek.avatar_url)} style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "pointer" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 70 }}>{peek.gender === "female" ? "👩" : peek.gender === "male" ? "👨" : "🙂"}</div>}
-              {isVerified(peek.id) && <span style={{ position: "absolute", bottom: 10, right: 10 }}><TickBadge size={30} /></span>}
+        <div onClick={() => setPeek(null)} style={{ position: "fixed", inset: 0, zIndex: 170, background: "linear-gradient(135deg,#F0FDFA 0%,#F5F3FF 48%,#FDF2F8 100%)", display: "flex", alignItems: "stretch", justifyContent: "center", overflowY: "auto" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 760, minHeight: "100dvh", overflow: "visible", boxShadow: "0 0 48px rgba(31,41,55,.14)", position:"relative" }}>
+            <div style={{ position:"sticky", top:0, zIndex:8, display:"flex", alignItems:"center", gap:10, padding:"10px 12px", background:"rgba(255,255,255,.94)", backdropFilter:"blur(12px)", borderBottom:`1px solid ${W.line}` }}>
+              <button onClick={() => setPeek(null)} style={{...btn("#F4F7F6",W.ink),width:38,height:38,padding:0,justifyContent:"center",borderRadius:12}}>←</button>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:950,letterSpacing:.6,color:"#7C3AED",textTransform:"uppercase"}}>Glasswings Member</div>
+                <div style={{fontSize:13,color:W.soft,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{peek.name || "Profile"}</div>
+              </div>
+              <button onClick={() => shareMemberProfile(peek)} style={{...btn("linear-gradient(95deg,#0F766E,#7C3AED)","#fff"),padding:"9px 12px",fontSize:12.5,fontWeight:900}}>↗ Share</button>
             </div>
-            <div style={{ padding: "14px 16px 20px" }}>
-              <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, display: "flex", alignItems: "center", gap: 5 }}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}{isVip(peek.id) ? vipBadge : null}</div>
-              {isVerified(peek.id) && <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 4, color: "#1D4ED8", fontWeight: 800, fontSize: 13 }}><TickBadge size={16} /> Verified profile</div>}
-              <div style={{ fontSize: 13, color: W.soft, marginTop: 3 }}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
+            <div style={{ width: "100%", aspectRatio: "4 / 5", maxHeight: 610, background: "linear-gradient(135deg,#CCFBF1,#EDE9FE,#FCE7F3)", position: "relative", overflow:"hidden" }}>
+              {peek.avatar_url ? <img src={peek.avatar_url} alt="" onClick={() => setPhotoZoom(peek.avatar_url)} style={{ width: "100%", height: "100%", objectFit: "cover", cursor: "pointer" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 92 }}>{peek.gender === "female" ? "👩" : peek.gender === "male" ? "👨" : "🙂"}</div>}
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg,rgba(0,0,0,0) 48%,rgba(16,24,40,.78) 100%)",pointerEvents:"none"}} />
+              <div style={{position:"absolute",left:16,right:16,bottom:16,color:"#fff"}}>
+                <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap"}}>
+                  <div style={{fontWeight:950,fontSize:29,lineHeight:1.05,textShadow:"0 2px 12px rgba(0,0,0,.25)"}}>{(peek.name || "Member")}{peek.age ? `, ${peek.age}` : ""}</div>
+                  {isVerified(peek.id) && <TickBadge size={23} />}
+                  {isVip(peek.id) ? vipBadge : null}
+                </div>
+                <div style={{fontSize:13.5,opacity:.95,marginTop:7,fontWeight:650}}>{[peek.area || peek.city, lastActive(peek.last_seen)].filter(Boolean).join(" · ")}</div>
+              </div>
+            </div>
+            <div style={{ padding: "18px 18px 32px", background:"linear-gradient(180deg,#FFFFFF 0%,#FCFCFF 42%,#F8FAFC 100%)" }}>
+              <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:4}}>
+                {isVerified(peek.id) && <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background:"#EFF6FF", border:"1px solid #DBEAFE", borderRadius:999, padding:"5px 10px", color: "#1D4ED8", fontWeight: 850, fontSize: 12 }}><TickBadge size={15} /> Verified profile</div>}
+                <span style={{background:"#ECFDF5",border:"1px solid #D1FAE5",color:"#047857",borderRadius:999,padding:"5px 10px",fontSize:12,fontWeight:850}}>🪽 Glasswings member</span>
+              </div>
+              {(peekInfo?.profession || peekInfo?.looking_for) && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:9,marginTop:12}}>
+                {peekInfo?.profession && <div style={{background:"linear-gradient(135deg,#ECFEFF,#F0FDFA)",border:"1px solid #CCFBF1",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:10.5,fontWeight:900,color:"#0F766E",letterSpacing:.5}}>PROFESSION</div><div style={{fontSize:14,fontWeight:800,color:W.ink,marginTop:4}}>💼 {peekInfo.profession}</div></div>}
+                {peekInfo?.looking_for && <div style={{background:"linear-gradient(135deg,#F5F3FF,#FDF2F8)",border:"1px solid #E9D5FF",borderRadius:15,padding:"12px 13px"}}><div style={{fontSize:10.5,fontWeight:900,color:"#7C3AED",letterSpacing:.5}}>HERE FOR</div><div style={{fontSize:14,fontWeight:800,color:W.ink,marginTop:4}}>✨ {peekInfo.looking_for}</div></div>}
+              </div>}
               {(() => { const md = moodOf(moodMap[peek.id]); return md ? <div style={{ display: "inline-block", marginTop: 8, background: md[3], color: md[2], fontSize: 12, fontWeight: 800, padding: "4px 11px", borderRadius: 20 }}>{md[1]}</div> : null; })()}
               {(() => {
                 const reasons = [];
@@ -6121,32 +6142,41 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                 </div>
               )}
               {iceMap[peek.id] && (
-                <div style={{ marginTop: 11, background: "linear-gradient(120deg,#FFF7FB,#F3F0FF)", border: "1px solid #EBD9F0", borderRadius: 13, padding: "11px 13px" }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, color: "#7C3AED" }}>💬 ASK ME ABOUT</div>
-                  <div style={{ fontSize: 14.5, color: W.ink, marginTop: 4, lineHeight: 1.45, fontWeight: 600 }}>{iceMap[peek.id]}</div>
+                <div style={{ marginTop: 13, background: "linear-gradient(120deg,#FDF2F8,#F5F3FF)", border: "1px solid #F5D0FE", borderRadius: 17, padding: "13px 14px", boxShadow:"0 3px 12px rgba(124,58,237,.06)" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 950, letterSpacing: .6, color: "#7C3AED" }}>💬 EASY CONVERSATION STARTER</div>
+                  <div style={{ fontSize: 15.5, color: W.ink, marginTop: 5, lineHeight: 1.5, fontWeight: 700 }}>{iceMap[peek.id]}</div>
                 </div>
               )}
               {Array.isArray(peekPrompts) && peekPrompts.filter(x => x && x.a && String(x.a).trim()).length > 0 && (
                 <div style={{ marginTop: 11, display: "flex", flexDirection: "column", gap: 9 }}>
                   {peekPrompts.filter(x => x && x.a && String(x.a).trim()).map((x, i) => (
-                    <div key={i} style={{ background: W.bg, borderRadius: 13, padding: "11px 13px" }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft }}>{x.q}</div>
-                      <div style={{ fontSize: 14.5, color: W.ink, marginTop: 3, lineHeight: 1.45, fontWeight: 600 }}>{x.a}</div>
+                    <div key={i} style={{ background: i % 3 === 0 ? "linear-gradient(135deg,#EFF6FF,#F5F3FF)" : i % 3 === 1 ? "linear-gradient(135deg,#ECFDF5,#ECFEFF)" : "linear-gradient(135deg,#FFF7ED,#FDF2F8)", border: "1px solid rgba(148,163,184,.22)", borderRadius: 16, padding: "13px 14px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 900, color: i % 3 === 0 ? "#6D28D9" : i % 3 === 1 ? "#0F766E" : "#BE185D", letterSpacing:.25 }}>{x.q}</div>
+                      <div style={{ fontSize: 15, color: W.ink, marginTop: 5, lineHeight: 1.5, fontWeight: 650 }}>{x.a}</div>
                     </div>
                   ))}
                 </div>
               )}
               {peekInfo?.photos?.length > 0 && (
-                <div style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 12 }}>
-                  {peekInfo.photos.map((url, i) => <img key={i} src={url} alt="" onClick={() => setPhotoZoom(url)} style={{ width: 88, height: 110, borderRadius: 10, objectFit: "cover", flexShrink: 0, cursor: "pointer" }} />)}
+                <div style={{marginTop:15}}>
+                  <div style={{fontSize:10.5,fontWeight:950,color:"#0F766E",letterSpacing:.6,marginBottom:8}}>MORE PHOTOS</div>
+                  <div style={{ display: "grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap: 8 }}>
+                    {peekInfo.photos.map((url, i) => <img key={i} src={url} alt="" onClick={() => setPhotoZoom(url)} style={{ width:"100%", aspectRatio: i === 0 ? "1.15 / 1" : ".95 / 1", borderRadius: 15, objectFit: "cover", cursor: "pointer", boxShadow:"0 4px 14px rgba(15,23,42,.08)" }} />)}
+                  </div>
                 </div>
               )}
-              {peekInfo?.bio && <div style={{ fontSize: 14, color: W.ink, marginTop: 10, lineHeight: 1.5 }}>{peekInfo.bio}</div>}
+              {peekInfo?.bio && <div style={{marginTop:14,background:"linear-gradient(135deg,#FFF7ED,#FFF1F2)",border:"1px solid #FED7AA",borderRadius:17,padding:"14px 15px"}}>
+                <div style={{fontSize:10.5,fontWeight:950,color:"#C2410C",letterSpacing:.6}}>ABOUT ME</div>
+                <div style={{ fontSize: 15, color: W.ink, marginTop: 6, lineHeight: 1.62, whiteSpace:"pre-wrap", fontWeight:550 }}>{peekInfo.bio}</div>
+              </div>}
               {peekInfo?.interests?.length > 0 && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-                  {peekInfo.interests.map(it => { const shared = (peekInfo.shared_interests || []).includes(it); return (
-                    <span key={it} style={{ fontSize: 12, fontWeight: 600, padding: "5px 10px", borderRadius: 999, background: shared ? "#E7F6EF" : W.bg, color: shared ? "#0d6e58" : W.soft, border: shared ? "1px solid #A7F3D0" : "1px solid transparent" }}>{shared ? "✓ " : ""}{it}</span>
-                  ); })}
+                <div style={{ marginTop: 14, background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)", border:"1px solid #DDD6FE", borderRadius:17, padding:"13px 14px" }}>
+                  <div style={{fontSize:10.5,fontWeight:950,color:"#6D28D9",letterSpacing:.6,marginBottom:8}}>INTERESTS & VIBES</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                    {peekInfo.interests.map(it => { const shared = (peekInfo.shared_interests || []).includes(it); return (
+                      <span key={it} style={{ fontSize: 12.5, fontWeight: 750, padding: "7px 11px", borderRadius: 999, background: shared ? "linear-gradient(95deg,#DCFCE7,#CCFBF1)" : "#fff", color: shared ? "#047857" : "#5B21B6", border: shared ? "1px solid #86EFAC" : "1px solid #E9D5FF", boxShadow:"0 1px 2px rgba(0,0,0,.03)" }}>{shared ? "💚 " : "✦ "}{it}</span>
+                    ); })}
+                  </div>
                 </div>
               )}
               {peekInfo?.shared_interests?.length > 0 && <div style={{ fontSize: 12, color: "#0d6e58", fontWeight: 700, marginTop: 8 }}>💚 You both like {peekInfo.shared_interests.slice(0, 3).join(", ")}</div>}
@@ -18115,7 +18145,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
   };
   const shareMyProfile = async () => {
     if (!user?.id) return;
-    const url = `${window.location.origin}/?profile=${encodeURIComponent(user.id)}`;
+    const url = `${window.location.origin}/api/p/${encodeURIComponent(user.id)}`;
     const first = String(profile?.full_name || "My").trim();
     const title = `${first} on Glasswings`;
     const text = `Check out my profile on Glasswings`;
