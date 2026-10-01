@@ -4187,7 +4187,7 @@ function Main({ user }) {
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
       {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" events={events} ticketTypes={ticketTypes} onOpenEvent={openEvent} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
-      {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><MeetVerifyBanner user={user} profile={profile} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
+      {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><MeetVerifyBanner user={user} profile={profile} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isStaff={isStaff} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "profile" && <div style={{ padding: "14px 14px 0", maxWidth: 640, margin: "0 auto" }}><VerificationPanel user={user} profile={profile} /></div>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
@@ -4877,8 +4877,9 @@ function MatchCelebration({ me, p, onSayHi, onClose }) {
     </div>
   );
 }
-function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = false, onOpenDM, isAdmin = false, isSuper = false, isMod = false, onUpgrade }) {
+function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = false, onOpenDM, isAdmin = false, isStaff = false, isSuper = false, isMod = false, onUpgrade }) {
   const [mtab, setMtab] = useState("discover");
+  const [newMemberRange, setNewMemberRange] = useState("30");
   const [matchTab, setMatchTab] = useState("perfect");
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
@@ -5148,6 +5149,24 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     if (sortMeet === "active") return new Date(b.last_seen || 0) - new Date(a.last_seen || 0);
     return compat(b) - compat(a); // best match (default)
   });
+  const joinedAgo = (j) => {
+    if (!j) return "Join date unavailable";
+    const ts = new Date(j).getTime();
+    if (!Number.isFinite(ts)) return "Join date unavailable";
+    const days = Math.max(0, Math.floor((Date.now() - ts) / 86400000));
+    if (days === 0) return "Joined today";
+    if (days === 1) return "Joined yesterday";
+    if (days < 30) return `Joined ${days} days ago`;
+    return `Joined ${new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+  };
+  const newMembers = (rows || [])
+    .filter(p => {
+      if (!p.joined) return newMemberRange === "all";
+      if (newMemberRange === "all") return true;
+      const age = Date.now() - new Date(p.joined).getTime();
+      return Number.isFinite(age) && age >= 0 && age <= Number(newMemberRange) * 86400000;
+    })
+    .sort((a, b) => new Date(b.joined || 0) - new Date(a.joined || 0));
   const card = (p, waveLbl) => {
     const online = isOnline(p.last_seen);
     const cm = compat(p);
@@ -5170,7 +5189,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
       </div>
       {isAdmin && p.review_flag && <div aria-label={"Flagged member: " + p.review_flag} style={{ background: "#B91C1C", color: "white", padding: "9px 11px", fontSize: 12, fontWeight: 900, borderTop: "2px solid #FCA5A5", overflowWrap: "anywhere" }}>🚩 FLAGGED · {p.review_flag}</div>}
       <div style={{ padding: "9px 11px" }}>
-        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVip(p.id) ? vipBadge : null}</div>
+        <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{mtab === "newmembers" ? (p.name || "Member") : (p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVip(p.id) ? vipBadge : null}</div>
+        {mtab === "newmembers" && <div style={{ marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4, background: "#EEF2FF", color: "#4338CA", fontSize: 10.5, fontWeight: 900, padding: "3px 8px", borderRadius: 20 }}>🆕 {joinedAgo(p.joined)}</div>}
         {isVerified(p.id) && <VerifiedLine />}
         {mood && <div style={{ display: "inline-block", marginTop: 5, background: mood[3], color: mood[2], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{mood[1]}</div>}
         <div style={{ fontSize: 11, color: W.soft, marginTop: 4, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
@@ -5308,9 +5328,13 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           {vibeChip("🟢", vibe.online, "online")}
         </div>
       </div>
-      <div style={{ display: "flex", gap: 8, padding: "12px 14px 0" }}>
-        {[["discover", "✨ Discover"], ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]].map(([k, l]) => (
-          <button key={k} onClick={() => setMtab(k)} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1px solid ${mtab === k ? W.teal : W.line}`, background: mtab === k ? W.teal : "#fff", color: mtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{l}</button>
+      <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", overflowX: "auto" }}>
+        {[
+          ["discover", "✨ Discover"],
+          ...(isStaff ? [["newmembers", "🆕 New Members"]] : []),
+          ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]
+        ].map(([k, l]) => (
+          <button key={k} onClick={() => setMtab(k)} style={{ flex: "1 0 auto", minWidth: isStaff ? 120 : 0, padding: "9px 12px", borderRadius: 10, border: `1px solid ${mtab === k ? W.teal : W.line}`, background: mtab === k ? W.teal : "#fff", color: mtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>{l}</button>
         ))}
       </div>
       {mtab === "discover" && (
@@ -5605,6 +5629,29 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
         </div>
       </div>}
+      {mtab === "newmembers" && isStaff && (
+        <div style={{ padding: "12px 14px 0" }}>
+          <div style={{ background: "linear-gradient(120deg,#EEF2FF,#FDF2F8)", border: "1px solid #D8DDF7", borderRadius: 16, padding: "13px 14px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontWeight: 900, color: W.ink, fontSize: 16 }}>🆕 New members joined</div>
+                <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Admin & staff view · newest members first · tap a photo to review the profile.</div>
+              </div>
+              <div style={{ background: "#fff", border: "1px solid #D8DDF7", color: "#4338CA", borderRadius: 999, padding: "6px 11px", fontSize: 12, fontWeight: 900 }}>{newMembers.length} members</div>
+            </div>
+            <div style={{ display: "flex", gap: 7, marginTop: 11, overflowX: "auto" }}>
+              {[["7","Last 7 days"],["30","Last 30 days"],["90","Last 90 days"],["all","All newest"]].map(([k,l]) => (
+                <button key={k} onClick={() => setNewMemberRange(k)} style={{ flexShrink: 0, padding: "7px 12px", borderRadius: 999, border: newMemberRange === k ? "none" : "1px solid #D8DDF7", background: newMemberRange === k ? "#4F46E5" : "#fff", color: newMemberRange === k ? "#fff" : "#4F46E5", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(4,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))", gap: 11, paddingBottom: 16 }}>
+            {rows === null ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 28 }}>Loading new members…</div>
+              : newMembers.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 28 }}>No members joined in this period.</div>
+              : newMembers.map(p => card(p))}
+          </div>
+        </div>
+      )}
       {mtab === "waves" && (() => {
         const matches = (inbox || []).filter(p => p.mutual);
         const likedYou = (inbox || []).filter(p => !p.mutual);
