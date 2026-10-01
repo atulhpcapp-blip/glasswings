@@ -193,12 +193,25 @@ async function gwInvitationBlob(event,name,photo,message,code){
  }
  return new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('Could not create invitation.')),'image/png'));
 }
+const GW_GUEST_LIST_PRESETS = ["Artist's Guest List", "Organiser's Guest List", "Founder's Guest List"];
+function gwSavedGuestLists(){try{return JSON.parse(localStorage.getItem('gw_guest_list_names')||'[]').filter(Boolean)}catch{return []}}
+function gwRememberGuestList(name){const n=String(name||'').trim();if(!n)return;try{const a=[...new Set([...GW_GUEST_LIST_PRESETS,...gwSavedGuestLists(),n])].filter(x=>!GW_GUEST_LIST_PRESETS.includes(x));localStorage.setItem('gw_guest_list_names',JSON.stringify(a));}catch{}}
+function gwGuestListFromNote(g){
+ const n=String(g?.note||g?.notes||g?.guest_note||'');
+ const m=n.match(/(?:GUEST\s*LIST|LIST)\s*:\s*([^|\n]+)/i);
+ return m?m[1].trim():'';
+}
+function gwIsInvitationGuest(g){
+ const n=String(g?.note||g?.notes||g?.guest_note||'').toLowerCase();
+ return !!gwGuestListFromNote(g) || n.includes('personal invitation');
+}
+function gwGuestListNote(list){return `Personal invitation | GUEST LIST: ${String(list||"Organiser's Guest List").trim()}`;}
 function InvitationButton({event,guest,memberId=null,label="💌 Invite"}){
- const [open,setOpen]=useState(false),[name,setName]=useState(''),[phone,setPhone]=useState(''),[photo,setPhoto]=useState(''),[message,setMessage]=useState(''),[preview,setPreview]=useState(''),[file,setFile]=useState(null),[inviteCode,setInviteCode]=useState(''),[inviteId,setInviteId]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const [open,setOpen]=useState(false),[name,setName]=useState(''),[phone,setPhone]=useState(''),[age,setAge]=useState(''),[gender,setGender]=useState(''),[photo,setPhoto]=useState(''),[message,setMessage]=useState(''),[guestList,setGuestList]=useState("Organiser's Guest List"),[customList,setCustomList]=useState(''),[savedLists,setSavedLists]=useState(()=>gwSavedGuestLists()),[preview,setPreview]=useState(''),[file,setFile]=useState(null),[inviteCode,setInviteCode]=useState(''),[inviteId,setInviteId]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState('');
  const dialog=useRef(null);
  useEffect(()=>{if(open){dialog.current?.showModal();}else dialog.current?.close();},[open]);
  useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview);},[preview]);
- const start=()=>{setName(guest?.name||guest?.full_name||'');setPhone(guest?.phone||'');setPhoto(guest?.door_photo||guest?.avatar_url||'');setMessage('Some evenings become memories because of the people who share them. We would love you to be part of ours. Come for the music, stay for the laughter, and let us make a little more room for joy — together.');setPreview('');setFile(null);setInviteCode('');setInviteId(null);setErr('');setOpen(true);};
+ const start=()=>{setName(guest?.name||guest?.full_name||'');setPhone(guest?.phone||'');setAge(guest?.age||guest?.member_details?.age||'');setGender(guest?.door_gender||guest?.gender||'');setPhoto(guest?.door_photo||guest?.avatar_url||'');setGuestList("Organiser's Guest List");setCustomList('');setMessage('Some evenings become memories because of the people who share them. We would love you to be part of ours. Come for the music, stay for the laughter, and let us make a little more room for joy — together.');setPreview('');setFile(null);setInviteCode('');setInviteId(null);setErr('');setOpen(true);};
  const edit=fn=>value=>{fn(value);setPreview('');setFile(null);};
  const invitationLink=inviteCode?`${window.location.origin}/?gt=${encodeURIComponent(inviteCode)}`:'';
  const text=[`Dear ${name},`,message,event.title,event.event_date||'',[event.venue,event.city].filter(Boolean).join(', '),inviteCode?`Your personal invitation: ${invitationLink}`:'','Please show or scan this invitation at entry.','With warmth, Glasswings'].filter(Boolean).join('\n\n');
@@ -207,13 +220,15 @@ function InvitationButton({event,guest,memberId=null,label="💌 Invite"}){
   try{
    let code=inviteCode,id=inviteId;
    if(!code){
-    const {data:gNew,error}=await supabase.rpc('add_guest_ticket',{p_event:event.id,p_name:name.trim(),p_phone:phone.trim(),p_email:'',p_qty:1,p_age:null,p_location:null,p_type:'guest',p_note:'Personal invitation'});
+    const finalList=(guestList==='__custom__'?customList:guestList).trim()||"Organiser's Guest List";
+    gwRememberGuestList(finalList);setSavedLists(gwSavedGuestLists());
+    const {data:gNew,error}=await supabase.rpc('add_guest_ticket',{p_event:event.id,p_name:name.trim(),p_phone:phone.trim(),p_email:'',p_qty:1,p_age:age===''?null:Number(age),p_location:null,p_type:'guest',p_note:gwGuestListNote(finalList)});
     if(error)throw error;
     id=gNew?.id||null;code=gNew?.code||'';
     if(!code&&id){const {data:gl,error:ge}=await supabase.rpc('guest_list',{p_event:event.id});if(ge)throw ge;const row=(gl||[]).find(x=>x.id===id);code=row?.code||'';}
     if(!code)throw Error('Invitation was created but its QR code could not be loaded. Please reopen this guest from the guest list.');
     setInviteId(id);setInviteCode(code);
-    if(id&&photo){try{await supabase.rpc('gw_guest_portrait',{p_id:id,p_gender:'',p_photo:photo});}catch(e){}}
+    if(id&&(photo||gender)){try{await supabase.rpc('gw_guest_portrait',{p_id:id,p_gender:gender||'',p_photo:photo||''});}catch(e){}}
    }
    const blob=await gwInvitationBlob(event,name,photo,message,code);const f=new File([blob],'glasswings-invitation.png',{type:'image/png'});setFile(f);setPreview(URL.createObjectURL(blob));
   }catch(e){setErr(e.message||'Could not create invitation.');}finally{setBusy(false);}
@@ -225,10 +240,18 @@ function InvitationButton({event,guest,memberId=null,label="💌 Invite"}){
    <p style={{fontSize:13}}>Create the guest’s personal invitation. Its QR is scanned directly at entry.</p>
    <label>Guest name<input value={name} maxLength={90} disabled={!!inviteCode} onChange={e=>edit(setName)(e.target.value)} style={gwField}/></label>
    {!memberId&&<label style={{display:'block',marginTop:10}}>Phone (optional)<input value={phone} maxLength={20} disabled={!!inviteCode} onChange={e=>setPhone(e.target.value)} placeholder="For WhatsApp sharing" style={gwField}/></label>}
-   <DoorPortraitFields photo={photo} onPhoto={edit(setPhoto)} disabled={busy}/>
+   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginTop:10}}>
+    <label>Age<input value={age} disabled={!!inviteCode} onChange={e=>setAge(e.target.value.replace(/\D/g,''))} inputMode="numeric" placeholder="Age" style={gwField}/></label>
+    <label>Sex<select value={gender} disabled={!!inviteCode} onChange={e=>setGender(e.target.value)} style={gwField}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label>
+   </div>
+   <label style={{display:'block',marginTop:10,fontWeight:800}}>Guest list
+    <select value={guestList} disabled={!!inviteCode} onChange={e=>setGuestList(e.target.value)} style={{...gwField,marginTop:5}}>{[...GW_GUEST_LIST_PRESETS,...savedLists.filter(x=>!GW_GUEST_LIST_PRESETS.includes(x))].map(x=><option key={x} value={x}>{x}</option>)}<option value="__custom__">+ Create new list…</option></select>
+   </label>
+   {guestList==='__custom__'&&<input value={customList} disabled={!!inviteCode} onChange={e=>setCustomList(e.target.value)} placeholder="Type new guest list name" style={{...gwField,marginTop:7}}/>}
+   <DoorPortraitFields photo={photo} gender={gender} onPhoto={edit(setPhoto)} onGender={setGender} disabled={busy}/>
    <label>Your message<textarea value={message} maxLength={350} rows={5} onChange={e=>edit(setMessage)(e.target.value)} style={gwField}/></label>
    {err&&<p role="alert" style={{color:err.startsWith('✅')?'#08765b':'#a33'}}>{err}</p>}
-   <button disabled={busy||!name.trim()||!message.trim()} onClick={createInvitation} style={{...btn('#08765b','#fff'),margin:'12px 0',width:'100%',justifyContent:'center'}}>{busy?'Creating…':inviteCode?'Refresh invitation card':'Create invitation + QR'}</button>
+   <button disabled={busy||!name.trim()||!message.trim()||(guestList==='__custom__'&&!customList.trim())} onClick={createInvitation} style={{...btn('#08765b','#fff'),margin:'12px 0',width:'100%',justifyContent:'center'}}>{busy?'Creating…':inviteCode?'Refresh invitation card':'Create invitation + QR'}</button>
    {inviteCode&&<div style={{background:'#E8F7F1',color:'#075e46',fontSize:12.5,fontWeight:800,padding:'10px 12px',borderRadius:10,marginBottom:10}}>✓ Invitation ready · Code {inviteCode}</div>}
    {preview&&<><img src={preview} alt={`Invitation for ${name}`} style={{display:'block',width:'100%',borderRadius:14}}/><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:12}}>
     <button onClick={async()=>{try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:event.title,text});}else{setErr('Download the invitation, then attach it in WhatsApp.');}}catch(e){if(e.name!=='AbortError')setErr('Please use Download invitation and attach it in WhatsApp.');}}} style={btn('#08765b','#fff')}>Share invitation</button>
@@ -245,7 +268,7 @@ function EventInvitesTab({event}){
  const needle=q.trim().toLowerCase();
  const matches=needle.length<2?[]:members.filter(m=>`${m.full_name||''} ${m.city||''} ${m.area||''}`.toLowerCase().includes(needle)).slice(0,12);
  return <div style={{marginTop:4}}>
-  <div style={{background:'linear-gradient(135deg,#FFF8EA,#FFF0F6)',border:'1px solid #F2D7B6',borderRadius:16,padding:16,marginBottom:14}}><div style={{fontSize:19,fontWeight:900,color:'#5B3A18'}}>💌 Personal invitations</div><div style={{fontSize:12.5,color:'#755B43',lineHeight:1.55,marginTop:5}}>Each invitation is the guest’s entry pass. A unique QR is generated automatically and scanned at the door.</div></div>
+  <div style={{background:'linear-gradient(135deg,#FFF8EA,#FFF0F6)',border:'1px solid #F2D7B6',borderRadius:16,padding:16,marginBottom:14}}><div style={{fontSize:19,fontWeight:900,color:'#5B3A18'}}>💌 Personal invitations</div><div style={{fontSize:12.5,color:'#755B43',lineHeight:1.55,marginTop:5}}>Each invitation is the guest’s entry pass. A unique QR is generated automatically and scanned at the door.</div><div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>{GW_GUEST_LIST_PRESETS.map(x=><span key={x} style={{background:'#fff',border:'1px solid #E7CFAE',borderRadius:999,padding:'4px 9px',fontSize:10.5,fontWeight:850,color:'#78521B'}}>{x}</span>)}<span style={{background:'#fff',border:'1px dashed #B7791F',borderRadius:999,padding:'4px 9px',fontSize:10.5,fontWeight:850,color:'#78521B'}}>+ Custom list</span></div></div>
   <div style={{display:'flex',gap:8,marginBottom:14}}>
    <button onClick={()=>setMode('guest')} style={{flex:1,padding:'12px 10px',borderRadius:12,border:`2px solid ${mode==='guest'?'#B7791F':'#F1E2CD'}`,background:mode==='guest'?'#B7791F':'#FFF8EC',color:mode==='guest'?'#fff':'#8A5A18',fontWeight:900,cursor:'pointer'}}>👤 Send to guest</button>
    <button onClick={()=>setMode('member')} style={{flex:1,padding:'12px 10px',borderRadius:12,border:`2px solid ${mode==='member'?'#6D28D9':'#E6DCF8'}`,background:mode==='member'?'#6D28D9':'#F7F2FF',color:mode==='member'?'#fff':'#6D28D9',fontWeight:900,cursor:'pointer'}}>✨ Send to member</button>
@@ -265,22 +288,39 @@ async function gwSaveNewGuestPortrait(guest, gender, photo) {
   } catch(e) { alert("Ticket created, but photo/gender could not be saved: "+e.message+". Do not create the ticket again."); return false; }
 }
 function DoorSalesHistory({event,refresh=0}){
- const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[q,setQ]=useState(''),[genderFilter,setGenderFilter]=useState(''),[editing,setEditing]=useState(null),[saving,setSaving]=useState(false);
- const load=async()=>{setBusy(true);setErr('');try{const {data,error}=await supabase.rpc('guest_list',{p_event:event.id});if(error)throw error;setRows((data||[]).filter(g=>['cash','upi'].includes(g.method)));}catch(e){setErr(e.message);}finally{setBusy(false);}};
+ const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[q,setQ]=useState(''),[genderFilter,setGenderFilter]=useState(''),[editing,setEditing]=useState(null),[saving,setSaving]=useState(false),[cancellingId,setCancellingId]=useState(null);
+ const load=async()=>{setBusy(true);setErr('');try{const {data,error}=await supabase.rpc('guest_list',{p_event:event.id});if(error)throw error;setRows((data||[]).filter(g=>['cash','upi'].includes(String(g.method||'').toLowerCase())||gwIsInvitationGuest(g)));}catch(e){setErr(e.message);}finally{setBusy(false);}};
+ const cancelDoorSale=async(g)=>{
+  const paid=Number(g.amount||0);
+  const method=String(g.method||'').toUpperCase();
+  const checked=g.checked_in?'\n\n⚠️ This guest is already marked CHECKED IN.':'';
+  const ok=window.confirm(`Cancel entry for ${g.name||'this guest'}?\n\n${g.quantity||1} entr${Number(g.quantity||1)===1?'y':'ies'} · ₹${paid} · ${method}${checked}\n\nThis permanently invalidates the QR/code and removes the guest from active door sales. If you are refunding cash/UPI, return the money separately.`);
+  if(!ok)return;
+  setCancellingId(g.id);setErr('');
+  try{
+   const {error}=await supabase.rpc('delete_guest',{p_id:g.id});
+   if(error)throw error;
+   setRows(prev=>prev.filter(x=>x.id!==g.id));
+   if(editing?.id===g.id)setEditing(null);
+   alert(`Cancelled. ${g.name||'Guest'}'s QR is no longer valid.${paid>0?'\n\nIf a refund is due, please return ₹'+paid+' by '+method+' separately.':''}`);
+  }catch(e){setErr('Could not cancel this door sale: '+(e.message||String(e)));}
+  finally{setCancellingId(null);}
+ };
  useEffect(()=>{setRows([]);setQ('');setEditing(null);load();},[event.id,refresh]);
  const filtered=rows.filter(g=>(!genderFilter||g.door_gender===genderFilter)&&`${g.name||''} ${g.phone||''} ${g.code||''}`.toLowerCase().includes(q.toLowerCase()));
  return <section style={{background:'#f5faf7',border:'1px solid #dbe5e0',borderRadius:16,padding:14,margin:'16px 0'}}>
-  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><h3 style={{margin:'0 0 8px'}}>Door sales history</h3><button onClick={load} disabled={busy} style={btn('#fff','#08765b')}>Refresh</button><InvitationButton event={event}/></div>
-  <p style={{fontSize:12,color:'#62766e'}}>Existing tickets for this event. Resending keeps the same code and payment.</p>
+  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}><h3 style={{margin:'0 0 8px'}}>Door sales & guest lists</h3><button onClick={load} disabled={busy} style={btn('#fff','#08765b')}>Refresh</button><InvitationButton event={event}/></div>
+  <p style={{fontSize:12,color:'#62766e'}}>Paid door entries and invited guest lists for this event. Invitations are clearly labelled by list. <b>Cancel / remove</b> invalidates the QR immediately; cash/UPI refunds are returned separately.</p>
   <input aria-label="Search door sales" placeholder="Search name, phone or ticket code" value={q} onChange={e=>setQ(e.target.value)} style={gwField}/>
   <select aria-label="Filter gender" value={genderFilter} onChange={e=>setGenderFilter(e.target.value)} style={{...gwField,marginTop:8}}><option value="">All genders</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
   {err&&<p role="alert" style={{color:'#a33'}}>{err}</p>}{busy&&<p>Loading sales…</p>}{!busy&&!err&&!filtered.length&&<p>No matching door sales.</p>}
   {filtered.map(g=><article key={g.id} style={{borderTop:'1px solid #dbe5e0',padding:'14px 0',marginTop:8}}>
-   <div style={{display:'flex',gap:10,alignItems:'center'}}><PersonAvatar url={g.door_photo} name={g.name} size={54}/><div style={{minWidth:0}}><b>{g.name}</b><div style={{fontSize:12,color:'#62766e'}}>{g.door_gender||'Gender not specified'} · {g.quantity||1} entries · {g.checked_in?'Checked in':'Not checked in'}</div><div style={{fontSize:12,overflowWrap:'anywhere'}}>{g.phone||'No phone'} · {g.code}</div><div style={{fontSize:12}}>₹{g.amount||0} · {g.method} · {g.created_at?new Date(g.created_at).toLocaleString('en-IN'):''}</div></div></div>
+   <div style={{display:'flex',gap:10,alignItems:'center'}}><PersonAvatar url={g.door_photo} name={g.name} size={54}/><div style={{minWidth:0}}><b>{g.name}</b>{gwIsInvitationGuest(g)&&<div style={{display:'inline-block',marginLeft:7,background:'#FFF0DB',color:'#78521B',fontSize:10,fontWeight:900,padding:'2px 7px',borderRadius:8}}>{gwGuestListFromNote(g)||"Organiser's Guest List"}</div>}<div style={{fontSize:12,color:'#62766e'}}>{g.age?`${g.age}y · `:''}{g.door_gender||'Gender not specified'} · {g.quantity||1} entries · {g.checked_in?'Checked in':'Not checked in'}</div><div style={{fontSize:12,overflowWrap:'anywhere'}}>{g.phone||'No phone'} · {g.code}</div><div style={{fontSize:12}}>₹{g.amount||0} · {g.method} · {g.created_at?new Date(g.created_at).toLocaleString('en-IN'):''}</div></div></div>
    <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:10}}>
     <a href={`https://wa.me/${waNum(g.phone)}?text=${encodeURIComponent(`Your ticket for ${event.title}\nhttps://glass-wings.com/?gt=${encodeURIComponent(g.code)}\nShow this ticket at the door.\n\nYou’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡\n— Glasswings`)}`} target="_blank" rel="noreferrer" style={btn('#08765b','#fff')}>Resend ticket</a>
     <button onClick={async()=>{try{const blob=await makeTicketBlob({title:event.title,dateStr:event.event_date,place:[event.venue,event.city].filter(Boolean).join(', '),name:g.name,qty:g.quantity||1,code:g.code,photo:g.door_photo});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='glasswings-ticket.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),15000);}catch(e){setErr('Could not create ticket image. Use Resend ticket.');}}} style={btn('#fff','#17392e')}>Download ticket</button>
     <button onClick={()=>setEditing({...g})} style={btn('#fff','#17392e')}>Photo / gender</button><InvitationButton event={event} guest={g}/>
+    <button disabled={cancellingId===g.id} onClick={()=>cancelDoorSale(g)} style={{...btn('#FFF1F0','#B42318'),border:'1px solid #F6C7C3',fontWeight:850,opacity:cancellingId===g.id ? .6 : 1}}>{cancellingId===g.id?'Cancelling…':(gwIsInvitationGuest(g)?'✕ Remove invitation':'✕ Cancel / Refund')}</button>
    </div>
    {editing?.id===g.id&&<div><DoorPortraitFields photo={editing.door_photo} gender={editing.door_gender} onPhoto={v=>setEditing(x=>({...x,door_photo:v}))} onGender={v=>setEditing(x=>({...x,door_gender:v}))} disabled={saving}/><button disabled={saving} onClick={async()=>{setSaving(true);setErr('');try{const {error}=await supabase.rpc('gw_guest_portrait',{p_id:g.id,p_gender:editing.door_gender||'',p_photo:editing.door_photo||''});if(error)throw error;setEditing(null);await load();}catch(e){setErr(e.message);}finally{setSaving(false);}}} style={btn('#08765b','#fff')}>{saving?'Saving…':'Save details'}</button><button disabled={saving} onClick={()=>setEditing(null)} style={btn('#fff','#333')}>Cancel</button></div>}
   </article>)}
@@ -1804,7 +1844,7 @@ function EventGoers({ eventId, onOpenDM }) {
     ]).then(([members, guests]) => {
       if (!live) return;
       const doorGuests = guests
-        .filter(g => ["cash", "upi"].includes(String(g.method || "").toLowerCase()))
+        .filter(g => ["cash", "upi"].includes(String(g.method || "").toLowerCase()) || gwIsInvitationGuest(g))
         .map(g => ({
           id: `guest-${g.id}`,
           guest_id: g.id,
@@ -1812,6 +1852,7 @@ function EventGoers({ eventId, onOpenDM }) {
           avatar_url: g.door_photo || g.avatar_url || "",
           gender: g.door_gender || g.gender || "",
           is_door_guest: true,
+          guest_list_name: gwGuestListFromNote(g) || (gwIsInvitationGuest(g) ? "Organiser's Guest List" : ''),
           waved_by_me: false,
           waved_me: false,
         }));
@@ -1845,7 +1886,7 @@ function EventGoers({ eventId, onOpenDM }) {
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
             {p.is_door_guest ? (
-              <div style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, fontWeight: 800, fontSize: 10.5, background: "#FFF5E6", color: "#9A6700" }}>🚪 Door guest</div>
+              <div style={{ marginTop: 4, width: "100%", padding: "5px 3px", borderRadius: 8, fontWeight: 800, fontSize: 9.5, lineHeight:1.25, background: p.guest_list_name ? "#FFF0DB" : "#FFF5E6", color: p.guest_list_name ? "#78521B" : "#9A6700" }}>{p.guest_list_name ? `💌 ${p.guest_list_name}` : "🚪 Door guest"}</div>
             ) : (
               <button onClick={() => mutual ? (onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])) : wave(p)} disabled={busy === p.id || (p.waved_by_me && !mutual)} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: mutual ? "linear-gradient(95deg,#6D28D9,#008069)" : p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "#EC4899" : W.teal), color: p.waved_by_me && !mutual ? "#0d6e58" : "#fff" }}>
                 {busy === p.id ? "…" : mutual ? "💬 Msg" : p.waved_by_me ? "✓" : (p.waved_me ? "Wave back" : "👋 Wave")}
@@ -13662,6 +13703,7 @@ function CheckInSheet({ event, onClose }) {
   const [gAge, setGAge] = useState(""); const [gLoc, setGLoc] = useState("");
   const [gBusy, setGBusy] = useState(false);
   const [gPhoto,setGPhoto]=useState(""); const [gGender,setGGender]=useState(""); const [gPhotoBusy,setGPhotoBusy]=useState(false);
+  const [gList,setGList]=useState("Organiser's Guest List"),[gCustomList,setGCustomList]=useState(""),[gSavedLists,setGSavedLists]=useState(()=>gwSavedGuestLists());
   const TMETA = { guest: ["🎟️", "Guest", "#008069", "#E7F6EF"], vip: ["💎", "VIP", "#B7791F", "#FBF3DC"], team: ["🛡️", "Team", "#475569", "#EDF1F6"], instagram: ["📸", "Instagram Subscriber", "#C13584", "#FCE7F3"] };
   const gtm = (g) => TMETA[gwGuestTier(g)] || TMETA.guest;
   const gcount = (k) => guests.filter(g => gwGuestTier(g) === k).length;
@@ -13672,7 +13714,9 @@ function CheckInSheet({ event, onClose }) {
     if(gBusy||gPhotoBusy)return;
     if (!gName.trim()) return alert("Guest name is required.");
     setGBusy(true);
-    const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc });
+    const finalGuestList=(gList==='__custom__'?gCustomList:gList).trim()||"Organiser's Guest List";
+    gwRememberGuestList(finalGuestList);setGSavedLists(gwSavedGuestLists());
+    const { data: gNew, error } = await supabase.rpc("add_guest_ticket", { p_event: event.id, p_name: gName, p_phone: gPhone, p_email: gEmail, p_qty: Number(gQty) || 1, p_age: gAge === "" ? null : Number(gAge), p_location: gLoc, p_type:'guest', p_note:gwGuestListNote(finalGuestList) });
     if (error) { setGBusy(false); return alert(error.message); }
     const portraitSaved = await gwSaveNewGuestPortrait(gNew,gGender,gPhoto);
     setGBusy(false);
@@ -13690,7 +13734,7 @@ function CheckInSheet({ event, onClose }) {
       if (row) gShare = { ...row };
       setGuests(gl || []);
     }
-    setGPhoto(""); setGGender(""); setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc("");
+    setGPhoto(""); setGGender(""); setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc(""); setGList("Organiser's Guest List"); setGCustomList("");
     loadGuests();
     if (gShare.code) window.gwConfirm(`✅ ${gShare.name} added to the guest list.\n\nShare their ticket on WhatsApp now?`, () => shareGuest(gShare));
   };
@@ -13749,7 +13793,7 @@ function CheckInSheet({ event, onClose }) {
               const w = window.open("", "_blank", "width=800,height=940"); if (!w) return;
               const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
               const tierLabel = { guest: "Guest", vip: "VIP", team: "Team", instagram: "Instagram Subscriber" };
-              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${escapeHtml(tierLabel[gwGuestTier(g)] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml([g.location, gwGuestNote(g)].filter(Boolean).join(" — ") || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
+              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${escapeHtml(gwGuestListFromNote(g) || tierLabel[gwGuestTier(g)] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml([g.location, gwGuestNote(g)].filter(Boolean).join(" — ") || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
               w.document.write(`<!doctype html><html><head><title>Guest checklist — ${escapeHtml(event.title)}</title><style>
                 body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:30px}
                 .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#008069}
@@ -13765,7 +13809,7 @@ function CheckInSheet({ event, onClose }) {
                 <div class="br">G L A S S W I N G S &nbsp; E V E N T S</div>
                 <h1>Guest checklist — ${escapeHtml(event.title)}</h1>
                 <div class="sub">${escapeHtml(event.event_date || "")} · Printed ${today} · ${guests.length} guest${guests.length === 1 ? "" : "s"} · ${guests.reduce((a, g) => a + (g.quantity || 1), 0)} entries</div>
-                <table><thead><tr><th>#</th><th>In</th><th>Guest name</th><th>Tier</th><th>Qty</th><th>Phone</th><th>Email</th><th>Age</th><th>Location</th><th>Code</th><th>Time in</th></tr></thead><tbody>${rowsH}</tbody></table>
+                <table><thead><tr><th>#</th><th>In</th><th>Guest name</th><th>Guest list / tier</th><th>Qty</th><th>Phone</th><th>Email</th><th>Age</th><th>Location</th><th>Code</th><th>Time in</th></tr></thead><tbody>${rowsH}</tbody></table>
                 <div class="ft">Tick "In" on arrival and note the time. Codes must match the WhatsApp ticket. — Glasswings Events · glass-wings.com</div>
                 <script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`);
               w.document.close();
@@ -13780,12 +13824,18 @@ function CheckInSheet({ event, onClose }) {
             <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ width: "100%", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 11px", fontSize: 13.5, outline: "none" }} />
             <input value={gQty} onChange={e => setGQty(e.target.value.replace(/\D/g, ""))} placeholder="Qty" inputMode="numeric" style={{ width: "100%", minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 9, padding: "10px 11px", fontSize: 13.5, outline: "none" }} />
           </div>
+          <div style={{display:'grid',gridTemplateColumns:'minmax(180px,1fr)',gap:7,marginBottom:8}}>
+            <select value={gList} onChange={e=>setGList(e.target.value)} style={{width:'100%',border:`1px solid ${W.line}`,borderRadius:9,padding:'10px 11px',fontSize:13.5,background:'#fff'}}>
+              {[...GW_GUEST_LIST_PRESETS,...gSavedLists.filter(x=>!GW_GUEST_LIST_PRESETS.includes(x))].map(x=><option key={x} value={x}>{x}</option>)}<option value="__custom__">+ Create new guest list…</option>
+            </select>
+            {gList==='__custom__'&&<input value={gCustomList} onChange={e=>setGCustomList(e.target.value)} placeholder="New guest list name" style={{width:'100%',border:`1px solid ${W.line}`,borderRadius:9,padding:'10px 11px',fontSize:13.5}}/>}
+          </div>
           <DoorPortraitFields photo={gPhoto} gender={gGender} onPhoto={setGPhoto} onGender={setGGender} onBusy={setGPhotoBusy} disabled={gBusy}/>
-          <button onClick={addGuest} disabled={gBusy||gPhotoBusy} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "11px 16px", fontSize: 14, marginBottom: 10, opacity: (gBusy||gPhotoBusy) ? .6 : 1 }}>{gBusy ? "Adding…" : "+ Add guest"}</button>
+          <button onClick={addGuest} disabled={gBusy||gPhotoBusy||(gList==='__custom__'&&!gCustomList.trim())} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: "11px 16px", fontSize: 14, marginBottom: 10, opacity: (gBusy||gPhotoBusy) ? .6 : 1 }}>{gBusy ? "Adding…" : "+ Add guest"}</button>
           {guests.map(g => { const tm = gtm(g); return (
             <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}`, borderLeft: `4px solid ${tm[2]}`, paddingLeft: 9 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><PersonAvatar url={g.door_photo} name={g.name} size={42}/><span style={{fontSize:11}}>{g.door_gender||""}</span><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span><span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><PersonAvatar url={g.door_photo} name={g.name} size={42}/><span style={{fontSize:11}}>{g.door_gender||""}</span><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span>{gwIsInvitationGuest(g)&&<span style={{background:'#FFF0DB',color:'#78521B',fontSize:9.5,fontWeight:900,padding:'1px 7px',borderRadius:8}}>{gwGuestListFromNote(g)||"Organiser's Guest List"}</span>}<span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
                 <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
                 {gwGuestNote(g) && <div style={{ fontSize: 12, color: tm[2], fontWeight: 700, marginTop: 2 }}>📌 {gwGuestNote(g)}</div>}
               </div>
@@ -15209,6 +15259,7 @@ function GuestTickets({ event }) {
   const [gName, setGName] = useState(""), [gPhone, setGPhone] = useState(""), [gEmail, setGEmail] = useState(""), [gQty, setGQty] = useState("1"), [gAge, setGAge] = useState(""), [gLoc, setGLoc] = useState(""), [gNote, setGNote] = useState("");
   const [gBusy, setGBusy] = useState(false);
   const [gPhoto,setGPhoto]=useState(""); const [gGender,setGGender]=useState(""); const [gPhotoBusy,setGPhotoBusy]=useState(false);
+  const [gList,setGList]=useState("Organiser's Guest List"),[gCustomList,setGCustomList]=useState(""),[gSavedLists,setGSavedLists]=useState(()=>gwSavedGuestLists());
   const [guests, setGuests] = useState([]);
   const [bulkText, setBulkText] = useState(""), [bulkBusy, setBulkBusy] = useState(false), [bulkMsg, setBulkMsg] = useState("");
   const [q, setQ] = useState(""); const [list, setList] = useState([]); const [given, setGiven] = useState({}); const [added, setAdded] = useState({}); const [msg, setMsg] = useState("");
@@ -15252,7 +15303,7 @@ function GuestTickets({ event }) {
     setGuests(gl || []);
     const row = (gl || []).find(x => x.id === gNew?.id);
     const tn = tmeta(tier)[2];
-    setGPhoto(""); setGGender(""); setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc(""); setGNote("");
+    setGPhoto(""); setGGender(""); setGName(""); setGPhone(""); setGEmail(""); setGQty("1"); setGAge(""); setGLoc(""); setGList("Organiser's Guest List"); setGCustomList(""); setGNote("");
     if (row?.code) window.gwConfirm(`✅ ${row.name} added as ${tn}.\n\nShare their ticket on WhatsApp now?`, () => shareGuest(row));
   };
   const changeTier = async (g, t) => { const storedNote = gwStoredGuestNote(t, gwGuestNote(g)); const baseType = t === "instagram" ? "guest" : t; setGuests(gs => gs.map(x => x.id === g.id ? { ...x, guest_type: baseType, note: storedNote } : x)); const [{ error: typeError }, { error: noteError }] = await Promise.all([supabase.rpc("set_guest_type", { p_id: g.id, p_type: baseType }), supabase.rpc("set_guest_note", { p_id: g.id, p_note: storedNote })]); if (typeError || noteError) { alert((typeError || noteError).message); loadGuests(); } };
@@ -15338,6 +15389,12 @@ function GuestTickets({ event }) {
           </div>
           <input value={gLoc} onChange={e => setGLoc(e.target.value)} placeholder="Location / area (optional)" style={{ ...ip, width: "100%", marginBottom: 7 }} />
           <input value={gNote} onChange={e => setGNote(e.target.value)} placeholder={tier === "vip" ? "Reserved table / area / note (e.g. Table 4, near stage)" : "Note (optional) — e.g. reserved table, special instruction"} style={{ ...ip, width: "100%", marginBottom: 9 }} />
+          <div style={{display:'grid',gridTemplateColumns:'minmax(180px,1fr)',gap:7,marginBottom:8}}>
+            <select value={gList} onChange={e=>setGList(e.target.value)} style={{width:'100%',border:`1px solid ${W.line}`,borderRadius:9,padding:'10px 11px',fontSize:13.5,background:'#fff'}}>
+              {[...GW_GUEST_LIST_PRESETS,...gSavedLists.filter(x=>!GW_GUEST_LIST_PRESETS.includes(x))].map(x=><option key={x} value={x}>{x}</option>)}<option value="__custom__">+ Create new guest list…</option>
+            </select>
+            {gList==='__custom__'&&<input value={gCustomList} onChange={e=>setGCustomList(e.target.value)} placeholder="New guest list name" style={{width:'100%',border:`1px solid ${W.line}`,borderRadius:9,padding:'10px 11px',fontSize:13.5}}/>}
+          </div>
           <DoorPortraitFields photo={gPhoto} gender={gGender} onPhoto={setGPhoto} onGender={setGGender} onBusy={setGPhotoBusy} disabled={gBusy}/><button onClick={addGuest} disabled={gBusy||gPhotoBusy} style={{ ...btn(tmeta(tier)[3], "#fff"), width: "100%", justifyContent: "center", opacity: gBusy ? .6 : 1, fontSize: 14.5 }}>{gBusy ? "Adding…" : `${tmeta(tier)[1]} Add ${tmeta(tier)[2]} & send ticket`}</button>
         </div>
       )}
