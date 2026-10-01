@@ -206,6 +206,8 @@ function gwIsInvitationGuest(g){
  return !!gwGuestListFromNote(g) || n.includes('personal invitation');
 }
 function gwGuestListNote(list){return `Personal invitation | GUEST LIST: ${String(list||"Organiser's Guest List").trim()}`;}
+function gwGuestName(g){return String(g?.name||g?.full_name||g?.guest_name||g?.display_name||"Guest").trim()||"Guest";}
+function gwGuestGender(g){return gwGender(g?.door_gender||g?.gender||g?.sex||"");}
 
 function gwNoteWithoutGuestList(note){
  let s=String(note||'');
@@ -13697,9 +13699,17 @@ function TimeCapsule({ event: e, profile }) {
 }
 function EventMembersSheet({ event, onClose }) {
   const [rows, setRows] = useState(null);
+  const [guestRows,setGuestRows]=useState([]);
   const [err, setErr] = useState("");
   const [guestRefresh,setGuestRefresh]=useState(0);
-  const load = () => supabase.rpc("event_member_list", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
+  const load = async () => {
+    const [mr,gr]=await Promise.all([
+      supabase.rpc("event_member_list",{p_event:event.id}),
+      supabase.rpc("guest_list",{p_event:event.id})
+    ]);
+    if(mr.error)setErr(mr.error.message);else{setErr("");setRows(mr.data||[]);}
+    if(!gr.error)setGuestRows(gr.data||[]);
+  };
   const moveMemberToGuestList = async (m,listName) => {
     if(!listName)return;
     if(!window.confirm(`Move ${m.full_name||"this member"} from their current ticket to ${listName}?\n\nTheir current member ticket will be withdrawn and replaced by one scannable guest-list invitation. Their original payment history is not used to create a second active entry.`)) return;
@@ -13749,7 +13759,18 @@ function EventMembersSheet({ event, onClose }) {
           <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, minWidth: 0 }}>👥 Members · {event.title}</div>
           <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
-        <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} member${rows.length === 1 ? "" : "s"} · ${totQty} ticket${totQty === 1 ? "" : "s"} · ${rows.filter(r => r.checked_in).length} checked in`}</div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} ticket member${rows.length === 1 ? "" : "s"} · ${guestRows.length} guest-list/door entr${guestRows.length===1?"y":"ies"} · ${(rows||[]).filter(r=>r.checked_in).length+guestRows.filter(g=>g.checked_in).length} checked in`}</div>
+        {guestRows.length>0&&<div style={{background:"#FFF9EE",border:"1px solid #F1DFC0",borderRadius:14,padding:12,marginBottom:14}}>
+          <div style={{fontWeight:900,color:"#78521B",fontSize:14.5,marginBottom:7}}>💌 Guest Lists ({guestRows.length})</div>
+          {guestRows.map(g=><div key={`guest-${g.id}`} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:"1px solid #F0E4CF"}}>
+            <PersonAvatar url={g.door_photo||g.avatar_url} name={gwGuestName(g)} size={42}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:800,color:W.ink,fontSize:14}}>{gwGuestName(g)} {g.checked_in&&<span style={{background:"#E7F6EF",color:W.teal,fontSize:9.5,fontWeight:800,padding:"1px 6px",borderRadius:8}}>✓ IN</span>}</div>
+              <div style={{fontSize:12,color:W.soft}}>{[g.age?`${g.age}y`:null,gwGuestGender(g)?(gwGuestGender(g)==="female"?"Female":gwGuestGender(g)==="male"?"Male":"Other"):null,gwGuestListFromNote(g)||(String(g.method||"").toLowerCase()==="cash"||String(g.method||"").toLowerCase()==="upi"?"Door Sale":"Organiser's Guest List")].filter(Boolean).join(" · ")}</div>
+            </div>
+            <GuestListChangeButton currentList={gwGuestListFromNote(g)||""} allowNone noneLabel="Door Sale / no guest list" onSave={async(listName)=>{const {error}=await supabase.rpc("set_guest_note",{p_id:g.id,p_note:gwApplyGuestListNote(g.note,listName)});if(error)throw error;await load();setGuestRefresh(x=>x+1);}}/>
+          </div>)}
+        </div>}
         <DoorSalesHistory event={event} refresh={guestRefresh}/>
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
                 {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
@@ -13854,10 +13875,18 @@ function CheckInSheet({ event, onClose }) {
       ))}
     </div>
   );
-  const guys = (list || []).filter(m => m.gender === "male");
-  const girls = (list || []).filter(m => m.gender === "female");
-  const others = (list || []).filter(m => m.gender !== "male" && m.gender !== "female");
+  const guys = (list || []).filter(m => gwGender(m.gender) === "male");
+  const girls = (list || []).filter(m => gwGender(m.gender) === "female");
+  const others = (list || []).filter(m => !["male","female"].includes(gwGender(m.gender)));
+  const guestGuys=guests.filter(g=>gwGuestGender(g)==="male");
+  const guestGirls=guests.filter(g=>gwGuestGender(g)==="female");
+  const guestOther=guests.filter(g=>!["male","female"].includes(gwGuestGender(g)));
   const present = (list || []).filter(m => m.present).length;
+  const guestPresent=guests.filter(g=>g.checked_in).length;
+  const totalExpected=(list||[]).length+guests.length;
+  const totalPresent=present+guestPresent;
+  const totalGuys=guys.length+guestGuys.length;
+  const totalGirls=girls.length+guestGirls.length;
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 1000, display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: "24px 12px" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 560, width: "100%", padding: "20px 20px 28px", margin: "auto" }}>
@@ -13865,7 +13894,13 @@ function CheckInSheet({ event, onClose }) {
           <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, minWidth: 0 }}>Check-in · {event.title}</div>
           <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
-        <div style={{ fontSize: 13, color: W.soft, marginBottom: 16 }}>{list === null ? "Loading…" : `${present} of ${list.length} checked in`}</div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 8 }}>{list === null ? "Loading…" : `${totalPresent} of ${totalExpected} checked in`}</div>
+        {list!==null&&<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:16}}>
+          <span style={{background:"#E8F2FB",color:"#1B6FB8",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>👨 Guys {totalGuys}</span>
+          <span style={{background:"#FBE9F2",color:"#C0246E",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>👩 Girls {totalGirls}</span>
+          <span style={{background:"#FFF0DB",color:"#78521B",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>💌 Guest list {guests.length}</span>
+          {guestOther.length>0&&<span style={{background:"#F1F3F2",color:W.soft,fontSize:11.5,fontWeight:800,padding:"5px 9px",borderRadius:999}}>Unspecified sex {guestOther.length}</span>}
+        </div>}
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
         {list !== null && present > 1 && <Introductions eventId={event.id} refreshKey={present} />}
         {list === null ? <Center>loading…</Center> : list.length === 0 ? <Center>No ticket holders yet.</Center> : (
@@ -13873,12 +13908,12 @@ function CheckInSheet({ event, onClose }) {
         )}
         <div style={{ marginTop: 18, borderTop: `2px solid ${W.line}`, paddingTop: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest list {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guests.filter(g => g.checked_in).length}/{guests.length} in · 🎟️{gcount("guest")} 💎{gcount("vip")} 🛡️{gcount("team")} 📸{gcount("instagram")}</span>}</div>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 15 }}>📋 Guest list {guests.length > 0 && <span style={{ color: W.soft, fontWeight: 700, fontSize: 13 }}>· {guestPresent}/{guests.length} in · 👨{guestGuys.length} 👩{guestGirls.length} · 🎟️{gcount("guest")} 💎{gcount("vip")} 🛡️{gcount("team")} 📸{gcount("instagram")}</span>}</div>
             {guests.length > 0 && <button onClick={() => {
               const w = window.open("", "_blank", "width=800,height=940"); if (!w) return;
               const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
               const tierLabel = { guest: "Guest", vip: "VIP", team: "Team", instagram: "Instagram Subscriber" };
-              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(g.name)}</b></td><td class="c">${escapeHtml(gwGuestListFromNote(g) || tierLabel[gwGuestTier(g)] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml([g.location, gwGuestNote(g)].filter(Boolean).join(" — ") || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
+              const rowsH = guests.map((g, i) => `<tr><td class="c">${i + 1}</td><td class="bx">☐</td><td><b>${escapeHtml(gwGuestName(g))}</b></td><td class="c">${escapeHtml(gwGuestListFromNote(g) || tierLabel[gwGuestTier(g)] || "Guest")}</td><td class="c">${g.quantity || 1}</td><td>${escapeHtml(g.phone || "—")}</td><td>${escapeHtml(g.email || "—")}</td><td class="c">${g.age || "—"}</td><td>${escapeHtml([g.location, gwGuestNote(g)].filter(Boolean).join(" — ") || "—")}</td><td class="code">${escapeHtml(g.code)}</td><td class="sig"></td></tr>`).join("");
               w.document.write(`<!doctype html><html><head><title>Guest checklist — ${escapeHtml(event.title)}</title><style>
                 body{font-family:system-ui,Arial,sans-serif;color:#1b2a27;margin:0;padding:30px}
                 .br{font-size:11px;letter-spacing:4px;font-weight:800;color:#008069}
@@ -13920,7 +13955,7 @@ function CheckInSheet({ event, onClose }) {
           {guests.map(g => { const tm = gtm(g); return (
             <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 0", borderTop: `1px solid ${W.line}`, borderLeft: `4px solid ${tm[2]}`, paddingLeft: 9 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><PersonAvatar url={g.door_photo} name={g.name} size={42}/><span style={{fontSize:11}}>{g.door_gender||""}</span><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span>{gwIsInvitationGuest(g)&&<span style={{background:'#FFF0DB',color:'#78521B',fontSize:9.5,fontWeight:900,padding:'1px 7px',borderRadius:8}}>{gwGuestListFromNote(g)||"Organiser's Guest List"}</span>}<span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}><PersonAvatar url={g.door_photo} name={gwGuestName(g)} size={42}/><span style={{fontSize:11}}>{g.door_gender||""}</span><span style={{ background: tm[3], color: tm[2], fontSize: 9.5, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>{tm[0]} {tm[1]}</span>{gwIsInvitationGuest(g)&&<span style={{background:'#FFF0DB',color:'#78521B',fontSize:9.5,fontWeight:900,padding:'1px 7px',borderRadius:8}}>{gwGuestListFromNote(g)||"Organiser's Guest List"}</span>}<span style={{ fontWeight: 700, color: W.ink, fontSize: 14 }}>{gwGuestName(g)}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</span></div>
                 <div style={{ fontSize: 12, color: W.soft, wordBreak: "break-all" }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
                 {gwGuestNote(g) && <div style={{ fontSize: 12, color: tm[2], fontWeight: 700, marginTop: 2 }}>📌 {gwGuestNote(g)}</div>}
               </div>
@@ -13933,7 +13968,7 @@ function CheckInSheet({ event, onClose }) {
                 } catch (e2) { alert("Could not send the email."); }
               }} title="Email the ticket" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>}
               <button onClick={() => shareGuest(g)} title="Send ticket with QR on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12 }}><MessageCircle size={13} /></button>
-              <button onClick={() => { if (window.confirm(`Remove ${g.name} from the guest list?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove guest" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
+              <button onClick={() => { if (window.confirm(`Remove ${gwGuestName(g)} from the guest list?`)) supabase.rpc("delete_guest", { p_id: g.id }).then(({ error }) => error ? alert(error.message) : loadGuests()); }} title="Remove guest" style={{ background: "none", border: "none", color: "#C0392B", cursor: "pointer", padding: 4 }}><Trash2 size={14} /></button>
               <div onClick={() => { setGuests(gs => gs.map(x => x.id === g.id ? { ...x, checked_in: !g.checked_in } : x)); supabase.rpc("set_guest_checkin", { p_id: g.id, p_in: !g.checked_in }); }} style={{ width: 26, height: 26, borderRadius: "50%", border: `2px solid ${g.checked_in ? W.teal : W.line}`, background: g.checked_in ? W.teal : "#fff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>{g.checked_in && <Check size={15} />}</div>
             </div>
           ); })}
@@ -15513,7 +15548,7 @@ function GuestTickets({ event }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
               <span style={{ background: tm[4], color: tm[3], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 9 }}>{tm[1]} {tm[2]}</span>
-              <PersonAvatar url={g.door_photo} name={g.name} size={42}/><span style={{fontSize:11}}>{g.door_gender||""}</span><b style={{ fontSize: 14.5, color: W.ink }}>{g.name}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</b>
+              <PersonAvatar url={g.door_photo} name={gwGuestName(g)} size={42}/><span style={{fontSize:11}}>{g.door_gender||""}</span><b style={{ fontSize: 14.5, color: W.ink }}>{gwGuestName(g)}{(g.quantity || 1) > 1 ? ` ×${g.quantity}` : ""}</b>
             </div>
             <div style={{ fontSize: 11.5, color: W.soft, wordBreak: "break-all", marginTop: 3 }}>{[g.phone, g.email, g.age ? `${g.age}y` : null, g.location].filter(Boolean).join(" · ") || "no contact"} · <span style={{ fontFamily: "ui-monospace,monospace", fontWeight: 800, color: W.ink, background: "#E7F6EF", padding: "1px 7px", borderRadius: 6 }}>{g.code}</span></div>
             <div onClick={() => editNote(g)} title="Tap to edit note" style={{ fontSize: 12, marginTop: 5, cursor: "pointer", color: gwGuestNote(g) ? tm[3] : W.soft, fontWeight: gwGuestNote(g) ? 700 : 500 }}>{gwGuestNote(g) ? `📌 ${gwGuestNote(g)}` : "＋ Add reserved table / note"}</div>
