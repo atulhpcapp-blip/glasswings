@@ -13716,15 +13716,50 @@ function TimeCapsule({ event: e, profile }) {
 function EventMembersSheet({ event, onClose }) {
   const [rows, setRows] = useState(null);
   const [guestRows,setGuestRows]=useState([]);
+  const [missingPaid,setMissingPaid]=useState([]);
+  const [restoreBusy,setRestoreBusy]=useState(null);
   const [err, setErr] = useState("");
   const [guestRefresh,setGuestRefresh]=useState(0);
   const load = async () => {
-    const [mr,gr]=await Promise.all([
+    const [mr,gr,hr]=await Promise.all([
       supabase.rpc("event_member_list",{p_event:event.id}),
-      supabase.rpc("guest_list",{p_event:event.id})
+      supabase.rpc("guest_list",{p_event:event.id}),
+      supabase.rpc("event_ticket_holders",{p_event:event.id})
     ]);
-    if(mr.error)setErr(mr.error.message);else{setErr("");setRows(mr.data||[]);}
+    const members=mr.error?[]:(mr.data||[]);
+    if(mr.error)setErr(mr.error.message);else{setErr("");setRows(members);}
     if(!gr.error)setGuestRows(gr.data||[]);
+    const normPhone=v=>String(v||"").replace(/\D/g,"").replace(/^91(?=\d{10}$)/,"").slice(-10);
+    const normName=v=>String(v||"").trim().toLowerCase().replace(/\s+/g," ");
+    const activePhones=new Set(members.map(m=>normPhone(m.phone)).filter(Boolean));
+    const activeNames=new Set(members.map(m=>normName(m.full_name||m.name)).filter(Boolean));
+    const history=(hr.error?[]:(hr.data||[])).filter(h=>["online","credits","free"].includes(String(h.method||"").toLowerCase()));
+    const missing=history.filter(h=>{
+      const ph=normPhone(h.phone),nm=normName(h.name||h.full_name);
+      return !((ph&&activePhones.has(ph))||(nm&&activeNames.has(nm)));
+    }).map((h,i)=>({
+      ...h,
+      _recoverKey:String(h.user_id||h.member_id||h.ref||h.phone||h.name||i),
+      _userId:h.user_id||h.member_id||null,
+      full_name:h.full_name||h.name||"Paid member",
+      qty:Number(h.qty)||1,
+      types:h.ticket_type||h.types||"Standard"
+    }));
+    setMissingPaid(missing);
+  };
+  const restorePaidMember=async(h)=>{
+    if(!h._userId)return alert("This paid purchase is in sales history, but its member account could not be identified automatically. Open Sales/Analytics to verify the purchase before restoring.");
+    if(!window.confirm(`Restore ${h.full_name||"this member"}'s active event entry?\n\nA paid purchase exists in history, but the active ticket is missing. This will re-issue ${h.qty||1} active ticket${Number(h.qty||1)===1?"":"s"} so they appear in Members, Check-in and the guest list again.`))return;
+    setRestoreBusy(h._recoverKey);
+    const {error}=await supabase.rpc("issue_ticket",{p_event:event.id,p_user:h._userId,p_qty:Number(h.qty)||1});
+    setRestoreBusy(null);
+    if(error)return alert(error.message);
+    await load();
+    try{
+      const token=(await supabase.auth.getSession()).data.session?.access_token;
+      fetch("/api/email/ticket",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({access_token:token,event_id:event.id,for_user:h._userId})});
+    }catch{}
+    alert(`${h.full_name||"Member"} restored ✅\n\nThey are now an active ticket member again and will appear like Charan.`);
   };
   const moveMemberToGuestList = async (m,listName) => {
     if(!listName)return;
@@ -13795,6 +13830,18 @@ function EventMembersSheet({ event, onClose }) {
           </div>)}
         </div>}
         <DoorSalesHistory event={event} refresh={guestRefresh}/>
+        {missingPaid.length>0&&<div style={{background:"#EEF6FF",border:"1px solid #CFE2F6",borderRadius:14,padding:12,marginBottom:14}}>
+          <div style={{fontWeight:900,color:"#1B5E8A",fontSize:14.5}}>🧾 Paid purchases with missing active entry ({missingPaid.length})</div>
+          <div style={{fontSize:11.8,color:W.soft,lineHeight:1.45,margin:"3px 0 6px"}}>These people still exist in purchase history but no longer have an active member ticket. Restore only when the cancellation was accidental or only a duplicate door entry was meant to be removed.</div>
+          {missingPaid.map(h=><div key={h._recoverKey} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:"1px solid #D8E8F5"}}>
+            <PersonAvatar url={h.avatar_url||""} name={h.full_name} size={40}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:800,color:W.ink,fontSize:14}}>{h.full_name}</div>
+              <div style={{fontSize:11.8,color:W.soft}}>{h.types} ×{h.qty}{h.phone?` · ${h.phone}`:""}{Number(h.paid||0)>0?` · ₹${Number(h.paid).toLocaleString("en-IN")}`:""}</div>
+            </div>
+            <button disabled={restoreBusy===h._recoverKey||!h._userId} onClick={()=>restorePaidMember(h)} style={{...btn(h._userId?W.teal:"#E9ECEB",h._userId?"#fff":W.soft),padding:"7px 10px",fontSize:12,fontWeight:850,opacity:restoreBusy===h._recoverKey?.6:1}}>{restoreBusy===h._recoverKey?"Restoring…":h._userId?"↻ Restore entry":"Verify purchase"}</button>
+          </div>)}
+        </div>}
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
                 {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
           <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
