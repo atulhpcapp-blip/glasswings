@@ -13765,6 +13765,10 @@ function EventMembersSheet({ event, onClose }) {
   const [guestRows,setGuestRows]=useState([]);
   const [missingPaid,setMissingPaid]=useState([]);
   const [restoreBusy,setRestoreBusy]=useState(null);
+  const [restoreOpen,setRestoreOpen]=useState(false);
+  const [restoreQ,setRestoreQ]=useState("");
+  const [restoreResults,setRestoreResults]=useState([]);
+  const [restoreSearching,setRestoreSearching]=useState(false);
   const [err, setErr] = useState("");
   const [guestRefresh,setGuestRefresh]=useState(0);
   const load = async () => {
@@ -13808,6 +13812,37 @@ function EventMembersSheet({ event, onClose }) {
     }catch{}
     alert(`${h.full_name||"Member"} restored ✅\n\nThey are now an active ticket member again and will appear like Charan.`);
   };
+  const searchRestoreMembers=async()=>{
+    const q=restoreQ.trim();
+    if(q.length<2){setRestoreResults([]);return;}
+    setRestoreSearching(true);
+    try{
+      const {data,error}=await supabase.rpc("staff_directory");
+      if(error)throw error;
+      const needle=q.toLowerCase();
+      const activeIds=new Set((rows||[]).map(x=>x.user_id));
+      const found=(data||[]).filter(m=>{
+        const hay=`${m.full_name||m.name||""} ${m.phone||""} ${m.email||""}`.toLowerCase();
+        return hay.includes(needle)&&!activeIds.has(m.id||m.user_id);
+      }).slice(0,20);
+      setRestoreResults(found);
+    }catch(e){alert(e.message||"Could not search members.");setRestoreResults([]);}
+    finally{setRestoreSearching(false);}
+  };
+  const restoreMemberDirect=async(m)=>{
+    const uid=m.id||m.user_id;
+    if(!uid)return alert("Member account ID is missing.");
+    const nm=m.full_name||m.name||"this member";
+    if(!window.confirm(`Restore ${nm} to ${event.title}?\n\nThis creates one active event entry so the member appears in Members, Check-in and the guest list again. Use this only when their genuine ticket was removed accidentally.`))return;
+    setRestoreBusy(`direct-${uid}`);
+    const {error}=await supabase.rpc("issue_ticket",{p_event:event.id,p_user:uid,p_qty:1});
+    setRestoreBusy(null);
+    if(error)return alert(error.message);
+    setRestoreQ("");setRestoreResults([]);setRestoreOpen(false);
+    await load();
+    alert(`${nm} restored ✅`);
+  };
+
   const moveMemberToGuestList = async (m,listName) => {
     if(!listName)return;
     if(!window.confirm(`Move ${m.full_name||"this member"} from their current ticket to ${listName}?\n\nTheir current member ticket will be withdrawn and replaced by one scannable guest-list invitation. Their original payment history is not used to create a second active entry.`)) return;
@@ -13876,6 +13911,22 @@ function EventMembersSheet({ event, onClose }) {
             <GuestListChangeButton currentList={gwGuestListFromNote(g)||""} allowNone noneLabel="Door Sale / no guest list" onSave={async(listName)=>{const {error}=await supabase.rpc("set_guest_note",{p_id:g.id,p_note:gwApplyGuestListNote(g.note,listName)});if(error)throw error;await load();setGuestRefresh(x=>x+1);}}/>
           </div>)}
         </div>}
+        <div style={{background:"#F4F8FF",border:"1px solid #D8E5F6",borderRadius:14,padding:12,marginBottom:14}}>
+          <button type="button" onClick={()=>setRestoreOpen(v=>!v)} style={{...btn("#fff","#1B5E8A"),border:"1px solid #CFE2F6",width:"100%",justifyContent:"center",fontWeight:900}}>↻ Restore member</button>
+          {restoreOpen&&<div style={{marginTop:10}}>
+            <div style={{fontSize:11.8,color:W.soft,lineHeight:1.45,marginBottom:8}}>Use this when a genuine member ticket was removed accidentally, for example while cancelling a duplicate door entry. Search the Glasswings member and restore one active event entry.</div>
+            <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+              <input value={restoreQ} onChange={e=>setRestoreQ(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")searchRestoreMembers();}} placeholder="Search member name, phone or email" style={{...gwField,flex:"1 1 220px"}}/>
+              <button disabled={restoreSearching||restoreQ.trim().length<2} onClick={searchRestoreMembers} style={{...btn(W.teal,"#fff"),justifyContent:"center",minWidth:92,opacity:restoreSearching ? .6 : 1}}>{restoreSearching?"Searching…":"Search"}</button>
+            </div>
+            {restoreResults.map(m=>{const uid=m.id||m.user_id;return <div key={uid} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderTop:`1px solid ${W.line}`}}>
+              <PersonAvatar url={m.avatar_url} name={m.full_name||m.name} size={42}/>
+              <div style={{flex:1,minWidth:0}}><div style={{fontWeight:850,color:W.ink}}>{m.full_name||m.name||"Member"}</div><div style={{fontSize:11.8,color:W.soft,overflowWrap:"anywhere"}}>{[m.phone,m.email,m.city,m.area].filter(Boolean).join(" · ")||"Glasswings member"}</div></div>
+              <button disabled={restoreBusy===`direct-${uid}`} onClick={()=>restoreMemberDirect(m)} style={{...btn(W.teal,"#fff"),padding:"7px 10px",fontSize:12,fontWeight:850}}>{restoreBusy===`direct-${uid}`?"Restoring…":"Restore"}</button>
+            </div>})}
+            {!restoreSearching&&restoreQ.trim().length>=2&&restoreResults.length===0&&<div style={{fontSize:12,color:W.soft,marginTop:8}}>No inactive matching member found. If Uma does not appear here, search Admin → Members to confirm her profile still exists.</div>}
+          </div>}
+        </div>
         <DoorSalesHistory event={event} refresh={guestRefresh}/>
         {missingPaid.length>0&&<div style={{background:"#EEF6FF",border:"1px solid #CFE2F6",borderRadius:14,padding:12,marginBottom:14}}>
           <div style={{fontWeight:900,color:"#1B5E8A",fontSize:14.5}}>🧾 Paid purchases with missing active entry ({missingPaid.length})</div>
@@ -13891,24 +13942,22 @@ function EventMembersSheet({ event, onClose }) {
         </div>}
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
                 {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
-          <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
-            <PersonAvatar url={m.avatar_url} name={m.full_name} size={40} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, color: W.ink, fontSize: 14.5 }}>{m.full_name || "—"} {m.checked_in && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>✓ IN</span>}</div>
-              <div style={{ fontSize: 12, color: W.soft }}>{m.types || "Standard"} ×{m.qty}{m.phone ? ` · ${m.phone}` : ""}</div>
+          <article key={m.user_id} style={{borderTop:`1px solid ${W.line}`,padding:"14px 0"}}>
+            <div style={{display:"flex",alignItems:"center",gap:11,minWidth:0}}>
+              <PersonAvatar url={m.avatar_url} name={m.full_name} size={54}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:850,color:W.ink,fontSize:15.5,overflowWrap:"anywhere"}}>{m.full_name||"—"} {m.checked_in&&<span style={{background:"#E7F6EF",color:W.teal,fontSize:10,fontWeight:800,padding:"1px 7px",borderRadius:8}}>✓ IN</span>}</div>
+                <div style={{fontSize:12.5,color:W.soft,marginTop:2,overflowWrap:"anywhere"}}>{m.types||"Standard"} ×{m.qty||1}</div>
+                {m.phone&&<div style={{fontSize:12.5,color:W.soft,marginTop:2,overflowWrap:"anywhere"}}>{m.phone}</div>}
+              </div>
             </div>
-            <GuestListChangeButton label="Change list" onSave={(listName)=>moveMemberToGuestList(m,listName)} />
-            {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" title="WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12, textDecoration: "none" }}><MessageCircle size={13} /></a>}
-            <button onClick={async () => {
-              try {
-                const token = (await supabase.auth.getSession()).data.session?.access_token;
-                const r = await fetch("/api/email/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, event_id: event.id, for_user: m.user_id }) });
-                const out = await r.json();
-                alert(r.ok ? (out.skipped ? "Not sent: " + out.skipped : `Ticket email sent to ${m.full_name || "member"} ✅`) : (out.error || "Could not send."));
-              } catch (e2) { alert("Could not send the email."); }
-            }} title="Resend ticket email" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 9px", fontSize: 12 }}>✉️</button>
-            <button onClick={() => withdraw(m)} title="Cancel this member's event entry" style={{ ...btn("#FFF1F0", "#B42318"), border: "1px solid #F6C7C3", padding: "7px 10px", fontSize: 12, fontWeight: 850, whiteSpace: "nowrap" }}>✕ Cancel / Refund</button>
-          </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10,alignItems:"stretch"}}>
+              <GuestListChangeButton label="Change list" onSave={(listName)=>moveMemberToGuestList(m,listName)}/>
+              {m.phone&&<a href={waLink(m.phone)} target="_blank" rel="noreferrer" title="WhatsApp" style={{...btn("#25D366","#fff"),padding:"9px 12px",fontSize:12.5,textDecoration:"none"}}><MessageCircle size={15}/> WhatsApp</a>}
+              <button onClick={async()=>{try{const token=(await supabase.auth.getSession()).data.session?.access_token;const r=await fetch("/api/email/ticket",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({access_token:token,event_id:event.id,for_user:m.user_id})});const out=await r.json();alert(r.ok?(out.skipped?"Not sent: "+out.skipped:`Ticket email sent to ${m.full_name||"member"} ✅`):(out.error||"Could not send."));}catch(e2){alert("Could not send the email.");}}} title="Resend ticket email" style={{...btn("#fff",W.ink),border:`1px solid ${W.line}`,padding:"9px 12px",fontSize:12.5}}>✉️ Email</button>
+              <button onClick={()=>withdraw(m)} title="Cancel this member's event entry" style={{...btn("#FFF1F0","#B42318"),border:"1px solid #F6C7C3",padding:"9px 12px",fontSize:12.5,fontWeight:850,whiteSpace:"nowrap"}}>✕ Cancel / Refund</button>
+            </div>
+          </article>
         ))}
       </div>
     </div>
@@ -15409,7 +15458,6 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
               </div>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <button onClick={() => onBroadcastEvent(e)} title={privateOnly ? "Notify only the invited segments" : "Post to all group chats"} style={{ ...btn(privateOnly ? "#6D28D9" : W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Zap size={14} />{privateOnly ? "Notify segments" : "Post"}</button>
               <button onClick={(ev) => { ev.stopPropagation(); setManage(e.id); setMSeg("invite"); }} title="Send a personal invitation to a guest or Glasswings member" style={{ ...btn("#B7791F", "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5, fontWeight: 850 }}><span style={{fontSize:14}}>💌</span>Invite</button>
               <button onClick={() => setMembersFor(e)} title="Who's coming — list, contact, withdraw" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Members</button>
               <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Check-in</button>
