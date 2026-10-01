@@ -4877,6 +4877,123 @@ function MatchCelebration({ me, p, onSayHi, onClose }) {
     </div>
   );
 }
+function CommunityLiveRoom({ user, profile, onUpgrade }) {
+  const [messages, setMessages] = useState([]);
+  const [status, setStatus] = useState({ unlimited: false, used_today: 0, limit: 5, remaining: 5 });
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [onlineCount, setOnlineCount] = useState(1);
+  const [err, setErr] = useState("");
+  const bottomRef = useRef(null);
+
+  const load = useCallback(async () => {
+    const [mr, sr] = await Promise.all([
+      supabase.rpc("gw_community_chat_list"),
+      supabase.rpc("gw_community_chat_status")
+    ]);
+    if (!mr.error) setMessages(Array.isArray(mr.data) ? mr.data : []);
+    if (!sr.error && sr.data) setStatus(sr.data);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const ch = supabase.channel("gw-community-live-room", { config: { presence: { key: user.id } } });
+    ch.on("presence", { event: "sync" }, () => {
+      try {
+        const st = ch.presenceState() || {};
+        setOnlineCount(Object.keys(st).length || 1);
+      } catch { setOnlineCount(1); }
+    });
+    ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "community_chat_messages" }, () => load());
+    ch.subscribe(async state => {
+      if (state === "SUBSCRIBED") {
+        try { await ch.track({ user_id: user.id, name: profile?.full_name || "Member", avatar_url: profile?.avatar_url || "", at: new Date().toISOString() }); } catch {}
+      }
+    });
+    return () => { try { ch.untrack(); } catch {} supabase.removeChannel(ch); };
+  }, [user?.id, profile?.full_name, profile?.avatar_url, load]);
+
+  const send = async () => {
+    const body = text.trim();
+    if (!body || busy) return;
+    if (!status.unlimited && Number(status.remaining || 0) <= 0) {
+      setErr("You've used your 5 free messages for today. Subscribe for unlimited room chat.");
+      return;
+    }
+    setBusy(true); setErr("");
+    const { data, error } = await supabase.rpc("gw_community_chat_send", { p_body: body });
+    setBusy(false);
+    if (error) { setErr(error.message || "Could not send message."); return; }
+    if (!data?.ok) {
+      if (data?.reason === "daily_limit") setErr("You've used your 5 free messages for today. Subscribe for unlimited room chat.");
+      else setErr(data?.message || "Could not send message.");
+      if (data?.status) setStatus(data.status);
+      return;
+    }
+    setText("");
+    if (data?.status) setStatus(data.status);
+    await load();
+  };
+
+  const fmtTime = v => { try { return new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+  const remaining = status.unlimited ? null : Math.max(0, Number(status.remaining ?? (5 - Number(status.used_today || 0))));
+  const blocked = !status.unlimited && remaining <= 0;
+
+  return <div style={{ padding: "12px 14px 22px" }}>
+    <div style={{ background: "linear-gradient(120deg,#0F766E,#6D28D9 58%,#DB2777)", color: "#fff", borderRadius: 18, padding: "15px 16px", boxShadow: "0 8px 24px rgba(109,40,217,.18)", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+        <div style={{ width: 46, height: 46, borderRadius: 15, background: "rgba(255,255,255,.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>💬</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 950, fontSize: 18 }}>Glasswings Live Room</div>
+          <div style={{ fontSize: 12.5, opacity: .92, marginTop: 3 }}>One room. Everyone online. Pure conversation.</div>
+        </div>
+        <div style={{ background: "rgba(255,255,255,.18)", border: "1px solid rgba(255,255,255,.25)", borderRadius: 999, padding: "6px 10px", fontSize: 11.5, fontWeight: 900, whiteSpace: "nowrap" }}>🟢 {onlineCount} online</div>
+      </div>
+      <div style={{ marginTop: 12, display: "flex", gap: 7, flexWrap: "wrap" }}>
+        <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>Text only</span>
+        <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>{status.unlimited ? "💎 Unlimited messages" : `Free: ${remaining}/5 messages left today`}</span>
+        <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>No photos · no files · no videos</span>
+      </div>
+    </div>
+
+    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, overflow: "hidden", boxShadow: "0 3px 14px rgba(17,27,33,.06)" }}>
+      <div style={{ height: "min(58vh,560px)", minHeight: 360, overflowY: "auto", padding: "12px 11px", background: "linear-gradient(#F7F5F2,#F2EEE8)", backgroundImage: WALL }}>
+        {loading ? <div style={{ textAlign: "center", color: W.soft, padding: 30 }}>Opening live room…</div>
+          : messages.length === 0 ? <div style={{ textAlign: "center", color: W.soft, padding: "50px 18px", fontSize: 13.5 }}><div style={{ fontSize: 34, marginBottom: 8 }}>👋</div>Be the first to say hello.</div>
+          : messages.map(m => {
+            const mine = m.sender_id === user?.id;
+            return <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", gap: 7, marginBottom: 9, alignItems: "flex-end" }}>
+              {!mine && <div style={{ width: 31, height: 31, borderRadius: "50%", overflow: "hidden", flexShrink: 0, background: "#E7E8EA", border: "1px solid #fff" }}>{m.avatar_url ? <img src={m.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>🙂</div>}</div>}
+              <div style={{ maxWidth: "82%", background: mine ? W.sent : "#fff", borderRadius: mine ? "14px 14px 3px 14px" : "14px 14px 14px 3px", padding: "7px 10px 6px", boxShadow: "0 1px 2px rgba(17,27,33,.12)", wordBreak: "break-word" }}>
+                {!mine && <div style={{ fontSize: 11, fontWeight: 900, color: "#7C3AED", marginBottom: 2 }}>{m.sender_name || "Member"}</div>}
+                <div style={{ fontSize: 13.5, color: W.ink, lineHeight: 1.42, whiteSpace: "pre-wrap" }}>{m.body}</div>
+                <div style={{ fontSize: 9.5, color: W.soft, textAlign: "right", marginTop: 2 }}>{fmtTime(m.created_at)}</div>
+              </div>
+            </div>;
+          })}
+        <div ref={bottomRef} />
+      </div>
+      <div style={{ borderTop: `1px solid ${W.line}`, padding: 10, background: "#fff" }}>
+        {err && <div style={{ background: "#FFF1F2", border: "1px solid #FECDD3", color: "#BE123C", borderRadius: 10, padding: "8px 10px", fontSize: 12, marginBottom: 8 }}>{err}</div>}
+        {blocked ? <div style={{ textAlign: "center", padding: "5px 4px 3px" }}>
+          <div style={{ fontWeight: 850, color: W.ink, fontSize: 13.5 }}>5 free messages used for today</div>
+          <div style={{ color: W.soft, fontSize: 11.5, marginTop: 3 }}>You can still read the room. Subscribe for unlimited messages.</div>
+          <button onClick={() => onUpgrade && onUpgrade()} style={{ ...btn("#6D28D9", "#fff"), marginTop: 9, justifyContent: "center", padding: "9px 15px" }}>💎 View subscription plans</button>
+        </div> : <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <textarea value={text} onChange={e => setText(e.target.value.slice(0,600))} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Message everyone online…" rows={1} style={{ flex: 1, minHeight: 42, maxHeight: 110, resize: "vertical", border: `1px solid ${W.line}`, borderRadius: 13, padding: "10px 12px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+          <button onClick={send} disabled={busy || !text.trim()} aria-label="Send message" style={{ width: 43, height: 43, borderRadius: 13, border: "none", background: text.trim() ? W.teal : "#DCE3E1", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: text.trim() ? "pointer" : "default", flexShrink: 0 }}><Send size={19} /></button>
+        </div>}
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 7, color: W.soft, fontSize: 10.5 }}><span>💬 Text chat only</span><span>{text.length}/600</span></div>
+      </div>
+    </div>
+  </div>;
+}
+
 function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = false, onOpenDM, isAdmin = false, isStaff = false, isSuper = false, isMod = false, onUpgrade }) {
   const [mtab, setMtab] = useState("discover");
   const [newMemberRange, setNewMemberRange] = useState("30");
@@ -5331,12 +5448,24 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
       <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", overflowX: "auto" }}>
         {[
           ["discover", "✨ Discover"],
+          ["community", "🟢 Live Room"],
           ...(isStaff ? [["newmembers", "🆕 New Members"]] : []),
           ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]
         ].map(([k, l]) => (
           <button key={k} onClick={() => setMtab(k)} style={{ flex: "1 0 auto", minWidth: isStaff ? 120 : 0, padding: "9px 12px", borderRadius: 10, border: `1px solid ${mtab === k ? W.teal : W.line}`, background: mtab === k ? W.teal : "#fff", color: mtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>{l}</button>
         ))}
       </div>
+      {mtab !== "community" && <div onClick={() => setMtab("community")} style={{ margin: "11px 14px 0", background: "linear-gradient(110deg,#ECFDF5,#F5F3FF,#FDF2F8)", border: "1.5px solid #B7E4D3", borderRadius: 16, padding: "12px 13px", cursor: "pointer", boxShadow: "0 3px 12px rgba(0,128,105,.08)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ position: "relative", width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg,#008069,#6D28D9)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>💬<span style={{ position: "absolute", width: 10, height: 10, borderRadius: "50%", background: "#22C55E", border: "2px solid #fff", right: -1, top: -1 }} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 950, color: W.ink, fontSize: 15 }}>Live Community Room <span style={{ color: "#16A34A", fontSize: 11 }}>● LIVE</span></div>
+            <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>Everyone online chats together · text only · subscribers chat unlimited</div>
+          </div>
+          <div style={{ color: "#6D28D9", fontWeight: 900, fontSize: 12, flexShrink: 0 }}>ENTER ›</div>
+        </div>
+      </div>}
+      {mtab === "community" && <CommunityLiveRoom user={user} profile={profile} onUpgrade={onUpgrade} />}
       {mtab === "discover" && (
         <div style={{ padding: "12px 14px 0" }}>
           <div style={{ background: "#fff", border: "1px solid #EBD9F0", borderRadius: 14, padding: "11px 12px" }}>
@@ -11270,7 +11399,6 @@ function CreditsAdmin() {
 }
 function CouponsAdmin({ events }) {
   const [list, setList] = useState(null);
-  const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [uses, setUses] = useState({});
   const [f, setF] = useState({ code: "", kind: "percent", value: "", scope: "", min: "", expiry: "", maxUses: "", once: true });
   const [busy, setBusy] = useState(false);
@@ -17041,6 +17169,7 @@ function AdminAddMemberDialog({ open, onClose, cities = [], onCreated }) {
 
 function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities, onSetRoles }) {
   const [list, setList] = useState(null);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [pick, setPick] = useState({});
   const [dur, setDur] = useState({});
   const [editing, setEditing] = useState(null);
