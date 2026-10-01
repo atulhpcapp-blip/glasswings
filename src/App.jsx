@@ -206,6 +206,53 @@ function gwIsInvitationGuest(g){
  return !!gwGuestListFromNote(g) || n.includes('personal invitation');
 }
 function gwGuestListNote(list){return `Personal invitation | GUEST LIST: ${String(list||"Organiser's Guest List").trim()}`;}
+
+function gwNoteWithoutGuestList(note){
+ let s=String(note||'');
+ s=s.replace(/\s*\|\s*GUEST\s*LIST\s*:\s*[^|\n]+/ig,'');
+ s=s.replace(/GUEST\s*LIST\s*:\s*[^|\n]+/ig,'');
+ s=s.replace(/\bPersonal invitation\b\s*\|?\s*/ig,'');
+ return s.replace(/^\s*\|\s*|\s*\|\s*$/g,'').trim();
+}
+function gwApplyGuestListNote(note,list){
+ const rest=gwNoteWithoutGuestList(note);
+ const name=String(list||'').trim();
+ if(!name)return rest||null;
+ return [rest||'Personal invitation',`GUEST LIST: ${name}`].filter(Boolean).join(' | ');
+}
+function GuestListChangeButton({currentList='',onSave,label='Change list',allowNone=false,noneLabel='Door Sale / no guest list'}){
+ const [open,setOpen]=useState(false),[choice,setChoice]=useState(currentList||GW_GUEST_LIST_PRESETS[0]),[custom,setCustom]=useState(''),[saved,setSaved]=useState(()=>gwSavedGuestLists()),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const dialog=useRef(null);
+ useEffect(()=>{if(open)dialog.current?.showModal();else dialog.current?.close();},[open]);
+ const start=()=>{setChoice(currentList||(allowNone?'__none__':GW_GUEST_LIST_PRESETS[0]));setCustom('');setErr('');setOpen(true);};
+ const save=async()=>{
+  let value=choice==='__none__'?'':choice==='__custom__'?custom.trim():choice;
+  if(choice==='__custom__'&&!value)return setErr('Enter the guest list name.');
+  setBusy(true);setErr('');
+  try{
+   if(value){gwRememberGuestList(value);setSaved(gwSavedGuestLists());}
+   await onSave(value);
+   setOpen(false);
+  }catch(e){setErr(e?.message||'Could not change the list.');}
+  finally{setBusy(false);}
+ };
+ const opts=[...GW_GUEST_LIST_PRESETS,...saved.filter(x=>!GW_GUEST_LIST_PRESETS.includes(x))];
+ return <>
+  <button type="button" onClick={start} style={{...btn('#FFF7E8','#78521B'),padding:'6px 9px',fontSize:11.5}}>↔ {label}</button>
+  <dialog ref={dialog} onCancel={()=>setOpen(false)} onClose={()=>setOpen(false)} style={{border:0,borderRadius:18,padding:18,width:'min(430px, calc(100vw - 28px))',boxSizing:'border-box',color:'#17392e'}}>
+   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}><div style={{fontWeight:900,fontSize:17}}>Change guest list</div><button onClick={()=>setOpen(false)} style={btn('#eee','#333')}>✕</button></div>
+   <div style={{fontSize:12.5,color:'#62766e',margin:'7px 0 12px',lineHeight:1.45}}>Move this entry to a different organiser guest list without creating a second active entry.</div>
+   <select value={choice} onChange={e=>setChoice(e.target.value)} style={gwField}>
+    {allowNone&&<option value="__none__">{noneLabel}</option>}
+    {opts.map(x=><option key={x} value={x}>{x}</option>)}
+    <option value="__custom__">+ Create new guest list…</option>
+   </select>
+   {choice==='__custom__'&&<input value={custom} onChange={e=>setCustom(e.target.value)} placeholder="New guest list name" style={{...gwField,marginTop:8}}/>}
+   {err&&<div style={{color:'#a33',fontSize:12.5,marginTop:8}}>{err}</div>}
+   <button disabled={busy||(choice==='__custom__'&&!custom.trim())} onClick={save} style={{...btn('#08765b','#fff'),width:'100%',justifyContent:'center',marginTop:12,padding:'11px 14px',opacity:busy?.6:1}}>{busy?'Saving…':'Save list'}</button>
+  </dialog>
+ </>;
+}
 function InvitationButton({event,guest,memberId=null,label="💌 Invite"}){
  const [open,setOpen]=useState(false),[name,setName]=useState(''),[phone,setPhone]=useState(''),[age,setAge]=useState(''),[gender,setGender]=useState(''),[photo,setPhoto]=useState(''),[message,setMessage]=useState(''),[guestList,setGuestList]=useState("Organiser's Guest List"),[customList,setCustomList]=useState(''),[savedLists,setSavedLists]=useState(()=>gwSavedGuestLists()),[preview,setPreview]=useState(''),[file,setFile]=useState(null),[inviteCode,setInviteCode]=useState(''),[inviteId,setInviteId]=useState(null),[busy,setBusy]=useState(false),[err,setErr]=useState('');
  const dialog=useRef(null);
@@ -319,6 +366,7 @@ function DoorSalesHistory({event,refresh=0}){
    <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:10}}>
     <a href={`https://wa.me/${waNum(g.phone)}?text=${encodeURIComponent(`Your ticket for ${event.title}\nhttps://glass-wings.com/?gt=${encodeURIComponent(g.code)}\nShow this ticket at the door.\n\nYou’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡\n— Glasswings`)}`} target="_blank" rel="noreferrer" style={btn('#08765b','#fff')}>Resend ticket</a>
     <button onClick={async()=>{try{const blob=await makeTicketBlob({title:event.title,dateStr:event.event_date,place:[event.venue,event.city].filter(Boolean).join(', '),name:g.name,qty:g.quantity||1,code:g.code,photo:g.door_photo});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='glasswings-ticket.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),15000);}catch(e){setErr('Could not create ticket image. Use Resend ticket.');}}} style={btn('#fff','#17392e')}>Download ticket</button>
+    <GuestListChangeButton currentList={gwGuestListFromNote(g)} allowNone={['cash','upi'].includes(String(g.method||'').toLowerCase())} onSave={async(listName)=>{const next=gwApplyGuestListNote(g.note||g.notes||g.guest_note||'',listName);const {error}=await supabase.rpc('set_guest_note',{p_id:g.id,p_note:next});if(error)throw error;await load();}}/>
     <button onClick={()=>setEditing({...g})} style={btn('#fff','#17392e')}>Photo / gender</button><InvitationButton event={event} guest={g}/>
     <button disabled={cancellingId===g.id} onClick={()=>cancelDoorSale(g)} style={{...btn('#FFF1F0','#B42318'),border:'1px solid #F6C7C3',fontWeight:850,opacity:cancellingId===g.id ? .6 : 1}}>{cancellingId===g.id?'Cancelling…':(gwIsInvitationGuest(g)?'✕ Remove invitation':'✕ Cancel / Refund')}</button>
    </div>
@@ -13650,7 +13698,43 @@ function TimeCapsule({ event: e, profile }) {
 function EventMembersSheet({ event, onClose }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState("");
+  const [guestRefresh,setGuestRefresh]=useState(0);
   const load = () => supabase.rpc("event_member_list", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
+  const moveMemberToGuestList = async (m,listName) => {
+    if(!listName)return;
+    if(!window.confirm(`Move ${m.full_name||"this member"} from their current ticket to ${listName}?\n\nTheir current member ticket will be withdrawn and replaced by one scannable guest-list invitation. Their original payment history is not used to create a second active entry.`)) return;
+    const [{data:prof},{data:det}] = await Promise.all([
+      supabase.from("profiles").select("full_name,gender,avatar_url").eq("id",m.user_id).maybeSingle(),
+      supabase.from("member_details").select("age,city,area").eq("user_id",m.user_id).maybeSingle(),
+    ]);
+    const {data:gNew,error:addErr}=await supabase.rpc("add_guest_ticket",{
+      p_event:event.id,
+      p_name:prof?.full_name||m.full_name||"Member",
+      p_phone:m.phone||"",
+      p_email:"",
+      p_qty:Number(m.qty)||1,
+      p_age:det?.age==null?null:Number(det.age),
+      p_location:[det?.area,det?.city].filter(Boolean).join(", ")||null,
+      p_type:"guest",
+      p_note:gwGuestListNote(listName)
+    });
+    if(addErr)throw addErr;
+    try{
+      if(gNew?.id&&(prof?.avatar_url||prof?.gender)) await supabase.rpc("gw_guest_portrait",{p_id:gNew.id,p_gender:prof?.gender||m.gender||"",p_photo:prof?.avatar_url||m.avatar_url||""});
+      const {error:withdrawErr}=await supabase.rpc("withdraw_ticket",{p_event:event.id,p_user:m.user_id});
+      if(withdrawErr){
+        if(gNew?.id) await supabase.rpc("delete_guest",{p_id:gNew.id});
+        throw withdrawErr;
+      }
+      gwRememberGuestList(listName);
+      await load();
+      setGuestRefresh(x=>x+1);
+      alert(`${m.full_name||"Member"} moved to ${listName} ✅\n\nA new guest-list invitation QR is now the active entry.`);
+    }catch(e){
+      if(gNew?.id){try{await supabase.rpc("delete_guest",{p_id:gNew.id});}catch{}}
+      throw e;
+    }
+  };
   useEffect(() => { load(); }, [event.id]);
   const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
   const withdraw = (m) => {
@@ -13666,7 +13750,7 @@ function EventMembersSheet({ event, onClose }) {
           <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
         <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} member${rows.length === 1 ? "" : "s"} · ${totQty} ticket${totQty === 1 ? "" : "s"} · ${rows.filter(r => r.checked_in).length} checked in`}</div>
-        <DoorSalesHistory event={event}/>
+        <DoorSalesHistory event={event} refresh={guestRefresh}/>
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
                 {rows === null ? <Center>loading…</Center> : rows.length === 0 ? <Center>No ticket holders yet.</Center> : rows.map(m => (
           <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 0", borderTop: `1px solid ${W.line}` }}>
@@ -13675,6 +13759,7 @@ function EventMembersSheet({ event, onClose }) {
               <div style={{ fontWeight: 700, color: W.ink, fontSize: 14.5 }}>{m.full_name || "—"} {m.checked_in && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 8 }}>✓ IN</span>}</div>
               <div style={{ fontSize: 12, color: W.soft }}>{m.types || "Standard"} ×{m.qty}{m.phone ? ` · ${m.phone}` : ""}</div>
             </div>
+            <GuestListChangeButton label="Change list" onSave={(listName)=>moveMemberToGuestList(m,listName)} />
             {m.phone && <a href={waLink(m.phone)} target="_blank" rel="noreferrer" title="WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12, textDecoration: "none" }}><MessageCircle size={13} /></a>}
             <button onClick={async () => {
               try {
