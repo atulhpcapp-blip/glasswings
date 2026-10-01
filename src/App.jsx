@@ -17137,8 +17137,15 @@ function AdminAddMemberDialog({ open, onClose, cities = [], onCreated }) {
     setBusy(true);setErr('');
     try{
       const {data:{session}}=await supabase.auth.getSession();
-      const r=await fetch('/api/admin/create-member',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:session?.access_token,full_name:name.trim(),email:email.trim().toLowerCase(),phone:phone.trim(),gender:gender||null,age:age===''?null:Number(age),city:city.trim(),area:area.trim(),profession:profession.trim(),photo_data:photo||null})});
-      const d=await r.json(); if(!r.ok||!d.ok) throw Error(d.error||'Could not create member.');
+      const r=await fetch('/api/admin/create-member',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({access_token:session?.access_token,full_name:name.trim(),email:email.trim().toLowerCase(),phone:phone.trim(),gender:gender||null,age:age===''?null:Number(age),city:city.trim(),area:area.trim(),profession:profession.trim(),photo_data:photo||null})});
+      const raw=await r.text();
+      let d={};
+      try{ d=raw?JSON.parse(raw):{}; }catch{ d={ok:false,error:raw||`Server returned ${r.status}`}; }
+      if(!r.ok||!d.ok){
+        const msg=String(d.error||raw||`Could not create member (HTTP ${r.status}).`);
+        if(r.status===404) throw Error('Create-member backend is not deployed. Add api/admin/create-member.js to the project and redeploy.');
+        throw Error(msg.length>420?msg.slice(0,420)+'…':msg);
+      }
       alert(`✅ ${name.trim()} added as a Glasswings member.\n\nAn invitation/login setup email has been sent to ${email.trim()}.`);
       onCreated?.(d);onClose?.();
     }catch(e){setErr(e.message||'Could not create member.');}finally{setBusy(false);}
