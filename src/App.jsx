@@ -4887,15 +4887,19 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
   const [onlineCount, setOnlineCount] = useState(1);
   const [err, setErr] = useState("");
   const [limitPopup, setLimitPopup] = useState(false);
+  const [canModerate, setCanModerate] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const bottomRef = useRef(null);
 
   const load = useCallback(async () => {
-    const [mr, sr] = await Promise.all([
+    const [mr, sr, cr] = await Promise.all([
       supabase.rpc("gw_community_chat_list"),
-      supabase.rpc("gw_community_chat_status")
+      supabase.rpc("gw_community_chat_status"),
+      supabase.rpc("gw_community_chat_can_moderate")
     ]);
     if (!mr.error) setMessages(Array.isArray(mr.data) ? mr.data : []);
     if (!sr.error && sr.data) setStatus(sr.data);
+    if (!cr.error) setCanModerate(cr.data === true);
     setLoading(false);
   }, []);
 
@@ -4911,7 +4915,7 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
         setOnlineCount(Object.keys(st).length || 1);
       } catch { setOnlineCount(1); }
     });
-    ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "community_chat_messages" }, () => load());
+    ch.on("postgres_changes", { event: "*", schema: "public", table: "community_chat_messages" }, () => load());
     ch.subscribe(async state => {
       if (state === "SUBSCRIBED") {
         try { await ch.track({ user_id: user.id, name: profile?.full_name || "Member", avatar_url: profile?.avatar_url || "", at: new Date().toISOString() }); } catch {}
@@ -4940,6 +4944,18 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
     setText("");
     if (data?.status) setStatus(data.status);
     await load();
+  };
+
+  const deleteMessage = async (m) => {
+    if (!canModerate || !m?.id || deletingId) return;
+    const ok = window.confirm(`Delete this message from ${m.sender_name || "member"}?\n\n"${String(m.body || "").slice(0,140)}${String(m.body || "").length > 140 ? "…" : ""}"`);
+    if (!ok) return;
+    setDeletingId(m.id); setErr("");
+    const { data, error } = await supabase.rpc("gw_community_chat_delete", { p_message: m.id });
+    setDeletingId(null);
+    if (error) { setErr(error.message || "Could not delete message."); return; }
+    if (data?.ok === false) { setErr(data?.message || "Could not delete message."); return; }
+    setMessages(xs => (xs || []).filter(x => x.id !== m.id));
   };
 
   const fmtTime = v => { try { return new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
@@ -4982,7 +4998,15 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
               <div style={{ maxWidth: "82%", background: mine ? W.sent : "#fff", borderRadius: mine ? "14px 14px 3px 14px" : "14px 14px 14px 3px", padding: "7px 10px 6px", boxShadow: "0 1px 2px rgba(17,27,33,.12)", wordBreak: "break-word" }}>
                 {!mine && <div style={{ fontSize: 11, fontWeight: 900, color: "#7C3AED", marginBottom: 2 }}>{m.sender_name || "Member"}</div>}
                 <div style={{ fontSize: 13.5, color: W.ink, lineHeight: 1.42, whiteSpace: "pre-wrap" }}>{m.body}</div>
-                <div style={{ fontSize: 9.5, color: W.soft, textAlign: "right", marginTop: 2 }}>{fmtTime(m.created_at)}</div>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:7, marginTop: 3 }}>
+                  <div style={{ fontSize: 9.5, color: W.soft }}>{fmtTime(m.created_at)}</div>
+                  {canModerate && <button
+                    onClick={() => deleteMessage(m)}
+                    disabled={deletingId === m.id}
+                    title="Delete inappropriate message"
+                    style={{border:"none",background:"transparent",padding:"1px 2px",fontSize:10.5,fontWeight:850,color:"#B91C1C",cursor:"pointer"}}
+                  >{deletingId === m.id ? "Deleting…" : "Delete"}</button>}
+                </div>
               </div>
             </div>;
           })}
