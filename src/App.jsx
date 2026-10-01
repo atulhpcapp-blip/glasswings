@@ -46,8 +46,16 @@ function gwGender(v) {
   if (["male", "man", "men", "m"].includes(g)) return "male";
   return g || "";
 }
+function ticketAudience(t) {
+  const saved = gwGender(t?.gender_restrict || "");
+  if (saved === "female" || saved === "male") return saved;
+  const name = String(t?.name || "").trim().toLowerCase();
+  if (/\b(women|woman|female|ladies|lady|girls|girl)\b/.test(name)) return "female";
+  if (/\b(men|man|male|stag|stags|boys|boy)\b/.test(name)) return "male";
+  return "any";
+}
 function ticketGenderAllowed(t, profile) {
-  const restrict = gwGender(t?.gender_restrict || "any");
+  const restrict = ticketAudience(t);
   const buyer = gwGender(profile?.gender);
   if (!restrict || restrict === "any") return true;
   if (restrict === "female") return buyer === "female";
@@ -60,7 +68,7 @@ function ticketStatus(t, e, stats, typeSold, profile) {
   const hasCap = cap != null && Number.isFinite(cap);
   if (hasCap && cap - sold <= 0) return { ok: false, label: "Sold out", reason: "capacity" };
 
-  const restrict = gwGender(t?.gender_restrict || "any");
+  const restrict = ticketAudience(t);
   const buyer = gwGender(profile?.gender);
   if (restrict === "female" && buyer && buyer !== "female") return { ok: false, label: "Women only", reason: "gender" };
   if (restrict === "male" && buyer && buyer !== "male") return { ok: false, label: "Men only", reason: "gender" };
@@ -2185,7 +2193,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const typePct = cap && cap > 0 ? Math.min(100, Math.round((sold / cap) * 100)) : null;
         const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
         const q = qtyMap[t.id] || 0;
-        const headroom = Math.min(MAX_TIX - selQty, menRemain == null ? Infinity : Math.max(0, menRemain - selQty));
+        const audience = ticketAudience(t);
+        const balanceHeadroom = audience === "female" ? Infinity : (menRemain == null ? Infinity : Math.max(0, menRemain - selQty));
+        const headroom = Math.min(MAX_TIX - selQty, balanceHeadroom);
         const max = Math.min(q + headroom, left == null ? MAX_TIX : left);
         return (
         <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}`, opacity: soldOut ? .5 : 1 }}>
@@ -2193,6 +2203,8 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>{t.name}
               {Number(t.disc_female_pct) > 0 && <span style={{ background: "#FCE7F1", color: "#D6618F", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_female_pct}% off for women</span>}
               {Number(t.disc_male_pct) > 0 && <span style={{ background: "#E8F2FB", color: "#1B6FB8", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_male_pct}% off for men</span>}
+              {ticketAudience(t) === "female" && <span style={{ background: "#FBE9F2", color: "#C0246E", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>Women only</span>}
+              {ticketAudience(t) === "male" && <span style={{ background: "#E8F2FB", color: "#1B6FB8", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>Men only</span>}
               {t.segment_id && <span style={{ background: "#F3E8FF", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>⭐ {segName(t.segment_id)} only</span>}
             </div>
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
