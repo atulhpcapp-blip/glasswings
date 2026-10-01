@@ -11270,6 +11270,7 @@ function CreditsAdmin() {
 }
 function CouponsAdmin({ events }) {
   const [list, setList] = useState(null);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [uses, setUses] = useState({});
   const [f, setF] = useState({ code: "", kind: "percent", value: "", scope: "", min: "", expiry: "", maxUses: "", once: true });
   const [busy, setBusy] = useState(false);
@@ -16985,6 +16986,59 @@ function ConnectionsPanel({ canApprove }) {
     </div>
   );
 }
+
+function AdminAddMemberDialog({ open, onClose, cities = [], onCreated }) {
+  const [name,setName]=useState(''),[email,setEmail]=useState(''),[phone,setPhone]=useState(''),[gender,setGender]=useState(''),[age,setAge]=useState(''),[city,setCity]=useState(''),[area,setArea]=useState(''),[profession,setProfession]=useState(''),[photo,setPhoto]=useState('');
+  const [busy,setBusy]=useState(false),[err,setErr]=useState('');
+  useEffect(()=>{ if(open){ setName('');setEmail('');setPhone('');setGender('');setAge('');setCity('');setArea('');setProfession('');setPhoto('');setErr(''); } },[open]);
+  if(!open) return null;
+  const fld={width:'100%',boxSizing:'border-box',border:`1px solid ${W.line}`,borderRadius:10,padding:'11px 12px',fontSize:14,outline:'none',background:'#fff',color:W.ink};
+  const pickPhoto=async(file)=>{
+    if(!file)return; setErr('');
+    try{
+      if(!(file.type||'').startsWith('image/')) throw Error('Choose an image file.');
+      const u=URL.createObjectURL(file),img=await loadImg(u);
+      const c=document.createElement('canvas');c.width=420;c.height=420;const x=c.getContext('2d');const side=Math.min(img.width,img.height);
+      x.drawImage(img,(img.width-side)/2,(img.height-side)/2,side,side,0,0,420,420);URL.revokeObjectURL(u);
+      setPhoto(c.toDataURL('image/jpeg',.8));
+    }catch(e){setErr(e.message||'Could not use that photo.');}
+  };
+  const create=async()=>{
+    if(!name.trim())return setErr('Full name is required.');
+    if(!email.trim()||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))return setErr('A valid email is required so the member can log in.');
+    setBusy(true);setErr('');
+    try{
+      const {data:{session}}=await supabase.auth.getSession();
+      const r=await fetch('/api/admin/create-member',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:session?.access_token,full_name:name.trim(),email:email.trim().toLowerCase(),phone:phone.trim(),gender:gender||null,age:age===''?null:Number(age),city:city.trim(),area:area.trim(),profession:profession.trim(),photo_data:photo||null})});
+      const d=await r.json(); if(!r.ok||!d.ok) throw Error(d.error||'Could not create member.');
+      alert(`✅ ${name.trim()} added as a Glasswings member.\n\nAn invitation/login setup email has been sent to ${email.trim()}.`);
+      onCreated?.(d);onClose?.();
+    }catch(e){setErr(e.message||'Could not create member.');}finally{setBusy(false);}
+  };
+  return <div role="dialog" aria-modal="true" style={{position:'fixed',inset:0,zIndex:120,background:'rgba(0,0,0,.48)',display:'flex',alignItems:'center',justifyContent:'center',padding:14}} onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)onClose?.();}}>
+    <div style={{width:'min(620px,100%)',maxHeight:'92dvh',overflowY:'auto',background:'#fff',borderRadius:18,padding:18,boxShadow:'0 24px 70px rgba(0,0,0,.28)'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:4}}><div><div style={{fontSize:20,fontWeight:900,color:W.ink}}>➕ Add New Member</div><div style={{fontSize:12.5,color:W.soft,marginTop:2}}>Create the member from the admin backend. They receive an email to set up/login.</div></div><button disabled={busy} onClick={onClose} style={btn('#eee','#333')}>✕</button></div>
+      {err&&<div style={{background:'#FDECEC',color:'#A33',borderRadius:10,padding:10,margin:'10px 0',fontSize:13,fontWeight:700}}>{err}</div>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:10,marginTop:14}}>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Full name *<input value={name} onChange={e=>setName(e.target.value)} style={{...fld,marginTop:5}} placeholder="Member's full name"/></label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Email *<input type="email" value={email} onChange={e=>setEmail(e.target.value)} style={{...fld,marginTop:5}} placeholder="name@example.com"/></label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Phone<input value={phone} onChange={e=>setPhone(e.target.value)} style={{...fld,marginTop:5}} placeholder="10-digit / +91..." inputMode="tel"/></label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Gender<select value={gender} onChange={e=>setGender(e.target.value)} style={{...fld,marginTop:5}}><option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Age<input value={age} onChange={e=>setAge(e.target.value.replace(/\D/g,''))} style={{...fld,marginTop:5}} inputMode="numeric" placeholder="Age"/></label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>City<input list="gw-admin-member-cities" value={city} onChange={e=>setCity(e.target.value)} style={{...fld,marginTop:5}} placeholder="City"/><datalist id="gw-admin-member-cities">{(cities||[]).map(c=><option key={c} value={c}/>)}</datalist></label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Area<input value={area} onChange={e=>setArea(e.target.value)} style={{...fld,marginTop:5}} placeholder="Area / locality"/></label>
+        <label style={{fontSize:12.5,fontWeight:700,color:W.soft}}>Profession<input value={profession} onChange={e=>setProfession(e.target.value)} style={{...fld,marginTop:5}} placeholder="Profession / work"/></label>
+      </div>
+      <div style={{marginTop:12,border:`1px solid ${W.line}`,borderRadius:12,padding:12}}>
+        <div style={{fontSize:12.5,fontWeight:800,color:W.ink,marginBottom:8}}>Photo (optional)</div>
+        <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}><PersonAvatar url={photo} name={name||'Member'} size={68}/><label style={{...btn('#E7F6EF',W.teal),cursor:'pointer'}}>📷 Choose photo<input type="file" accept="image/*" style={{display:'none'}} onChange={e=>{pickPhoto(e.target.files?.[0]);e.target.value='';}}/></label>{photo&&<button type="button" onClick={()=>setPhoto('')} style={btn('#fff','#A33')}>Remove</button>}</div>
+      </div>
+      <div style={{background:'#F5FAF8',border:'1px solid #D9EDE4',borderRadius:10,padding:10,marginTop:12,fontSize:12.5,color:'#365D51',lineHeight:1.5}}>Email is required for a real Glasswings login. Other details can be completed now or edited later by staff/member.</div>
+      <div style={{display:'flex',gap:8,marginTop:14}}><button disabled={busy} onClick={onClose} style={{...btn('#fff',W.ink),border:`1px solid ${W.line}`,flex:1,justifyContent:'center'}}>Cancel</button><button disabled={busy} onClick={create} style={{...btn(W.teal,'#fff'),flex:2,justifyContent:'center',opacity:busy?.65:1}}>{busy?'Creating member…':'✓ Create member & send invite'}</button></div>
+    </div>
+  </div>;
+}
+
 function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canAdd, canRemove, canEdit, canStamps, isSuper, cities, onSetRoles }) {
   const [list, setList] = useState(null);
   const [pick, setPick] = useState({});
@@ -17077,9 +17131,11 @@ function AdminMembers({ onSendDM, rooms, events, onGrantRoom, onRemoveRoom, canA
   const waLink = ph => "https://wa.me/" + (ph || "").replace(/[^\d]/g, "").replace(/^0+/, "");
   return (
     <div style={{ padding: 14 }}>
+      <AdminAddMemberDialog open={addMemberOpen} onClose={()=>setAddMemberOpen(false)} cities={cities} onCreated={()=>reload()} />
       {editing && <EditMemberSheet member={editing} isSuper={isSuper} cities={cities} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
       {rolesFor && <MemberRolesSheet member={rolesFor} cities={cities} onSetRoles={onSetRoles} onClose={() => setRolesFor(null)} onSaved={() => { setRolesFor(null); reload(); }} />}
       <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 12, marginBottom: 12 }}>
+        <button type="button" onClick={()=>setAddMemberOpen(true)} style={{...btn(W.teal,"#fff"),width:"100%",justifyContent:"center",padding:"12px 14px",fontSize:14.5,fontWeight:900,marginBottom:12}}>➕ Add New Member</button>
         {pending && pending.length > 0 && (
           <div style={{ background: "#FDF6EC", border: "1px solid #F2E2C4", borderRadius: 12, padding: "11px 13px", marginBottom: 12 }}>
             <div onClick={() => setPendOpen(o => !o)} style={{ display: "flex", justifyContent: "space-between", cursor: "pointer", fontWeight: 800, color: "#B45309", fontSize: 13.5 }}>
