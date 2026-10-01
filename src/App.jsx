@@ -655,7 +655,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -4188,6 +4188,7 @@ function Main({ user }) {
       {tab === "shorts" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="shorts" events={events} ticketTypes={ticketTypes} onOpenEvent={openEvent} />}
       {tab === "gallery" && <><Gallery isAdmin={isAdmin} events={events} onOpenEvent={openEvent} /></>}
       {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><MeetVerifyBanner user={user} profile={profile} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isStaff={isStaff} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
+      {tab === "groupchat" && <CommunityLiveRoom user={user} profile={profile} onUpgrade={() => setSubPage({ highlight: null })} />}
       {tab === "profile" && <div style={{ padding: "14px 14px 0", maxWidth: 640, margin: "0 auto" }}><VerificationPanel user={user} profile={profile} /></div>}
       {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
@@ -4879,12 +4880,13 @@ function MatchCelebration({ me, p, onSayHi, onClose }) {
 }
 function CommunityLiveRoom({ user, profile, onUpgrade }) {
   const [messages, setMessages] = useState([]);
-  const [status, setStatus] = useState({ unlimited: false, used_today: 0, limit: 5, remaining: 5 });
+  const [status, setStatus] = useState({ unlimited: false, used_today: 0, limit: 10, remaining: 10 });
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [onlineCount, setOnlineCount] = useState(1);
   const [err, setErr] = useState("");
+  const [limitPopup, setLimitPopup] = useState(false);
   const bottomRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -4922,7 +4924,7 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
     const body = text.trim();
     if (!body || busy) return;
     if (!status.unlimited && Number(status.remaining || 0) <= 0) {
-      setErr("You've used your 5 free messages for today. Subscribe for unlimited room chat.");
+      setLimitPopup(true);
       return;
     }
     setBusy(true); setErr("");
@@ -4930,7 +4932,7 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
     setBusy(false);
     if (error) { setErr(error.message || "Could not send message."); return; }
     if (!data?.ok) {
-      if (data?.reason === "daily_limit") setErr("You've used your 5 free messages for today. Subscribe for unlimited room chat.");
+      if (data?.reason === "daily_limit") setLimitPopup(true);
       else setErr(data?.message || "Could not send message.");
       if (data?.status) setStatus(data.status);
       return;
@@ -4941,10 +4943,18 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
   };
 
   const fmtTime = v => { try { return new Date(v).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
-  const remaining = status.unlimited ? null : Math.max(0, Number(status.remaining ?? (5 - Number(status.used_today || 0))));
+  const remaining = status.unlimited ? null : Math.max(0, Number(status.remaining ?? (10 - Number(status.used_today || 0))));
   const blocked = !status.unlimited && remaining <= 0;
 
   return <div style={{ padding: "12px 14px 22px" }}>
+    {limitPopup && <div onClick={() => setLimitPopup(false)} style={{position:"fixed",inset:0,zIndex:500,background:"rgba(10,18,24,.62)",display:"flex",alignItems:"center",justifyContent:"center",padding:18}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"min(390px,100%)",background:"#fff",borderRadius:22,padding:22,textAlign:"center",boxShadow:"0 24px 70px rgba(0,0,0,.35)"}}>
+        <div style={{fontSize:38}}>💎</div><div style={{fontSize:20,fontWeight:950,color:W.ink,marginTop:6}}>10 free messages used today</div>
+        <div style={{fontSize:13,color:W.soft,lineHeight:1.55,marginTop:7}}>Subscribe for unlimited Group Chat. Subscribers, admins, team/staff and organisers have unlimited messages.</div>
+        <button onClick={()=>{setLimitPopup(false);onUpgrade&&onUpgrade();}} style={{...btn("#6D28D9","#fff"),width:"100%",justifyContent:"center",padding:"12px 16px",marginTop:16,fontSize:14}}>💎 Subscribe for unlimited chat</button>
+        <button onClick={()=>setLimitPopup(false)} style={{...btn("#F3F4F6",W.ink),width:"100%",justifyContent:"center",padding:"10px 16px",marginTop:8}}>Not now</button>
+      </div>
+    </div>}
     <div style={{ background: "linear-gradient(120deg,#0F766E,#6D28D9 58%,#DB2777)", color: "#fff", borderRadius: 18, padding: "15px 16px", boxShadow: "0 8px 24px rgba(109,40,217,.18)", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
         <div style={{ width: 46, height: 46, borderRadius: 15, background: "rgba(255,255,255,.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>💬</div>
@@ -4956,7 +4966,7 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
       </div>
       <div style={{ marginTop: 12, display: "flex", gap: 7, flexWrap: "wrap" }}>
         <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>Text only</span>
-        <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>{status.unlimited ? "💎 Unlimited messages" : `Free: ${remaining}/5 messages left today`}</span>
+        <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>{status.unlimited ? "💎 Unlimited messages" : `Free: ${remaining}/10 messages left today`}</span>
         <span style={{ background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 9px", fontSize: 11.5, fontWeight: 800 }}>No photos · no files · no videos</span>
       </div>
     </div>
@@ -4981,8 +4991,8 @@ function CommunityLiveRoom({ user, profile, onUpgrade }) {
       <div style={{ borderTop: `1px solid ${W.line}`, padding: 10, background: "#fff" }}>
         {err && <div style={{ background: "#FFF1F2", border: "1px solid #FECDD3", color: "#BE123C", borderRadius: 10, padding: "8px 10px", fontSize: 12, marginBottom: 8 }}>{err}</div>}
         {blocked ? <div style={{ textAlign: "center", padding: "5px 4px 3px" }}>
-          <div style={{ fontWeight: 850, color: W.ink, fontSize: 13.5 }}>5 free messages used for today</div>
-          <div style={{ color: W.soft, fontSize: 11.5, marginTop: 3 }}>You can still read the room. Subscribe for unlimited messages.</div>
+          <div style={{ fontWeight: 850, color: W.ink, fontSize: 13.5 }}>10 free messages used for today</div>
+          <div style={{ color: W.soft, fontSize: 11.5, marginTop: 3 }}>You can still read the room. Subscribe for unlimited messages. Admin, team/staff and organisers are unlimited automatically.</div>
           <button onClick={() => onUpgrade && onUpgrade()} style={{ ...btn("#6D28D9", "#fff"), marginTop: 9, justifyContent: "center", padding: "9px 15px" }}>💎 View subscription plans</button>
         </div> : <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <textarea value={text} onChange={e => setText(e.target.value.slice(0,600))} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Message everyone online…" rows={1} style={{ flex: 1, minHeight: 42, maxHeight: 110, resize: "vertical", border: `1px solid ${W.line}`, borderRadius: 13, padding: "10px 12px", fontSize: 14, outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
@@ -5179,40 +5189,6 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     setPeek(pk => (pk && pk.id === p.id) ? null : pk);
   };
   const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); setPeekPrompts(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); supabase.rpc("meet_prompts", { p_user: p.id }).then(({ data }) => setPeekPrompts(Array.isArray(data) ? data : [])); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
-  const shareMemberProfile = async (p) => {
-    if (!p?.id) return;
-    const url = `${window.location.origin}/api/p/${encodeURIComponent(p.id)}`;
-    const first = String(p.name || "this member").trim();
-    const title = `${first} on Glasswings`;
-    const text = `Check out ${first}'s profile on Glasswings`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title, text, url });
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
-        window.gwConfirm("🔗 Profile link copied. You can paste it in WhatsApp or anywhere you like.", () => {});
-      } else {
-        window.prompt("Copy this profile link:", url);
-      }
-    } catch (e) {
-      if (e?.name !== "AbortError") {
-        try { await navigator.clipboard?.writeText(url); } catch {}
-      }
-    }
-  };
-  const sharedProfileOpened = useRef(false);
-  useEffect(() => {
-    if (!rows || sharedProfileOpened.current) return;
-    let pid = "";
-    try { pid = new URLSearchParams(window.location.search).get("profile") || ""; } catch {}
-    if (!pid) return;
-    const p = (rows || []).find(x => String(x.id) === String(pid));
-    if (!p) return;
-    sharedProfileOpened.current = true;
-    setMtab("discover");
-    openPeek(p);
-  }, [rows]);
-
   const flagProfile = (p, kind) => {
     window.gwConfirm(`🚩 Flag ${p.name?.split(" ")[0] || "this member"}'s ${kind} as not acceptable?\n\nTheir profile will be hidden from other members until they fix their ${kind}. They'll see a notice to update it.`, async () => {
       const { error } = await supabase.rpc("admin_flag_profile", { p_user: p.id, p_kind: kind, p_note: null });
@@ -5481,8 +5457,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
       </div>
       <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", overflowX: "auto" }}>
         {[
-          ["discover", "👥 Meet Me"],
-          ["community", "💬 Group Chat"],
+          ["discover", "✨ Discover"],
+          ["community", "🟢 Live Room"],
           ...(isStaff ? [["newmembers", "🆕 New Members"]] : []),
           ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]
         ].map(([k, l]) => (
@@ -5493,10 +5469,10 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ position: "relative", width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg,#008069,#6D28D9)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>💬<span style={{ position: "absolute", width: 10, height: 10, borderRadius: "50%", background: "#22C55E", border: "2px solid #fff", right: -1, top: -1 }} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 950, color: W.ink, fontSize: 15 }}>Group Chat <span style={{ color: "#16A34A", fontSize: 11 }}>● LIVE</span></div>
-            <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>One common room for everyone online · text only · no attachments</div>
+            <div style={{ fontWeight: 950, color: W.ink, fontSize: 15 }}>Live Community Room <span style={{ color: "#16A34A", fontSize: 11 }}>● LIVE</span></div>
+            <div style={{ color: W.soft, fontSize: 11.5, marginTop: 2 }}>Everyone online chats together · text only · subscribers chat unlimited</div>
           </div>
-          <div style={{ color: "#6D28D9", fontWeight: 900, fontSize: 12, flexShrink: 0 }}>OPEN ›</div>
+          <div style={{ color: "#6D28D9", fontWeight: 900, fontSize: 12, flexShrink: 0 }}>ENTER ›</div>
         </div>
       </div>}
       {mtab === "community" && <CommunityLiveRoom user={user} profile={profile} onUpgrade={onUpgrade} />}
@@ -5998,9 +5974,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                   <div style={{ fontSize: 10.5, color: W.soft, marginTop: 7, lineHeight: 1.4 }}>Flagging hides this profile from other members until they fix it. It auto-clears when they update the flagged item.</div>
                 </div>
               )}
-              <div style={{ display: "flex", gap: 9, marginTop: 14, flexWrap: "wrap" }}>
-                <button onClick={() => shareMemberProfile(peek)} style={{ flex: "1 1 145px", padding: 12, borderRadius: 11, border: "1px solid #A7F3D0", background: "#ECFDF5", color: "#047857", fontWeight: 900, cursor: "pointer" }}>🔗 Share Profile</button>
-                <button onClick={() => setPeek(null)} style={{ flex: "1 1 90px", padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
+              <div style={{ display: "flex", gap: 9, marginTop: 14 }}>
+                <button onClick={() => setPeek(null)} style={{ flex: 1, padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
                 {peek.waved_by_me && peek.waved_me ? (
                   <button onClick={() => { onOpenDM && onOpenDM(peek.id, (peek.name || "Member").split(" ")[0]); setPeek(null); }} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: "linear-gradient(95deg,#6D28D9,#008069)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>💬 Message</button>
                 ) : peek.waved_by_me ? (
@@ -19275,6 +19250,7 @@ function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
     { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
     { id: "meet", icon: Users, label: "Meet", c: "#EC4899" },
+    { id: "groupchat", icon: MessageCircle, label: "Chat", c: "#0F766E" },
     { id: "shorts", icon: Zap, label: "Reels", c: "#F59E0B" },
     { id: "series", icon: Film, label: "Movies", c: "#E4572E" },
     { id: "games", icon: Gamepad2, label: "Games", c: "#2563EB" },
