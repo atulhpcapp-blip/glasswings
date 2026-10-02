@@ -12814,11 +12814,14 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
   }).sort((a,b) => new Date(a.event_at || a.event_date || 0) - new Date(b.event_at || b.event_date || 0));
 
   const [eventId,setEventId] = useState(futureEvents[0]?.id || "");
+  const [mode,setMode] = useState("invite"); // invite | sale
   const [name,setName] = useState("");
   const [phone,setPhone] = useState("");
   const [email,setEmail] = useState("");
   const [qty,setQty] = useState("1");
   const [gender,setGender] = useState("");
+  const [amount,setAmount] = useState("");
+  const [payMethod,setPayMethod] = useState("upi");
   const [list,setList] = useState("Organiser's Guest List");
   const [customList,setCustomList] = useState("");
   const [busy,setBusy] = useState(false);
@@ -12831,17 +12834,19 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
   }, [events?.length]);
 
   const reset = () => {
-    setName(""); setPhone(""); setEmail(""); setQty("1"); setGender("");
+    setName(""); setPhone(""); setEmail(""); setQty("1"); setGender(""); setAmount(""); setPayMethod("upi");
     setList("Organiser's Guest List"); setCustomList(""); setCreated(null); setMsg("");
   };
 
-  const createInvite = async () => {
-    if (!canIssue) return setMsg("Only admins can create guest invitations.");
+  const createGuestEntry = async () => {
+    if (!canIssue) return setMsg("Only admins can create outside guest tickets/invitations.");
     if (!ev?.id) return setMsg("Choose an event.");
     if (!name.trim()) return setMsg("Enter the guest name.");
     const nqty = Math.max(1, Math.min(20, Number(qty)||1));
+    const isSale = mode === "sale";
     const finalList = list === "__custom__" ? customList.trim() : list;
-    if (list === "__custom__" && !finalList) return setMsg("Enter the custom guest list name.");
+    if (!isSale && list === "__custom__" && !finalList) return setMsg("Enter the custom guest list name.");
+    if (isSale && amount !== "" && Number(amount) < 0) return setMsg("Enter a valid amount.");
     setBusy(true); setMsg("");
     try {
       const { data:gNew, error } = await supabase.rpc("add_guest_ticket", {
@@ -12852,8 +12857,10 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
         p_qty: nqty,
         p_age: null,
         p_location: null,
-        p_type: "guest",
-        p_note: gwGuestListNote(finalList || "Organiser's Guest List")
+        p_type: isSale ? payMethod : "guest",
+        p_note: isSale
+          ? `Outside ticket sale${amount!=="" ? ` · ₹${Math.max(0,Number(amount)||0)} received` : ""}`
+          : gwGuestListNote(finalList || "Organiser's Guest List")
       });
       if (error) throw error;
       const id = gNew?.id || null;
@@ -12863,33 +12870,62 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
         if (ge) throw ge;
         code = (gl||[]).find(x=>x.id===id)?.code || "";
       }
-      if (!code) throw new Error("Invitation created but QR code could not be loaded.");
+      if (!code) throw new Error(`${isSale ? "Ticket" : "Invitation"} created but QR code could not be loaded.`);
 
       if (id && gender) {
         try { await supabase.rpc("gw_guest_portrait",{p_id:id,p_gender:gender,p_photo:""}); } catch {}
       }
-      if (finalList) gwRememberGuestList(finalList);
+      if (!isSale && finalList) gwRememberGuestList(finalList);
 
-      const message = `You're warmly invited to ${ev.title}. This invitation is your entry pass — please show the QR at the door.`;
-      const blob = await gwInvitationBlob(ev,name.trim(),"",message,code);
-      const file = new File([blob],`Glasswings-${(name.trim()||"guest").replace(/[^a-z0-9]+/gi,"-")}-invite.png`,{type:"image/png"});
+      let blob, fileName;
+      if (isSale) {
+        const dateStr = ev.event_date
+          ? new Date(ev.event_date + "T00:00:00").toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})
+          : (ev.event_at ? new Date(ev.event_at).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "");
+        blob = await makeTicketBlob({
+          emoji: ev.emoji || "🎟️",
+          title: ev.title,
+          dateStr,
+          place: [ev.venue,ev.city].filter(Boolean).join(", "),
+          category: ev.category || "",
+          entryBadge: ev.entry_badge || "",
+          dressCode: ev.dress_code || "",
+          terms: ev.terms || "",
+          name: name.trim(),
+          qty: nqty,
+          code
+        });
+        fileName = `Glasswings-${(name.trim()||"guest").replace(/[^a-z0-9]+/gi,"-")}-ticket.png`;
+      } else {
+        const message = `You're warmly invited to ${ev.title}. This invitation is your entry pass — please show the QR at the door.`;
+        blob = await gwInvitationBlob(ev,name.trim(),"",message,code);
+        fileName = `Glasswings-${(name.trim()||"guest").replace(/[^a-z0-9]+/gi,"-")}-invite.png`;
+      }
+      const file = new File([blob],fileName,{type:"image/png"});
       const preview = URL.createObjectURL(blob);
-      setCreated({id,code,file,preview,name:name.trim(),phone:phone.trim(),email:email.trim(),qty:nqty,list:finalList});
-      setMsg(`✅ Invitation created for ${name.trim()}.`);
+      setCreated({
+        id,code,file,preview,name:name.trim(),phone:phone.trim(),email:email.trim(),qty:nqty,
+        list:isSale ? "" : finalList, mode, amount:isSale&&amount!=="" ? Math.max(0,Number(amount)||0) : null,
+        payMethod:isSale ? payMethod : null
+      });
+      setMsg(`✅ ${isSale ? "Paid ticket" : "Invitation"} created for ${name.trim()}.`);
       onDone && onDone();
     } catch(e) {
-      setMsg(e.message || "Could not create invitation.");
+      setMsg(e.message || `Could not create ${mode==="sale" ? "ticket" : "invitation"}.`);
     } finally { setBusy(false); }
   };
 
   const shareInvite = async () => {
     if (!created?.file) return;
-    const text = `💌 ${created.name}, you're invited to ${ev?.title || "a Glasswings event"}. Your invitation contains the QR entry pass.`;
+    const sold = created.mode === "sale";
+    const text = sold
+      ? `🎟️ ${created.name}, your Glasswings ticket for ${ev?.title || "the event"} is ready. The QR in this ticket is your entry pass.`
+      : `💌 ${created.name}, you're invited to ${ev?.title || "a Glasswings event"}. Your invitation contains the QR entry pass.`;
     try {
       if (navigator.canShare?.({files:[created.file]}) && navigator.share) {
-        await navigator.share({title:`Invitation to ${ev?.title || "Glasswings"}`,text,files:[created.file]});
+        await navigator.share({title:created.mode==="sale" ? `Ticket for ${ev?.title || "Glasswings"}` : `Invitation to ${ev?.title || "Glasswings"}`,text,files:[created.file]});
       } else if (navigator.share) {
-        await navigator.share({title:`Invitation to ${ev?.title || "Glasswings"}`,text});
+        await navigator.share({title:created.mode==="sale" ? `Ticket for ${ev?.title || "Glasswings"}` : `Invitation to ${ev?.title || "Glasswings"}`,text});
       } else {
         const a=document.createElement("a"); a.href=created.preview; a.download=created.file.name; a.click();
       }
@@ -12898,19 +12934,34 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
     }
   };
 
-  const waLink = created?.phone ? `https://wa.me/${waNum(created.phone)}?text=${encodeURIComponent(`💌 Hi ${created.name}, you're invited to ${ev?.title || "a Glasswings event"}. I have created your personal QR invitation. Please keep it ready at the entrance. Invitation code: ${created.code}`)}` : "";
-  const mailLink = created?.email ? `mailto:${encodeURIComponent(created.email)}?subject=${encodeURIComponent(`Invitation to ${ev?.title || "Glasswings"}`)}&body=${encodeURIComponent(`Hi ${created.name},\n\nYou're invited to ${ev?.title || "a Glasswings event"}.\nYour entry code is ${created.code}.\n\nPlease keep your Glasswings invitation/QR ready at the entrance.`)}` : "";
+  const sold = created?.mode === "sale";
+  const waLink = created?.phone ? `https://wa.me/${waNum(created.phone)}?text=${encodeURIComponent(
+    sold
+      ? `🎟️ Hi ${created.name}, your ticket for ${ev?.title || "a Glasswings event"} is ready. Please keep the QR ticket ready at the entrance. Ticket code: ${created.code}${created.amount!=null ? ` · Amount received: ₹${created.amount}` : ""}`
+      : `💌 Hi ${created.name}, you're invited to ${ev?.title || "a Glasswings event"}. I have created your personal QR invitation. Please keep it ready at the entrance. Invitation code: ${created.code}`
+  )}` : "";
+  const mailLink = created?.email ? `mailto:${encodeURIComponent(created.email)}?subject=${encodeURIComponent(
+    sold ? `Your ticket for ${ev?.title || "Glasswings"}` : `Invitation to ${ev?.title || "Glasswings"}`
+  )}&body=${encodeURIComponent(
+    sold
+      ? `Hi ${created.name},\n\nYour paid ticket for ${ev?.title || "a Glasswings event"} is ready.\nTicket code: ${created.code}${created.amount!=null ? `\nAmount received: ₹${created.amount}` : ""}\n\nPlease keep the QR ticket ready at the entrance.`
+      : `Hi ${created.name},\n\nYou're invited to ${ev?.title || "a Glasswings event"}.\nYour entry code is ${created.code}.\n\nPlease keep your Glasswings invitation/QR ready at the entrance.`
+  )}` : "";
 
   return (
     <div style={{margin:"14px",background:"linear-gradient(135deg,#FFF8EA,#FFF0F6)",border:"1px solid #E7CFAE",borderRadius:18,padding:15,boxShadow:"0 10px 26px rgba(90,58,24,.10)"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
         <div>
-          <div style={{fontSize:16,fontWeight:950,color:"#6B4218"}}>💌 QUICK INVITE GUEST</div>
-          <div style={{fontSize:11.5,color:"#80664C",marginTop:3,lineHeight:1.45}}>For people who are not Glasswings members. Create their QR invitation here — no Guest List screen needed.</div>
+          <div style={{fontSize:16,fontWeight:950,color:"#6B4218"}}>🎟️ QUICK OUTSIDE GUEST</div>
+          <div style={{fontSize:11.5,color:"#80664C",marginTop:3,lineHeight:1.45}}>For people who are not Glasswings members. Either invite them free or sell them a proper QR ticket — no Guest List screen needed.</div>
         </div>
-        <span style={{background:"#fff",border:"1px solid #E7CFAE",color:"#8A5A18",borderRadius:999,padding:"5px 9px",fontSize:10.5,fontWeight:900}}>NON-MEMBER GUEST</span>
+        <span style={{background:"#fff",border:"1px solid #E7CFAE",color:"#8A5A18",borderRadius:999,padding:"5px 9px",fontSize:10.5,fontWeight:900}}>NON-MEMBER</span>
       </div>
 
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:12}}>
+        <button onClick={()=>{setMode("invite");setCreated(null);setMsg("");}} style={{border:`2px solid ${mode==="invite"?"#B7791F":"#E7CFAE"}`,background:mode==="invite"?"#FFF7ED":"#fff",color:"#8A5A18",borderRadius:12,padding:"11px 8px",fontWeight:950,cursor:"pointer"}}>💌 Invite Guest<br/><span style={{fontSize:10.5,fontWeight:650}}>Free / guest list</span></button>
+        <button onClick={()=>{setMode("sale");setCreated(null);setMsg("");}} style={{border:`2px solid ${mode==="sale"?"#0F766E":"#CFE7DF"}`,background:mode==="sale"?"#ECFDF5":"#fff",color:"#047857",borderRadius:12,padding:"11px 8px",fontWeight:950,cursor:"pointer"}}>🎟️ Sell Ticket<br/><span style={{fontSize:10.5,fontWeight:650}}>Outside paid guest</span></button>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:9,marginTop:12}}>
         <label style={{fontSize:11,fontWeight:900,color:"#8A5A18"}}>EVENT
           <select value={eventId} onChange={e=>{setEventId(e.target.value);setCreated(null);}} style={{width:"100%",marginTop:5,padding:"11px 10px",borderRadius:10,border:"1px solid #E7CFAE",background:"#fff",color:W.ink,fontSize:13}}>
@@ -12918,14 +12969,14 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
             {futureEvents.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}
           </select>
         </label>
-        <label style={{fontSize:11,fontWeight:900,color:"#8A5A18"}}>GUEST LIST
+        {mode==="invite" ? <label style={{fontSize:11,fontWeight:900,color:"#8A5A18"}}>GUEST LIST
           <select value={list} onChange={e=>setList(e.target.value)} style={{width:"100%",marginTop:5,padding:"11px 10px",borderRadius:10,border:"1px solid #E7CFAE",background:"#fff",color:W.ink,fontSize:13}}>
             {[...GW_GUEST_LIST_PRESETS,...gwSavedGuestLists().filter(x=>!GW_GUEST_LIST_PRESETS.includes(x))].map(x=><option key={x} value={x}>{x}</option>)}
             <option value="__custom__">+ Create custom list…</option>
           </select>
-        </label>
+        </label> : <div style={{background:"#ECFDF5",border:"1px solid #A7F3D0",borderRadius:10,padding:"10px 11px",alignSelf:"end"}}><div style={{fontSize:10.5,fontWeight:950,color:"#047857"}}>PAID OUTSIDE SALE</div><div style={{fontSize:11.5,color:"#065F46",marginTop:3}}>Creates a real QR ticket and records it under Door Sales.</div></div>}
       </div>
-      {list==="__custom__" && <input value={customList} onChange={e=>setCustomList(e.target.value)} placeholder="Custom guest list name" style={{...gwField,marginTop:9}}/>}
+      {mode==="invite" && list==="__custom__" && <input value={customList} onChange={e=>setCustomList(e.target.value)} placeholder="Custom guest list name" style={{...gwField,marginTop:9}}/>}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:9,marginTop:9}}>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Guest name *" style={gwField}/>
@@ -12933,6 +12984,16 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
         <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email (optional)" style={gwField}/>
       </div>
 
+      {mode==="sale" && <div style={{display:"grid",gridTemplateColumns:"1fr 130px",gap:8,marginTop:9}}>
+        <label style={{fontSize:10.5,fontWeight:900,color:"#047857"}}>AMOUNT RECEIVED ₹
+          <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="e.g. 1500" style={{...gwField,marginTop:5}}/>
+        </label>
+        <label style={{fontSize:10.5,fontWeight:900,color:"#047857"}}>PAID VIA
+          <select value={payMethod} onChange={e=>setPayMethod(e.target.value)} style={{...gwField,marginTop:5}}>
+            <option value="upi">UPI</option><option value="cash">Cash</option>
+          </select>
+        </label>
+      </div>}
       <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:8,marginTop:9}}>
         <label style={{fontSize:10.5,fontWeight:900,color:"#8A5A18"}}>QTY
           <input type="number" min="1" max="20" value={qty} onChange={e=>setQty(e.target.value)} style={{...gwField,marginTop:5}}/>
@@ -12944,7 +13005,7 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
         </label>
       </div>
 
-      {!created && <button onClick={createInvite} disabled={busy||!canIssue} style={{width:"100%",marginTop:11,padding:"12px 14px",borderRadius:11,border:"1px solid #B7791F",background:"linear-gradient(95deg,#8A5A18,#D49A37)",color:"#fff",fontWeight:950,fontSize:13.5,cursor:"pointer",opacity:(busy||!canIssue) ? .55 : 1}}>{busy?"Creating…":"💌 CREATE GUEST INVITATION"}</button>}
+      {!created && <button onClick={createGuestEntry} disabled={busy||!canIssue} style={{width:"100%",marginTop:11,padding:"12px 14px",borderRadius:11,border:`1px solid ${mode==="sale"?"#0F766E":"#B7791F"}`,background:mode==="sale"?"linear-gradient(95deg,#047857,#0F766E)":"linear-gradient(95deg,#8A5A18,#D49A37)",color:"#fff",fontWeight:950,fontSize:13.5,cursor:"pointer",opacity:(busy||!canIssue) ? .55 : 1}}>{busy?"Creating…":mode==="sale"?"🎟️ CREATE & SEND PAID TICKET":"💌 CREATE GUEST INVITATION"}</button>}
 
       {msg && <div style={{marginTop:9,background:msg.startsWith("✅")?"#ECFDF5":"#FFF1F2",border:`1px solid ${msg.startsWith("✅")?"#A7F3D0":"#FECDD3"}`,color:msg.startsWith("✅")?"#047857":"#BE123C",borderRadius:10,padding:9,fontSize:12.5,fontWeight:750}}>{msg}</div>}
 
@@ -12952,18 +13013,18 @@ function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
         <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:10,alignItems:"center"}}>
           <img src={created.preview} alt="Invitation preview" style={{width:100,height:145,objectFit:"cover",borderRadius:10,border:"1px solid #E7CFAE"}}/>
           <div>
-            <div style={{fontWeight:950,color:"#6B4218"}}>Invitation ready ✅</div>
-            <div style={{fontSize:11.5,color:"#80664C",marginTop:3}}>{created.name} · {created.qty} entry{created.qty===1?"":"ies"}</div>
+            <div style={{fontWeight:950,color:created.mode==="sale"?"#047857":"#6B4218"}}>{created.mode==="sale"?"Paid ticket ready ✅":"Invitation ready ✅"}</div>
+            <div style={{fontSize:11.5,color:"#80664C",marginTop:3}}>{created.name} · {created.qty} entr{created.qty===1?"y":"ies"}{created.mode==="sale" && created.amount!=null ? ` · ₹${created.amount} · ${String(created.payMethod||"").toUpperCase()}` : ""}</div>
             <div style={{fontSize:10.5,color:"#9A774B",marginTop:3,fontFamily:"monospace"}}>Code: {created.code}</div>
           </div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:7,marginTop:10}}>
-          <button onClick={shareInvite} style={{...btn("linear-gradient(95deg,#7C3AED,#2563EB)","#fff"),justifyContent:"center",fontWeight:900}}>↗ Share Invite</button>
+          <button onClick={shareInvite} style={{...btn("linear-gradient(95deg,#7C3AED,#2563EB)","#fff"),justifyContent:"center",fontWeight:900}}>↗ {created.mode==="sale"?"Share Ticket":"Share Invite"}</button>
           {waLink && <a href={waLink} target="_blank" rel="noreferrer" style={{...btn("#25D366","#fff"),justifyContent:"center",textDecoration:"none",fontWeight:900}}>💬 WhatsApp</a>}
           {mailLink && <a href={mailLink} style={{...btn("#EFF6FF","#1D4ED8"),border:"1px solid #BFDBFE",justifyContent:"center",textDecoration:"none",fontWeight:900}}>✉️ Email</a>}
           <a href={created.preview} download={created.file.name} style={{...btn("#FFF7ED","#9A3412"),border:"1px solid #FED7AA",justifyContent:"center",textDecoration:"none",fontWeight:900}}>⬇ Save Image</a>
         </div>
-        <button onClick={reset} style={{...btn("#fff",W.soft),border:`1px solid ${W.line}`,width:"100%",justifyContent:"center",marginTop:8}}>+ Invite another guest</button>
+        <button onClick={reset} style={{...btn("#fff",W.soft),border:`1px solid ${W.line}`,width:"100%",justifyContent:"center",marginTop:8}}>+ {created.mode==="sale"?"Sell another ticket":"Invite another guest"}</button>
       </div>}
     </div>
   );
