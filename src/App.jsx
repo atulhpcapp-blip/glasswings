@@ -2117,6 +2117,65 @@ function RecentBuyerToasts({ eventId, wide }) {
   );
 }
 
+
+function EventEntryRequestBox({ event, profile, hasTicket }) {
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const load = useCallback(async () => {
+    if (!event?.id || !profile?.id || !gwIsAdminModeratedEvent(event) || hasTicket) return;
+    const { data, error } = await supabase.rpc("gw_my_event_entry_request", { p_event: event.id });
+    if (error) return;
+    const row = Array.isArray(data) ? data[0] : data;
+    setStatus(row?.status || "");
+  }, [event?.id, profile?.id, hasTicket]);
+  useEffect(() => { load(); }, [load]);
+  const request = async () => {
+    setBusy(true); setErr("");
+    const { error } = await supabase.rpc("gw_request_event_entry", { p_event: event.id });
+    setBusy(false);
+    if (error) return setErr(error.message || "Could not send RSVP.");
+    setStatus("pending");
+  };
+  if (!gwIsAdminModeratedEvent(event) || hasTicket) return null;
+  if (!profile?.id) return <div style={{background:"#F8FAFC",border:"1px solid #CBD5E1",borderRadius:13,padding:"12px 14px",margin:"10px 0"}}><b>🙋 Request Entry / RSVP</b><div style={{fontSize:12.5,color:"#64748B",marginTop:4}}>Sign in as a Glasswings member to request entry.</div></div>;
+  if (status === "pending") return <div style={{background:"linear-gradient(135deg,#FFF7ED,#F5F3FF)",border:"1px solid #FED7AA",borderRadius:13,padding:"13px 14px",margin:"10px 0"}}><div style={{fontWeight:950,color:"#9A3412"}}>⏳ RSVP sent — awaiting approval</div><div style={{fontSize:12.3,color:"#7C5A46",marginTop:4,lineHeight:1.45}}>The Glasswings team will review your request. If approved, your ticket will appear automatically.</div></div>;
+  return <div style={{background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1.5px solid #C4B5FD",borderRadius:14,padding:"14px",margin:"10px 0"}}><div style={{fontWeight:950,color:"#6D28D9",fontSize:15}}>🙋 Request Entry / RSVP</div><div style={{fontSize:12.5,color:"#65577A",lineHeight:1.5,marginTop:4}}>This is an admin-moderated event. Send an RSVP request; an admin will review it and, if approved, your QR ticket will be issued directly.</div>{status==="rejected"&&<div style={{fontSize:12,color:"#B45309",fontWeight:750,marginTop:7}}>Your previous request was not approved. You can request again.</div>}{err&&<div style={{fontSize:12,color:"#B42318",marginTop:7}}>{err}</div>}<button onClick={request} disabled={busy} style={{...btn("linear-gradient(95deg,#7C3AED,#2563EB)","#fff"),width:"100%",justifyContent:"center",marginTop:11,padding:"11px 14px",fontWeight:950,opacity:busy?.65:1}}>{busy?"Sending RSVP…":status==="rejected"?"↻ REQUEST ENTRY AGAIN":"🙋 REQUEST ENTRY / RSVP"}</button></div>;
+}
+
+function AdminEventEntryRequests({ event }) {
+  const [rows, setRows] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [acting, setActing] = useState(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(async () => {
+    if (!event?.id) return;
+    setBusy(true); setErr("");
+    const { data, error } = await supabase.rpc("gw_admin_event_entry_requests", { p_event: event.id });
+    setBusy(false);
+    if (error) return setErr(error.message || "Could not load RSVP requests.");
+    setRows(data || []);
+  }, [event?.id]);
+  useEffect(() => { load(); }, [load]);
+  const decide = async (r, decision) => {
+    setActing(r.request_id); setErr("");
+    const { error } = await supabase.rpc("gw_admin_decide_event_request", { p_request: r.request_id, p_decision: decision });
+    if (error) { setActing(null); return setErr(error.message || "Could not update request."); }
+    if (decision === "approved") {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await fetch("/api/email/ticket", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ access_token:session?.access_token, event_id:event.id, for_user:r.user_id }) });
+      } catch {}
+      window.gwConfirm(`✅ ${r.full_name || "Member"} approved.\n\nTheir ticket has been issued and sent.`, () => {});
+    }
+    setActing(null); await load();
+  };
+  const pending = rows.filter(r => r.status === "pending");
+  const decided = rows.filter(r => r.status !== "pending");
+  const card = r => <div key={r.request_id} style={{border:`1px solid ${r.status==="pending"?"#DDD6FE":W.line}`,background:r.status==="pending"?"linear-gradient(135deg,#fff,#FAF5FF)":"#fff",borderRadius:14,padding:12,marginBottom:9}}><div style={{display:"flex",gap:10,alignItems:"center"}}><PersonAvatar url={r.avatar_url} name={r.full_name} size={48}/><div style={{minWidth:0,flex:1}}><div style={{fontWeight:900,color:W.ink,fontSize:14.5}}>{r.full_name || "Member"} {r.gender==="female"?"♀":r.gender==="male"?"♂":""}</div><div style={{fontSize:11.8,color:W.soft,marginTop:2}}>{[r.age?`${r.age} yrs`:null,r.profession,r.area,r.city].filter(Boolean).join(" · ") || "Glasswings member"}</div><div style={{fontSize:10.8,color:W.soft,marginTop:3}}>Requested {r.requested_at ? new Date(r.requested_at).toLocaleString("en-IN") : ""}</div></div><span style={{background:r.status==="approved"?"#DCFCE7":r.status==="rejected"?"#FEE2E2":"#F3E8FF",color:r.status==="approved"?"#166534":r.status==="rejected"?"#991B1B":"#6D28D9",borderRadius:999,padding:"4px 8px",fontSize:10,fontWeight:950,textTransform:"uppercase"}}>{r.status}</span></div>{r.status==="pending"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}><button disabled={acting===r.request_id} onClick={()=>decide(r,"approved")} style={{...btn("linear-gradient(95deg,#059669,#0F766E)","#fff"),justifyContent:"center",fontWeight:950,opacity:acting===r.request_id ? .6 : 1}}>✅ Approve & Send Ticket</button><button disabled={acting===r.request_id} onClick={()=>decide(r,"rejected")} style={{...btn("#FFF1F2","#BE123C"),border:"1px solid #FECDD3",justifyContent:"center",fontWeight:900,opacity:acting===r.request_id ? .6 : 1}}>✕ Decline</button></div>}</div>;
+  return <div style={{marginTop:4}}><div style={{background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1px solid #C4B5FD",borderRadius:14,padding:13,marginBottom:12}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><div style={{fontWeight:950,color:"#6D28D9",fontSize:15}}>🙋 Entry Requests / RSVP</div><div style={{fontSize:12,color:"#65577A",marginTop:3}}>Approve = issue the ticket immediately and send it to the member.</div></div><button onClick={load} disabled={busy} style={{...btn("#fff","#6D28D9"),border:"1px solid #DDD6FE",padding:"7px 10px"}}>{busy?"…":"↻ Refresh"}</button></div></div>{err&&<div style={{background:"#FEF2F2",color:"#B42318",border:"1px solid #FECACA",borderRadius:10,padding:10,fontSize:12.5,marginBottom:10}}>{err}</div>}<div style={{fontSize:12.5,fontWeight:900,color:W.ink,marginBottom:7}}>Pending requests · {pending.length}</div>{!busy&&pending.length===0&&<div style={{fontSize:12.5,color:W.soft,padding:"10px 2px 14px"}}>No pending RSVP requests.</div>}{pending.map(card)}{decided.length>0&&<><div style={{fontSize:12.5,fontWeight:900,color:W.soft,margin:"15px 0 7px"}}>Recently decided</div>{decided.slice(0,20).map(card)}</>}</div>;
+}
+
 function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM, mySegs = [], isStaff = false, segList = [], waGroup = "", rating, myRating, onRate, saved, onToggleSave }) {
   const eventPast = e.event_at && new Date(e.event_at).getTime() < Date.now();
   const waJoin = (e.whatsapp_url || waGroup || "").trim();
@@ -2253,9 +2312,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       <button onClick={() => max != null && q >= max ? null : setQ(key, q + 1)} disabled={max != null && q >= max} style={{ width: 36, height: 36, border: "none", background: "#fff", color: max != null && q >= max ? "#bbb" : W.teal, fontSize: 20, fontWeight: 700, cursor: max != null && q >= max ? "default" : "pointer", lineHeight: 1 }}>+</button>
     </div>
   );
-  const addBtn = (key) => adminModerated
-    ? <button disabled title="Admin-issued tickets only" style={{...btn("#F5F3FF","#7C3AED"),border:"1.5px solid #DDD6FE",padding:"8px 15px",fontWeight:900,cursor:"not-allowed"}}>🛡️ Admin issued</button>
-    : <button onClick={() => setQ(key, 1)} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "8px 22px", fontWeight: 800 }}>Add</button>;
+  const addBtn = (key) => adminModerated ? null : <button onClick={() => setQ(key, 1)} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "8px 22px", fontWeight: 800 }}>Add</button>;
   const sched = (e.schedule || "").split("\n").map(s => s.trim()).filter(Boolean);
   const sibs = e.series_id ? events.filter(x => x.series_id === e.series_id && x.id !== e.id).slice(0, 8) : [];
   const excl = e.exclusions || [];
@@ -2280,16 +2337,11 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           </div>
         </div>
       )}
-      {adminModerated && !hasTicket && (
-        <div style={{background:"linear-gradient(135deg,#F5F3FF,#FFF7ED)",border:"1px solid #DDD6FE",borderRadius:13,padding:"13px 14px",margin:"10px 0 6px"}}>
-          <div style={{fontWeight:950,color:"#6D28D9",fontSize:14.5}}>🛡️ Admin-moderated entry</div>
-          <div style={{fontSize:12.5,color:"#6B5B7E",lineHeight:1.5,marginTop:4}}>This event does not accept self-purchase. A Glasswings admin selects attendees and issues the ticket directly. Once issued, your QR ticket appears here normally.</div>
-        </div>
-      )}
+      {adminModerated && !hasTicket && <EventEntryRequestBox event={e} profile={profile} hasTicket={hasTicket} />}
       {profile && types.length > 0 && visTypes.length === 0 ? (
         <div style={{ padding: "14px 0", fontSize: 13.5, color: W.soft }}>These tickets aren't available for your profile.</div>
       ) : visTypes.length ? (<>
-      <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order. Prices include processing fee.</div>
+      {!adminModerated && <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order. Prices include processing fee.</div>}
       {menRemain != null && (
         <div style={{ background: menRemain <= 0 ? "#FDECEC" : "#FEF5E7", border: `1px solid ${menRemain <= 0 ? "#F5B7B1" : "#F8D486"}`, color: menRemain <= 0 ? "#B03A2E" : "#9C6A0B", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, margin: "8px 0 2px", lineHeight: 1.45 }}>
           {menRemain <= 0
@@ -14849,6 +14901,9 @@ function EventDetailsEditor({ event, onUpdate }) {
     <div style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 13 }}>
       <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>✏️ Edit event details</div>
       <div style={{background:"linear-gradient(135deg,#EFF6FF,#F5F3FF)",border:"1px solid #C7D2FE",borderRadius:12,padding:11,marginBottom:10}}>
+        <div style={{background:"#fff",border:"1px solid #E0E7FF",borderRadius:10,padding:"8px 10px",marginBottom:9,fontSize:11.5,color:"#475569",lineHeight:1.5}}>
+          <b style={{color:"#312E81"}}>Choose how entry works.</b> People Purchase = members book directly. Admin Moderated = members only <b>Request Entry / RSVP</b>, then an admin approves or declines and sends the ticket.
+        </div>
         <div style={{fontSize:12.5,fontWeight:950,color:"#4338CA",marginBottom:7}}>🎫 Ticket control</div>
         <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
           <button type="button" onClick={()=>setD(x=>({...x,booking_mode:"purchase"}))} style={{...btn(d.booking_mode==="purchase"?"#0F766E":"#fff",d.booking_mode==="purchase"?"#fff":"#0F766E"),border:"1px solid #A7F3D0",flex:"1 1 180px",justifyContent:"center"}}>🛒 People purchase</button>
@@ -15444,7 +15499,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const [mSeg, setMSeg] = useState("details");
-  const MSEGS = [
+  const BASE_MSEGS = [
     ["details", "📝", "Details", "#008069", "#E7F6EF"],
     ["invite", "💌", "Invite", "#B7791F", "#FFF4DE"],
     ["media", "🖼️", "Media & share", "#2563EB", "#EAF1FE"],
@@ -15456,6 +15511,9 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     ["guests", "🧑‍🤝‍🧑", "Guest list", "#D97706", "#FDF3E4"],
     ["terms", "📋", "Terms", "#E11D48", "#FDE9EF"],
   ];
+  const eventMSegs = (e) => gwIsAdminModeratedEvent(e) && canApprove
+    ? [BASE_MSEGS[0], ["requests","🙋","RSVP Requests","#7C3AED","#F3EEFE"], ...BASE_MSEGS.slice(1)]
+    : BASE_MSEGS;
   const EVCOLORS = [
     { bg: "#FFEAF1", bar: "#E11D48" },
     { bg: "#E7F1FF", bar: "#2563EB" },
@@ -15825,6 +15883,10 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
 
           {step === 4 && (<>
           <div style={{background:"linear-gradient(135deg,#EFF6FF,#F5F3FF)",border:"1px solid #C7D2FE",borderRadius:14,padding:12,marginBottom:12}}>
+            <div style={{background:"#fff",border:"1px solid #E0E7FF",borderRadius:11,padding:"9px 10px",marginBottom:10,fontSize:11.8,color:"#475569",lineHeight:1.5}}>
+              <b style={{color:"#312E81"}}>Choose how entry works for this event.</b><br/>
+              <b>People Purchase</b> lets members book tickets themselves. <b>Admin Moderated</b> changes the member action to <b>Request Entry / RSVP</b>; admins review each request and can approve + send the ticket with one click. You can switch modes later without cancelling existing tickets.
+            </div>
             <div style={{fontSize:12.5,fontWeight:950,color:"#4338CA",marginBottom:8}}>🎫 How are tickets given?</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>
               <button type="button" onClick={()=>setF({...f,bookingMode:"purchase"})} style={{border:`2px solid ${f.bookingMode==="purchase"?"#0F766E":"#DDE7E3"}`,background:f.bookingMode==="purchase"?"#ECFDF5":"#fff",color:f.bookingMode==="purchase"?"#047857":W.ink,borderRadius:12,padding:"12px 9px",fontWeight:900,cursor:"pointer"}}>🛒 People purchase<br/><span style={{fontSize:10.5,fontWeight:650}}>Normal booking</span></button>
@@ -15948,7 +16010,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             {manage === e.id && (
               <div style={{ marginTop: 14, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-                  {MSEGS.map(([k, ic, l, col, bg]) => {
+                  {eventMSegs(e).map(([k, ic, l, col, bg]) => {
                     const on = mSeg === k;
                     return (
                       <button key={k} onClick={() => setMSeg(k)} style={{ flex: "1 1 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "11px 15px", borderRadius: 13, border: `2px solid ${on ? col : bg}`, background: on ? col : bg, color: on ? "#fff" : col, fontWeight: 800, fontSize: 15, letterSpacing: .2, cursor: "pointer", whiteSpace: "nowrap", boxShadow: on ? `0 4px 12px ${col}44` : "none", transform: on ? "translateY(-1px)" : "none", transition: "all .18s" }}>
@@ -15959,7 +16021,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   {mSeg === "details" && (<>
-                    <div style={{display:"inline-flex",alignItems:"center",gap:6,alignSelf:"flex-start",background:gwIsAdminModeratedEvent(e)?"#F5F3FF":"#ECFDF5",color:gwIsAdminModeratedEvent(e)?"#6D28D9":"#047857",border:`1px solid ${gwIsAdminModeratedEvent(e)?"#DDD6FE":"#A7F3D0"}`,borderRadius:999,padding:"6px 10px",fontSize:11.5,fontWeight:900}}>{gwIsAdminModeratedEvent(e)?"🛡️ Admin-moderated tickets":"🛒 Public purchase tickets"}</div>
+                    <div style={{display:"inline-flex",alignItems:"center",gap:6,alignSelf:"flex-start",background:gwIsAdminModeratedEvent(e)?"#F5F3FF":"#ECFDF5",color:gwIsAdminModeratedEvent(e)?"#6D28D9":"#047857",border:`1px solid ${gwIsAdminModeratedEvent(e)?"#DDD6FE":"#A7F3D0"}`,borderRadius:999,padding:"6px 10px",fontSize:11.5,fontWeight:900}}>{gwIsAdminModeratedEvent(e)?"🛡️ RSVP → Admin approval → Ticket":"🛒 Public purchase tickets"}</div>
                     <EventDetailsEditor event={e} onUpdate={onUpdate} />
                     {privateOnly && <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 12, padding: 12 }}><label style={{ fontSize: 13, fontWeight: 850, color: "#6D28D9" }}>🔒 Invited segments</label><div style={{ display: "flex", gap: 7, marginTop: 8, marginBottom: 8 }}><button type="button" onClick={() => { const next = privateSegments.map(s => s.segment_id); if (next.length) onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] }); }} style={{ ...btn("#6D28D9", "#fff"), padding: "6px 10px", fontSize: 11.5 }}>✓ Select all</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 7 }}>{privateSegments.map(s => { const selected = privateSegIds.includes(s.segment_id); return <label key={s.segment_id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${selected ? "#6D28D9" : W.line}`, background: selected ? "#F3E8FF" : "#fff", color: selected ? "#6D28D9" : W.ink, borderRadius: 9, padding: "8px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}><input type="checkbox" checked={selected} onChange={() => { const next = selected ? privateSegIds.filter(id => id !== s.segment_id) : [...privateSegIds, s.segment_id]; if (!next.length) return alert("A private party must have at least one invited segment."); onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] || null }); }} style={{ width: 16, height: 16, accentColor: "#6D28D9", cursor: "pointer" }} /><span>{s.emoji || "🎯"} {s.name}</span></label>; })}</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 7 }}>✓ {privateSegIds.length} selected. Only members in at least one selected segment can discover and buy tickets.</div></div>}
                     <div style={{ marginTop: 4 }}>
@@ -16009,6 +16071,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
                   {mSeg === "analytics" && <EventAnalyticsTab event={e} />}
                   {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} isSuper={isSuper} />}
+                  {mSeg === "requests" && gwIsAdminModeratedEvent(e) && canApprove && <AdminEventEntryRequests event={e} />}
                   {mSeg === "invite" && <EventInvitesTab event={e} canIssueAdminTicket={canApprove} />}
                   {mSeg === "guests" && (gwIsAdminModeratedEvent(e) && !canApprove
                     ? <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:14,padding:14,color:"#9A3412",fontSize:13.5,lineHeight:1.55}}><b>🛡️ Admin-moderated event</b><br/>Only admins can issue, add or send tickets for this event.</div>
