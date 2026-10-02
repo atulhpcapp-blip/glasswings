@@ -311,11 +311,12 @@ function InvitationButton({event,guest,memberId=null,label="💌 Invite"}){
   </dialog>
  </>;
 }
-function EventInvitesTab({event}){
+function EventInvitesTab({event, canIssueAdminTicket = true}){
  const [mode,setMode]=useState('guest'),[q,setQ]=useState(''),[members,setMembers]=useState([]),[loading,setLoading]=useState(false);
  useEffect(()=>{if(mode!=='member')return;setLoading(true);supabase.rpc('staff_directory').then(({data,error})=>{if(!error)setMembers(data||[]);}).finally(()=>setLoading(false));},[mode]);
  const needle=q.trim().toLowerCase();
  const matches=needle.length<2?[]:members.filter(m=>`${m.full_name||''} ${m.city||''} ${m.area||''}`.toLowerCase().includes(needle)).slice(0,12);
+ if(gwIsAdminModeratedEvent(event) && !canIssueAdminTicket) return <div style={{marginTop:4,background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:14,padding:14,color:"#9A3412",fontSize:13.5,lineHeight:1.55}}><b>🛡️ Admin-moderated event</b><br/>Only Glasswings admins can issue or send tickets for this event. You can manage event details, but ticket issuance is locked.</div>;
  return <div style={{marginTop:4}}>
   <div style={{background:'linear-gradient(135deg,#FFF8EA,#FFF0F6)',border:'1px solid #F2D7B6',borderRadius:16,padding:16,marginBottom:14}}><div style={{fontSize:19,fontWeight:900,color:'#5B3A18'}}>💌 Personal invitations</div><div style={{fontSize:12.5,color:'#755B43',lineHeight:1.55,marginTop:5}}>Each invitation is the guest’s entry pass. A unique QR is generated automatically and scanned at the door.</div><div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:10}}>{GW_GUEST_LIST_PRESETS.map(x=><span key={x} style={{background:'#fff',border:'1px solid #E7CFAE',borderRadius:999,padding:'4px 9px',fontSize:10.5,fontWeight:850,color:'#78521B'}}>{x}</span>)}<span style={{background:'#fff',border:'1px dashed #B7791F',borderRadius:999,padding:'4px 9px',fontSize:10.5,fontWeight:850,color:'#78521B'}}>+ Custom list</span></div></div>
   <div style={{display:'flex',gap:8,marginBottom:14}}>
@@ -1521,6 +1522,7 @@ function gwPrivateSegmentIds(e) {
   return e?.private_segment_id ? [e.private_segment_id] : [];
 }
 function gwIsPrivateEvent(e) { return gwPrivateSegmentIds(e).length > 0; }
+function gwIsAdminModeratedEvent(e) { return String(e?.booking_mode || "purchase") === "admin_moderated"; }
 function gwInInvitedSegments(e, memberSegmentIds) {
   const mine = new Set(memberSegmentIds || []);
   return gwPrivateSegmentIds(e).some(id => mine.has(id));
@@ -2231,6 +2233,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     }));
   };
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
+  const adminModerated = gwIsAdminModeratedEvent(e);
   const menRemain = menBudget(e, stats)?.remaining ?? null; // null = no cap; number = MEN-ticket slots open now
   const cappedTypes = visTypes.filter(t => t.capacity != null && t.capacity !== "" && Number(t.capacity) > 0);
   const totalCapacity = cappedTypes.reduce((sum, t) => sum + Number(t.capacity), 0);
@@ -2250,7 +2253,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       <button onClick={() => max != null && q >= max ? null : setQ(key, q + 1)} disabled={max != null && q >= max} style={{ width: 36, height: 36, border: "none", background: "#fff", color: max != null && q >= max ? "#bbb" : W.teal, fontSize: 20, fontWeight: 700, cursor: max != null && q >= max ? "default" : "pointer", lineHeight: 1 }}>+</button>
     </div>
   );
-  const addBtn = (key) => <button onClick={() => setQ(key, 1)} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "8px 22px", fontWeight: 800 }}>Add</button>;
+  const addBtn = (key) => adminModerated
+    ? <button disabled title="Admin-issued tickets only" style={{...btn("#F5F3FF","#7C3AED"),border:"1.5px solid #DDD6FE",padding:"8px 15px",fontWeight:900,cursor:"not-allowed"}}>🛡️ Admin issued</button>
+    : <button onClick={() => setQ(key, 1)} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "8px 22px", fontWeight: 800 }}>Add</button>;
   const sched = (e.schedule || "").split("\n").map(s => s.trim()).filter(Boolean);
   const sibs = e.series_id ? events.filter(x => x.series_id === e.series_id && x.id !== e.id).slice(0, 8) : [];
   const excl = e.exclusions || [];
@@ -2273,6 +2278,12 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             {waJoin && <a href={waJoin} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), flex: "1 1 30%", justifyContent: "center", padding: "9px 8px", fontSize: 13, textDecoration: "none" }}>💬 WhatsApp group</a>}
             {onOpenChat && <button onClick={onOpenChat} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: "1 1 30%", justifyContent: "center", padding: "9px 8px", fontSize: 13 }}>Event chat</button>}
           </div>
+        </div>
+      )}
+      {adminModerated && !hasTicket && (
+        <div style={{background:"linear-gradient(135deg,#F5F3FF,#FFF7ED)",border:"1px solid #DDD6FE",borderRadius:13,padding:"13px 14px",margin:"10px 0 6px"}}>
+          <div style={{fontWeight:950,color:"#6D28D9",fontSize:14.5}}>🛡️ Admin-moderated entry</div>
+          <div style={{fontSize:12.5,color:"#6B5B7E",lineHeight:1.5,marginTop:4}}>This event does not accept self-purchase. A Glasswings admin selects attendees and issues the ticket directly. Once issued, your QR ticket appears here normally.</div>
         </div>
       )}
       {profile && types.length > 0 && visTypes.length === 0 ? (
@@ -3894,6 +3905,7 @@ function Main({ user }) {
     return finishJoin(r);
   };
   const buyTicket = (e, cartOrType = null, qty = 1, initialAddons = {}) => {
+    if (gwIsAdminModeratedEvent(e) && !tickets.includes(e.id)) return setNotice("🛡️ This is an admin-moderated event. Tickets can only be issued by a Glasswings admin.");
     if (gwIsPrivateEvent(e) && !isStaff && !gwInInvitedSegments(e, mySegs) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segments.");
     let cart = Array.isArray(cartOrType) ? cartOrType.filter(c => c && c.qty > 0)
       : [{ type: cartOrType, qty: Math.max(1, qty || 1) }];
@@ -3908,6 +3920,7 @@ function Main({ user }) {
     setBuyTarget({ event: e, cart, initialAddons });
   };
   const joinEvent = (e, type = null) => {
+    if (gwIsAdminModeratedEvent(e) && !tickets.includes(e.id)) return setNotice("🛡️ This is an admin-moderated event. Tickets can only be issued by a Glasswings admin.");
     if (gwIsPrivateEvent(e) && !isStaff && !gwInInvitedSegments(e, mySegs) && !tickets.includes(e.id)) return setNotice("🔒 This private party is available only to members of its invited segments.");
     if (canAccessEvent(e)) return setOpen({ id: e.id, type: "event" });
     if (type) {
@@ -14780,6 +14793,7 @@ function EventDetailsEditor({ event, onUpdate }) {
       location_type: event.location_type || "physical",
       online_url: event.online_url || "",
       member_discount_pct: event.member_discount_pct ? String(event.member_discount_pct) : "",
+      booking_mode: event.booking_mode || "purchase",
       host_type: event.host_type || "glasswings", host_name: event.host_name || "", host_logo: event.host_logo || "",
       photos_url: event.photos_url || "",
       whatsapp_url: event.whatsapp_url || "",
@@ -14796,6 +14810,7 @@ function EventDetailsEditor({ event, onUpdate }) {
       date_mode: d.date_mode, location_type: d.location_type,
       online_url: d.location_type === "online" ? d.online_url.trim() : "",
       member_discount_pct: d.member_discount_pct ? Math.min(100, Math.max(0, Number(d.member_discount_pct) || 0)) : 0,
+      booking_mode: d.booking_mode || "purchase",
       host_type: d.host_type || "glasswings", host_name: d.host_type === "partner" ? (d.host_name || null) : null, host_logo: d.host_type === "partner" ? (d.host_logo || null) : null,
       photos_url: d.photos_url?.trim() || null,
       whatsapp_url: d.whatsapp_url?.trim() || null,
@@ -14833,6 +14848,14 @@ function EventDetailsEditor({ event, onUpdate }) {
   return (
     <div style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: 13 }}>
       <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, marginBottom: 10 }}>✏️ Edit event details</div>
+      <div style={{background:"linear-gradient(135deg,#EFF6FF,#F5F3FF)",border:"1px solid #C7D2FE",borderRadius:12,padding:11,marginBottom:10}}>
+        <div style={{fontSize:12.5,fontWeight:950,color:"#4338CA",marginBottom:7}}>🎫 Ticket control</div>
+        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+          <button type="button" onClick={()=>setD(x=>({...x,booking_mode:"purchase"}))} style={{...btn(d.booking_mode==="purchase"?"#0F766E":"#fff",d.booking_mode==="purchase"?"#fff":"#0F766E"),border:"1px solid #A7F3D0",flex:"1 1 180px",justifyContent:"center"}}>🛒 People purchase</button>
+          <button type="button" onClick={()=>setD(x=>({...x,booking_mode:"admin_moderated"}))} style={{...btn(d.booking_mode==="admin_moderated"?"#7C3AED":"#fff",d.booking_mode==="admin_moderated"?"#fff":"#7C3AED"),border:"1px solid #DDD6FE",flex:"1 1 180px",justifyContent:"center"}}>🛡️ Admin moderated</button>
+        </div>
+        <div style={{fontSize:11.5,color:W.soft,marginTop:7,lineHeight:1.45}}>Switch anytime. Existing issued/purchased tickets remain valid; this only controls whether new members can self-book.</div>
+      </div>
       <div style={{ background: "#F8F5FF", border: "1px solid #E9D5FF", borderRadius: 10, padding: "9px 11px", marginBottom: 10 }}>
         <label style={{ fontSize: 12.5, fontWeight: 800, color: "#6D28D9" }}>💎 Member discount % (plan holders)</label>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
@@ -15493,7 +15516,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
   const upCount = events.filter(e => (!e.event_at || e.event_at >= todayISO)).length;
   const pastCount = events.filter(e => (e.event_at && e.event_at < todayISO)).length;
-  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", price: "", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentIds: [] };
+  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", price: "", bookingMode: "purchase", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentIds: [] };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const draftPrivateSegmentIds = Array.isArray(f.segmentIds)
@@ -15570,7 +15593,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ private_segment_ids: privateOnly ? draftPrivateSegmentIds : [], private_segment_id: privateOnly ? (draftPrivateSegmentIds[0] || null) : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: Number(f.price) || 0, description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
+    await onCreate({ private_segment_ids: privateOnly ? draftPrivateSegmentIds : [], private_segment_id: privateOnly ? (draftPrivateSegmentIds[0] || null) : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: Number(f.price) || 0, booking_mode: f.bookingMode || "purchase", description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
     reset(); setCreating(false); setStep(0);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -15801,6 +15824,14 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           </>)}
 
           {step === 4 && (<>
+          <div style={{background:"linear-gradient(135deg,#EFF6FF,#F5F3FF)",border:"1px solid #C7D2FE",borderRadius:14,padding:12,marginBottom:12}}>
+            <div style={{fontSize:12.5,fontWeight:950,color:"#4338CA",marginBottom:8}}>🎫 How are tickets given?</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8}}>
+              <button type="button" onClick={()=>setF({...f,bookingMode:"purchase"})} style={{border:`2px solid ${f.bookingMode==="purchase"?"#0F766E":"#DDE7E3"}`,background:f.bookingMode==="purchase"?"#ECFDF5":"#fff",color:f.bookingMode==="purchase"?"#047857":W.ink,borderRadius:12,padding:"12px 9px",fontWeight:900,cursor:"pointer"}}>🛒 People purchase<br/><span style={{fontSize:10.5,fontWeight:650}}>Normal booking</span></button>
+              <button type="button" onClick={()=>setF({...f,bookingMode:"admin_moderated"})} style={{border:`2px solid ${f.bookingMode==="admin_moderated"?"#7C3AED":"#E5E7EB"}`,background:f.bookingMode==="admin_moderated"?"#F5F3FF":"#fff",color:f.bookingMode==="admin_moderated"?"#6D28D9":W.ink,borderRadius:12,padding:"12px 9px",fontWeight:900,cursor:"pointer"}}>🛡️ Admin moderated<br/><span style={{fontSize:10.5,fontWeight:650}}>Admin issues tickets</span></button>
+            </div>
+            <div style={{fontSize:11.5,color:W.soft,lineHeight:1.45,marginTop:8}}>{f.bookingMode==="admin_moderated"?"Members can view the event but cannot buy/claim a ticket. Only admins can issue entry tickets. You can switch this event back to normal purchase later.":"Members can buy or claim tickets normally. You can switch the event to admin-moderated later."}</div>
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
             <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
@@ -15928,6 +15959,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   {mSeg === "details" && (<>
+                    <div style={{display:"inline-flex",alignItems:"center",gap:6,alignSelf:"flex-start",background:gwIsAdminModeratedEvent(e)?"#F5F3FF":"#ECFDF5",color:gwIsAdminModeratedEvent(e)?"#6D28D9":"#047857",border:`1px solid ${gwIsAdminModeratedEvent(e)?"#DDD6FE":"#A7F3D0"}`,borderRadius:999,padding:"6px 10px",fontSize:11.5,fontWeight:900}}>{gwIsAdminModeratedEvent(e)?"🛡️ Admin-moderated tickets":"🛒 Public purchase tickets"}</div>
                     <EventDetailsEditor event={e} onUpdate={onUpdate} />
                     {privateOnly && <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 12, padding: 12 }}><label style={{ fontSize: 13, fontWeight: 850, color: "#6D28D9" }}>🔒 Invited segments</label><div style={{ display: "flex", gap: 7, marginTop: 8, marginBottom: 8 }}><button type="button" onClick={() => { const next = privateSegments.map(s => s.segment_id); if (next.length) onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] }); }} style={{ ...btn("#6D28D9", "#fff"), padding: "6px 10px", fontSize: 11.5 }}>✓ Select all</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 7 }}>{privateSegments.map(s => { const selected = privateSegIds.includes(s.segment_id); return <label key={s.segment_id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${selected ? "#6D28D9" : W.line}`, background: selected ? "#F3E8FF" : "#fff", color: selected ? "#6D28D9" : W.ink, borderRadius: 9, padding: "8px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}><input type="checkbox" checked={selected} onChange={() => { const next = selected ? privateSegIds.filter(id => id !== s.segment_id) : [...privateSegIds, s.segment_id]; if (!next.length) return alert("A private party must have at least one invited segment."); onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] || null }); }} style={{ width: 16, height: 16, accentColor: "#6D28D9", cursor: "pointer" }} /><span>{s.emoji || "🎯"} {s.name}</span></label>; })}</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 7 }}>✓ {privateSegIds.length} selected. Only members in at least one selected segment can discover and buy tickets.</div></div>}
                     <div style={{ marginTop: 4 }}>
@@ -15977,10 +16009,10 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
                   {mSeg === "analytics" && <EventAnalyticsTab event={e} />}
                   {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} isSuper={isSuper} />}
-                  {mSeg === "invite" && <EventInvitesTab event={e} />}
-                  {mSeg === "guests" && (<>
-                    <GuestTickets event={e} />
-                  </>)}
+                  {mSeg === "invite" && <EventInvitesTab event={e} canIssueAdminTicket={canApprove} />}
+                  {mSeg === "guests" && (gwIsAdminModeratedEvent(e) && !canApprove
+                    ? <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:14,padding:14,color:"#9A3412",fontSize:13.5,lineHeight:1.55}}><b>🛡️ Admin-moderated event</b><br/>Only admins can issue, add or send tickets for this event.</div>
+                    : <GuestTickets event={e} />)}
                   {mSeg === "terms" && (<>
                     <EventTerms ev={e} onUpdate={onUpdate} />
                   </>)}
