@@ -339,7 +339,33 @@ async function gwSaveNewGuestPortrait(guest, gender, photo) {
 }
 function DoorSalesHistory({event,refresh=0}){
  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[q,setQ]=useState(''),[genderFilter,setGenderFilter]=useState(''),[editing,setEditing]=useState(null),[saving,setSaving]=useState(false),[cancellingId,setCancellingId]=useState(null);
- const load=async()=>{setBusy(true);setErr('');try{const {data,error}=await supabase.rpc('guest_list',{p_event:event.id});if(error)throw error;setRows((data||[]).filter(g=>['cash','upi'].includes(String(g.method||'').toLowerCase())||gwIsInvitationGuest(g)));}catch(e){setErr(e.message);}finally{setBusy(false);}};
+ const load=async()=>{
+  setBusy(true);setErr('');
+  try{
+   const [{data,error},{data:meetRows}] = await Promise.all([
+    supabase.rpc('guest_list',{p_event:event.id}),
+    supabase.rpc('meet_list').then(r=>r,()=>({data:[]}))
+   ]);
+   if(error)throw error;
+   const base=(data||[]).filter(g=>['cash','upi'].includes(String(g.method||'').toLowerCase())||gwIsInvitationGuest(g));
+   const flagMap=new Map((meetRows||[]).map(m=>[String(m.id),m.review_flag||null]));
+   const norm=v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' ');
+   const enriched=await Promise.all(base.map(async g=>{
+    try{
+     const query=String(g.phone||'').replace(/\D/g,'').slice(-10)||String(g.name||'').trim();
+     if(query.length<2)return g;
+     const {data:hits}=await supabase.rpc('member_search',{p_q:query});
+     const hs=hits||[];
+     const exactName=hs.find(h=>norm(h.full_name)===norm(g.name));
+     const m=exactName||hs[0];
+     if(!m?.id)return g;
+     return {...g,member_id:m.id,member_name:m.full_name||g.name,member_avatar:m.avatar_url||'',review_flag:flagMap.get(String(m.id))||m.review_flag||null};
+    }catch{return g;}
+   }));
+   setRows(enriched);
+  }catch(e){setErr(e.message);}
+  finally{setBusy(false);}
+ };
  const cancelDoorSale=async(g)=>{
   const paid=Number(g.amount||0);
   const method=String(g.method||'').toUpperCase();
@@ -365,8 +391,9 @@ function DoorSalesHistory({event,refresh=0}){
   <select aria-label="Filter gender" value={genderFilter} onChange={e=>setGenderFilter(e.target.value)} style={{...gwField,marginTop:8}}><option value="">All genders</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
   {err&&<p role="alert" style={{color:'#a33'}}>{err}</p>}{busy&&<p>Loading sales…</p>}{!busy&&!err&&!filtered.length&&<p>No matching door sales.</p>}
   {filtered.map(g=><article key={g.id} style={{borderTop:'1px solid #dbe5e0',padding:'14px 0',marginTop:8}}>
-   <div style={{display:'flex',gap:10,alignItems:'center'}}><PersonAvatar url={g.door_photo} name={g.name} size={54}/><div style={{minWidth:0}}><b>{g.name}</b>{gwIsInvitationGuest(g)&&<div style={{display:'inline-block',marginLeft:7,background:'#FFF0DB',color:'#78521B',fontSize:10,fontWeight:900,padding:'2px 7px',borderRadius:8}}>{gwGuestListFromNote(g)||"Organiser's Guest List"}</div>}<div style={{fontSize:12,color:'#62766e'}}>{g.age?`${g.age}y · `:''}{g.door_gender||'Gender not specified'} · {g.quantity||1} entries · {g.checked_in?'Checked in':'Not checked in'}</div><div style={{fontSize:12,overflowWrap:'anywhere'}}>{g.phone||'No phone'} · {g.code}</div><div style={{fontSize:12}}>₹{g.amount||0} · {g.method} · {g.created_at?new Date(g.created_at).toLocaleString('en-IN'):''}</div></div></div>
+   <div style={{display:'flex',gap:10,alignItems:'center'}}><PersonAvatar url={g.door_photo||g.member_avatar} name={g.name} size={54}/><div style={{minWidth:0}}><div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}><b>{g.name}</b>{g.review_flag&&<span title={`Flagged: ${g.review_flag}`} style={{display:'inline-flex',alignItems:'center',gap:3,background:'#FFF1F2',color:'#BE123C',border:'1px solid #FECDD3',borderRadius:999,padding:'2px 7px',fontSize:9.5,fontWeight:900}}>🚩 Flagged member</span>}</div>{gwIsInvitationGuest(g)&&<div style={{display:'inline-block',marginLeft:0,marginTop:3,background:'#FFF0DB',color:'#78521B',fontSize:10,fontWeight:900,padding:'2px 7px',borderRadius:8}}>{gwGuestListFromNote(g)||"Organiser's Guest List"}</div>}<div style={{fontSize:12,color:'#62766e'}}>{g.age?`${g.age}y · `:''}{g.door_gender||'Gender not specified'} · {g.quantity||1} entries · {g.checked_in?'Checked in':'Not checked in'}</div><div style={{fontSize:12,overflowWrap:'anywhere'}}>{g.phone||'No phone'} · {g.code}</div><div style={{fontSize:12}}>₹{g.amount||0} · {g.method} · {g.created_at?new Date(g.created_at).toLocaleString('en-IN'):''}</div></div></div>
    <div style={{display:'flex',gap:7,flexWrap:'wrap',marginTop:10}}>
+    {g.member_id&&<button onClick={()=>window.open(`${window.location.origin}/?profile=${encodeURIComponent(g.member_id)}`,'_blank','noopener,noreferrer')} style={{...btn('#EEF2FF','#4338CA'),border:'1px solid #C7D2FE',fontWeight:850}}>👤 View Profile</button>}
     <a href={`https://wa.me/${waNum(g.phone)}?text=${encodeURIComponent(`Your ticket for ${event.title}\nhttps://glass-wings.com/?gt=${encodeURIComponent(g.code)}\nShow this ticket at the door.\n\nYou’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡\n— Glasswings`)}`} target="_blank" rel="noreferrer" style={btn('#08765b','#fff')}>Resend ticket</a>
     <button onClick={async()=>{try{const blob=await makeTicketBlob({title:event.title,dateStr:event.event_date,place:[event.venue,event.city].filter(Boolean).join(', '),name:g.name,qty:g.quantity||1,code:g.code,photo:g.door_photo});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='glasswings-ticket.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),15000);}catch(e){setErr('Could not create ticket image. Use Resend ticket.');}}} style={btn('#fff','#17392e')}>Download ticket</button>
     <GuestListChangeButton currentList={gwGuestListFromNote(g)} allowNone={['cash','upi'].includes(String(g.method||'').toLowerCase())} onSave={async(listName)=>{const next=gwApplyGuestListNote(g.note||g.notes||g.guest_note||'',listName);const {error}=await supabase.rpc('set_guest_note',{p_id:g.id,p_note:next});if(error)throw error;await load();}}/>
