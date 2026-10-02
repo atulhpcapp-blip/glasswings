@@ -3303,7 +3303,7 @@ function MeetVerifyBanner({ user, profile }) {
     </div>
   );
 }
-function RestrictedGate({ user, profile, reviewFlag, reload }) {
+function RestrictedGate({ user, profile, reviewFlag, photoReviewStatus = "", reload }) {
   const [avatar, setAvatar] = useState(profile.avatar_url || "");
   const [phone, setPhone] = useState("");
   const [uploading, setUploading] = useState(false), [busy, setBusy] = useState(false), [err, setErr] = useState("");
@@ -3347,7 +3347,9 @@ function RestrictedGate({ user, profile, reviewFlag, reload }) {
         <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", borderRadius: 12, padding: "13px 15px", margin: "16px 0", color: "#8a2a20", fontSize: 13.5, lineHeight: 1.6 }}>
           Glasswings is a <b>real community with real people</b> — genuine faces and reachable numbers keep everyone safe and the vibe trusted. Your {reviewFlag === "phone" ? "phone number" : reviewFlag === "photo" ? "profile photo" : "profile"} was flagged for review.
           <br /><br />
-          Until you update <b>both your photo and phone number</b>, access is restricted — you can still browse Events, buy tickets, and open Profile to edit your details or log out. <b>Unverified accounts are deactivated after 2 weeks.</b>
+          {reviewFlag === "photo" && photoReviewStatus === "uploaded_pending_clear"
+            ? <><b>✅ Your photo has been uploaded.</b> An admin/staff member has been notified. Your photo flag stays active until they review the photo and press <b>Clear Flag</b>.</>
+            : <>Until you update <b>both your photo and phone number</b>, access is restricted — you can still browse Events, buy tickets, and open Profile to edit your details or log out. <b>Unverified accounts are deactivated after 2 weeks.</b></>}
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 16 }}>
           <div onClick={() => fileRef.current?.click()} style={{ position: "relative", cursor: "pointer", borderRadius: "50%", border: `3px solid ${avatar ? W.teal : "#C0392B"}` }}>
@@ -3364,7 +3366,7 @@ function RestrictedGate({ user, profile, reviewFlag, reload }) {
         {savedMessage && <div role="status" style={{ background: "#E7F8F0", color: "#075E4B", padding: 12, borderRadius: 10, marginTop: 12, fontSize: 13 }}>{savedMessage}</div>}
         {err && <div style={{ color: "#C0392B", fontSize: 13, marginTop: 12, textAlign: "center" }}>{err}</div>}
         <button onClick={save} disabled={busy || uploading || !bothReady} style={{ width: "100%", marginTop: 18, padding: 15, borderRadius: 12, border: "none", cursor: bothReady ? "pointer" : "not-allowed", background: bothReady ? "linear-gradient(95deg,#008069,#04B08F)" : "#C9D2CF", color: "#fff", fontWeight: 900, fontSize: 15.5, opacity: busy ? .6 : 1 }}>{busy ? "Updating…" : "Save details & check status"}</button>
-        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, textAlign: "center", lineHeight: 1.5 }}>Both a photo and a phone number are required to unlock. Need help? Reach the Glasswings team on WhatsApp.</div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, textAlign: "center", lineHeight: 1.5 }}>{reviewFlag === "photo" && photoReviewStatus === "uploaded_pending_clear" ? "Your photo is waiting for admin/staff review. You do not need to upload it again." : "Both a photo and a phone number are required. After a flagged photo is uploaded, admin/staff must review and clear the flag."}</div>
       </div>
     </div>
   );
@@ -3545,6 +3547,9 @@ function Main({ user }) {
   });
   const [open, setOpen] = useState(null); // { id, type }
   const [reviewFlag, setReviewFlag] = useState(null);
+  const [photoReviewStatus, setPhotoReviewStatus] = useState("");
+  const [photoReviewAlerts, setPhotoReviewAlerts] = useState([]);
+  const [photoReviewClearing, setPhotoReviewClearing] = useState(null);
   const [p2pThreads, setP2pThreads] = useState([]);
   const [stories, setStories] = useState([]);
   const [coupleFor, setCoupleFor] = useState(null);
@@ -3580,12 +3585,29 @@ function Main({ user }) {
   };
   useEffect(() => { loadPlans(); }, [user?.id, tab]);
   useEffect(() => { supabase.rpc("verified_ids").then(({ data, error }) => { try { window.__gwVerified = new Set(error ? [] : (data || [])); } catch {} }); }, [user?.id]);
-  const refreshReview = useCallback(() => supabase.rpc("my_review_status").then(({ data }) => { const r = (data || [])[0]; setReviewFlag(r?.flag || null); }), [user?.id]);
+  const refreshReview = useCallback(async () => {
+    try {
+      const [manual, autoPhoto] = await Promise.all([
+        supabase.rpc("my_review_status"),
+        supabase.rpc("gw_my_photo_review_status"),
+      ]);
+      const mr = (manual.data || [])[0] || {};
+      const pr = (autoPhoto.data || [])[0] || {};
+      setPhotoReviewStatus(pr.status || "");
+      setReviewFlag((pr.active ? "photo" : null) || mr.flag || null);
+    } catch {
+      supabase.rpc("my_review_status").then(({ data }) => {
+        const r = (data || [])[0];
+        setReviewFlag(r?.flag || null);
+      });
+    }
+  }, [user?.id]);
   useEffect(() => {
     if (!user?.id) return;
     refreshReview();
+    const t = setInterval(refreshReview, 30000);
     window.addEventListener("focus", refreshReview);
-    return () => window.removeEventListener("focus", refreshReview);
+    return () => { clearInterval(t); window.removeEventListener("focus", refreshReview); };
   }, [user?.id, refreshReview]);
   useEffect(() => {
     if (!subPage) return;
@@ -3831,6 +3853,30 @@ function Main({ user }) {
   const isOrganiserOwner = myRoles.includes("organiser");
   const organiserScopeId = organiserStaff?.organiser_id || user.id;
   const isStaff = isSuper || !!organiserStaff || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
+  const canReviewPhotoFlags = isSuper || !!organiserStaff || myRoles.some(r => ["admin","subadmin","team","staff"].includes(r));
+  const loadPhotoReviewAlerts = useCallback(async () => {
+    if (!canReviewPhotoFlags) { setPhotoReviewAlerts([]); return; }
+    try {
+      const { data, error } = await supabase.rpc("gw_photo_review_pending");
+      if (!error) setPhotoReviewAlerts((data || []).filter(x => x.status === "uploaded_pending_clear"));
+    } catch {}
+  }, [canReviewPhotoFlags]);
+  useEffect(() => {
+    if (!canReviewPhotoFlags) return;
+    loadPhotoReviewAlerts();
+    const t = setInterval(loadPhotoReviewAlerts, 30000);
+    window.addEventListener("focus", loadPhotoReviewAlerts);
+    return () => { clearInterval(t); window.removeEventListener("focus", loadPhotoReviewAlerts); };
+  }, [canReviewPhotoFlags, loadPhotoReviewAlerts]);
+  const clearAutoPhotoFlag = async (row) => {
+    if (!row?.user_id || photoReviewClearing) return;
+    setPhotoReviewClearing(row.user_id);
+    const { error } = await supabase.rpc("gw_clear_photo_review_flag", { p_user: row.user_id });
+    setPhotoReviewClearing(null);
+    if (error) return setNotice(error.message || "Could not clear photo flag.");
+    setNotice(`✅ Photo flag cleared for ${row.full_name || "member"}.`);
+    loadPhotoReviewAlerts();
+  };
   const vipSeg = segList.find(s => (s.name || "").trim().toLowerCase() === "vip");
   const isVIP = !!vipSeg && mySegs.includes(vipSeg.id);
   useEffect(() => {
@@ -4319,7 +4365,7 @@ function Main({ user }) {
       if (e) chatEl = <RoomChat gwEvents={events} allRooms={rooms} room={{ id: e.id, name: e.title, emoji: e.emoji, logo_url: null, pinned: e.pinned }} groupType="event" user={user} profile={profile} isAdmin={isAdmin} memberCount={eventCounts[e.id] || 0} onBack={() => setOpen(null)} onUpdatePinned={updateEvent} onOpenEvent={openEvent} onOpenDM={async (id, name) => { const { data: ok } = await supabase.rpc("can_dm", { p_other: id }); if (!ok) return setNotice("You can chat personally only with people you\u2019ve met at an event, or whom an admin has connected you with."); const { data: tid, error } = await supabase.rpc("get_dm_thread", { p_other: id }); if (error) return setNotice(error.message); setOpen({ id: tid, type: "p2p", title: name }); }} wide={wide} sidebar={convoLeft} />;
     }
   }
-  if (chatEl && !wide) return reviewFlag ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => Promise.all([load(), refreshReview()])} /> : needPhoto ? <PhotoGate user={user} profile={profile} reload={load} onBack={() => setOpen(null)} /> : chatEl;
+  if (chatEl && !wide) return reviewFlag ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} photoReviewStatus={photoReviewStatus} reload={() => Promise.all([load(), refreshReview()])} /> : needPhoto ? <PhotoGate user={user} profile={profile} reload={load} onBack={() => setOpen(null)} /> : chatEl;
 
   const myChats = [
     ...rooms.filter(canAccess).map(r => ({ id: r.id, type: "room", name: r.name, emoji: r.emoji, logo_url: r.logo_url, sub: (counts[r.id] || 0) + " members" })),
@@ -4360,6 +4406,26 @@ function Main({ user }) {
           <X size={16} onClick={hideInstall} style={{ cursor: "pointer", flexShrink: 0, opacity: .85 }} />
         </div>
       )}
+      {canReviewPhotoFlags && photoReviewAlerts.length > 0 && (() => {
+        const r = photoReviewAlerts[0];
+        return <div style={{
+          position:"fixed", left: wide ? SW + 18 : 10, right: wide ? 18 : 10,
+          top: roomInvite && tab !== "groupchat" ? 92 : 12, zIndex: 470,
+          maxWidth: wide ? 590 : 410, margin:"0 auto",
+          background:"linear-gradient(110deg,#FFF7ED,#FDF2F8)", color:"#7C2D12",
+          border:"1px solid #FDBA74", borderRadius:15, padding:"11px 12px",
+          boxShadow:"0 12px 30px rgba(124,45,18,.18)", display:"flex", alignItems:"center", gap:10
+        }}>
+          <PersonAvatar url={r.avatar_url} name={r.full_name} size={40}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:950,fontSize:13}}>📸 Photo uploaded — review needed</div>
+            <div style={{fontSize:11.5,marginTop:2,color:"#9A3412",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.full_name || "Member"} uploaded a profile photo. Review it and clear the flag.</div>
+            {photoReviewAlerts.length > 1 && <div style={{fontSize:10.5,color:"#B45309",marginTop:2}}>+{photoReviewAlerts.length - 1} more waiting</div>}
+          </div>
+          <button onClick={()=>window.open(`${window.location.origin}/?profile=${encodeURIComponent(r.user_id)}`,"_blank","noopener,noreferrer")} style={{...btn("#fff","#7C3AED"),border:"1px solid #DDD6FE",padding:"7px 9px",fontSize:10.8,fontWeight:900}}>View</button>
+          <button onClick={()=>clearAutoPhotoFlag(r)} disabled={photoReviewClearing===r.user_id} style={{...btn("#0F766E","#fff"),padding:"7px 9px",fontSize:10.8,fontWeight:900,opacity:photoReviewClearing===r.user_id ? .6 : 1}}>{photoReviewClearing===r.user_id?"…":"Clear Flag"}</button>
+        </div>;
+      })()}
       {roomInvite && tab !== "groupchat" && <div style={{
         position:"fixed", left: wide ? SW + 18 : 10, right: wide ? 18 : 10,
         top: 12, zIndex: 460, maxWidth: wide ? 540 : 410, margin:"0 auto",
@@ -4375,7 +4441,7 @@ function Main({ user }) {
         <button onClick={()=>{setTab("groupchat");setRoomInvite(null);}} style={{...btn("#fff","#0F766E"),padding:"8px 10px",fontSize:11.5,fontWeight:900,whiteSpace:"nowrap"}}>Join Room</button>
         <button onClick={()=>setRoomInvite(null)} aria-label="Dismiss room invite" style={{border:"none",background:"transparent",color:"#fff",fontSize:18,cursor:"pointer",padding:2}}>×</button>
       </div>}
-      {reviewFlag && !["events", "profile"].includes(tab) ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} reload={() => Promise.all([load(), refreshReview()])} /> : (<>
+      {reviewFlag && !["events", "profile"].includes(tab) ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} photoReviewStatus={photoReviewStatus} reload={() => Promise.all([load(), refreshReview()])} /> : (<>
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
       {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
@@ -6299,10 +6365,21 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                   </div>
                   <button onClick={() => clearFlag(peek)} style={{ ...btn("#fff", "#0d6e58"), border: "1px solid #A7F3D0", fontSize: 12, padding: "8px 4px", justifyContent: "center", width: "100%", marginTop: 7 }}>✅ Clear flag / make visible</button>
                   <button onClick={() => verifyMember(peek)} style={{ ...btn(isVerified(peek.id) ? "#fff" : "linear-gradient(95deg,#3B82F6,#1D4ED8)", isVerified(peek.id) ? "#1D4ED8" : "#fff"), border: isVerified(peek.id) ? "1px solid #BFDBFE" : "none", fontSize: 12.5, padding: "10px 4px", justifyContent: "center", width: "100%", marginTop: 7, fontWeight: 900 }}>{isVerified(peek.id) ? "✓ Verified — tap to remove" : "✓ Verify this member (no video)"}</button>
-                  <div style={{ fontSize: 10.5, color: W.soft, marginTop: 7, lineHeight: 1.4 }}>Flagging hides this profile from other members until they fix it. It auto-clears when they update the flagged item.</div>
+                  <div style={{ fontSize: 10.5, color: W.soft, marginTop: 7, lineHeight: 1.4 }}>Flagging hides this profile from other members. If a flagged photo is updated, admin/staff must review it and clear the flag manually.</div>
                 </div>
               )}
-              <div style={{ display: "flex", gap: 9, marginTop: 14, flexWrap: "wrap" }}>
+              <div style={{marginTop:14}}>
+                <button onClick={() => window.open(`${window.location.origin}/api/p/${encodeURIComponent(peek.id)}`, "_blank", "noopener,noreferrer")} style={{
+                  width:"100%", padding:"13px 15px", borderRadius:12,
+                  border:"1px solid #C8A951",
+                  background:"linear-gradient(105deg,#050505,#161616 52%,#050505)",
+                  color:"#D4AF37", fontWeight:950, fontSize:13.5, letterSpacing:.45,
+                  cursor:"pointer", boxShadow:"0 6px 18px rgba(0,0,0,.18)",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                  textTransform:"uppercase"
+                }}>👤 <span style={{background:"linear-gradient(95deg,#F7E7A5,#D4AF37,#FFF1A8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>View Full Profile</span></button>
+              </div>
+              <div style={{ display: "flex", gap: 9, marginTop: 9, flexWrap: "wrap" }}>
                 <button onClick={() => shareMemberProfile(peek)} style={{ flex: "1 1 145px", padding: 12, borderRadius: 11, border: "1px solid #A7F3D0", background: "#ECFDF5", color: "#047857", fontWeight: 900, cursor: "pointer" }}>🔗 Share Profile</button>
                 <button onClick={() => setPeek(null)} style={{ flex: "1 1 90px", padding: 12, borderRadius: 11, border: `1px solid ${W.line}`, background: "#fff", color: W.soft, fontWeight: 800, cursor: "pointer" }}>Close</button>
                 {peek.waved_by_me && peek.waved_me ? (
@@ -18418,6 +18495,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
       <TopBar title="Profile" right={<button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer", flexShrink: 0 }}><LogOut size={17} />Log out</button>} />
       <div style={{ padding: 16 }}>
         <div style={{ margin: "0 0 14px" }}><WaCommunityBanner url={waGroup} /></div>
+        {profile?.avatar_url ? null : <div style={{background:"#FFF1F2",border:"1px solid #FECDD3",borderRadius:13,padding:"11px 13px",marginBottom:12,color:"#9F1239",fontSize:12.8,lineHeight:1.5}}><b>🚩 Photo required.</b> Profiles without a photo are automatically flagged. Upload a clear photo of yourself; after upload, admin/staff will be notified to review and clear the flag.</div>}
         <div style={{background:"linear-gradient(135deg,#ECFEFF 0%,#F5F3FF 48%,#FDF2F8 100%)",borderRadius:22,padding:10,border:"1px solid #E9D5FF"}}>
           <div style={{background:"#fff",borderRadius:18,overflow:"hidden",boxShadow:"0 10px 30px rgba(51,65,85,.10)"}}>
             <div style={{position:"relative",aspectRatio:"4 / 5",maxHeight:560,background:"linear-gradient(135deg,#CCFBF1,#EDE9FE,#FCE7F3)"}}>
