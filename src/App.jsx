@@ -1550,6 +1550,16 @@ function gwPrivateSegmentIds(e) {
 }
 function gwIsPrivateEvent(e) { return gwPrivateSegmentIds(e).length > 0; }
 function gwIsAdminModeratedEvent(e) { return String(e?.booking_mode || "purchase") === "admin_moderated"; }
+function gwEventAvailability(e) {
+  const v = String(e?.availability_status || "open").toLowerCase();
+  return ["sold_out","housefull"].includes(v) ? v : "open";
+}
+function gwEventClosed(e) { return gwEventAvailability(e) !== "open"; }
+function gwEventAvailabilityLabel(e) {
+  const v = gwEventAvailability(e);
+  return v === "sold_out" ? "SOLD OUT" : v === "housefull" ? "HOUSEFULL" : "OPEN";
+}
+
 function gwInInvitedSegments(e, memberSegmentIds) {
   const mine = new Set(memberSegmentIds || []);
   return gwPrivateSegmentIds(e).some(id => mine.has(id));
@@ -1690,6 +1700,7 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved
           : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{e.emoji || "🎟️"}</div>}
         {popular && <span style={{ position: "absolute", top: 8, left: 8, background: "#D35400", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔥 Popular</span>}
         {going && <span style={{ position: "absolute", top: 8, right: onToggleSave ? 46 : 8, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Going</span>}
+        {gwEventClosed(e) && <div style={{position:"absolute",left:8,right:8,bottom:date?34:8,zIndex:4,textAlign:"center",background:gwEventAvailability(e)==="housefull"?"rgba(0,0,0,.92)":"rgba(185,28,28,.94)",color:gwEventAvailability(e)==="housefull"?"#F6D365":"#fff",border:gwEventAvailability(e)==="housefull"?"1px solid #D4AF37":"1px solid rgba(255,255,255,.25)",borderRadius:10,padding:"7px 8px",fontSize:12,fontWeight:950,letterSpacing:.8,boxShadow:"0 4px 14px rgba(0,0,0,.22)"}}>{gwEventAvailability(e)==="housefull"?"⚫ HOUSEFULL":"🔴 SOLD OUT"}</div>}
         {onToggleSave && <button onClick={(ev) => { ev.stopPropagation(); onToggleSave(e.id); }} aria-label={saved ? "Remove from saved" : "Save"} style={{ position: "absolute", top: 7, right: 7, zIndex: 3, width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.42)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{saved ? "❤️" : "🤍"}</button>}
         {unpublished && <div style={{ position: "absolute", top: 0, left: 0, right: 0, background: "rgba(40,48,46,.9)", color: "#fff", fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textAlign: "center", padding: "5px 0" }}>UNPUBLISHED</div>}
         {date && <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "linear-gradient(transparent, rgba(0,0,0,.74))", padding: "26px 10px 8px", color: "#fff", fontSize: 11.5, fontWeight: 700 }}>{date}</div>}
@@ -2320,6 +2331,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   };
   const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
   const adminModerated = gwIsAdminModeratedEvent(e);
+  const availabilityStatus = gwEventAvailability(e);
+  const manualClosed = availabilityStatus !== "open";
+  const availabilityLabel = availabilityStatus === "housefull" ? "HOUSEFULL" : availabilityStatus === "sold_out" ? "SOLD OUT" : "";
+  const availabilityNote = String(e.availability_note || "").trim();
   const menRemain = menBudget(e, stats)?.remaining ?? null; // null = no cap; number = MEN-ticket slots open now
   const cappedTypes = visTypes.filter(t => t.capacity != null && t.capacity !== "" && Number(t.capacity) > 0);
   const totalCapacity = cappedTypes.reduce((sum, t) => sum + Number(t.capacity), 0);
@@ -2339,7 +2354,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       <button onClick={() => max != null && q >= max ? null : setQ(key, q + 1)} disabled={max != null && q >= max} style={{ width: 36, height: 36, border: "none", background: "#fff", color: max != null && q >= max ? "#bbb" : W.teal, fontSize: 20, fontWeight: 700, cursor: max != null && q >= max ? "default" : "pointer", lineHeight: 1 }}>+</button>
     </div>
   );
-  const addBtn = (key) => adminModerated ? null : <button onClick={() => setQ(key, 1)} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "8px 22px", fontWeight: 800 }}>Add</button>;
+  const addBtn = (key) => (adminModerated || manualClosed) ? null : <button onClick={() => setQ(key, 1)} style={{ ...btn("#fff", W.teal), border: `1.5px solid ${W.teal}`, padding: "8px 22px", fontWeight: 800 }}>Add</button>;
   const sched = (e.schedule || "").split("\n").map(s => s.trim()).filter(Boolean);
   const sibs = e.series_id ? events.filter(x => x.series_id === e.series_id && x.id !== e.id).slice(0, 8) : [];
   const excl = e.exclusions || [];
@@ -2364,12 +2379,18 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           </div>
         </div>
       )}
-      {adminModerated && !hasTicket && <EventEntryRequestBox event={e} profile={profile} hasTicket={hasTicket} />}
+      {adminModerated && !hasTicket && !manualClosed && <EventEntryRequestBox event={e} profile={profile} hasTicket={hasTicket} />}
+      {manualClosed && !hasTicket && <div style={{background:availabilityStatus==="housefull"?"linear-gradient(135deg,#080808,#1B1B1B)":"linear-gradient(135deg,#7F1D1D,#B91C1C)",border:availabilityStatus==="housefull"?"1px solid #D4AF37":"1px solid #FCA5A5",borderRadius:14,padding:"15px 14px",margin:"10px 0",textAlign:"center",boxShadow:"0 8px 22px rgba(0,0,0,.10)"}}>
+        <div style={{fontSize:22,fontWeight:1000,letterSpacing:1.2,color:availabilityStatus==="housefull"?"#F6D365":"#fff"}}>{availabilityStatus==="housefull"?"⚫ HOUSEFULL":"🔴 SOLD OUT"}</div>
+        <div style={{fontSize:12.8,color:availabilityStatus==="housefull"?"#F4E4A7":"#FEE2E2",marginTop:6,lineHeight:1.5}}>{availabilityNote || (availabilityStatus==="housefull" ? "We are at full capacity. Thank you for the overwhelming response!" : "All public tickets are currently sold out. Thank you for the amazing response!")}</div>
+        <div style={{fontSize:10.8,color:availabilityStatus==="housefull"?"#C9B86B":"#FECACA",marginTop:6,fontWeight:750}}>New bookings are closed.</div>
+        <div style={{fontSize:12.2,color:availabilityStatus==="housefull"?"#F6D365":"#fff",marginTop:8,fontWeight:950}}>🎟️ For tickets, contact GW Support.</div>
+      </div>}
       {profile && types.length > 0 && visTypes.length === 0 ? (
         <div style={{ padding: "14px 0", fontSize: 13.5, color: W.soft }}>These tickets aren't available for your profile.</div>
       ) : visTypes.length ? (<>
-      {!adminModerated && <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order. Prices include processing fee.</div>}
-      {menRemain != null && (
+      {!adminModerated && !manualClosed && <div style={{ fontSize: 11.5, color: W.soft, padding: "6px 0 2px" }}>You can add up to {MAX_TIX} tickets — mix ticket types in one order. Prices include processing fee.</div>}
+      {!manualClosed && menRemain != null && (
         <div style={{ background: menRemain <= 0 ? "#FDECEC" : "#FEF5E7", border: `1px solid ${menRemain <= 0 ? "#F5B7B1" : "#F8D486"}`, color: menRemain <= 0 ? "#B03A2E" : "#9C6A0B", borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 700, margin: "8px 0 2px", lineHeight: 1.45 }}>
           {menRemain <= 0
             ? "⚖️ Men's tickets aren't open yet — they release as more women join. Check back soon."
@@ -2391,7 +2412,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         const headroom = Math.min(MAX_TIX - selQty, balanceHeadroom);
         const max = Math.min(q + headroom, left == null ? MAX_TIX : left);
         return (
-        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}`, opacity: soldOut ? .5 : 1 }}>
+        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}`, opacity: (soldOut || manualClosed) ? .5 : 1 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>{t.name}
               {Number(t.disc_female_pct) > 0 && <span style={{ background: "#FCE7F1", color: "#D6618F", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_female_pct}% off for women</span>}
@@ -2406,7 +2427,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             {t.segment_id && isStaff && !(mySegs || []).includes(t.segment_id) && <div style={{ fontSize: 11.5, color: "#7C3AED", fontWeight: 800, marginTop: 3 }}>🔒 Restricted for members outside {segName(t.segment_id)} — you can buy only because you're an admin</div>}
             <TicketTypeDetails ticket={t} compact />
           </div>
-          {!canBuyType(t)
+          {manualClosed
+            ? <button disabled style={{...btn(availabilityStatus==="housefull"?"#111827":"#FEF2F2",availabilityStatus==="housefull"?"#F6D365":"#991B1B"),border:availabilityStatus==="housefull"?"1px solid #D4AF37":"1px solid #FCA5A5",padding:"9px 13px",cursor:"not-allowed",fontWeight:950}}>{availabilityLabel}</button>
+            : !canBuyType(t)
             ? <button disabled title="Restricted ticket" style={{ ...btn("#F3E8FF", "#7C3AED"), padding: "9px 15px", cursor: "not-allowed", fontWeight: 800 }}>🔒 Restricted</button>
             : !st.ok
             ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : (st.reason === "gender" ? st.label : "Closed")}</button>
@@ -2443,10 +2466,11 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ color: "#fff", fontWeight: 800, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.emoji} {e.title}</div>
             <div style={{ color: "#9fe8d6", fontSize: 12, fontWeight: 700 }}>{minPrice === 0 ? "Free" : `From ₹${minPrice}`}{countdown ? ` · ${countdown.replace("⏳ ", "")}` : ""}</div>
           </div>
-          <button onClick={hasTicket ? (onViewTicket || scrollToTickets) : scrollToTickets} style={{ ...btn(W.teal, "#fff"), padding: "9px 18px", fontSize: 14, flexShrink: 0 }}>{hasTicket ? "My tickets" : "Book"}</button>
+          <button disabled={!hasTicket && manualClosed} onClick={hasTicket ? (onViewTicket || scrollToTickets) : scrollToTickets} style={{ ...btn(!hasTicket&&manualClosed?(availabilityStatus==="housefull"?"#111827":"#991B1B"):W.teal,!hasTicket&&manualClosed&&availabilityStatus==="housefull"?"#F6D365":"#fff"), padding: "9px 18px", fontSize: 14, flexShrink: 0, opacity:(!hasTicket&&manualClosed)?1:1, cursor:(!hasTicket&&manualClosed)?"not-allowed":"pointer" }}>{hasTicket ? "My tickets" : manualClosed ? availabilityLabel : "Book"}</button>
         </div>
       )}
       {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>⏳ UNPUBLISHED — members and the public can't see this event yet. Approve it from Admin → Events.</div>}
+      {manualClosed && <div style={{background:availabilityStatus==="housefull"?"linear-gradient(95deg,#050505,#1A1A1A,#050505)":"linear-gradient(95deg,#991B1B,#DC2626,#991B1B)",color:availabilityStatus==="housefull"?"#F6D365":"#fff",fontSize:14,fontWeight:1000,textAlign:"center",padding:"11px 14px",letterSpacing:1.1,borderBottom:availabilityStatus==="housefull"?"1px solid #D4AF37":"none"}}>{availabilityStatus==="housefull"?"⚫ HOUSEFULL — WE ARE AT FULL CAPACITY · FOR TICKETS CONTACT GW SUPPORT":"🔴 SOLD OUT — THANK YOU FOR THE AMAZING RESPONSE · FOR TICKETS CONTACT GW SUPPORT"}</div>}
       {e.landscape_video_url ? (
         <div style={{ background: "#0b1f1c" }}><video src={e.landscape_video_url} autoPlay loop playsInline controls ref={el => { if (el) { el.muted = false; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(() => {}); } }} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
       ) : (e.banner_url || e.poster_url) ? (e.banner_type === "video" && e.banner_url ? (
@@ -2461,6 +2485,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
             {gwIsPrivateEvent(e) && <span style={{ background: "linear-gradient(135deg,#6D28D9,#DB2777)", color: "#fff", fontSize: 12, fontWeight: 900, padding: "4px 11px", borderRadius: 14 }}>🔒 Private invitation</span>}
+            {manualClosed && <span style={{background:availabilityStatus==="housefull"?"#111827":"#FEE2E2",color:availabilityStatus==="housefull"?"#F6D365":"#991B1B",border:availabilityStatus==="housefull"?"1px solid #D4AF37":"1px solid #FCA5A5",fontSize:12,fontWeight:950,padding:"4px 11px",borderRadius:14}}>{availabilityStatus==="housefull"?"⚫ HOUSEFULL":"🔴 SOLD OUT"}</span>}
             {popular && <span style={{ background: "#FFF1E0", color: "#D35400", fontSize: 12, fontWeight: 800, padding: "4px 11px", borderRadius: 14 }}>🔥 Popular</span>}
             {e.category && <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.category}</span>}
             {e.city && <span style={{ background: W.bg, color: W.soft, fontSize: 12, fontWeight: 700, padding: "4px 11px", borderRadius: 14 }}>{e.city}</span>}
@@ -15347,6 +15372,48 @@ function EventWaBlast({ event }) {
     </div>
   );
 }
+
+function EventAvailabilityControl({ event, onUpdate }) {
+  const [busy,setBusy] = useState("");
+  const [note,setNote] = useState(event?.availability_note || "");
+  useEffect(()=>setNote(event?.availability_note || ""),[event?.id,event?.availability_note]);
+  const current = gwEventAvailability(event);
+  const setStatus = async status => {
+    setBusy(status);
+    try {
+      await onUpdate(event.id,{
+        availability_status:status,
+        availability_note: status === "open" ? null : (note.trim() || null)
+      });
+    } finally { setBusy(""); }
+  };
+  const saveNote = async () => {
+    setBusy("note");
+    try { await onUpdate(event.id,{availability_note:note.trim() || null}); }
+    finally { setBusy(""); }
+  };
+  return (
+    <div style={{background:"linear-gradient(135deg,#FFF8E7,#FFF1F2)",border:"1px solid #E8D6A8",borderRadius:14,padding:12,marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:13.5,fontWeight:950,color:"#6B4218"}}>📣 Event availability announcement</div>
+          <div style={{fontSize:11.5,color:"#7C6A55",marginTop:3,lineHeight:1.45}}>Change anytime. Sold Out / Housefull stops new public bookings and RSVP requests, but existing tickets stay valid. Admin manual issue still works.</div>
+        </div>
+        <span style={{background:current==="open"?"#DCFCE7":current==="sold_out"?"#FEE2E2":"#111827",color:current==="open"?"#166534":current==="sold_out"?"#991B1B":"#F6D365",borderRadius:999,padding:"5px 9px",fontSize:10.5,fontWeight:950}}>{current==="open"?"🟢 OPEN":current==="sold_out"?"🔴 SOLD OUT":"⚫ HOUSEFULL"}</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:7,marginTop:10}}>
+        <button disabled={!!busy} onClick={()=>setStatus("open")} style={{border:`2px solid ${current==="open"?"#16A34A":"#D1D5DB"}`,background:current==="open"?"#ECFDF5":"#fff",color:"#166534",borderRadius:11,padding:"10px 6px",fontWeight:950,cursor:"pointer"}}>🟢 OPEN</button>
+        <button disabled={!!busy} onClick={()=>setStatus("sold_out")} style={{border:`2px solid ${current==="sold_out"?"#DC2626":"#D1D5DB"}`,background:current==="sold_out"?"#FEF2F2":"#fff",color:"#991B1B",borderRadius:11,padding:"10px 6px",fontWeight:950,cursor:"pointer"}}>🔴 SOLD OUT</button>
+        <button disabled={!!busy} onClick={()=>setStatus("housefull")} style={{border:`2px solid ${current==="housefull"?"#111827":"#D1D5DB"}`,background:current==="housefull"?"#111827":"#fff",color:current==="housefull"?"#F6D365":"#111827",borderRadius:11,padding:"10px 6px",fontWeight:950,cursor:"pointer"}}>⚫ HOUSEFULL</button>
+      </div>
+      {current!=="open" && <div style={{display:"flex",gap:7,marginTop:9}}>
+        <input value={note} onChange={e=>setNote(e.target.value)} placeholder={current==="sold_out"?"e.g. Thank you! All tickets are now sold out.":"e.g. HOUSEFULL — thank you for the overwhelming response!"} style={{...gwField,flex:1}}/>
+        <button onClick={saveNote} disabled={busy==="note"} style={{...btn("#6B4218","#fff"),padding:"9px 11px",fontWeight:900}}>{busy==="note"?"…":"Save note"}</button>
+      </div>}
+    </div>
+  );
+}
+
 function EventDetailsEditor({ event, onUpdate }) {
   const [open, setOpen] = useState(false);
   const [d, setD] = useState(null);
@@ -16542,6 +16609,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   {mSeg === "details" && (<>
                     <div style={{display:"inline-flex",alignItems:"center",gap:6,alignSelf:"flex-start",background:gwIsAdminModeratedEvent(e)?"#F5F3FF":"#ECFDF5",color:gwIsAdminModeratedEvent(e)?"#6D28D9":"#047857",border:`1px solid ${gwIsAdminModeratedEvent(e)?"#DDD6FE":"#A7F3D0"}`,borderRadius:999,padding:"6px 10px",fontSize:11.5,fontWeight:900}}>{gwIsAdminModeratedEvent(e)?"🛡️ RSVP → Admin approval → Ticket":"🛒 Public purchase tickets"}</div>
+                    <EventAvailabilityControl event={e} onUpdate={onUpdate} />
                     <EventDetailsEditor event={e} onUpdate={onUpdate} />
                     {privateOnly && <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 12, padding: 12 }}><label style={{ fontSize: 13, fontWeight: 850, color: "#6D28D9" }}>🔒 Invited segments</label><div style={{ display: "flex", gap: 7, marginTop: 8, marginBottom: 8 }}><button type="button" onClick={() => { const next = privateSegments.map(s => s.segment_id); if (next.length) onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] }); }} style={{ ...btn("#6D28D9", "#fff"), padding: "6px 10px", fontSize: 11.5 }}>✓ Select all</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 7 }}>{privateSegments.map(s => { const selected = privateSegIds.includes(s.segment_id); return <label key={s.segment_id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${selected ? "#6D28D9" : W.line}`, background: selected ? "#F3E8FF" : "#fff", color: selected ? "#6D28D9" : W.ink, borderRadius: 9, padding: "8px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}><input type="checkbox" checked={selected} onChange={() => { const next = selected ? privateSegIds.filter(id => id !== s.segment_id) : [...privateSegIds, s.segment_id]; if (!next.length) return alert("A private party must have at least one invited segment."); onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] || null }); }} style={{ width: 16, height: 16, accentColor: "#6D28D9", cursor: "pointer" }} /><span>{s.emoji || "🎯"} {s.name}</span></label>; })}</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 7 }}>✓ {privateSegIds.length} selected. Only members in at least one selected segment can discover and buy tickets.</div></div>}
                     <div style={{ marginTop: 4 }}>
