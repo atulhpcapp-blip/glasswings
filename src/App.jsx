@@ -13348,10 +13348,10 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
   };
   const commonTicketDetails = purchasedTypes.length ? null : {
     id: "common-ticket-details",
-    name: "Ticket details",
-    inclusions: commonValue("inclusions"),
-    exclusions: commonValue("exclusions"),
-    notes: commonValue("notes"),
+    name: Number(e.ticket_price || 0) === 0 ? "Free Entry Ticket" : "General Ticket",
+    inclusions: (types || []).length ? commonValue("inclusions") : String(e.ticket_inclusions || "").trim(),
+    exclusions: (types || []).length ? commonValue("exclusions") : String(e.ticket_exclusions || "").trim(),
+    notes: (types || []).length ? commonValue("notes") : String(e.ticket_notes || "").trim(),
   };
   const displayTicketTypes = purchasedTypes.length ? purchasedTypes : (commonTicketDetails && (commonTicketDetails.inclusions || commonTicketDetails.exclusions || commonTicketDetails.notes) ? [commonTicketDetails] : []);
   const purchasedTypeNames = purchasedTypes.map(t => t.name).filter(Boolean).join(", ");
@@ -13490,7 +13490,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
     </Sheet>
   );
 }
-function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
+function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onUpdateEvent }) {
   const [plansList, setPlansList] = useState([]);
   useEffect(() => { supabase.from("plans").select("id, name, emoji").eq("active", true).then(({ data }) => setPlansList(data || [])); }, []);
   const [segsList, setSegsList] = useState([]);
@@ -13530,7 +13530,7 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
       <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity. Choose Anyone / Men only / Women only for every ticket.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
-        {types.length === 0 && <span style={{ fontSize: 12.5, color: W.soft }}>No types yet — the event uses its single ticket price above.</span>}
+        {types.length === 0 && <DefaultTicketDetailsEditor event={event} onUpdate={onUpdateEvent} />}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 9px", color: "#7C3AED", fontWeight: 800, fontSize: 14.5, letterSpacing: .3, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}><Plus size={17} />CREATE NEW TICKET TYPE</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -13582,6 +13582,76 @@ function TicketTypes({ eventId, types, rooms, onAdd, onDel, onUpdate }) {
     </div>
   );
 }
+
+function DefaultTicketDetailsEditor({ event, onUpdate }) {
+  const [ed, setEd] = useState(false);
+  const [inclusions, setInclusions] = useState(event?.ticket_inclusions || "");
+  const [exclusions, setExclusions] = useState(event?.ticket_exclusions || "");
+  const [notes, setNotes] = useState(event?.ticket_notes || "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setInclusions(event?.ticket_inclusions || "");
+    setExclusions(event?.ticket_exclusions || "");
+    setNotes(event?.ticket_notes || "");
+  }, [event?.id, event?.ticket_inclusions, event?.ticket_exclusions, event?.ticket_notes]);
+  const isFree = Number(event?.ticket_price || 0) === 0;
+  const hasDetails = !!(String(event?.ticket_inclusions || "").trim() || String(event?.ticket_exclusions || "").trim() || String(event?.ticket_notes || "").trim());
+  const ip = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 14, outline: "none", background: "#fff", color: W.ink };
+  const save = async () => {
+    if (!event?.id || !onUpdate) return;
+    setBusy(true);
+    try {
+      await onUpdate(event.id, {
+        ticket_inclusions: inclusions.trim() || null,
+        ticket_exclusions: exclusions.trim() || null,
+        ticket_notes: notes.trim() || null,
+      });
+      setEd(false);
+    } finally { setBusy(false); }
+  };
+  if (!ed) return (
+    <div style={{background:"linear-gradient(135deg,#ECFDF5,#F0FDFA)",border:"1.5px solid #A7F3D0",borderRadius:14,padding:13}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div style={{minWidth:0,flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <div style={{fontWeight:950,fontSize:15,color:"#065F46"}}>🎟️ {isFree ? "Free Entry Ticket" : "General Ticket"}</div>
+            <span style={{background:isFree?"#DCFCE7":"#EFF6FF",color:isFree?"#166534":"#1D4ED8",borderRadius:999,padding:"3px 8px",fontSize:10.5,fontWeight:900}}>{isFree ? "FREE" : `₹${Number(event?.ticket_price || 0)}`}</span>
+          </div>
+          <div style={{fontSize:12,color:W.soft,marginTop:4}}>This is the default ticket used when you haven't created separate ticket types.</div>
+          {hasDetails
+            ? <div style={{marginTop:9}}><TicketTypeDetails ticket={{inclusions:event.ticket_inclusions,exclusions:event.ticket_exclusions,notes:event.ticket_notes}} compact /></div>
+            : <div style={{fontSize:12.5,color:"#64748B",marginTop:9,fontStyle:"italic"}}>No inclusions, exclusions or ticket notes added yet.</div>}
+        </div>
+        <button onClick={()=>setEd(true)} style={{...btn("linear-gradient(95deg,#0F766E,#2563EB)","#fff"),padding:"9px 13px",fontSize:12.5,fontWeight:900,flexShrink:0}}>✏️ Edit Ticket Details</button>
+      </div>
+    </div>
+  );
+  return (
+    <div style={{background:"#fff",border:"1.5px solid #0F766E",borderRadius:14,padding:13}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4}}>
+        <div style={{fontSize:14,fontWeight:950,color:"#0F766E"}}>✏️ Editing {isFree ? "Free Entry Ticket" : "General Ticket"}</div>
+        <span style={{fontSize:11,color:W.soft}}>Default ticket</span>
+      </div>
+      <div style={{fontSize:11.5,color:W.soft,marginBottom:10}}>Add one item per line. These details will appear on the member's ticket.</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:9}}>
+        <label style={{fontSize:11.5,fontWeight:900,color:"#08765F"}}>✓ What's included
+          <textarea value={inclusions} onChange={e=>setInclusions(e.target.value)} rows={4} placeholder={"Entry\nWelcome drink\nPool access\nDinner"} style={{...ip,width:"100%",resize:"vertical",marginTop:5,lineHeight:1.45}}/>
+        </label>
+        <label style={{fontSize:11.5,fontWeight:900,color:"#B33A3A"}}>✕ Not included
+          <textarea value={exclusions} onChange={e=>setExclusions(e.target.value)} rows={4} placeholder={"Alcohol\nTransport\nPersonal expenses"} style={{...ip,width:"100%",resize:"vertical",marginTop:5,lineHeight:1.45}}/>
+        </label>
+        <label style={{fontSize:11.5,fontWeight:900,color:"#9A6500"}}>! Important notes
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={4} placeholder={"Valid for one person\nCarry a photo ID\nEntry subject to event rules"} style={{...ip,width:"100%",resize:"vertical",marginTop:5,lineHeight:1.45}}/>
+        </label>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:11}}>
+        <button onClick={()=>{setEd(false);setInclusions(event?.ticket_inclusions||"");setExclusions(event?.ticket_exclusions||"");setNotes(event?.ticket_notes||"");}} style={{...btn("#fff",W.ink),border:`1px solid ${W.line}`,flex:1,justifyContent:"center"}}>Cancel</button>
+        <button onClick={save} disabled={busy} style={{...btn("#0F766E","#fff"),flex:1,justifyContent:"center",opacity:busy?.6:1,fontWeight:900}}>{busy?"Saving…":"✓ Save Ticket Details"}</button>
+      </div>
+    </div>
+  );
+}
+
 function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, audBadge, ip, onUpdate, onDel }) {
   const [ed, setEd] = useState(false);
   const [seg, setSeg] = useState(t.segment_id || "");
@@ -15897,7 +15967,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <EventShare event={e} />
                   </>)}
                   {mSeg === "tickets" && (<>
-                    <TicketTypes eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} onUpdate={onUpdateTicketType} />
+                    <TicketTypes event={e} eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} onUpdate={onUpdateTicketType} onUpdateEvent={onUpdate} />
                     <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
                     <PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
                     <GenderBalance ev={e} onUpdate={onUpdate} />
