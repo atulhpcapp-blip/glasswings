@@ -683,7 +683,7 @@ function Shell({ children }) {
   );
 }
 function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events" }] : []), ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
@@ -4446,6 +4446,49 @@ function Main({ user }) {
       {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
+      {tab === "adminevents" && isStaff && <div>
+        <TopBar title="🎟️ Admin Events" />
+        <AdminQuickIssueTicket
+          events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)}
+          ticketTypes={ticketTypes}
+          canIssue={isAdmin || (profile?.roles || []).includes("admin")}
+          onDone={load}
+        />
+        <div style={{padding:"0 14px 14px"}}>
+          <div style={{fontSize:13,fontWeight:950,color:W.ink,margin:"4px 0 10px"}}>Manage Events</div>
+          <AdminEvents
+            memberScope={(!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))) ? "organiser" : "all"}
+            onDuplicate={duplicateEvent}
+            canApprove={isAdmin || (profile?.roles || []).includes("admin")}
+            isSuper={isSuper}
+            dims={dims}
+            optsAll={optsAll}
+            events={((!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))) ? events.filter(ev=>ev.host_id===organiserScopeId) : ((isSuper || !myCity) ? events : events.filter(e=>e.city===myCity))).filter(ev=>!gwIsPrivateEvent(ev))}
+            categories={categories}
+            cities={cities}
+            ticketTypes={ticketTypes}
+            rooms={rooms}
+            lockCity={!isSuper ? myCity : null}
+            perksList={perksList}
+            onAddPerk={addPerk}
+            onDelPerk={delPerk}
+            addonsMap={addons}
+            onAddAddon={addAddon}
+            onDelAddon={delAddon}
+            onCreate={createEvent}
+            onUpdate={updateEvent}
+            onDelete={deleteEvent}
+            onAddOption={addOption}
+            onDelOption={delOption}
+            onSetOptionImage={setOptionImage}
+            onAddTicketType={addTicketType}
+            onDelTicketType={delTicketType}
+            onUpdateTicketType={updateTicketType}
+            onBroadcastEvent={broadcastEvent}
+            onSendEventDM={sendEventDM}
+          />
+        </div>
+      </div>}
       {tab === "admin" && isStaff && <Admin caps={caps} canUseDirectory={[profile?.role, ...(profile?.roles || [])].some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r))} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "coupons" && isStaff && <div><TopBar title="🏷️ Coupons" /><CouponsAdmin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} /></div>}
       {tab === "door" && isStaff && <DoorCheckin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} ticketTypes={ticketTypes} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} onUpdateEvent={updateEvent} />}
@@ -4521,7 +4564,7 @@ function Main({ user }) {
             {twoPane ? (
               <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
             ) : (
-              <div style={{ maxWidth: tab === "admin" ? "none" : 1100, margin: "0 auto", width: "100%", padding: tab === "admin" ? "0 24px" : 0, boxSizing: "border-box" }}>{screen}</div>
+              <div style={{ maxWidth: (tab === "admin" || tab === "adminevents") ? "none" : 1100, margin: "0 auto", width: "100%", padding: tab === "admin" ? "0 24px" : 0, boxSizing: "border-box" }}>{screen}</div>
             )}
           </div>
         </div>
@@ -12757,6 +12800,150 @@ function AdminInviteHub({ events = [] }) {
   );
 }
 
+
+function AdminQuickIssueTicket({ events = [], ticketTypes = {}, canIssue = false, onDone }) {
+  const futureEvents = (events || []).filter(e => {
+    const t = e.event_at || e.event_date;
+    return !t || new Date(t).getTime() > Date.now() - 12*60*60*1000;
+  }).sort((a,b) => new Date(a.event_at || a.event_date || 0) - new Date(b.event_at || b.event_date || 0));
+  const [eventId,setEventId] = useState(futureEvents[0]?.id || "");
+  const [q,setQ] = useState("");
+  const [results,setResults] = useState([]);
+  const [member,setMember] = useState(null);
+  const [typeId,setTypeId] = useState("");
+  const [qty,setQty] = useState("1");
+  const [amount,setAmount] = useState("");
+  const [method,setMethod] = useState("upi");
+  const [busy,setBusy] = useState(false);
+  const [searching,setSearching] = useState(false);
+  const [msg,setMsg] = useState("");
+
+  const ev = futureEvents.find(x => String(x.id) === String(eventId));
+  const types = ticketTypes?.[eventId] || [];
+
+  useEffect(() => {
+    if (!futureEvents.find(x => String(x.id) === String(eventId))) setEventId(futureEvents[0]?.id || "");
+  }, [events?.length]);
+
+  useEffect(() => {
+    setTypeId("");
+    setMsg("");
+  }, [eventId]);
+
+  useEffect(() => {
+    const text = q.trim();
+    if (text.length < 2 || member) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const { data, error } = await supabase.rpc("staff_directory");
+        if (error) throw error;
+        const needle = text.toLowerCase().replace(/\s+/g," ");
+        const digits = text.replace(/\D/g,"");
+        const found = (data || []).filter(m => {
+          const name = String(m.full_name || m.name || "").toLowerCase();
+          const phone = String(m.phone || "").replace(/\D/g,"");
+          const email = String(m.email || "").toLowerCase();
+          return name.includes(needle) || email.includes(needle) || (digits.length >= 4 && phone.includes(digits));
+        }).slice(0,8);
+        setResults(found);
+      } catch (e) { setResults([]); }
+      finally { setSearching(false); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, member]);
+
+  const issue = async () => {
+    if (!canIssue) return setMsg("Only admins can manually issue tickets.");
+    if (!eventId) return setMsg("Choose an event.");
+    if (!member?.id && !member?.user_id) return setMsg("Search and select a registered member.");
+    const uid = member.id || member.user_id;
+    const nqty = Math.max(1, Math.min(20, Number(qty) || 1));
+    setBusy(true); setMsg("");
+    try {
+      const { data, error } = await supabase.rpc("gw_admin_issue_manual_ticket", {
+        p_event: eventId,
+        p_user: uid,
+        p_type: typeId || null,
+        p_qty: nqty,
+        p_amount: amount === "" ? null : Math.max(0, Number(amount) || 0),
+        p_method: method || "manual"
+      });
+      if (error) throw error;
+
+      try {
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        await fetch("/api/email/ticket", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({access_token:token,event_id:eventId,for_user:uid})
+        });
+      } catch {}
+
+      const nm = member.full_name || member.name || "Member";
+      setMsg(`✅ ${nqty} ticket${nqty===1?"":"s"} issued and sent to ${nm}.`);
+      setMember(null); setQ(""); setResults([]); setQty("1"); setAmount(""); setTypeId("");
+      onDone && onDone();
+    } catch (e) {
+      setMsg(e.message || "Could not issue ticket.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{margin:"14px",background:"linear-gradient(135deg,#0A0A0A,#171717 58%,#080808)",border:"1px solid #C8A951",borderRadius:18,padding:15,boxShadow:"0 12px 30px rgba(0,0,0,.15)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:950,letterSpacing:.3,background:"linear-gradient(95deg,#FFF1A8,#D4AF37,#F7E7A5)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>🎟️ QUICK ISSUE TICKET</div>
+          <div style={{fontSize:11.5,color:"#D6C998",marginTop:3,lineHeight:1.45}}>Member paid you manually? Issue their real Glasswings ticket here — no Guest List needed.</div>
+        </div>
+        <span style={{background:"#221E12",border:"1px solid #6F5B21",color:"#E8CF70",borderRadius:999,padding:"5px 9px",fontSize:10.5,fontWeight:900}}>ADMIN ONLY</span>
+      </div>
+
+      {!canIssue && <div style={{marginTop:10,background:"#2A1111",border:"1px solid #6B2020",color:"#FCA5A5",borderRadius:10,padding:9,fontSize:12}}>Only admins can issue manual tickets.</div>}
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:9,marginTop:12}}>
+        <label style={{fontSize:11,fontWeight:900,color:"#E8CF70"}}>EVENT
+          <select value={eventId} onChange={e=>setEventId(e.target.value)} style={{width:"100%",marginTop:5,padding:"11px 10px",borderRadius:10,border:"1px solid #4B4328",background:"#111",color:"#fff",fontSize:13}}>
+            <option value="">Choose event</option>
+            {futureEvents.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}
+          </select>
+        </label>
+        <label style={{fontSize:11,fontWeight:900,color:"#E8CF70"}}>TICKET TYPE
+          <select value={typeId} onChange={e=>setTypeId(e.target.value)} style={{width:"100%",marginTop:5,padding:"11px 10px",borderRadius:10,border:"1px solid #4B4328",background:"#111",color:"#fff",fontSize:13}}>
+            <option value="">General / default</option>
+            {types.map(t=><option key={t.id} value={t.id}>{t.name} · ₹{Number(t.price||0)}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div style={{position:"relative",marginTop:9}}>
+        <div style={{fontSize:11,fontWeight:900,color:"#E8CF70",marginBottom:5}}>MEMBER — SEARCH NAME / PHONE / EMAIL</div>
+        {member ? <div style={{display:"flex",alignItems:"center",gap:9,background:"#171717",border:"1px solid #4B4328",borderRadius:11,padding:9}}>
+          <PersonAvatar url={member.avatar_url} name={member.full_name||member.name} size={38}/>
+          <div style={{flex:1,minWidth:0}}><div style={{color:"#fff",fontWeight:900,fontSize:13.5}}>{member.full_name||member.name}</div><div style={{color:"#AFA27A",fontSize:11}}>{member.phone||member.email||"Registered member"}</div></div>
+          <button onClick={()=>{setMember(null);setQ("");}} style={{border:"none",background:"#2B2B2B",color:"#ddd",borderRadius:8,padding:"6px 8px",cursor:"pointer"}}>Change</button>
+        </div> : <>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="e.g. Rachna, 91826..., email..." style={{width:"100%",padding:"11px 12px",borderRadius:10,border:"1px solid #4B4328",background:"#111",color:"#fff",fontSize:13,outline:"none"}}/>
+          {(searching || results.length>0) && <div style={{position:"absolute",left:0,right:0,top:"100%",zIndex:30,background:"#111",border:"1px solid #4B4328",borderRadius:10,marginTop:4,overflow:"hidden",boxShadow:"0 10px 25px rgba(0,0,0,.35)"}}>
+            {searching && <div style={{padding:10,color:"#AFA27A",fontSize:12}}>Searching…</div>}
+            {results.map(m=><button key={m.id||m.user_id} onClick={()=>{setMember(m);setQ(m.full_name||m.name||"");setResults([]);}} style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"9px 10px",background:"transparent",border:"none",borderBottom:"1px solid #292929",color:"#fff",cursor:"pointer",textAlign:"left"}}><PersonAvatar url={m.avatar_url} name={m.full_name||m.name} size={32}/><div><div style={{fontWeight:800,fontSize:12.5}}>{m.full_name||m.name}</div><div style={{fontSize:10.5,color:"#AFA27A"}}>{m.phone||m.email||""}</div></div></button>)}
+          </div>}
+        </>}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"90px 1fr 130px",gap:8,marginTop:9}}>
+        <label style={{fontSize:10.5,fontWeight:900,color:"#E8CF70"}}>QTY<input type="number" min="1" max="20" value={qty} onChange={e=>setQty(e.target.value)} style={{width:"100%",marginTop:5,padding:"10px",borderRadius:10,border:"1px solid #4B4328",background:"#111",color:"#fff"}}/></label>
+        <label style={{fontSize:10.5,fontWeight:900,color:"#E8CF70"}}>AMOUNT RECEIVED ₹<input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="Optional" style={{width:"100%",marginTop:5,padding:"10px",borderRadius:10,border:"1px solid #4B4328",background:"#111",color:"#fff"}}/></label>
+        <label style={{fontSize:10.5,fontWeight:900,color:"#E8CF70"}}>PAID VIA<select value={method} onChange={e=>setMethod(e.target.value)} style={{width:"100%",marginTop:5,padding:"10px",borderRadius:10,border:"1px solid #4B4328",background:"#111",color:"#fff"}}><option value="upi">UPI</option><option value="cash">Cash</option><option value="bank">Bank</option><option value="other">Other</option></select></label>
+      </div>
+
+      <div style={{fontSize:10.8,color:"#AFA27A",lineHeight:1.45,marginTop:9}}>Admin-issued tickets ignore member gender restrictions. Gender rules continue to apply only to the normal member purchase screen.</div>
+      {msg && <div style={{marginTop:9,background:msg.startsWith("✅")?"#102A22":"#351515",border:`1px solid ${msg.startsWith("✅")?"#245B4B":"#6B2020"}`,color:msg.startsWith("✅")?"#A7F3D0":"#FCA5A5",borderRadius:10,padding:9,fontSize:12.5,fontWeight:750}}>{msg}</div>}
+      <button onClick={issue} disabled={busy || !canIssue} style={{width:"100%",marginTop:11,padding:"12px 14px",borderRadius:11,border:"1px solid #E3C55B",background:"linear-gradient(95deg,#B98A17,#E1C052,#A77911)",color:"#080808",fontWeight:950,fontSize:13.5,cursor:"pointer",opacity:(busy||!canIssue) ? .55 : 1}}>{busy?"Issuing…":"✓ ISSUE & SEND TICKET"}</button>
+    </div>
+  );
+}
+
 function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
   const tabs = [
     ...(canUseDirectory ? [["directory", "☎️ Directory"]] : []),
@@ -19936,6 +20123,7 @@ function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
     { id: "series", icon: Film, label: "Movies", c: "#E4572E" },
     { id: "games", icon: Gamepad2, label: "Games", c: "#2563EB" },
     { id: "gallery", icon: ImageIcon, label: "Gallery", c: "#0EA5A3" },
+    ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events", c: "#B7791F" }] : []),
     ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons", c: "#D97706" }] : []),
     ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Door", c: "#0F766E" }] : []),
     ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin", c: "#DB2777" }] : []),
