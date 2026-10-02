@@ -4454,6 +4454,11 @@ function Main({ user }) {
           canIssue={isAdmin || (profile?.roles || []).includes("admin")}
           onDone={load}
         />
+        <AdminQuickGuestInvite
+          events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)}
+          canIssue={isAdmin || (profile?.roles || []).includes("admin")}
+          onDone={load}
+        />
         <div style={{padding:"0 14px 14px"}}>
           <div style={{fontSize:13,fontWeight:950,color:W.ink,margin:"4px 0 10px"}}>Manage Events</div>
           <AdminEvents
@@ -12800,6 +12805,169 @@ function AdminInviteHub({ events = [] }) {
   );
 }
 
+
+
+function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
+  const futureEvents = (events || []).filter(e => {
+    const t = e.event_at || e.event_date;
+    return !t || new Date(t).getTime() > Date.now() - 12*60*60*1000;
+  }).sort((a,b) => new Date(a.event_at || a.event_date || 0) - new Date(b.event_at || b.event_date || 0));
+
+  const [eventId,setEventId] = useState(futureEvents[0]?.id || "");
+  const [name,setName] = useState("");
+  const [phone,setPhone] = useState("");
+  const [email,setEmail] = useState("");
+  const [qty,setQty] = useState("1");
+  const [gender,setGender] = useState("");
+  const [list,setList] = useState("Organiser's Guest List");
+  const [customList,setCustomList] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [msg,setMsg] = useState("");
+  const [created,setCreated] = useState(null);
+
+  const ev = futureEvents.find(x => String(x.id) === String(eventId));
+  useEffect(() => {
+    if (!futureEvents.find(x => String(x.id) === String(eventId))) setEventId(futureEvents[0]?.id || "");
+  }, [events?.length]);
+
+  const reset = () => {
+    setName(""); setPhone(""); setEmail(""); setQty("1"); setGender("");
+    setList("Organiser's Guest List"); setCustomList(""); setCreated(null); setMsg("");
+  };
+
+  const createInvite = async () => {
+    if (!canIssue) return setMsg("Only admins can create guest invitations.");
+    if (!ev?.id) return setMsg("Choose an event.");
+    if (!name.trim()) return setMsg("Enter the guest name.");
+    const nqty = Math.max(1, Math.min(20, Number(qty)||1));
+    const finalList = list === "__custom__" ? customList.trim() : list;
+    if (list === "__custom__" && !finalList) return setMsg("Enter the custom guest list name.");
+    setBusy(true); setMsg("");
+    try {
+      const { data:gNew, error } = await supabase.rpc("add_guest_ticket", {
+        p_event: ev.id,
+        p_name: name.trim(),
+        p_phone: phone.trim(),
+        p_email: email.trim(),
+        p_qty: nqty,
+        p_age: null,
+        p_location: null,
+        p_type: "guest",
+        p_note: gwGuestListNote(finalList || "Organiser's Guest List")
+      });
+      if (error) throw error;
+      const id = gNew?.id || null;
+      let code = gNew?.code || "";
+      if (!code && id) {
+        const { data:gl, error:ge } = await supabase.rpc("guest_list",{p_event:ev.id});
+        if (ge) throw ge;
+        code = (gl||[]).find(x=>x.id===id)?.code || "";
+      }
+      if (!code) throw new Error("Invitation created but QR code could not be loaded.");
+
+      if (id && gender) {
+        try { await supabase.rpc("gw_guest_portrait",{p_id:id,p_gender:gender,p_photo:""}); } catch {}
+      }
+      if (finalList) gwRememberGuestList(finalList);
+
+      const message = `You're warmly invited to ${ev.title}. This invitation is your entry pass — please show the QR at the door.`;
+      const blob = await gwInvitationBlob(ev,name.trim(),"",message,code);
+      const file = new File([blob],`Glasswings-${(name.trim()||"guest").replace(/[^a-z0-9]+/gi,"-")}-invite.png`,{type:"image/png"});
+      const preview = URL.createObjectURL(blob);
+      setCreated({id,code,file,preview,name:name.trim(),phone:phone.trim(),email:email.trim(),qty:nqty,list:finalList});
+      setMsg(`✅ Invitation created for ${name.trim()}.`);
+      onDone && onDone();
+    } catch(e) {
+      setMsg(e.message || "Could not create invitation.");
+    } finally { setBusy(false); }
+  };
+
+  const shareInvite = async () => {
+    if (!created?.file) return;
+    const text = `💌 ${created.name}, you're invited to ${ev?.title || "a Glasswings event"}. Your invitation contains the QR entry pass.`;
+    try {
+      if (navigator.canShare?.({files:[created.file]}) && navigator.share) {
+        await navigator.share({title:`Invitation to ${ev?.title || "Glasswings"}`,text,files:[created.file]});
+      } else if (navigator.share) {
+        await navigator.share({title:`Invitation to ${ev?.title || "Glasswings"}`,text});
+      } else {
+        const a=document.createElement("a"); a.href=created.preview; a.download=created.file.name; a.click();
+      }
+    } catch(e) {
+      if (e?.name !== "AbortError") setMsg("Invitation is ready. Use WhatsApp or Download below.");
+    }
+  };
+
+  const waLink = created?.phone ? `https://wa.me/${waNum(created.phone)}?text=${encodeURIComponent(`💌 Hi ${created.name}, you're invited to ${ev?.title || "a Glasswings event"}. I have created your personal QR invitation. Please keep it ready at the entrance. Invitation code: ${created.code}`)}` : "";
+  const mailLink = created?.email ? `mailto:${encodeURIComponent(created.email)}?subject=${encodeURIComponent(`Invitation to ${ev?.title || "Glasswings"}`)}&body=${encodeURIComponent(`Hi ${created.name},\n\nYou're invited to ${ev?.title || "a Glasswings event"}.\nYour entry code is ${created.code}.\n\nPlease keep your Glasswings invitation/QR ready at the entrance.`)}` : "";
+
+  return (
+    <div style={{margin:"14px",background:"linear-gradient(135deg,#FFF8EA,#FFF0F6)",border:"1px solid #E7CFAE",borderRadius:18,padding:15,boxShadow:"0 10px 26px rgba(90,58,24,.10)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:16,fontWeight:950,color:"#6B4218"}}>💌 QUICK INVITE GUEST</div>
+          <div style={{fontSize:11.5,color:"#80664C",marginTop:3,lineHeight:1.45}}>For people who are not Glasswings members. Create their QR invitation here — no Guest List screen needed.</div>
+        </div>
+        <span style={{background:"#fff",border:"1px solid #E7CFAE",color:"#8A5A18",borderRadius:999,padding:"5px 9px",fontSize:10.5,fontWeight:900}}>NON-MEMBER GUEST</span>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:9,marginTop:12}}>
+        <label style={{fontSize:11,fontWeight:900,color:"#8A5A18"}}>EVENT
+          <select value={eventId} onChange={e=>{setEventId(e.target.value);setCreated(null);}} style={{width:"100%",marginTop:5,padding:"11px 10px",borderRadius:10,border:"1px solid #E7CFAE",background:"#fff",color:W.ink,fontSize:13}}>
+            <option value="">Choose event</option>
+            {futureEvents.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}
+          </select>
+        </label>
+        <label style={{fontSize:11,fontWeight:900,color:"#8A5A18"}}>GUEST LIST
+          <select value={list} onChange={e=>setList(e.target.value)} style={{width:"100%",marginTop:5,padding:"11px 10px",borderRadius:10,border:"1px solid #E7CFAE",background:"#fff",color:W.ink,fontSize:13}}>
+            {[...GW_GUEST_LIST_PRESETS,...gwSavedGuestLists().filter(x=>!GW_GUEST_LIST_PRESETS.includes(x))].map(x=><option key={x} value={x}>{x}</option>)}
+            <option value="__custom__">+ Create custom list…</option>
+          </select>
+        </label>
+      </div>
+      {list==="__custom__" && <input value={customList} onChange={e=>setCustomList(e.target.value)} placeholder="Custom guest list name" style={{...gwField,marginTop:9}}/>}
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:9,marginTop:9}}>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Guest name *" style={gwField}/>
+        <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="WhatsApp / phone" style={gwField}/>
+        <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email (optional)" style={gwField}/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"90px 1fr",gap:8,marginTop:9}}>
+        <label style={{fontSize:10.5,fontWeight:900,color:"#8A5A18"}}>QTY
+          <input type="number" min="1" max="20" value={qty} onChange={e=>setQty(e.target.value)} style={{...gwField,marginTop:5}}/>
+        </label>
+        <label style={{fontSize:10.5,fontWeight:900,color:"#8A5A18"}}>GENDER <span style={{fontWeight:500}}>(optional)</span>
+          <select value={gender} onChange={e=>setGender(e.target.value)} style={{...gwField,marginTop:5}}>
+            <option value="">Not specified</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
+          </select>
+        </label>
+      </div>
+
+      {!created && <button onClick={createInvite} disabled={busy||!canIssue} style={{width:"100%",marginTop:11,padding:"12px 14px",borderRadius:11,border:"1px solid #B7791F",background:"linear-gradient(95deg,#8A5A18,#D49A37)",color:"#fff",fontWeight:950,fontSize:13.5,cursor:"pointer",opacity:(busy||!canIssue) ? .55 : 1}}>{busy?"Creating…":"💌 CREATE GUEST INVITATION"}</button>}
+
+      {msg && <div style={{marginTop:9,background:msg.startsWith("✅")?"#ECFDF5":"#FFF1F2",border:`1px solid ${msg.startsWith("✅")?"#A7F3D0":"#FECDD3"}`,color:msg.startsWith("✅")?"#047857":"#BE123C",borderRadius:10,padding:9,fontSize:12.5,fontWeight:750}}>{msg}</div>}
+
+      {created && <div style={{marginTop:12,background:"#fff",border:"1px solid #E7CFAE",borderRadius:14,padding:11}}>
+        <div style={{display:"grid",gridTemplateColumns:"100px 1fr",gap:10,alignItems:"center"}}>
+          <img src={created.preview} alt="Invitation preview" style={{width:100,height:145,objectFit:"cover",borderRadius:10,border:"1px solid #E7CFAE"}}/>
+          <div>
+            <div style={{fontWeight:950,color:"#6B4218"}}>Invitation ready ✅</div>
+            <div style={{fontSize:11.5,color:"#80664C",marginTop:3}}>{created.name} · {created.qty} entry{created.qty===1?"":"ies"}</div>
+            <div style={{fontSize:10.5,color:"#9A774B",marginTop:3,fontFamily:"monospace"}}>Code: {created.code}</div>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:7,marginTop:10}}>
+          <button onClick={shareInvite} style={{...btn("linear-gradient(95deg,#7C3AED,#2563EB)","#fff"),justifyContent:"center",fontWeight:900}}>↗ Share Invite</button>
+          {waLink && <a href={waLink} target="_blank" rel="noreferrer" style={{...btn("#25D366","#fff"),justifyContent:"center",textDecoration:"none",fontWeight:900}}>💬 WhatsApp</a>}
+          {mailLink && <a href={mailLink} style={{...btn("#EFF6FF","#1D4ED8"),border:"1px solid #BFDBFE",justifyContent:"center",textDecoration:"none",fontWeight:900}}>✉️ Email</a>}
+          <a href={created.preview} download={created.file.name} style={{...btn("#FFF7ED","#9A3412"),border:"1px solid #FED7AA",justifyContent:"center",textDecoration:"none",fontWeight:900}}>⬇ Save Image</a>
+        </div>
+        <button onClick={reset} style={{...btn("#fff",W.soft),border:`1px solid ${W.line}`,width:"100%",justifyContent:"center",marginTop:8}}>+ Invite another guest</button>
+      </div>}
+    </div>
+  );
+}
 
 function AdminQuickIssueTicket({ events = [], ticketTypes = {}, canIssue = false, onDone }) {
   const futureEvents = (events || []).filter(e => {
