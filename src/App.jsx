@@ -4797,7 +4797,11 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
                 <div style={{fontSize:28,fontWeight:950,color:"#202124",letterSpacing:-.7,lineHeight:1.05}}>It All Starts Here!</div>
                 <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",padding:"7px 0 0",color:"#e53955",fontSize:15,fontWeight:800,cursor:"pointer"}}>{currentCity} ›</button>
               </div>
-              <button onClick={()=>onProfile && onProfile()} aria-label="Profile" style={{width:48,height:48,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666"}}><User size={25}/></button>
+              <button onClick={()=>onProfile && onProfile()} aria-label="Profile" style={{width:48,height:48,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666",padding:0,overflow:"hidden",cursor:"pointer"}}>
+                {profile?.avatar_url
+                  ? <img src={profile.avatar_url} alt={profile?.full_name ? `${profile.full_name} profile` : "Profile"} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                  : <User size={25}/>}
+              </button>
             </div>
           </div>
 
