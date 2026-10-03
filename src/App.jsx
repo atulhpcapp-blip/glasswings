@@ -4500,7 +4500,7 @@ function Main({ user }) {
       </div>}
       {reviewFlag && !["events", "profile"].includes(tab) ? <RestrictedGate user={user} profile={profile} reviewFlag={reviewFlag} photoReviewStatus={photoReviewStatus} reload={() => Promise.all([load(), refreshReview()])} /> : (<>
       {tab === "games" && <GameZone user={user} profile={profile} onOrganiserApproved={load} meId={user.id} events={events} onUpgrade={() => setSubPage({ highlight: null })} initialGame={autoGame} onConsumedInitial={() => setAutoGame(null)} autoSpark={autoSpark} onConsumedSpark={() => setAutoSpark(null)} isStaff={isAdmin || ["admin", "superadmin", "subadmin"].includes(profile?.role) || (profile?.roles || []).some(r => ["admin", "superadmin", "subadmin"].includes(r))} />}
-      {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
+      {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} onProfile={()=>setTab("profile")} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
       {tab === "adminevents" && isStaff && <div>
@@ -4708,7 +4708,7 @@ function Notice({ text, onClose }) {
 
 /* ---------------- chats ---------------- */
 /* ---------------- events ---------------- */
-function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll, privateMode = false, savedIds = new Set(), onToggleSave, ratingSummary = {} }) {
+function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, onProfile, focus, onFocusDone, dims, optsAll, privateMode = false, savedIds = new Set(), onToggleSave, ratingSummary = {} }) {
   const popSet = (() => {
     const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
     return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id));
@@ -4797,7 +4797,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
                 <div style={{fontSize:28,fontWeight:950,color:"#202124",letterSpacing:-.7,lineHeight:1.05}}>It All Starts Here!</div>
                 <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",padding:"7px 0 0",color:"#e53955",fontSize:15,fontWeight:800,cursor:"pointer"}}>{currentCity} ›</button>
               </div>
-              <button onClick={()=>{ try { window.dispatchEvent(new CustomEvent("gw-open-profile")); } catch {} }} aria-label="Profile" style={{width:48,height:48,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666"}}><User size={25}/></button>
+              <button onClick={()=>onProfile && onProfile()} aria-label="Profile" style={{width:48,height:48,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666"}}><User size={25}/></button>
             </div>
           </div>
 
