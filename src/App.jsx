@@ -4711,7 +4711,7 @@ function Notice({ text, onClose }) {
 function Events({ events, categories, cities, profile, ticketTypes, subs, stats, typeSold, addonsMap, canAccessEvent, counts, onJoin, onTicket, onOpenDetail, focus, onFocusDone, dims, optsAll, privateMode = false, savedIds = new Set(), onToggleSave, ratingSummary = {} }) {
   const popSet = (() => {
     const tot = events.map(e => [e.id, ((stats?.[e.id]?.male || 0) + (stats?.[e.id]?.female || 0))]);
-    return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
+    return new Set(tot.filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id));
   })();
   const [flt, setFlt] = useState(emptyFlt());
   const [sortBy, setSortBy] = useState("relevance");
@@ -4731,9 +4731,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     if (dateQuick === "all") return true;
     if (!e.event_at) return false;
     const d = new Date(e.event_at); if (isNaN(d.getTime())) return false;
-    const now = new Date();
-    const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const now = new Date(), dd = new Date(d.getFullYear(), d.getMonth(), d.getDate()), t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     if (dateQuick === "today") return dd.getTime() === t0.getTime();
     if (dateQuick === "weekend") { const sat = new Date(t0); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7)); const sun = new Date(sat); sun.setDate(sun.getDate() + 1); return dd.getTime() === sat.getTime() || dd.getTime() === sun.getTime(); }
     if (dateQuick === "month") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
@@ -4751,65 +4749,119 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     const m = Math.min(...prices);
     return m === 0 ? "Free" : `From ₹${m}`;
   };
-  const evSlide = ({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
-  const promoSlides = events
-    .filter(e => Number(e.promo_pct) > 0 && e.approved !== false && gwEventLive(e))
-    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
-    .filter(x => x.img)
-    .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
-    .map(evSlide);
+  const evSlide = ({ e, img }) => ({ url: img, title: e.title, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
+  const promoSlides = events.filter(e => Number(e.promo_pct) > 0 && e.approved !== false && gwEventLive(e)).map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img).sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct)).map(evSlide);
   const customSlides = privateMode ? [] : custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
-  const autoSlides = events
-    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
-    .filter(x => x.img && x.e.approved !== false && gwEventLive(x.e))
-    .sort((a, b) => (a.e.event_at ? new Date(a.e.event_at).getTime() : 9e15) - (b.e.event_at ? new Date(b.e.event_at).getTime() : 9e15))
-    .map(evSlide);
+  const autoSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false && gwEventLive(x.e)).sort((a, b) => (a.e.event_at ? new Date(a.e.event_at).getTime() : 9e15) - (b.e.event_at ? new Date(b.e.event_at).getTime() : 9e15)).map(evSlide);
   const seen = new Set(promoSlides.map(ps => ps.id).filter(Boolean));
-  const cust2 = customSlides.filter(c => !c.id || !seen.has(c.id));
-  cust2.forEach(c => { if (c.id) seen.add(c.id); });
+  const cust2 = customSlides.filter(c => !c.id || !seen.has(c.id)); cust2.forEach(c => { if (c.id) seen.add(c.id); });
   const auto2 = autoSlides.filter(a2 => !seen.has(a2.id));
   const heroSlides = [...promoSlides, ...cust2, ...auto2].slice(0, 8);
+
+  const currentCity = flt.city.length === 1 ? flt.city[0] : (profile?.city || "Hyderabad");
+  const categoryIcon = (name) => {
+    const n = String(name || "").toLowerCase();
+    if (n.includes("house")) return "🏡";
+    if (n.includes("music") || n.includes("jam")) return "🎤";
+    if (n.includes("open")) return "🎙️";
+    if (n.includes("comedy")) return "😂";
+    if (n.includes("sport")) return "🏏";
+    if (n.includes("food")) return "🍽️";
+    if (n.includes("work")) return "🎨";
+    if (n.includes("club") || n.includes("party")) return "🪩";
+    return "🎟️";
+  };
+  const bmsCard = (e) => (
+    <div key={e.id} onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ flex:"0 0 46%", minWidth:150, maxWidth:220, cursor:"pointer" }}>
+      <div style={{ position:"relative", aspectRatio:"2/3", borderRadius:12, overflow:"hidden", background:"#e9ecef", boxShadow:"0 2px 8px rgba(0,0,0,.08)" }}>
+        {(e.vertical_banner_url || e.poster_url || (e.banner_url && e.banner_type !== "video"))
+          ? <img src={e.vertical_banner_url || e.poster_url || e.banner_url} alt={e.title} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+          : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:50,background:"linear-gradient(135deg,#008069,#04B08F)"}}>{e.emoji || "🎟️"}</div>}
+        {popSet.has(e.id) && <span style={{position:"absolute",top:8,left:8,background:"#e53955",color:"#fff",fontSize:10,fontWeight:900,padding:"4px 8px",borderRadius:5}}>POPULAR</span>}
+        {gwEventClosed(e) && <div style={{position:"absolute",left:0,right:0,bottom:0,background:"rgba(185,28,28,.94)",color:"#fff",padding:"7px",fontSize:11,fontWeight:900,textAlign:"center"}}>{gwEventAvailability(e)==="housefull"?"HOUSEFULL":"SOLD OUT"}</div>}
+        {onToggleSave && <button onClick={ev=>{ev.stopPropagation();onToggleSave(e.id)}} style={{position:"absolute",right:7,top:7,width:30,height:30,border:0,borderRadius:"50%",background:"rgba(0,0,0,.42)",fontSize:14}}>{savedIds.has(e.id)?"❤️":"🤍"}</button>}
+      </div>
+      <div style={{fontSize:15,fontWeight:750,color:"#222",lineHeight:1.25,marginTop:8,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{e.title}</div>
+      <div style={{fontSize:12.5,color:"#555",marginTop:4}}>{e.event_date || e.city || ""}</div>
+      <div style={{fontSize:12.5,color:W.teal,fontWeight:800,marginTop:3}}>{priceFrom(e)}</div>
+    </div>
+  );
+
   return (
-    <div>
-      <TopBar title={privateMode ? "Private Parties" : "Events"} />
-      {privateMode ? (
-        <div style={{ margin: "14px 14px 4px", padding: "18px 17px", borderRadius: 18, color: "#fff", background: "linear-gradient(135deg,#21113F,#7C3AED 62%,#DB2777)", boxShadow: "0 12px 28px rgba(124,58,237,.22)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 13 }}><div style={{ width: 48, height: 48, borderRadius: 15, background: "rgba(255,255,255,.16)", display: "flex", alignItems: "center", justifyContent: "center" }}><Lock size={24} /></div><div><div style={{ fontWeight: 950, fontSize: 21 }}>Your private invitations</div><div style={{ fontSize: 12.5, opacity: .9, marginTop: 3, lineHeight: 1.4 }}>Only parties created for your VIP, subscriber or special member segments appear here.</div></div></div>
-          <div onClick={() => setCitySheet(true)} style={{ marginTop: 13, display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.14)", borderRadius: 999, padding: "6px 11px", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>📍 {flt.city.length === 1 ? flt.city[0] : "All cities"} ›</div>
-        </div>
+    <div style={{background:"#fff",minHeight:"100vh"}}>
+      {!privateMode ? (
+        <>
+          <div style={{padding:"18px 18px 8px",background:"#fff"}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+              <div>
+                <div style={{fontSize:28,fontWeight:950,color:"#202124",letterSpacing:-.7,lineHeight:1.05}}>It All Starts Here!</div>
+                <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",padding:"7px 0 0",color:"#e53955",fontSize:15,fontWeight:800,cursor:"pointer"}}>{currentCity} ›</button>
+              </div>
+              <button onClick={()=>{ try { window.dispatchEvent(new CustomEvent("gw-open-profile")); } catch {} }} aria-label="Profile" style={{width:48,height:48,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666"}}><User size={25}/></button>
+            </div>
+          </div>
+
+          <div style={{padding:"8px 16px 10px"}}>
+            <div style={{position:"relative"}}>
+              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:16}}>🔍</span>
+              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search events, venues, artists…" style={{width:"100%",padding:"12px 38px 12px 42px",border:"1px solid #e1e3e6",borderRadius:10,background:"#f7f7f8",fontSize:14.5,fontWeight:600,outline:"none"}}/>
+              {q && <span onClick={()=>setQ("")} style={{position:"absolute",right:13,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#777"}}>✕</span>}
+            </div>
+          </div>
+
+          <div style={{display:"flex",overflowX:"auto",gap:24,padding:"10px 18px 16px",borderBottom:"1px solid #f0f0f0"}}>
+            <div onClick={()=>setFlt(f=>({...f,category:[]}))} style={{flex:"0 0 62px",textAlign:"center",cursor:"pointer"}}>
+              <div style={{fontSize:31,lineHeight:1}}>✨</div><div style={{fontSize:12.5,fontWeight:700,marginTop:7,color:flt.category.length===0?"#e53955":"#222"}}>All</div>
+            </div>
+            {catTiles.map(c=><div key={c.id||c.name} onClick={()=>setFlt(f=>({...f,category:[c.name]}))} style={{flex:"0 0 62px",textAlign:"center",cursor:"pointer"}}>
+              <div style={{width:42,height:42,margin:"0 auto",borderRadius:12,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,background:"#fff"}}>
+                {c.image_url?<img src={c.image_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10}}/>:categoryIcon(c.name)}
+              </div>
+              <div style={{fontSize:12.5,fontWeight:700,marginTop:7,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:flt.category[0]===c.name?"#e53955":"#222"}}>{c.name}</div>
+            </div>)}
+          </div>
+
+          {heroSlides.length>0 && <div style={{padding:"10px 16px 4px"}}><div style={{borderRadius:14,overflow:"hidden"}}><HeroSlider slides={heroSlides} wide={wide} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div></div>}
+
+          <div style={{display:"flex",gap:9,padding:"12px 16px 8px",overflowX:"auto"}}>
+            <button onClick={()=>setFsheet(true)} style={filterPill(fltCount(flt)>0)}>☰ Filters{fltCount(flt)>0?` (${fltCount(flt)})`:""}</button>
+            <button onClick={()=>setSsheet(true)} style={filterPill(sortBy!=="relevance")}>↕ Sort By</button>
+            {onToggleSave&&<button onClick={()=>setSavedOnly(v=>!v)} style={filterPill(savedOnly)}>{savedOnly?"❤️ Saved":"♡ Saved"}</button>}
+            {[["today","Today"],["weekend","This Weekend"],["month","This Month"]].map(([k,l])=><button key={k} onClick={()=>setDateQuick(dateQuick===k?"all":k)} style={filterPill(dateQuick===k)}>{l}</button>)}
+          </div>
+
+          <section style={{padding:"18px 0 24px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 18px 12px"}}>
+              <h2 style={{margin:0,fontSize:23,fontWeight:900,color:"#222",letterSpacing:-.4}}>Recommended Events</h2>
+              <span style={{color:"#e53955",fontSize:14,fontWeight:750}}>See All ›</span>
+            </div>
+            {list.length===0 ? <div style={{padding:"28px 18px",color:"#777",textAlign:"center"}}>{savedOnly?"No saved events yet.":"No events match your search or filters."}</div>
+            : <div style={{display:"flex",gap:14,overflowX:"auto",padding:"0 18px 8px",scrollSnapType:"x proximity"}}>{list.slice(0,10).map(bmsCard)}</div>}
+          </section>
+
+          {list.length>3 && <section style={{padding:"6px 0 28px",background:"#fafafa",borderTop:"1px solid #f1f1f1"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 18px 12px"}}>
+              <h2 style={{margin:0,fontSize:22,fontWeight:900,color:"#222"}}>Popular Near You</h2>
+              <span style={{color:"#e53955",fontSize:14,fontWeight:750}}>See All ›</span>
+            </div>
+            <div style={{display:"flex",gap:14,overflowX:"auto",padding:"0 18px 8px"}}>{list.slice(3,13).map(bmsCard)}</div>
+          </section>}
+        </>
       ) : (
-        <div style={{ padding: "14px 16px 4px", background: "#fff" }}>
-          <div style={{ fontWeight: 800, fontSize: 21.5, color: W.ink, letterSpacing: -0.3 }}>Your city. Your people. ✨</div>
-          <div onClick={() => setCitySheet(true)} style={{ color: W.teal, fontWeight: 800, fontSize: 14, marginTop: 3, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>{flt.city.length === 1 ? flt.city[0] : "All cities"}&nbsp;{"\u203a"}</div>
-        </div>
+        <>
+          <TopBar title="Private Parties"/>
+          <div style={{margin:"14px",padding:"18px 17px",borderRadius:18,color:"#fff",background:"linear-gradient(135deg,#21113F,#7C3AED 62%,#DB2777)"}}>
+            <div style={{fontWeight:950,fontSize:21}}>Your private invitations</div>
+            <div style={{fontSize:12.5,opacity:.9,marginTop:4}}>Only parties created for your VIP, subscriber or special member segments appear here.</div>
+          </div>
+          <div style={{padding:"0 14px 16px",display:"grid",gridTemplateColumns:wide?"repeat(auto-fill,minmax(190px,1fr))":"repeat(2,minmax(0,1fr))",gap:14}}>
+            {list.map(e=><PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved===false} onOpen={id=>onOpenDetail&&onOpenDetail(id)} saved={savedIds.has(e.id)} onToggleSave={onToggleSave} rating={ratingSummary[e.id]}/>)}
+          </div>
+        </>
       )}
-      <div style={{ padding: "10px 14px 4px", background: "#fff" }}>
-        <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 15 }}>🔍</span>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search events, venues, artists…" style={{ width: "100%", boxSizing: "border-box", padding: "11px 34px 11px 38px", borderRadius: 12, border: `1.5px solid ${ql ? W.teal : W.line}`, background: W.bg, color: W.ink, fontWeight: 600, fontSize: 14.5, outline: "none" }} />
-          {q && <span onClick={() => setQ("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: W.soft, cursor: "pointer", fontWeight: 800 }}>✕</span>}
-        </div>
-      </div>
-      <CategoryTiles cats={catTiles} val={flt.category.length === 1 ? flt.category[0] : "All"} set={name => setFlt(f => ({ ...f, category: name === "All" ? [] : [name] }))} />
-      <div style={{ display: "flex", gap: 10, padding: "10px 14px", overflowX: "auto", borderBottom: `1px solid ${W.line}`, background: "#fff", position: "sticky", top: 0, zIndex: 5 }}>
-        <button onClick={() => setFsheet(true)} style={filterPill(fltCount(flt) > 0)}>{"\u2630 Filters"}{fltCount(flt) > 0 ? ` (${fltCount(flt)})` : ""}</button>
-        <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
-        {onToggleSave && <button onClick={() => setSavedOnly(v => !v)} style={filterPill(savedOnly)}>{savedOnly ? "❤️ Saved" : "🤍 Saved"}</button>}
-        {[["all", "📅 All dates"], ["today", "Today"], ["weekend", "This weekend"], ["month", "This month"]].map(([k, l]) => (
-          <button key={k} onClick={() => setDateQuick(k)} style={filterPill(dateQuick === k && k !== "all")}>{l}</button>
-        ))}
-        {[["all", "All"], ["glasswings", "🏠 Glasswings"], ["partner", "🤝 Partner"], ["meetup", "☕ Meetups"]].map(([k, lbl]) => (
-          <button key={k} onClick={() => setHostFlt(k)} style={filterPill(hostFlt === k && k !== "all")}>{lbl}</button>
-        ))}
-      </div>
-      {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={wide} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
-      <div className="gw-event-grid" style={{ padding: 14, display: "grid", minWidth: 0, gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "minmax(0,1fr)", gap: 13 }}>
-        {list.length === 0 && <div style={{ gridColumn: "1/-1", background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 10 }}><Center>{savedOnly ? "No saved events yet — tap the 🤍 on any event to save it." : privateMode ? "No private invitations are available for your segments right now." : (q.trim() || dateQuick !== "all" || fltCount(flt) > 0) ? "No events match your search/filters." : "No events here yet."}</Center></div>}
-        {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} saved={savedIds.has(e.id)} onToggleSave={onToggleSave} rating={ratingSummary[e.id]} />)}
-      </div>
-      {fsheet && <FilterSheet events={events} dims={dims} opts={optsAll} getMin={getMin} value={flt} onApply={f => { setFlt(f); setFsheet(false); }} onClose={() => setFsheet(false)} />}
-      {ssheet && <SortSheet value={sortBy} onPick={k => { setSortBy(k); setSsheet(false); }} onClose={() => setSsheet(false)} />}
-      {citySheet && <CitySheet cities={cityNames} value={flt.city.length === 1 ? flt.city[0] : "All cities"} onPick={c => { setFlt(f => ({ ...f, city: c === "All cities" ? [] : [c] })); setCitySheet(false); }} onClose={() => setCitySheet(false)} />}
+      {fsheet&&<FilterSheet events={events} dims={dims} opts={optsAll} getMin={getMin} value={flt} onApply={f=>{setFlt(f);setFsheet(false)}} onClose={()=>setFsheet(false)}/>}
+      {ssheet&&<SortSheet value={sortBy} onPick={k=>{setSortBy(k);setSsheet(false)}} onClose={()=>setSsheet(false)}/>}
+      {citySheet&&<CitySheet cities={cityNames} value={flt.city.length===1?flt.city[0]:"All cities"} onPick={c=>{setFlt(f=>({...f,city:c==="All cities"?[]:[c]}));setCitySheet(false)}} onClose={()=>setCitySheet(false)}/>}
     </div>
   );
 }
