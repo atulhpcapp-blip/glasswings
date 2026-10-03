@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "branded.m7fa41984d74842b6bb24d364d88fe092.hyderabadpartyclub",
+      "sha256_cert_fingerprints": [
+        "5B:2C:1C:5E:58:CF:45:DC:92:BE:76:F2:7C:CF:0E:F8:7A:66:69:4B:5E:D5:8A:0F:0E:E2:9B:59:CF:B7:EB:EE"
+      ]
+    }
+  }
+]
