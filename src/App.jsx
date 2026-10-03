@@ -647,8 +647,40 @@ class GwErrorBoundary extends React.Component {
   }
 }
 export default function App() {
-  return <GwErrorBoundary><AppRoot /></GwErrorBoundary>;
+  return <GwErrorBoundary><MobileLayoutStyles /><AppRoot /></GwErrorBoundary>;
 }
+
+// Shared by signed-in and public screens; horizontal scrolling stays inside rails.
+function MobileLayoutStyles() {
+  return <style>{`
+    html,body,#root{margin:0;padding:0;width:100%;min-width:0;max-width:100%;}
+    html,body{overflow-x:hidden;}
+    @supports(overflow:clip){html,body{overflow-x:clip;}}
+    *,*::before,*::after{box-sizing:border-box;}
+    button,input,select,textarea{font-family:inherit;}
+    .gw-public,.gw-public-main,.gw-event-grid,.gw-poster-card{min-width:0;max-width:100%;}
+    .gw-poster-card{width:100%;overflow-wrap:anywhere;}
+    .gw-category-rail{width:100%;min-width:0;max-width:100%;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;}
+    .gw-public-header{gap:12px;}
+    .gw-public-actions{min-width:0;align-items:center;}
+    .gw-public-actions button{white-space:nowrap;min-height:44px;}
+    .gw-public-header>img{max-width:90px;flex-shrink:0;}
+    @media(max-width:819px){
+      .gw-event-grid{grid-template-columns:minmax(0,1fr)!important;gap:20px!important;}
+      .gw-public-header{padding:10px 12px!important;gap:8px;}
+      .gw-public-header>img{width:48px;height:34px!important;}
+      .gw-public-actions{gap:6px!important;}
+      .gw-public-actions button{padding:8px 10px!important;font-size:12px!important;}
+      .gw-poster-card>div:last-child{padding:10px 2px 4px!important;}
+      .gw-poster-card>div:last-child>div:first-child{font-size:16px!important;line-height:1.35!important;}
+    }
+    @media(max-width:359px){
+      .gw-public-header{flex-wrap:wrap;}
+      .gw-public-actions{flex:1;justify-content:flex-end;flex-wrap:wrap;}
+    }
+  `}</style>;
+}
+
 function AppRoot() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
@@ -1686,7 +1718,7 @@ async function exportGuestListPdf(ev) {
 }
 function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved, onToggleSave, rating }) {
   return (
-    <div id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer" }}>
+    <div className="gw-poster-card" id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer", minWidth: 0, width: "100%", maxWidth: "100%" }}>
       <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
         {(e.host_type === "partner" || e.host_type === "meetup") && (
           <span style={{ position: "absolute", top: 8, left: 8, zIndex: 2, background: e.host_type === "partner" ? "rgba(30,64,175,.92)" : "rgba(146,98,28,.92)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 10, letterSpacing: .3 }}>
@@ -1850,7 +1882,7 @@ function CategoryTiles({ cats, val, set }) {
     </div>
   );
   return (
-    <div style={{ display: "flex", gap: 10, overflowX: "auto", padding: "12px 14px 10px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
+    <div className="gw-category-rail" style={{ display: "flex", gap: 10, overflowX: "auto", padding: "12px 14px 10px", background: "#fff", borderBottom: `1px solid ${W.line}` }}>
       {tile("__all", "All", null, "✦")}
       {cats.map(c => tile(c.id || c.name, c.name, c.image_url, "🎟️"))}
     </div>
@@ -2830,7 +2862,7 @@ function HeroSlider({ slides, wide, onSlide }) {
   const end = (e) => { if (tx.current == null) return; const d = e.changedTouches[0].clientX - tx.current; tx.current = null; if (Math.abs(d) > 40) setI(x => (x + (d < 0 ? 1 : -1) + slides.length) % slides.length); };
   const s = slides[i] || slides[0];
   return (
-    <div onTouchStart={start} onTouchEnd={end} onClick={() => onSlide && onSlide(s)} style={{ position: "relative", height: wide ? 380 : 215, overflow: "hidden", background: "#0b1f1c", cursor: onSlide ? "pointer" : "default" }}>
+    <div onTouchStart={start} onTouchEnd={end} onClick={() => onSlide && onSlide(s)} style={{ position: "relative", width: "100%", maxWidth: "100%", minWidth: 0, height: wide ? 380 : "clamp(190px, 56vw, 260px)", overflow: "hidden", background: "#0b1f1c", cursor: onSlide ? "pointer" : "default" }}>
       {slides.map((sl, idx) => (
         <div key={idx} style={{ position: "absolute", inset: 0, opacity: idx === i ? 1 : 0, transition: "opacity .6s ease" }}>
           <img src={sl.url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(26px) brightness(.62)", transform: "scale(1.15)" }} />
@@ -2938,17 +2970,17 @@ function PublicLanding() {
     </div>
   ) : null;
   return (
-    <div style={{ minHeight: "100vh", background: W.bg, fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif" }}>
+    <div className="gw-public" style={{ width: "100%", minHeight: "100dvh", background: W.bg, fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif" }}>
       <style>{`*{box-sizing:border-box}::-webkit-scrollbar{width:0;height:0}`}</style>
-      <div style={{ position: "sticky", top: 0, zIndex: 20, background: W.teal, display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "13px 7%" : "12px 15px" }}>
+      <div className="gw-public-header" style={{ position: "sticky", top: 0, zIndex: 20, background: W.teal, display: "flex", alignItems: "center", justifyContent: "space-between", padding: wide ? "13px 7%" : "12px 15px" }}>
         <img src="/logo-white.png" alt="Glasswings Events" style={{ height: wide ? 32 : 27, objectFit: "contain" }} />
-        <div style={{ display: "flex", gap: 9 }}>
+        <div className="gw-public-actions" style={{ display: "flex", gap: 9 }}>
           <button onClick={() => window.open("/about.html", "_blank")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.6)", borderRadius: 9, padding: "9px 14px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>About us</button>
           <button onClick={() => setAuthMode("login")} style={{ background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.6)", borderRadius: 9, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Log in</button>
           <button onClick={() => { try { localStorage.removeItem("gw_buy"); } catch {} setAuthMode("signup"); }} style={{ background: "#fff", color: W.teal, border: "none", borderRadius: 9, padding: "9px 17px", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Sign up</button>
         </div>
       </div>
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
+      <div className="gw-public-main" style={{ width: "100%", maxWidth: 1180, margin: "0 auto", padding: wide ? "30px 7% 60px" : "0 0 30px" }}>
         <div style={{ padding: wide ? "0 0 6px" : "18px 16px 4px" }}>
           <div style={{ fontWeight: 800, fontSize: wide ? 28 : 21.5, color: W.ink, letterSpacing: -0.3 }}>Your city. Your people. ✨</div>
           <div onClick={() => setCitySheet(true)} style={{ color: W.teal, fontWeight: 800, fontSize: 14, marginTop: 3, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>{flt.city.length === 1 ? flt.city[0] : "All cities"}&nbsp;{"\u203a"}</div>
@@ -2959,7 +2991,7 @@ function PublicLanding() {
           <button onClick={() => setSsheet(true)} style={filterPill(sortBy !== "relevance")}>{"\u2195 Sort By"}</button>
         </div>
         {heroSlides.length > 0 && <div style={{ marginBottom: 6 }}><HeroSlider slides={heroSlides} wide={wide} onSlide={(s) => { if (s.id) openDetail(s.id); else setAuthMode("signup"); }} /></div>}
-        <div style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "repeat(2,1fr)", gap: 14, padding: wide ? "8px 0 0" : "6px 14px" }}>
+        <div className="gw-event-grid" style={{ display: "grid", gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "minmax(0,1fr)", gap: 14, padding: wide ? "8px 0 0" : "6px 14px" }}>
           {list.length === 0 && <div style={{ gridColumn: "1/-1" }}><Center>No events yet — check back soon!</Center></div>}
           {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={false} onOpen={openDetail} />)}
         </div>
@@ -3568,7 +3600,7 @@ function Main({ user }) {
   const [tab, setTab] = useState(() => {
     try { if (new URLSearchParams(window.location.search).get("reel") || localStorage.getItem("gw_open_reel")) return "shorts"; } catch {}
     try { if (localStorage.getItem("gw_open_explore") === "1") { localStorage.removeItem("gw_open_explore"); return "events"; } } catch {}
-    return "meet";
+    return "events";
   });
   const [open, setOpen] = useState(null); // { id, type }
   const [reviewFlag, setReviewFlag] = useState(null);
@@ -4771,7 +4803,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
         ))}
       </div>
       {heroSlides.length > 0 && <HeroSlider slides={heroSlides} wide={wide} onSlide={(sl) => sl.id && onOpenDetail && onOpenDetail(sl.id)} />}
-      <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 13 }}>
+      <div className="gw-event-grid" style={{ padding: 14, display: "grid", minWidth: 0, gridTemplateColumns: wide ? "repeat(auto-fill,minmax(200px,1fr))" : "minmax(0,1fr)", gap: 13 }}>
         {list.length === 0 && <div style={{ gridColumn: "1/-1", background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 10 }}><Center>{savedOnly ? "No saved events yet — tap the 🤍 on any event to save it." : privateMode ? "No private invitations are available for your segments right now." : (q.trim() || dateQuick !== "all" || fltCount(flt) > 0) ? "No events match your search/filters." : "No events here yet."}</Center></div>}
         {list.map(e => <PosterCard key={e.id} e={e} date={e.event_date} price={priceFrom(e)} popular={popSet.has(e.id)} going={canAccessEvent(e)} unpublished={e.approved === false} onOpen={(id) => onOpenDetail && onOpenDetail(id)} saved={savedIds.has(e.id)} onToggleSave={onToggleSave} rating={ratingSummary[e.id]} />)}
       </div>
