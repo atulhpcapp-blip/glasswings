@@ -2620,6 +2620,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
           {onOpenDM && <Sec title="Who's going"><EventGoers eventId={e.id} onOpenDM={onOpenDM} /></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
+          <EventSponsorsSection event={e} profile={profile} />
           <EventStallsCard event={e} profile={profile} />
           {Array.isArray(e.about_media) && e.about_media.length > 0 && (
             <Sec title="Gallery & media">
@@ -14378,7 +14379,7 @@ function EventStallsCard({ event, profile }) {
       supabase.rpc("stall_availability", { p_event: event.id }),
     ]).then(([{ data: t }, { data: s }, { data: a }]) => {
       const taken = {}; (a || []).forEach(x => { taken[x.stall_type_id] = Number(x.taken) || 0; });
-      setData({ types: t || [], settings: s || null, taken });
+      setData({ types: (t || []).filter(x => x.kind !== "sponsor"), settings: s || null, taken });
     }).catch(() => setData({ types: [] }));
   }, [event?.id]);
   if (!data || !data.types.length || (data.settings && data.settings.open === false)) return null;
@@ -14412,7 +14413,7 @@ function VendorStallSheet({ event, profile, data, onClose }) {
   const [busy, setBusy] = useState(false);
   const [up, setUp] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const loadMine = async () => { if (!profile?.id) return setMine([]); const { data: d } = await supabase.rpc("my_stall_bookings"); setMine((d || []).filter(b => b.event_id === event.id)); };
+  const loadMine = async () => { if (!profile?.id) return setMine([]); const { data: d } = await supabase.rpc("my_stall_bookings"); setMine((d || []).filter(b => b.event_id === event.id && b.kind !== "sponsor")); };
   useEffect(() => {
     loadMine();
     if (profile?.id) supabase.from("member_phone").select("phone").eq("user_id", profile.id).maybeSingle().then(({ data: d }) => { if (d?.phone) setF(p => p.phone ? p : { ...p, phone: d.phone }); });
@@ -14568,10 +14569,10 @@ function AdminStallsPanel() {
       supabase.from("event_stall_settings").select("*").eq("event_id", evId).maybeSingle(),
       supabase.from("event_stall_types").select("*").eq("event_id", evId).order("sort"),
       supabase.rpc("stall_admin_list", { p_event: evId }),
-      supabase.rpc("stall_event_summary", { p_event: evId }),
+      supabase.rpc("stall_event_summary", { p_event: evId, p_kind: "stall" }),
     ]);
     setSettings(s || { event_id: evId, open: true, requires_approval: true, headline: "", guidelines: "", setup_info: "", contact_phone: "" });
-    setTypes(t || []); setApps(Array.isArray(a) ? a : []); setSum(su || null);
+    setTypes((t || []).filter(x => x.kind !== "sponsor")); setApps((Array.isArray(a) ? a : []).filter(x => x.kind !== "sponsor")); setSum(su || null);
   };
   useEffect(() => { loadEvent(); }, [evId]);
   const saveSettings = async () => {
@@ -14711,15 +14712,344 @@ function AdminStallsPanel() {
   );
 }
 // =================== END VENDOR STALLS ===================
+// ===================== SPONSOR PACKAGES =====================
+const GW_SPONSOR_TIERS = [
+  ["Title Sponsor", "#B8860B", 0, "linear-gradient(135deg,#7C5A00,#D4A017 45%,#FFE08A)"],
+  ["Presenting Partner", "#7C3AED", 1, "linear-gradient(135deg,#4C1D95,#7C3AED 50%,#C4B5FD)"],
+  ["Platinum", "#475569", 2, "linear-gradient(135deg,#1E293B,#64748B 50%,#E2E8F0)"],
+  ["Gold", "#D97706", 3, "linear-gradient(135deg,#92400E,#F59E0B 55%,#FDE68A)"],
+  ["Silver", "#6B7280", 4, "linear-gradient(135deg,#374151,#9CA3AF 55%,#F3F4F6)"],
+  ["Community Partner", "#059669", 5, "linear-gradient(135deg,#065F46,#10B981 55%,#A7F3D0)"],
+];
+const gwTier = (name, color) => GW_SPONSOR_TIERS.find(t => t[0].toLowerCase() === String(name || "").toLowerCase()) || [name, color || "#B8860B", 9, `linear-gradient(135deg,#7C5A00,${color || "#D4A017"} 50%,#FFE08A)`];
+const GW_GOLD = "linear-gradient(120deg,#7C5A00,#D4A017 40%,#F59E0B 60%,#7C3AED)";
+
+function EventSponsorsSection({ event, profile }) {
+  const [d, setD] = useState(null);
+  const [open, setOpen] = useState(false);
+  const load = () => Promise.all([
+    supabase.from("event_stall_types").select("*").eq("event_id", event.id).eq("active", true).order("sort"),
+    supabase.from("event_stall_settings").select("*").eq("event_id", event.id).maybeSingle(),
+    supabase.rpc("event_sponsors_public", { p_event: event.id }),
+    supabase.rpc("stall_availability", { p_event: event.id }),
+  ]).then(([{ data: t }, { data: s }, { data: sp }, { data: a }]) => {
+    const taken = {}; (a || []).forEach(x => { taken[x.stall_type_id] = Number(x.taken) || 0; });
+    setD({ packages: (t || []).filter(x => x.kind === "sponsor"), settings: s || {}, sponsors: sp || [], taken });
+  }).catch(() => setD({ packages: [], sponsors: [], settings: {} }));
+  useEffect(() => { if (event?.id) load(); }, [event?.id]);
+  if (!d || (!d.packages.length && !d.sponsors.length)) return null;
+  const topRank = d.sponsors.length ? Math.min(...d.sponsors.map(s => Number(s.tier_rank) || 0)) : 0;
+  const title = d.sponsors.filter(s => (Number(s.tier_rank) || 0) === topRank);
+  const others = d.sponsors.filter(s => (Number(s.tier_rank) || 0) !== topRank);
+  const canApply = d.packages.length > 0 && d.settings.sponsor_open !== false;
+  const logo = (s, size) => s.logo_url ? <img src={s.logo_url} alt={s.brand} style={{ maxWidth: size * 2.4, maxHeight: size, objectFit: "contain", display: "block" }} /> : <div style={{ fontWeight: 950, fontSize: size * 0.42, color: W.ink, textAlign: "center" }}>{s.brand}</div>;
+  const wrap = (s, child, style) => s.website ? <a href={/^https?:/.test(s.website) ? s.website : "https://" + s.website} target="_blank" rel="noreferrer" style={{ textDecoration: "none", ...style }}>{child}</a> : <div style={style}>{child}</div>;
+  return (
+    <div style={{ margin: "18px 0" }}>
+      {d.sponsors.length > 0 && <div style={{ borderRadius: 20, padding: 16, background: "linear-gradient(180deg,#FFFBEB,#fff)", border: "1px solid #FDE68A", marginBottom: canApply ? 12 : 0 }}>
+        <div style={{ fontSize: 12, letterSpacing: 3, fontWeight: 950, background: GW_GOLD, WebkitBackgroundClip: "text", color: "transparent", textAlign: "center" }}>✦ OUR SPONSORS ✦</div>
+        {title.map((s, i) => wrap(s, <>
+          <div style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 2, color: gwTier(s.tier, s.tier_color)[1], marginBottom: 8 }}>{String(s.tier).toUpperCase()}</div>
+          <div style={{ background: "#fff", borderRadius: 14, padding: "14px 18px", display: "flex", justifyContent: "center", boxShadow: "0 8px 22px rgba(180,134,11,.18)" }}>{logo(s, 64)}</div>
+          {s.logo_url && <div style={{ fontWeight: 850, color: W.ink, marginTop: 8 }}>{s.brand}</div>}
+        </>, { display: "flex", flexDirection: "column", alignItems: "center", marginTop: 12, padding: 14, borderRadius: 16, background: "linear-gradient(135deg,#FEF3C7,#FFF7ED 60%,#EDE9FE)", border: "1.5px solid #FCD34D" }))}
+        {others.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(130px,1fr))", gap: 10, marginTop: 12 }}>
+          {others.map((s, i) => wrap(s, <>
+            <div style={{ height: 46, display: "flex", alignItems: "center", justifyContent: "center" }}>{logo(s, 40)}</div>
+            <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1, color: "#fff", background: gwTier(s.tier, s.tier_color)[1], borderRadius: 999, padding: "2px 8px", marginTop: 7 }}>{String(s.tier).toUpperCase()}</div>
+          </>, { display: "flex", flexDirection: "column", alignItems: "center", background: "#fff", border: `1.5px solid ${gwTier(s.tier, s.tier_color)[1]}33`, borderRadius: 14, padding: "12px 8px" }))}
+        </div>}
+      </div>}
+      {canApply && <div onClick={() => setOpen(true)} style={{ cursor: "pointer", borderRadius: 20, padding: "16px 18px", color: "#fff", background: GW_GOLD, position: "relative", overflow: "hidden", boxShadow: "0 12px 28px rgba(180,134,11,.30)" }}>
+        <div style={{ position: "absolute", right: -26, top: -26, width: 120, height: 120, borderRadius: 120, background: "rgba(255,255,255,.14)" }} />
+        <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>🤝 FOR BRANDS</div>
+        <div style={{ fontSize: 19, fontWeight: 950, marginTop: 5, lineHeight: 1.25 }}>{d.settings.sponsor_headline || "Become a sponsor of this event"}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>{d.packages.slice(0, 4).map(p => <span key={p.id} style={{ background: "rgba(255,255,255,.22)", borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 800 }}>{p.name}</span>)}</div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}><span style={{ background: "#fff", color: "#92400E", fontWeight: 900, borderRadius: 12, padding: "9px 14px", fontSize: 13.5 }}>See packages →</span></div>
+      </div>}
+      {open && <SponsorSheet event={event} profile={profile} d={d} onClose={() => { setOpen(false); load(); }} />}
+    </div>
+  );
+}
+
+function SponsorSheet({ event, profile, d, onClose }) {
+  const [pick, setPick] = useState(null);
+  const [mine, setMine] = useState(null);
+  const [f, setF] = useState({ brand: "", contact: profile?.full_name || "", phone: "", email: "", website: "", logo: "", message: "" });
+  const [busy, setBusy] = useState(false);
+  const [up, setUp] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const loadMine = async () => { if (!profile?.id) return setMine([]); const { data } = await supabase.rpc("my_stall_bookings"); setMine((data || []).filter(b => b.event_id === event.id && b.kind === "sponsor")); };
+  useEffect(() => {
+    loadMine();
+    if (profile?.id) supabase.from("member_phone").select("phone").eq("user_id", profile.id).maybeSingle().then(({ data }) => { if (data?.phone) setF(p => p.phone ? p : { ...p, phone: data.phone }); });
+  }, [profile?.id]);
+  const uploadLogo = async file => { if (!file) return; setUp(true); try { set("logo", await uploadPhoto(profile.id, file)); } catch (e) { window.gwConfirm(e.message || "Upload failed", () => {}); } setUp(false); };
+  const submit = async () => {
+    if (!profile?.id) return window.gwConfirm("Please log in to apply.", () => {});
+    if (!f.brand.trim()) return window.gwConfirm("Enter your brand / company name.", () => {});
+    if (String(f.phone).replace(/\D/g, "").length < 10) return window.gwConfirm("Enter a valid 10-digit phone number.", () => {});
+    setBusy(true);
+    const { data: r, error } = await supabase.rpc("apply_for_sponsorship", { p_type: pick.id, p_brand: f.brand, p_contact: f.contact, p_phone: f.phone, p_email: f.email || null, p_website: f.website || null, p_logo: f.logo || null, p_message: f.message || null });
+    setBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!r?.ok) return window.gwConfirm({ full: "Sorry, this package is sold out.", closed: "Sponsorships are closed for this event.", duplicate: "You've already applied for this package.", not_available: "This package isn't available now." }[r?.reason] || "Couldn't submit. Please try again.", () => {});
+    setPick(null); await loadMine();
+    window.gwConfirm("🎉 Thank you! Your sponsorship request was sent. The organiser will contact you, and you can pay here once approved.", () => {});
+  };
+  const cancel = b => window.gwConfirm("Withdraw this sponsorship request?", async () => { await supabase.rpc("cancel_my_stall", { p_id: b.id }); loadMine(); });
+  const steps = ["Applied", "Approved", "Live"];
+  const stepOf = b => b.status === "paid" ? 3 : b.status === "approved" ? 2 : 1;
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ margin: -18, marginBottom: 0, padding: "20px 18px 16px", background: GW_GOLD, color: "#fff", borderRadius: "18px 18px 0 0" }}>
+        <div style={{ display: "flex", alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>🤝 SPONSORSHIP</div>
+            <div style={{ fontSize: 20, fontWeight: 950, marginTop: 4, lineHeight: 1.2 }}>{event.title}</div>
+            <div style={{ fontSize: 12.5, opacity: .95, marginTop: 3 }}>{[event.event_date, [event.venue, event.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}</div>
+          </div>
+          <span onClick={onClose} style={{ cursor: "pointer", fontSize: 22, lineHeight: 1 }}>✕</span>
+        </div>
+      </div>
+      <div style={{ height: 14 }} />
+      {(mine || []).length > 0 && <div style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 900, color: W.ink, fontSize: 15, marginBottom: 6 }}>Your sponsorships</div>
+        {mine.map(b => {
+          const [lab, fg, bg] = GW_STALL_STATUS[b.status] || GW_STALL_STATUS.pending;
+          const st = stepOf(b); const tier = gwTier(b.stall_name, b.color);
+          return (
+            <div key={b.id} style={{ border: `1.5px solid ${bg}`, borderRadius: 16, padding: 12, marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 58, height: 36, borderRadius: 8, border: `1px solid ${W.line}`, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>{b.logo_url ? <img src={b.logo_url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <span style={{ fontWeight: 900, color: W.soft }}>{String(b.business_name || "?")[0]}</span>}</div>
+                <div style={{ flex: 1, fontWeight: 850, color: W.ink }}>{b.business_name} <span style={{ color: tier[1], fontWeight: 800, fontSize: 12.5 }}>· {b.stall_name}</span></div>
+                <span style={{ fontSize: 11.5, fontWeight: 900, color: fg, background: bg, borderRadius: 999, padding: "4px 10px" }}>{b.status === "paid" ? "🎉 Live" : lab}</span>
+              </div>
+              {!["rejected", "cancelled"].includes(b.status) && <div style={{ display: "flex", alignItems: "flex-start", marginTop: 12 }}>
+                {steps.map((label, i) => (
+                  <React.Fragment key={label}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 62 }}>
+                      <div style={{ width: 22, height: 22, borderRadius: 22, background: i < st ? "linear-gradient(135deg,#D4A017,#7C3AED)" : "#E5E7EB", color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center" }}>{i < st ? "✓" : i + 1}</div>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: i < st ? "#92400E" : W.soft, marginTop: 3 }}>{label}</div>
+                    </div>
+                    {i < steps.length - 1 && <div style={{ flex: 1, height: 3, borderRadius: 3, background: i < st - 1 ? "linear-gradient(90deg,#D4A017,#7C3AED)" : "#E5E7EB", marginTop: 10 }} />}
+                  </React.Fragment>
+                ))}
+              </div>}
+              {b.admin_note && <div style={{ fontSize: 12.5, color: W.ink, background: "#F8FAFC", borderRadius: 9, padding: "7px 9px", marginTop: 8 }}>💬 {b.admin_note}</div>}
+              {b.status === "approved" && <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                {b.amount > 0 && <button onClick={() => gwPayStall(b.id, loadMine)} style={{ ...btn(GW_GOLD, "#fff"), padding: "10px 16px", fontWeight: 900 }}>Pay ₹{Number(b.amount).toLocaleString("en-IN")} to go live</button>}
+                <button onClick={() => cancel(b)} style={{ ...btn("#F1F5F9", W.soft), padding: "10px 12px" }}>Withdraw</button>
+              </div>}
+              {b.status === "pending" && <button onClick={() => cancel(b)} style={{ ...btn("#F1F5F9", W.soft), padding: "7px 12px", fontSize: 12.5, marginTop: 10 }}>Withdraw request</button>}
+              {b.status === "paid" && <div style={{ marginTop: 10, borderRadius: 14, padding: 14, color: "#fff", background: tier[3] }}>
+                <div style={{ fontSize: 11, letterSpacing: 2, fontWeight: 900, opacity: .95 }}>OFFICIAL {String(b.stall_name).toUpperCase()}</div>
+                <div style={{ fontSize: 17, fontWeight: 950, marginTop: 4 }}>{b.business_name} × {b.event_title}</div>
+                <div style={{ fontSize: 12.5, marginTop: 4, opacity: .95 }}>{b.show_logo !== false ? "✨ Your logo is now live on the event page." : "Your sponsorship is confirmed."}</div>
+              </div>}
+            </div>
+          );
+        })}
+      </div>}
+      {d.settings.sponsor_info && !pick && <div style={{ background: "linear-gradient(135deg,#FFFBEB,#F5F3FF)", border: "1px solid #FDE68A", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 900, color: "#B45309", letterSpacing: 1.2, marginBottom: 4 }}>WHY SPONSOR</div>
+        <GwRich text={d.settings.sponsor_info} accent="#D97706" />
+      </div>}
+      {!pick ? <>
+        <div style={{ fontWeight: 900, color: W.ink, fontSize: 15, marginBottom: 8 }}>Sponsorship packages</div>
+        {d.packages.map(p => {
+          const tier = gwTier(p.name, p.color);
+          const left = Math.max(0, p.quantity - (d.taken[p.id] || 0));
+          return (
+            <div key={p.id} onClick={() => left > 0 && setPick(p)} style={{ cursor: left > 0 ? "pointer" : "default", borderRadius: 18, overflow: "hidden", marginBottom: 12, border: `1.5px solid ${tier[1]}55`, opacity: left > 0 ? 1 : .6, boxShadow: `0 8px 20px ${tier[1]}22` }}>
+              <div style={{ background: tier[3], color: "#fff", padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 18, fontWeight: 950, textShadow: "0 1px 2px rgba(0,0,0,.25)" }}>{p.name}</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, opacity: .95 }}>{left > 0 ? `${left} of ${p.quantity} slot${p.quantity === 1 ? "" : "s"} left` : "Sold out"}</div>
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 950, textShadow: "0 1px 2px rgba(0,0,0,.25)" }}>{p.price > 0 ? `₹${Number(p.price).toLocaleString("en-IN")}` : "Barter"}</div>
+              </div>
+              <div style={{ padding: "12px 16px", background: "#fff" }}>
+                {p.description && <GwRich text={p.description} size={13} accent={tier[1]} />}
+                {p.includes && <div style={{ marginTop: p.description ? 8 : 0 }}><div style={{ fontSize: 11, fontWeight: 900, color: tier[1], letterSpacing: 1 }}>YOU GET</div><GwRich text={p.includes} size={13} accent={tier[1]} /></div>}
+                {left > 0 && <div style={{ textAlign: "right", fontWeight: 900, color: tier[1], fontSize: 13, marginTop: 6 }}>Choose this package →</div>}
+              </div>
+            </div>
+          );
+        })}
+      </> : <>
+        <div style={{ borderRadius: 14, padding: 12, color: "#fff", background: gwTier(pick.name, pick.color)[3], display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1 }}><div style={{ fontWeight: 950 }}>{pick.name}</div><div style={{ fontSize: 12.5 }}>{pick.price > 0 ? `₹${Number(pick.price).toLocaleString("en-IN")}` : "Barter"}</div></div>
+          <button onClick={() => setPick(null)} style={{ ...btn("#fff", W.ink), padding: "6px 10px", fontSize: 12 }}>Change</button>
+        </div>
+        <div style={gwLeadLbl}>BRAND / COMPANY NAME *</div>
+        <input value={f.brand} onChange={e => set("brand", e.target.value)} placeholder="e.g. Andhra Motors" style={gwLeadInp} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>CONTACT PERSON</div><input value={f.contact} onChange={e => set("contact", e.target.value)} style={gwLeadInp} /></div>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>PHONE *</div><input value={f.phone} onChange={e => set("phone", e.target.value)} inputMode="tel" style={gwLeadInp} /></div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>EMAIL</div><input value={f.email} onChange={e => set("email", e.target.value)} type="email" style={gwLeadInp} /></div>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>WEBSITE / INSTAGRAM</div><input value={f.website} onChange={e => set("website", e.target.value)} placeholder="brand.com" style={gwLeadInp} /></div>
+        </div>
+        <div style={gwLeadLbl}>LOGO (shown on the event page)</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <div style={{ width: 90, height: 50, borderRadius: 10, border: `1.5px dashed ${W.line}`, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", overflow: "hidden" }}>{f.logo ? <img src={f.logo} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <span style={{ fontSize: 11, color: W.soft }}>No logo</span>}</div>
+          <span style={{ ...btn("#FEF3C7", "#92400E"), padding: "8px 12px", fontSize: 12.5 }}>{up ? "Uploading…" : f.logo ? "Change logo" : "Upload logo"}</span>
+          <input type="file" accept="image/*" hidden onChange={e => uploadLogo(e.target.files?.[0])} />
+        </label>
+        <div style={gwLeadLbl}>MESSAGE TO ORGANISER</div>
+        <textarea value={f.message} onChange={e => set("message", e.target.value)} rows={3} placeholder="Tell us about your brand, any activation ideas (sampling, booth, contest)…" style={{ ...gwLeadInp, fontFamily: "inherit", resize: "vertical" }} />
+        <button disabled={busy || up} onClick={submit} style={{ ...btn(GW_GOLD, "#fff"), width: "100%", justifyContent: "center", padding: 14, fontSize: 15.5, fontWeight: 900, marginTop: 16, opacity: busy ? .6 : 1 }}>{busy ? "Sending…" : "Send sponsorship request"}</button>
+        <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center", marginTop: 7 }}>No payment now. The organiser confirms first, then you pay here.</div>
+      </>}
+    </Sheet>
+  );
+}
+
+function AdminSponsorsPanel() {
+  const [events, setEvents] = useState(null);
+  const [evId, setEvId] = useState("");
+  const [settings, setSettings] = useState(null);
+  const [types, setTypes] = useState([]);
+  const [apps, setApps] = useState([]);
+  const [sum, setSum] = useState(null);
+  const [view, setView] = useState("apps");
+  const [editType, setEditType] = useState(null);
+  const loadEvents = async () => { const { data, error } = await supabase.rpc("my_stall_events"); if (error) window.gwConfirm(error.message, () => {}); setEvents(data || []); if (!evId && data?.length) setEvId(data[0].id); };
+  useEffect(() => { loadEvents(); }, []);
+  const loadEvent = async () => {
+    if (!evId) return;
+    const [{ data: s }, { data: t }, { data: a }, { data: su }] = await Promise.all([
+      supabase.from("event_stall_settings").select("*").eq("event_id", evId).maybeSingle(),
+      supabase.from("event_stall_types").select("*").eq("event_id", evId).order("sort"),
+      supabase.rpc("stall_admin_list", { p_event: evId }),
+      supabase.rpc("stall_event_summary", { p_event: evId, p_kind: "sponsor" }),
+    ]);
+    setSettings(s || { event_id: evId, sponsor_open: true, sponsor_headline: "", sponsor_info: "" });
+    setTypes((t || []).filter(x => x.kind === "sponsor")); setApps((Array.isArray(a) ? a : []).filter(x => x.kind === "sponsor")); setSum(su || null);
+  };
+  useEffect(() => { loadEvent(); }, [evId]);
+  const act = async (fn, args) => {
+    const { data, error } = await supabase.rpc(fn, args);
+    if (error || !data?.ok) return window.gwConfirm(error?.message || ({ full: "This package is sold out." }[data?.reason] || "Couldn't update."), () => {});
+    loadEvent(); loadEvents();
+  };
+  const saveSettings = async () => {
+    const { error } = await supabase.from("event_stall_settings").upsert({ event_id: evId, sponsor_open: settings.sponsor_open !== false, sponsor_headline: settings.sponsor_headline || null, sponsor_info: settings.sponsor_info || null, updated_at: new Date().toISOString() });
+    window.gwConfirm(error ? error.message : "✅ Sponsor page saved.", () => {});
+  };
+  const saveType = async () => {
+    const t = editType;
+    if (!t.name?.trim()) return window.gwConfirm("Give the package a name.", () => {});
+    const tier = gwTier(t.name);
+    const row = { event_id: evId, kind: "sponsor", category: "sponsor", name: t.name.trim(), price: Number(t.price) || 0, quantity: Math.max(1, Number(t.quantity) || 1), includes: t.includes || null, description: t.description || null, active: t.active !== false, color: t.color || tier[1], sort: t.sort != null && t.sort !== "" ? Number(t.sort) : tier[2] };
+    const { error } = t.id ? await supabase.from("event_stall_types").update(row).eq("id", t.id) : await supabase.from("event_stall_types").insert(row);
+    if (error) return window.gwConfirm(error.message, () => {});
+    setEditType(null); loadEvent();
+  };
+  const delType = t => window.gwConfirm(`Delete "${t.name}"?`, async () => { const { error } = await supabase.from("event_stall_types").delete().eq("id", t.id); if (error) window.gwConfirm("This package has requests, so it can't be deleted. Turn it off instead.", () => {}); loadEvent(); });
+  const sel = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, background: "#fff", color: W.ink };
+  const ev = (events || []).find(e => e.id === evId);
+  if (events === null) return <Center>Loading…</Center>;
+  if (!events.length) return <Center>No events you can manage yet.</Center>;
+  return (
+    <div style={{ padding: 14, maxWidth: 820 }}>
+      <div style={{ borderRadius: 18, padding: "16px 18px", color: "#fff", background: GW_GOLD, marginBottom: 12 }}>
+        <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>🤝 SPONSORS</div>
+        <select value={evId} onChange={e => setEvId(e.target.value)} style={{ ...sel, width: "100%", marginTop: 8, fontWeight: 800 }}>{events.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}</option>)}</select>
+        {sum && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+          {[["NEW", sum.pending], ["APPROVED", sum.approved], ["LIVE", sum.paid], ["COLLECTED", "₹" + (Number(sum.collected_online) + Number(sum.collected_offline)).toLocaleString("en-IN")], ["GLASSWINGS FEE", "₹" + Number(sum.commission).toLocaleString("en-IN")]].map(([l, v]) => (
+            <div key={l} style={{ flex: "1 1 90px", background: "rgba(255,255,255,.18)", borderRadius: 12, padding: "8px 10px" }}><div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1 }}>{l}</div><div style={{ fontSize: 18, fontWeight: 950 }}>{v}</div></div>
+          ))}
+        </div>}
+      </div>
+      <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12 }}>
+        {[["apps", `📥 Requests (${apps.length})`], ["types", `🏅 Packages (${types.length})`], ["settings", "⚙️ Sponsor page"]].map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? "#B45309" : W.soft }}>{l}</button>
+        ))}
+      </div>
+      {view === "apps" && (!apps.length ? <Center>{types.length ? "No sponsorship requests yet." : "Create a package first (🏅 Packages). The \"Become a sponsor\" card then appears on the event page."}</Center> : apps.map(b => {
+        const tier = gwTier(b.stall_name, b.color);
+        const [lab, fg, bg] = GW_STALL_STATUS[b.status] || GW_STALL_STATUS.pending;
+        return (
+          <div key={b.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${tier[1]}`, borderRadius: 14, padding: 12, marginBottom: 9 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ width: 64, height: 40, borderRadius: 8, border: `1px solid ${W.line}`, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#fff", flexShrink: 0 }}>{b.logo_url ? <img src={b.logo_url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <span style={{ fontSize: 10, color: W.soft }}>no logo</span>}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 850, color: W.ink, fontSize: 14.5 }}>{b.business_name}</div>
+                <div style={{ fontSize: 12, color: W.soft }}><b style={{ color: tier[1] }}>{b.stall_name}</b> · ₹{Number(b.amount).toLocaleString("en-IN")} · {b.contact_name || b.vendor_name || ""}</div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 900, color: fg, background: bg, borderRadius: 999, padding: "4px 9px", whiteSpace: "nowrap" }}>{b.status === "paid" ? "🎉 Live" : lab}</span>
+            </div>
+            <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>📞 <a href={`tel:${b.phone}`}>{b.phone}</a>{b.email ? <> · ✉ {b.email}</> : null}{b.website ? <> · 🌐 {b.website}</> : null}{b.payment_method ? ` · paid via ${b.payment_method}` : ""}</div>
+            {b.notes && <div style={{ fontSize: 12.5, color: "#92400E", background: "#FFFBEB", borderRadius: 8, padding: "5px 8px", marginTop: 6 }}>💬 {b.notes}</div>}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+              {b.status === "pending" && <button onClick={() => act("stall_set_status", { p_id: b.id, p_status: "approved", p_note: null })} style={{ ...btn("#10B981", "#fff"), padding: "6px 11px", fontSize: 12 }}>✓ Approve</button>}
+              {["pending", "approved"].includes(b.status) && <button onClick={async () => { const n = await window.gwPrompt("Reason (the brand will see this)", ""); if (n == null) return; act("stall_set_status", { p_id: b.id, p_status: "rejected", p_note: n || null }); }} style={{ ...btn("#FEE2E2", "#B91C1C"), padding: "6px 11px", fontSize: 12 }}>✕ Reject</button>}
+              {b.status === "approved" && <button onClick={async () => { const m = await window.gwPrompt(`Mark ₹${b.amount} as received directly? Type: cash / upi / bank / barter`, "bank"); if (m == null) return; act("stall_mark_paid_offline", { p_id: b.id, p_method: (m || "bank").toLowerCase() }); }} style={{ ...btn("#EDE9FE", "#6D28D9"), padding: "6px 11px", fontSize: 12 }}>💵 Mark paid</button>}
+              {b.status === "paid" && <button onClick={() => act("sponsor_set_logo_visible", { p_id: b.id, p_show: b.show_logo === false })} style={{ ...btn(b.show_logo === false ? "#D1FAE5" : "#F1F5F9", b.show_logo === false ? "#047857" : W.ink), padding: "6px 11px", fontSize: 12 }}>{b.show_logo === false ? "👁 Show logo on page" : "🙈 Hide logo"}</button>}
+              <a href={`https://wa.me/${waNum(b.phone)}?text=${encodeURIComponent(`Hi ${b.contact_name || b.business_name}, thank you for your interest in sponsoring ${ev?.title || "our event"} on Glasswings!`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "6px 11px", fontSize: 12, textDecoration: "none" }}>WhatsApp</a>
+              {["pending", "approved"].includes(b.status) && <button onClick={async () => { const n = await window.gwPrompt("Message to the brand (shown on their request)", b.admin_note || ""); if (n == null) return; act("stall_set_status", { p_id: b.id, p_status: b.status, p_note: n }); }} style={{ ...btn("#F1F5F9", W.ink), padding: "6px 11px", fontSize: 12 }}>💬 Message</button>}
+            </div>
+          </div>
+        );
+      }))}
+      {view === "types" && <>
+        {types.map(t => {
+          const tier = gwTier(t.name, t.color);
+          const taken = apps.filter(a => a.stall_type_id === t.id && ["approved", "paid"].includes(a.status)).length;
+          return (
+            <div key={t.id} style={{ display: "flex", gap: 12, alignItems: "center", borderRadius: 14, padding: 12, marginBottom: 8, color: "#fff", background: tier[3], opacity: t.active ? 1 : .55 }}>
+              <div style={{ flex: 1, minWidth: 0, textShadow: "0 1px 2px rgba(0,0,0,.25)" }}>
+                <div style={{ fontWeight: 950 }}>{t.name}{!t.active && " · hidden"}</div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>₹{Number(t.price).toLocaleString("en-IN")} · {taken}/{t.quantity} taken</div>
+              </div>
+              <button onClick={() => setEditType({ ...t })} style={{ ...btn("#fff", W.ink), padding: "7px 11px", fontSize: 12.5 }}>✏️ Edit</button>
+              <button onClick={() => delType(t)} style={{ ...btn("#fff", "#C0392B"), padding: "7px 9px" }}><Trash2 size={14} /></button>
+            </div>
+          );
+        })}
+        <button onClick={() => setEditType({ name: "Title Sponsor", price: "", quantity: "1", includes: "- **Event name:** \"{Brand} presents …\"\n- Logo on all posters, reels & tickets\n- 10 x 10 ft brand booth at the venue\n- 4 stage mentions by the host\n- 10 VIP passes", description: "", active: true })} style={{ ...btn(GW_GOLD, "#fff"), padding: "11px 16px", fontWeight: 900, marginTop: 4 }}>➕ Add package</button>
+      </>}
+      {view === "settings" && settings && <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 14 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, fontWeight: 700, color: W.ink }}><input type="checkbox" checked={settings.sponsor_open !== false} onChange={e => setSettings(s => ({ ...s, sponsor_open: e.target.checked }))} /> Accept sponsorship requests (shows "Become a sponsor" on the event page)</label>
+        <div style={gwLeadLbl}>HEADLINE</div>
+        <input value={settings.sponsor_headline || ""} onChange={e => setSettings(s => ({ ...s, sponsor_headline: e.target.value }))} placeholder="e.g. Put your brand in front of 15,000+ young Guntur fans" style={gwLeadInp} />
+        <div style={gwLeadLbl}>WHY SPONSOR (rich text)</div>
+        <GwRichEditor value={settings.sponsor_info || ""} onChange={v => setSettings(s => ({ ...s, sponsor_info: v }))} rows={6} placeholder={"# The audience\n- **15,000+** attendees over 3 nights\n- 18–35 age group, 60% college students\n\n# Reach\n- 2 lakh+ Instagram views before the event"} />
+        <button onClick={saveSettings} style={{ ...btn(GW_GOLD, "#fff"), padding: "12px 18px", fontWeight: 900, marginTop: 14 }}>Save sponsor page</button>
+      </div>}
+      {editType && <Sheet onClose={() => setEditType(null)}>
+        <div style={{ fontWeight: 900, fontSize: 18, color: W.ink, marginBottom: 6 }}>🏅 {editType.id ? "Edit package" : "New sponsorship package"}</div>
+        <div style={gwLeadLbl}>TIER</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{GW_SPONSOR_TIERS.map(([n, c]) => <button key={n} type="button" onClick={() => setEditType(t => ({ ...t, name: n, color: c, sort: gwTier(n)[2] }))} style={{ border: `1.5px solid ${c}`, background: editType.name === n ? c : "#fff", color: editType.name === n ? "#fff" : c, borderRadius: 999, padding: "6px 11px", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>{n}</button>)}</div>
+        <input value={editType.name} onChange={e => setEditType(t => ({ ...t, name: e.target.value }))} placeholder="…or your own name, e.g. Beverage Partner" style={{ ...gwLeadInp, marginTop: 8 }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>PRICE (₹)</div><input value={editType.price} onChange={e => setEditType(t => ({ ...t, price: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="100000" style={gwLeadInp} /></div>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>SLOTS</div><input value={editType.quantity} onChange={e => setEditType(t => ({ ...t, quantity: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="1" style={gwLeadInp} /></div>
+        </div>
+        <div style={gwLeadLbl}>SHORT DESCRIPTION (rich text)</div>
+        <GwRichEditor value={editType.description || ""} onChange={v => setEditType(t => ({ ...t, description: v }))} rows={2} placeholder="The **biggest** brand presence at the event 🌟" />
+        <div style={gwLeadLbl}>WHAT THE SPONSOR GETS (rich text)</div>
+        <GwRichEditor value={editType.includes || ""} onChange={v => setEditType(t => ({ ...t, includes: v }))} rows={6} />
+        <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, fontWeight: 700, color: W.ink, marginTop: 10 }}><input type="checkbox" checked={editType.active !== false} onChange={e => setEditType(t => ({ ...t, active: e.target.checked }))} /> Show to brands</label>
+        <button onClick={saveType} style={{ ...btn(GW_GOLD, "#fff"), width: "100%", justifyContent: "center", padding: 13, fontWeight: 900, marginTop: 14 }}>Save package</button>
+      </Sheet>}
+    </div>
+  );
+}
+// =================== END SPONSOR PACKAGES ===================
+
 
 const GW_ADMIN_GROUPS = [
   ['Overview', ['dash','analytics']],
   ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
-  ['Events', ['events','private','stalls','leads','door','directory','rooms']],
+  ['Events', ['events','private','stalls','sponsors','leads','door','directory','rooms']],
   ['Money', ['accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
   ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
-const GW_ADMIN_ICONS = {leads:'📋',stalls:'🏪',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+const GW_ADMIN_ICONS = {leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
 function AdminNavigation({ tabs, selected, onSelect, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const dialog = useRef(null), trigger = useRef(null);
@@ -15189,7 +15519,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     ...(caps.host ? [["events", "Events"], ["invite", "💌 INVITE"]] : []),
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...((leadAdmin || canManageOrganiserStaff) ? [["leads", leadTabLabel]] : []),
-    ...((isSuper || caps.host) ? [["stalls", "🏪 Stalls"]] : []),
+    ...((isSuper || caps.host) ? [["stalls", "🏪 Stalls"], ["sponsors", "🤝 Sponsors"]] : []),
     ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
     ...((myEventsOnly && caps.privateMembers) ? [["orgmembers", "👥 My Members"]] : []),
     ...((canApprove || caps.door) ? [["checkin", "✅ Check-in"], ["doorsales", "💵 Door Sales"]] : []),
@@ -15245,6 +15575,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
         : seg === "settle" ? <PromotersPanel />
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
         : seg === "stalls" ? <AdminStallsPanel />
+        : seg === "sponsors" ? <AdminSponsorsPanel />
         : seg === "leads" ? ((isSuper || canApprove) ? <AdminLeadsPanel /> : <OrganiserLeadsPanel meId={meId} />)
         : seg === "orgstaff" ? <OrganiserStaffPanel />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
