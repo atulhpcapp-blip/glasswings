@@ -637,6 +637,11 @@ function GuestTicketPage({ code }) {
           <div style={{ padding: "22px 22px 18px", borderLeft: "6px solid #2FD4A8" }}>
             <div style={{ fontSize: 11, letterSpacing: 4, fontWeight: 800, color: "#2FD4A8" }}>GLASSWINGS EVENTS</div>
             <div style={{ fontSize: 25, fontWeight: 900, marginTop: 8, lineHeight: 1.15, color: "#fff" }}>{t.title}</div>
+            {t.sponsor_name && <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 10, background: "#fff", borderRadius: 10, padding: "5px 10px" }}>
+              <span style={{ fontSize: 9.5, letterSpacing: 2, fontWeight: 900, color: "#B8860B" }}>PRESENTED BY</span>
+              {t.sponsor_logo ? <img src={t.sponsor_logo} alt={t.sponsor_name} style={{ height: 22, maxWidth: 80, objectFit: "contain" }} /> : null}
+              <span style={{ fontSize: 13, fontWeight: 850, color: "#0C1A16" }}>{t.sponsor_name}</span>
+            </div>}
             <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.9)", marginTop: 8 }}>{t.event_date || ""}{place ? ` · ${place}` : ""}</div>
             {(t.category || t.entry_badge || (t.dress_code || "").trim()) && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
               {t.category && <span style={{ background: "rgba(255,255,255,.16)", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🎬 {t.category}</span>}
