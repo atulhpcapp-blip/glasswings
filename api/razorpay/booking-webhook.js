@@ -1,5 +1,5 @@
 // POST /api/razorpay/booking-webhook   (called by Razorpay, not by the app)
-// Backup for booking AND vendor stall payments: if the client's phone closes before the app
+// Backup for booking, vendor stall AND getaway (trip) payments: if the client's phone closes before the app
 // confirms a payment, Razorpay calls this and the booking is confirmed anyway.
 //
 // Safety: we never trust the webhook body. We take the payment id from it,
@@ -63,10 +63,15 @@ export default async function handler(req, res) {
     const notes = order.notes || {};
     const isBooking = notes.purpose === "event_booking" && notes.milestone_id && notes.user_id;
     const isStall = notes.purpose === "stall_booking" && notes.booking_id && notes.user_id;
-    if (!isBooking && !isStall) {
+    const isTrip = notes.purpose === "trip_payment" && notes.booking_id;
+    if (!isBooking && !isStall && !isTrip) {
       return res.status(200).json({ ok: true, ignored: "not a booking or stall payment" });   // tickets, credits etc. are handled elsewhere
     }
     if (pay.status !== "captured") return res.status(200).json({ ok: true, ignored: `payment ${pay.status}` });
+    if (isTrip) {
+      const to = await rpc("trip_mark_paid", { p_order: order.id, p_payment: pay.id, p_amount_paise: pay.amount });
+      return res.status(200).json({ ok: !!to?.ok, already: !!to?.already, detail: to?.error || undefined });
+    }
     if (isStall) {
       const so = await rpc("stall_mark_paid", { p_booking: notes.booking_id, p_user: notes.user_id, p_order: order.id, p_payment: pay.id, p_amount_paise: pay.amount });
       return res.status(200).json({ ok: !!so?.ok, already: !!so?.already, detail: so?.error || undefined });
