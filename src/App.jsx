@@ -14119,11 +14119,48 @@ function AdminBookingsView() {
 }
 function TicketWaLog() {
   const [rows, setRows] = useState(null);
-  const load = () => supabase.rpc("admin_ticket_whatsapp_log").then(({ data }) => setRows(data || []));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [test, setTest] = useState(null);
+  const load = async () => {
+    setBusy(true); setErr("");
+    const { data, error } = await supabase.rpc("admin_ticket_whatsapp_log");
+    setBusy(false);
+    if (error) { setErr(/does not exist|not find/i.test(error.message) ? "The ticket_whatsapp.sql file hasn't been run in Supabase yet." : error.message); setRows([]); return; }
+    setRows(data || []);
+  };
   useEffect(() => { load(); }, []);
+  const why = j => {
+    if (j.ok) return { good: true, text: "✅ Sent! Check your WhatsApp." };
+    const s = j.skipped || "";
+    if (s === "not_configured") return { text: `Vercel is missing: ${(j.missing || []).join(", ")}. Add it in Vercel → Settings → Environment Variables, then Redeploy.` };
+    if (s === "disabled") return { text: "\"Send tickets on WhatsApp\" is switched off. Tick it and click Save pricing & rules." };
+    if (s === "no phone") return { text: "Your account has no phone number saved. Add it in your profile and try again." };
+    if (s === "already_sent_or_no_ticket") return { text: "No active ticket found on your account for that event." };
+    if (s === "no_event") return { text: "That event no longer exists." };
+    if (j.detail) return { text: `AiSensy says: ${j.detail}` + (/campaign/i.test(j.detail) ? "\n\nCheck the campaign name matches AiSensy exactly and the campaign is Live." : "") };
+    return { text: j.error || s || "Unknown problem." };
+  };
+  const sendTest = async () => {
+    setTest({ text: "Sending…" });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      const { data: t } = await supabase.from("event_tickets").select("event_id").eq("user_id", uid).limit(50);
+      const evId = (t || []).map(x => x.event_id).filter(Boolean).pop();
+      if (!evId) return setTest({ text: "You don't have any ticket on your own account yet. Book any ticket (a free one is fine) with your account, then press this again." });
+      const r = await fetch("/api/whatsapp/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, event_id: evId, force: true }) });
+      if (r.status === 404) return setTest({ text: "The server file api/whatsapp/ticket.js isn't on your site yet. Upload it to GitHub (api → whatsapp folder) and wait for Vercel to show Ready." });
+      const j = await r.json().catch(() => ({ error: `Server error (${r.status})` }));
+      setTest(why(j)); load();
+    } catch (e) { setTest({ text: e.message || "Couldn't reach the server." }); }
+  };
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ fontSize: 12, fontWeight: 800, color: W.soft, flex: 1 }}>RECENT TICKET WHATSAPPS</div><button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "4px 10px", fontSize: 11.5 }}>↻</button></div>
+      <button onClick={sendTest} style={{ ...btn("#25D366", "#fff"), padding: "8px 14px", marginBottom: 8 }}>🧪 Send me a test ticket</button>
+      {test && <div style={{ fontSize: 12.5, whiteSpace: "pre-wrap", borderRadius: 9, padding: "8px 10px", marginBottom: 8, background: test.good ? "#E7F6EF" : test.text === "Sending…" ? "#F0F2F5" : "#FDECEA", color: test.good ? W.teal : test.text === "Sending…" ? W.ink : "#C0392B" }}>{test.text}</div>}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ fontSize: 12, fontWeight: 800, color: W.soft, flex: 1 }}>RECENT TICKET WHATSAPPS</div><button onClick={load} disabled={busy} style={{ ...btn("#EBEEF0", W.ink), padding: "4px 10px", fontSize: 11.5 }}>{busy ? "Checking…" : "↻ Refresh"}</button></div>
+      {err && <div style={{ fontSize: 12.5, color: "#C0392B", marginTop: 6 }}>{err}</div>}
       {rows === null ? <div style={{ fontSize: 12.5, color: W.soft, marginTop: 6 }}>Loading…</div> : !rows.length ? <div style={{ fontSize: 12.5, color: W.soft, marginTop: 6 }}>None yet. The next ticket issued will show here.</div> : rows.slice(0, 15).map((r, i) => (
         <div key={i} style={{ fontSize: 12, padding: "6px 0", borderTop: `1px solid ${W.line}`, color: W.ink }}>
           <b style={{ color: r.status === "sent" ? W.teal : "#C0392B" }}>{r.status === "sent" ? "✓ Sent" : r.status === "no_phone" ? "No phone" : "✕ Failed"}</b> · {r.name || "Member"} · {r.event_title || ""} <span style={{ color: W.soft }}>· {gwTimeAgo(r.created_at)}</span>
