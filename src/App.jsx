@@ -4827,6 +4827,8 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
 
           {heroSlides.length>0 && <div style={{padding:"10px 16px 4px"}}><div style={{borderRadius:14,overflow:"hidden"}}><HeroSlider slides={heroSlides} wide={wide} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div></div>}
 
+          <PlanEventBanner profile={profile}/>
+
           <div style={{display:"flex",gap:9,padding:"12px 16px 8px",overflowX:"auto"}}>
             <button onClick={()=>setFsheet(true)} style={filterPill(fltCount(flt)>0)}>☰ Filters{fltCount(flt)>0?` (${fltCount(flt)})`:""}</button>
             <button onClick={()=>setSsheet(true)} style={filterPill(sortBy!=="relevance")}>↕ Sort By</button>
@@ -12841,14 +12843,486 @@ function VerificationsAdmin() {
     </div>
   );
 }
+// ===================== EVENT LEADS MARKETPLACE (Phase 1) =====================
+const GW_LEAD_TYPES = [
+  ["wedding", "💍", "Wedding"],
+  ["birthday", "🎂", "Birthday"],
+  ["corporate", "💼", "Corporate"],
+  ["festival", "🎆", "Festival / Mass event"],
+  ["community", "🤝", "Community / Group"],
+  ["other", "✨", "Other"],
+];
+const GW_LEAD_BUDGETS = [
+  ["b1", "Under ₹25k"],
+  ["b2", "₹25k – 1L"],
+  ["b3", "₹1L – 5L"],
+  ["b4", "₹5L – 15L"],
+  ["b5", "₹15L +"],
+];
+const GW_LEAD_SERVICES = ["Venue", "Decor", "Catering", "DJ / Music", "Photography", "Anchor / Emcee", "Entertainment", "Invitations", "Lighting & Sound", "Full planning"];
+const GW_LEAD_UNLOCK_STATUS = [
+  ["unlocked", "🔓 New"],
+  ["contacted", "📞 Contacted"],
+  ["quoted", "📝 Quoted"],
+  ["won", "🏆 Won"],
+  ["lost", "✖ Lost"],
+];
+const gwLeadType = k => GW_LEAD_TYPES.find(t => t[0] === k) || GW_LEAD_TYPES[5];
+const gwLeadBudget = k => (GW_LEAD_BUDGETS.find(b => b[0] === k) || [k, k])[1];
+const gwLeadDate = (d, flex) => d ? new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) + (flex ? " (flexible)" : "") : "Date not fixed";
+const gwLeadInp = { width: "100%", border: `1.5px solid ${W.line}`, borderRadius: 11, padding: "11px 13px", fontSize: 14.5, outline: "none", boxSizing: "border-box", background: "#fff", color: W.ink };
+const gwLeadLbl = { fontSize: 12, fontWeight: 800, color: W.soft, margin: "12px 0 6px", letterSpacing: .3 };
+const gwChip = on => ({ border: `1.5px solid ${on ? W.teal : W.line}`, background: on ? "#E7F6EF" : "#fff", color: on ? W.teal : W.ink, borderRadius: 999, padding: "7px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer" });
+
+// ---------- Banner on the Events home ----------
+function PlanEventBanner({ profile }) {
+  const [open, setOpen] = useState(false);
+  if (!profile?.id) return null;
+  return (
+    <div style={{ padding: "12px 16px 4px" }}>
+      <div onClick={() => setOpen(true)} style={{ cursor: "pointer", borderRadius: 16, padding: "15px 16px", color: "#fff", background: "linear-gradient(120deg,#0E5C54,#008069 55%,#D81B7A)", display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ fontSize: 34, lineHeight: 1 }}>🎉</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>Planning an event?</div>
+          <div style={{ fontSize: 12.5, opacity: .92, marginTop: 2 }}>Weddings, birthdays, corporate & community events. Get quotes from verified organisers. Free.</div>
+        </div>
+        <div style={{ background: "#fff", color: W.teal, fontWeight: 900, fontSize: 13, borderRadius: 10, padding: "9px 12px", whiteSpace: "nowrap" }}>Get quotes</div>
+      </div>
+      {open && <PlanEventSheet profile={profile} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+// ---------- Client: post a request + track my requests ----------
+function PlanEventSheet({ profile, onClose }) {
+  const userId = profile.id;
+  const [view, setView] = useState("new");
+  const [step, setStep] = useState(1);
+  const [f, setF] = useState({ event_type: "", event_title: "", event_date: "", date_flexible: false, city: profile?.city || "", area: "", venue_status: "need_venue", guests: "", budget_band: "", services: [], notes: "", contact_name: profile?.full_name || "", contact_phone: "", contact_email: "" });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [mine, setMine] = useState(null);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const loadMine = async () => { const { data } = await supabase.rpc("my_event_requests"); setMine(Array.isArray(data) ? data : []); };
+  useEffect(() => {
+    supabase.from("member_phone").select("phone").eq("user_id", userId).maybeSingle().then(({ data }) => { if (data?.phone) setF(p => p.contact_phone ? p : { ...p, contact_phone: data.phone }); });
+    loadMine();
+  }, [userId]);
+  const today = new Date(); const minDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const phoneOk = String(f.contact_phone).replace(/\D/g, "").length >= 10;
+  const step1Ok = f.event_type && f.city.trim() && f.budget_band;
+  const submit = async () => {
+    setErr("");
+    if (!f.contact_name.trim()) return setErr("Please enter your name.");
+    if (!phoneOk) return setErr("Please enter a valid 10-digit phone number.");
+    setBusy(true);
+    const row = { event_type: f.event_type, event_title: f.event_title.trim() || null, event_date: f.event_date || null, date_flexible: !!f.date_flexible, city: f.city.trim(), area: f.area.trim() || null, venue_status: f.venue_status, guests: Number(f.guests) || null, budget_band: f.budget_band, services: f.services, notes: f.notes.trim() || null, contact_name: f.contact_name.trim(), contact_phone: f.contact_phone, contact_email: f.contact_email.trim() || null };
+    const { error } = await supabase.from("event_requests").insert(row);
+    setBusy(false);
+    if (error) return setErr(error.message || "Could not submit. Please try again.");
+    setStep(3); loadMine();
+  };
+  const closeReq = (r, status) => window.gwConfirm(status === "booked" ? "Mark this as booked? Organisers will stop seeing it." : "Close this request? Organisers will stop seeing it.", async () => {
+    await supabase.rpc("close_my_event_request", { p_id: r.id, p_status: status }); loadMine();
+  });
+  const statusPill = s => {
+    const m = { pending: ["Under review", "#92400E", "#FEF3C7"], open: ["Live", W.teal, "#E7F6EF"], paused: ["Paused", "#92400E", "#FEF3C7"], booked: ["Booked 🎉", "#7C3AED", "#EFEAFB"], closed: ["Closed", W.soft, "#F0F2F5"], rejected: ["Not approved", "#C0392B", "#FDECEA"] }[s] || [s, W.soft, "#F0F2F5"];
+    return <span style={{ fontSize: 11, fontWeight: 800, color: m[1], background: m[2], borderRadius: 999, padding: "3px 9px" }}>{m[0]}</span>;
+  };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div style={{ fontWeight: 900, fontSize: 18, color: W.ink, flex: 1 }}>🎉 Plan my event</div>
+        <span onClick={onClose} style={{ cursor: "pointer", color: W.soft, fontSize: 20 }}>✕</span>
+      </div>
+      <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 14 }}>
+        {[["new", "New request"], ["mine", `My requests${mine?.length ? ` (${mine.length})` : ""}`]].map(([k, l]) => (
+          <button key={k} onClick={() => { setView(k); if (k === "new" && step === 3) setStep(1); }} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 0", fontWeight: 800, fontSize: 13, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? W.teal : W.soft, boxShadow: view === k ? "0 1px 3px rgba(0,0,0,.08)" : "none" }}>{l}</button>
+        ))}
+      </div>
+
+      {view === "new" && step === 1 && <>
+        <div style={gwLeadLbl}>WHAT ARE YOU PLANNING?</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
+          {GW_LEAD_TYPES.map(([k, ic, l]) => (
+            <div key={k} onClick={() => set("event_type", k)} style={{ cursor: "pointer", textAlign: "center", border: `1.5px solid ${f.event_type === k ? W.teal : W.line}`, background: f.event_type === k ? "#E7F6EF" : "#fff", borderRadius: 12, padding: "11px 4px" }}>
+              <div style={{ fontSize: 24 }}>{ic}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: f.event_type === k ? W.teal : W.ink, marginTop: 4, lineHeight: 1.2 }}>{l}</div>
+            </div>
+          ))}
+        </div>
+        <div style={gwLeadLbl}>EVENT DATE</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="date" min={minDate} value={f.event_date} onChange={e => set("event_date", e.target.value)} style={{ ...gwLeadInp, flex: 1 }} />
+          <label style={{ fontSize: 12.5, fontWeight: 700, color: W.ink, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}><input type="checkbox" checked={f.date_flexible} onChange={e => set("date_flexible", e.target.checked)} /> Flexible</label>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>CITY *</div><input value={f.city} onChange={e => set("city", e.target.value)} placeholder="e.g. Hyderabad" style={gwLeadInp} /></div>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>AREA</div><input value={f.area} onChange={e => set("area", e.target.value)} placeholder="e.g. Jubilee Hills" style={gwLeadInp} /></div>
+        </div>
+        <div style={gwLeadLbl}>NUMBER OF GUESTS</div>
+        <input value={f.guests} onChange={e => set("guests", e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="Approx. guests" style={gwLeadInp} />
+        <div style={gwLeadLbl}>BUDGET *</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>{GW_LEAD_BUDGETS.map(([k, l]) => <button key={k} onClick={() => set("budget_band", k)} style={gwChip(f.budget_band === k)}>{l}</button>)}</div>
+        <button disabled={!step1Ok} onClick={() => setStep(2)} style={{ ...btn(step1Ok ? W.teal : "#EBEEF0", step1Ok ? "#fff" : W.soft), width: "100%", justifyContent: "center", padding: "13px", fontSize: 15, marginTop: 18 }}>Next →</button>
+      </>}
+
+      {view === "new" && step === 2 && <>
+        <div style={gwLeadLbl}>VENUE</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>{[["need_venue", "Need a venue"], ["have_venue", "Have a venue"], ["not_sure", "Not sure"]].map(([k, l]) => <button key={k} onClick={() => set("venue_status", k)} style={gwChip(f.venue_status === k)}>{l}</button>)}</div>
+        <div style={gwLeadLbl}>SERVICES YOU NEED</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>{GW_LEAD_SERVICES.map(s => { const on = f.services.includes(s); return <button key={s} onClick={() => set("services", on ? f.services.filter(x => x !== s) : [...f.services, s])} style={gwChip(on)}>{on ? "✓ " : ""}{s}</button>; })}</div>
+        <div style={gwLeadLbl}>EVENT NAME / THEME</div>
+        <input value={f.event_title} onChange={e => set("event_title", e.target.value)} placeholder="e.g. Aarav's 5th birthday, Jungle theme" style={gwLeadInp} />
+        <div style={gwLeadLbl}>ANYTHING ELSE?</div>
+        <textarea value={f.notes} onChange={e => set("notes", e.target.value)} rows={3} placeholder="Food preferences, timings, special requests…" style={{ ...gwLeadInp, resize: "vertical", fontFamily: "inherit" }} />
+        <div style={{ ...gwLeadLbl, marginTop: 16 }}>YOUR CONTACT</div>
+        <input value={f.contact_name} onChange={e => set("contact_name", e.target.value)} placeholder="Your name *" style={{ ...gwLeadInp, marginBottom: 8 }} />
+        <input value={f.contact_phone} onChange={e => set("contact_phone", e.target.value)} inputMode="tel" placeholder="Phone / WhatsApp *" style={{ ...gwLeadInp, marginBottom: 8 }} />
+        <input value={f.contact_email} onChange={e => set("contact_email", e.target.value)} type="email" placeholder="Email (optional)" style={gwLeadInp} />
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8, lineHeight: 1.45 }}>🔒 Your number is hidden. Only up to 5 verified organisers can see it, and they'll contact you with quotes.</div>
+        {err && <div style={{ color: "#C0392B", fontSize: 13, fontWeight: 700, marginTop: 10 }}>{err}</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button onClick={() => setStep(1)} style={{ ...btn("#EBEEF0", W.ink), padding: "13px 16px" }}>← Back</button>
+          <button disabled={busy} onClick={submit} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: "13px", fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Submitting…" : "Get quotes"}</button>
+        </div>
+      </>}
+
+      {view === "new" && step === 3 && <div style={{ textAlign: "center", padding: "18px 6px" }}>
+        <div style={{ fontSize: 52 }}>✅</div>
+        <div style={{ fontWeight: 900, fontSize: 18, color: W.ink, marginTop: 6 }}>Request sent!</div>
+        <div style={{ fontSize: 13.5, color: W.soft, marginTop: 6, lineHeight: 1.5 }}>Verified organisers in {f.city} will contact you on WhatsApp/phone with quotes. Track who has picked it up under <b>My requests</b>.</div>
+        <button onClick={() => setView("mine")} style={{ ...btn(W.teal, "#fff"), margin: "18px auto 0", padding: "12px 20px" }}>View my requests</button>
+      </div>}
+
+      {view === "mine" && (mine === null ? <Center>Loading…</Center> : !mine.length ? <Center>No requests yet.</Center> : mine.map(r => {
+        const [, ic, tl] = gwLeadType(r.event_type);
+        const orgs = Array.isArray(r.organisers) ? r.organisers : [];
+        const active = ["pending", "open", "paused"].includes(r.status);
+        return (
+          <div key={r.id} style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: 13, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: 22 }}>{ic}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{r.event_title || tl}</div>
+                <div style={{ fontSize: 12, color: W.soft }}>{gwLeadDate(r.event_date)} · {r.city}{r.guests ? ` · ${r.guests} guests` : ""}</div>
+              </div>
+              {statusPill(r.status)}
+            </div>
+            <div style={{ fontSize: 12.5, color: W.ink, marginTop: 9, fontWeight: 700 }}>{orgs.length ? `${orgs.length} organiser${orgs.length > 1 ? "s" : ""} picked this up and will contact you:` : (r.status === "pending" ? "Our team is reviewing your request." : "Waiting for organisers to respond…")}</div>
+            {orgs.map((o, i) => <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7 }}><PersonAvatar url={o.avatar} name={o.name} size={28} /><div style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>{o.name || "Organiser"}</div></div>)}
+            {active && <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+              <button onClick={() => closeReq(r, "booked")} style={{ ...btn("#E7F6EF", W.teal), padding: "7px 12px", fontSize: 12.5 }}>✓ I've booked</button>
+              <button onClick={() => closeReq(r, "closed")} style={{ ...btn("#F0F2F5", W.soft), padding: "7px 12px", fontSize: 12.5 }}>Close request</button>
+            </div>}
+          </div>
+        );
+      }))}
+    </Sheet>
+  );
+}
+
+// ---------- Organiser: browse & unlock leads ----------
+function OrganiserLeadsPanel({ meId }) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState("");
+  const [tab, setTab] = useState("browse");
+  const [city, setCity] = useState("all");
+  const [type, setType] = useState("all");
+  const [bal, setBal] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [buyOpen, setBuyOpen] = useState(false);
+  const [myName, setMyName] = useState("");
+  const load = async () => {
+    const { data, error } = await supabase.rpc("lead_marketplace");
+    if (error) { setErr(error.message); setRows([]); } else { setErr(""); setRows(data || []); }
+    const { data: pr } = await supabase.from("profiles").select("game_credits, full_name").eq("id", meId).maybeSingle();
+    setBal(Number(pr?.game_credits) || 0); setMyName(pr?.full_name || "");
+  };
+  useEffect(() => { load(); }, [meId]);
+  const unlock = r => window.gwConfirm(`Unlock this ${gwLeadType(r.event_type)[2].toLowerCase()} lead for ${r.unlock_cost} credits?\n\nYou'll get the client's name, phone & email.`, async () => {
+    setBusy(r.id);
+    const { data, error } = await supabase.rpc("unlock_event_lead", { p_request: r.id });
+    setBusy(null);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) {
+      if (data?.reason === "credits") return window.gwConfirm(`You need ${data.need} credits. You have ${data.have}.\n\nBuy credits now?`, () => setBuyOpen(true));
+      const msg = { full: "Sorry, this lead has already been taken by the maximum number of organisers.", closed: "This request is no longer open.", own_request: "This is your own request.", not_organiser: "Only approved organisers can unlock leads." }[data?.reason] || "Couldn't unlock right now.";
+      window.gwConfirm(msg, () => {}); return load();
+    }
+    setTab("mine"); load();
+  });
+  const setStatus = async (r, status) => {
+    setRows(rs => rs.map(x => x.id === r.id ? { ...x, my_status: status } : x));
+    const { data, error } = await supabase.rpc("update_lead_unlock", { p_unlock: r.unlock_id, p_status: status, p_note: null, p_dispute: null });
+    if (error || !data?.ok) { window.gwConfirm(error?.message || "Couldn't update.", () => {}); load(); }
+  };
+  const saveNote = async r => {
+    const note = await window.gwPrompt("Private note (only you can see this)", r.my_note || "");
+    if (note == null) return;
+    await supabase.rpc("update_lead_unlock", { p_unlock: r.unlock_id, p_status: r.my_status || "unlocked", p_note: note, p_dispute: null }); load();
+  };
+  const dispute = async r => {
+    const why = await window.gwPrompt("What's wrong with this lead? (wrong number, fake, duplicate…)\nOur team will review it and refund your credits if it's valid.", "");
+    if (!why) return;
+    await supabase.rpc("update_lead_unlock", { p_unlock: r.unlock_id, p_status: "disputed", p_note: null, p_dispute: why }); load();
+  };
+  const all = rows || [];
+  const browse = all.filter(r => !r.unlocked);
+  const mine = all.filter(r => r.unlocked);
+  const cities = [...new Set(browse.map(r => r.city).filter(Boolean))].sort();
+  const list = (tab === "browse" ? browse : mine).filter(r => (city === "all" || r.city === city) && (type === "all" || r.event_type === type));
+  const waMsg = r => `Hi ${String(r.contact_name || "").split(" ")[0]}, this is ${myName || "an event organiser"} from Glasswings, regarding your ${gwLeadType(r.event_type)[2].toLowerCase()} request${r.event_date ? ` on ${gwLeadDate(r.event_date)}` : ""} in ${r.city}. I'd love to share a quote with you.`;
+  const sel = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13, background: "#fff", color: W.ink, flex: 1, minWidth: 0 };
+  return (
+    <div style={{ padding: 14, maxWidth: 760 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, background: "linear-gradient(135deg,#008069,#04B08F)", color: "#fff", borderRadius: 14, padding: "14px 16px", marginBottom: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, opacity: .9 }}>LEAD CREDITS</div>
+          <div style={{ fontSize: 26, fontWeight: 900 }}>{bal === null ? "…" : bal}</div>
+        </div>
+        <button onClick={() => setBuyOpen(true)} style={{ ...btn("#fff", W.teal), padding: "9px 14px" }}>+ Buy credits</button>
+      </div>
+      <HelpBox title="How leads work" tips={["Clients post weddings, birthdays, corporate and community events they want organised.", "Contact details stay hidden until you unlock the lead with credits.", "Each lead goes to at most a few organisers, so contact the client quickly.", "Fake or wrong-number lead? Tap 'Report' and we'll refund your credits after review."]} />
+      <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, margin: "12px 0" }}>
+        {[["browse", `New leads (${browse.length})`], ["mine", `My unlocked (${mine.length})`]].map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 0", fontWeight: 800, fontSize: 13, cursor: "pointer", background: tab === k ? "#fff" : "transparent", color: tab === k ? W.teal : W.soft }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{[...new Set([...cities, ...mine.map(r => r.city)])].filter(Boolean).sort().map(c => <option key={c}>{c}</option>)}</select>
+        <select value={type} onChange={e => setType(e.target.value)} style={sel}><option value="all">All event types</option>{GW_LEAD_TYPES.map(([k, , l]) => <option key={k} value={k}>{l}</option>)}</select>
+        <button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "8px 12px" }}>↻</button>
+      </div>
+      {err && <div style={{ background: "#FDECEA", color: "#C0392B", borderRadius: 10, padding: 12, fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{err}</div>}
+      {rows === null ? <Center>Loading leads…</Center> : !list.length ? <Center>{tab === "browse" ? "No new leads right now. Check back soon." : "You haven't unlocked any leads yet."}</Center> : list.map(r => {
+        const [, ic, tl] = gwLeadType(r.event_type);
+        const left = Math.max(0, r.max_unlocks - r.unlock_count);
+        return (
+          <div key={r.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <div style={{ fontSize: 26 }}>{ic}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 900, color: W.ink, fontSize: 15 }}>{r.event_title || tl}</div>
+                <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2 }}>{tl} · {gwLeadDate(r.event_date, r.date_flexible)}</div>
+                <div style={{ fontSize: 12.5, color: W.soft }}>📍 {r.city}{r.area ? `, ${r.area}` : ""}{r.guests ? ` · 👥 ${r.guests}` : ""} · 💰 {gwLeadBudget(r.budget_band)}</div>
+              </div>
+              <div style={{ fontSize: 11, color: W.soft, whiteSpace: "nowrap" }}>{gwTimeAgo(r.created_at)}</div>
+            </div>
+            {(r.services || []).length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 9 }}>{r.services.map(s => <span key={s} style={{ fontSize: 11, fontWeight: 700, background: W.bg, color: W.ink, borderRadius: 999, padding: "3px 8px" }}>{s}</span>)}{r.venue_status === "need_venue" && <span style={{ fontSize: 11, fontWeight: 700, background: "#FEF3C7", color: "#92400E", borderRadius: 999, padding: "3px 8px" }}>Needs venue</span>}</div>}
+            {r.notes && <div style={{ fontSize: 13, color: W.ink, marginTop: 9, background: "#FAFAFA", borderRadius: 9, padding: "8px 10px", whiteSpace: "pre-wrap" }}>{r.notes}</div>}
+            <div style={{ marginTop: 11, padding: "10px 12px", borderRadius: 10, background: r.unlocked ? "#E7F6EF" : "#F7F7F8", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 150 }}>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>👤 {r.contact_name}</div>
+                <div style={{ fontSize: 13, color: W.ink, fontFamily: "monospace" }}>📞 {r.contact_phone}{r.contact_email ? `  ·  ✉ ${r.contact_email}` : ""}</div>
+              </div>
+              {!r.unlocked ? <div style={{ textAlign: "right" }}>
+                <button disabled={busy === r.id} onClick={() => unlock(r)} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px" }}>{busy === r.id ? "…" : `🔓 Unlock · ${r.unlock_cost} cr`}</button>
+                <div style={{ fontSize: 10.5, color: left <= 1 ? "#C0392B" : W.soft, fontWeight: 700, marginTop: 4 }}>{left} of {r.max_unlocks} slots left</div>
+              </div> : <div style={{ display: "flex", gap: 6 }}>
+                <a href={`https://wa.me/${waNum(r.contact_phone)}?text=${encodeURIComponent(waMsg(r))}`} target="_blank" rel="noreferrer" onClick={() => r.my_status === "unlocked" && setStatus(r, "contacted")} style={{ ...btn("#25D366", "#fff"), padding: "8px 11px", textDecoration: "none" }}>WhatsApp</a>
+                <a href={`tel:${r.contact_phone}`} onClick={() => r.my_status === "unlocked" && setStatus(r, "contacted")} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "8px 11px", textDecoration: "none" }}>Call</a>
+              </div>}
+            </div>
+            {r.unlocked && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+              {r.my_status === "disputed" ? <span style={{ fontSize: 12, fontWeight: 800, color: "#92400E" }}>⚠ Reported. Under review</span>
+                : r.my_status === "refunded" ? <span style={{ fontSize: 12, fontWeight: 800, color: W.teal }}>↩ Credits refunded</span>
+                : <>{GW_LEAD_UNLOCK_STATUS.map(([k, l]) => <button key={k} onClick={() => setStatus(r, k)} style={{ ...gwChip(r.my_status === k), padding: "5px 10px", fontSize: 12 }}>{l}</button>)}
+                  <button onClick={() => dispute(r)} style={{ ...gwChip(false), padding: "5px 10px", fontSize: 12, color: "#C0392B" }}>⚠ Report</button></>}
+              <button onClick={() => saveNote(r)} style={{ ...gwChip(false), padding: "5px 10px", fontSize: 12 }}>📝 {r.my_note ? "Edit note" : "Note"}</button>
+            </div>}
+            {r.unlocked && r.my_note && <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>📝 {r.my_note}</div>}
+          </div>
+        );
+      })}
+      {buyOpen && <BuyCreditsSheet onClose={() => setBuyOpen(false)} onBought={load} />}
+    </div>
+  );
+}
+
+// ---------- Admin: all leads, approvals, refunds, pricing ----------
+function AdminLeadsPanel() {
+  const [view, setView] = useState("leads");
+  const [rows, setRows] = useState(null);
+  const [unlocks, setUnlocks] = useState([]);
+  const [status, setStatus] = useState("all");
+  const [type, setType] = useState("all");
+  const [q, setQ] = useState("");
+  const [openId, setOpenId] = useState(null);
+  const [pricing, setPricing] = useState({});
+  const [settings, setSettings] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const load = async () => {
+    const [{ data: r, error }, { data: u }] = await Promise.all([
+      supabase.from("event_requests").select("*").order("created_at", { ascending: false }).limit(1000),
+      supabase.rpc("admin_lead_unlocks"),
+    ]);
+    if (error) window.gwConfirm(error.message, () => {});
+    setRows(r || []); setUnlocks(u || []);
+  };
+  const loadPricing = async () => {
+    const [{ data: p }, { data: s }] = await Promise.all([supabase.from("lead_pricing").select("*"), supabase.from("lead_settings").select("*").eq("id", 1).maybeSingle()]);
+    const m = {}; (p || []).forEach(x => { m[`${x.event_type}|${x.budget_band}`] = String(x.credits); }); setPricing(m);
+    setSettings(s || { max_unlocks: 5, auto_publish: true, default_credits: 199 });
+  };
+  useEffect(() => { load(); loadPricing(); }, []);
+  const byReq = useMemo(() => { const m = {}; unlocks.forEach(u => { (m[u.request_id] = m[u.request_id] || []).push(u); }); return m; }, [unlocks]);
+  const disputes = unlocks.filter(u => u.status === "disputed");
+  const all = rows || [];
+  const ql = q.trim().toLowerCase();
+  const list = all.filter(r => (status === "all" || r.status === status) && (type === "all" || r.event_type === type) && (!ql || [r.contact_name, r.contact_phone, r.city, r.area, r.event_title].filter(Boolean).some(s => String(s).toLowerCase().includes(ql))));
+  const earned = unlocks.filter(u => u.status !== "refunded").reduce((a, u) => a + (Number(u.credits) || 0), 0);
+  const won = unlocks.filter(u => u.status === "won").length;
+  const upd = async (r, patch) => {
+    setRows(rs => rs.map(x => x.id === r.id ? { ...x, ...patch } : x));
+    const { error } = await supabase.from("event_requests").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", r.id);
+    if (error) { window.gwConfirm(error.message, () => {}); load(); }
+  };
+  const editCost = async r => { const v = await window.gwPrompt("Unlock price (credits) for this lead", r.unlock_cost); if (v == null) return; const n = Math.max(0, Math.floor(Number(v) || 0)); upd(r, { unlock_cost: n }); };
+  const editMax = async r => { const v = await window.gwPrompt("Max organisers who can unlock this lead", r.max_unlocks); if (v == null) return; const n = Math.max(1, Math.floor(Number(v) || 1)); upd(r, { max_unlocks: n }); };
+  const editNote = async r => { const v = await window.gwPrompt("Admin note (internal)", r.admin_note || ""); if (v == null) return; upd(r, { admin_note: v || null }); };
+  const refund = u => window.gwConfirm(`Refund ${u.credits} credits to ${u.organiser_name || "organiser"}?`, async () => {
+    const { data, error } = await supabase.rpc("admin_refund_lead_unlock", { p_unlock: u.id });
+    if (error || !data?.ok) window.gwConfirm(error?.message || "Already refunded.", () => {});
+    load();
+  });
+  const savePricing = async () => {
+    setSaving(true);
+    const up = Object.entries(pricing).map(([k, v]) => { const [event_type, budget_band] = k.split("|"); return { event_type, budget_band, credits: Math.max(0, Math.floor(Number(v) || 0)) }; });
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from("lead_pricing").upsert(up),
+      supabase.from("lead_settings").update({ max_unlocks: Math.max(1, Number(settings.max_unlocks) || 5), auto_publish: !!settings.auto_publish, default_credits: Math.max(0, Number(settings.default_credits) || 0), updated_at: new Date().toISOString() }).eq("id", 1),
+    ]);
+    setSaving(false);
+    window.gwConfirm(e1 || e2 ? (e1 || e2).message : "✅ Saved. New prices apply to new leads only.", () => {});
+  };
+  const pill = s => { const c = { pending: "#B45309", open: W.teal, paused: "#B45309", booked: "#7C3AED", closed: W.soft, rejected: "#C0392B" }[s] || W.soft; return <span style={{ fontSize: 11, fontWeight: 800, color: c, border: `1px solid ${c}`, borderRadius: 999, padding: "2px 8px", textTransform: "uppercase" }}>{s}</span>; };
+  const stat = (l, v, c = W.ink) => <div style={{ flex: "1 1 110px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 12px" }}><div style={{ fontSize: 11, fontWeight: 800, color: W.soft }}>{l}</div><div style={{ fontSize: 21, fontWeight: 900, color: c }}>{v}</div></div>;
+  const sel = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13, background: "#fff", color: W.ink };
+  return (
+    <div style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {stat("TOTAL LEADS", all.length)}
+        {stat("PENDING REVIEW", all.filter(r => r.status === "pending").length, "#B45309")}
+        {stat("LIVE", all.filter(r => r.status === "open").length, W.teal)}
+        {stat("UNLOCKS", unlocks.filter(u => u.status !== "refunded").length)}
+        {stat("CREDITS EARNED", earned, W.teal)}
+        {stat("WON BY ORGANISERS", won, "#7C3AED")}
+      </div>
+      <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12, maxWidth: 520 }}>
+        {[["leads", "📋 Leads"], ["disputes", `⚠ Reports (${disputes.length})`], ["pricing", "₹ Pricing & rules"]].map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? W.teal : W.soft }}>{l}</button>
+        ))}
+      </div>
+
+      {view === "leads" && <>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, phone, city…" style={{ ...sel, flex: "1 1 180px" }} />
+          <select value={status} onChange={e => setStatus(e.target.value)} style={sel}><option value="all">All statuses</option>{["pending", "open", "paused", "booked", "closed", "rejected"].map(s => <option key={s}>{s}</option>)}</select>
+          <select value={type} onChange={e => setType(e.target.value)} style={sel}><option value="all">All types</option>{GW_LEAD_TYPES.map(([k, , l]) => <option key={k} value={k}>{l}</option>)}</select>
+          <button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "8px 12px" }}>↻</button>
+        </div>
+        {rows === null ? <Center>Loading…</Center> : !list.length ? <Center>No leads yet. They'll appear here when members use "Plan my event".</Center> : list.map(r => {
+          const [, ic, tl] = gwLeadType(r.event_type);
+          const ul = byReq[r.id] || [];
+          const isOpen = openId === r.id;
+          return (
+            <div key={r.id} style={{ background: "#fff", border: `1px solid ${r.status === "pending" ? "#F59E0B" : W.line}`, borderRadius: 14, padding: 13, marginBottom: 9 }}>
+              <div onClick={() => setOpenId(isOpen ? null : r.id)} style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer" }}>
+                <div style={{ fontSize: 24 }}>{ic}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{r.event_title || tl} · <span style={{ color: W.soft, fontWeight: 700 }}>{r.contact_name}</span></div>
+                  <div style={{ fontSize: 12, color: W.soft }}>{gwLeadDate(r.event_date, r.date_flexible)} · {r.city} · {gwLeadBudget(r.budget_band)}{r.guests ? ` · ${r.guests} guests` : ""}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>{pill(r.status)}<div style={{ fontSize: 11, color: W.soft, marginTop: 4 }}>{r.unlock_count}/{r.max_unlocks} · {r.unlock_cost} cr</div></div>
+              </div>
+              {isOpen && <div style={{ marginTop: 11, borderTop: `1px solid ${W.line}`, paddingTop: 11 }}>
+                <div style={{ fontSize: 13, color: W.ink, lineHeight: 1.6 }}>
+                  📞 <a href={`tel:${r.contact_phone}`}>{r.contact_phone}</a> · <a href={`https://wa.me/${waNum(r.contact_phone)}`} target="_blank" rel="noreferrer">WhatsApp</a>{r.contact_email ? <> · ✉ {r.contact_email}</> : null}<br />
+                  📍 {r.city}{r.area ? `, ${r.area}` : ""} · Venue: {({ need_venue: "needs venue", have_venue: "has venue", not_sure: "not sure" })[r.venue_status] || "-"}<br />
+                  {(r.services || []).length > 0 && <>🧩 {r.services.join(", ")}<br /></>}
+                  {r.notes && <>💬 {r.notes}<br /></>}
+                  {r.admin_note && <span style={{ color: "#92400E" }}>🛈 {r.admin_note}<br /></span>}
+                  <span style={{ color: W.soft, fontSize: 11.5 }}>Posted {new Date(r.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                  {r.status === "pending" && <button onClick={() => upd(r, { status: "open" })} style={{ ...btn(W.teal, "#fff"), padding: "7px 12px", fontSize: 12.5 }}>✓ Approve & publish</button>}
+                  {r.status === "pending" && <button onClick={() => upd(r, { status: "rejected" })} style={{ ...btn("#FDECEA", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>✕ Reject</button>}
+                  {r.status === "open" && <button onClick={() => upd(r, { status: "paused" })} style={{ ...btn("#FEF3C7", "#92400E"), padding: "7px 12px", fontSize: 12.5 }}>⏸ Pause</button>}
+                  {["paused", "closed", "rejected"].includes(r.status) && <button onClick={() => upd(r, { status: "open" })} style={{ ...btn("#E7F6EF", W.teal), padding: "7px 12px", fontSize: 12.5 }}>▶ Re-open</button>}
+                  {!["booked", "closed"].includes(r.status) && <button onClick={() => upd(r, { status: "closed" })} style={{ ...btn("#F0F2F5", W.soft), padding: "7px 12px", fontSize: 12.5 }}>Close</button>}
+                  <button onClick={() => editCost(r)} style={{ ...btn("#F0F2F5", W.ink), padding: "7px 12px", fontSize: 12.5 }}>₹ Price</button>
+                  <button onClick={() => editMax(r)} style={{ ...btn("#F0F2F5", W.ink), padding: "7px 12px", fontSize: 12.5 }}>👥 Max slots</button>
+                  <button onClick={() => editNote(r)} style={{ ...btn("#F0F2F5", W.ink), padding: "7px 12px", fontSize: 12.5 }}>📝 Note</button>
+                  <button onClick={() => window.gwConfirm("Delete this lead permanently?", async () => { await supabase.from("event_requests").delete().eq("id", r.id); load(); })} style={{ ...btn("#fff", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>🗑</button>
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 12.5, color: W.ink, marginTop: 12 }}>Organisers who unlocked ({ul.length})</div>
+                {!ul.length ? <div style={{ fontSize: 12.5, color: W.soft, marginTop: 4 }}>None yet.</div> : ul.map(u => (
+                  <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${W.line}`, fontSize: 12.5 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}><b>{u.organiser_name || "Organiser"}</b> · {u.credits} cr · <span style={{ color: u.status === "won" ? "#7C3AED" : u.status === "disputed" ? "#C0392B" : W.soft, fontWeight: 700 }}>{u.status}</span>{u.dispute_reason ? <div style={{ color: "#C0392B" }}>⚠ {u.dispute_reason}</div> : null}</div>
+                    {u.status !== "refunded" && <button onClick={() => refund(u)} style={{ ...btn("#FDECEA", "#C0392B"), padding: "5px 10px", fontSize: 11.5 }}>Refund</button>}
+                  </div>
+                ))}
+              </div>}
+            </div>
+          );
+        })}
+      </>}
+
+      {view === "disputes" && (!disputes.length ? <Center>No reported leads. 👍</Center> : disputes.map(u => {
+        const r = all.find(x => x.id === u.request_id);
+        return (
+          <div key={u.id} style={{ background: "#fff", border: "1px solid #F5C2C0", borderRadius: 14, padding: 13, marginBottom: 9 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{u.organiser_name || "Organiser"} reported a lead</div>
+            <div style={{ fontSize: 12.5, color: W.soft, marginTop: 3 }}>{r ? `${gwLeadType(r.event_type)[2]} · ${r.contact_name} · ${r.contact_phone} · ${r.city}` : "Lead deleted"}</div>
+            <div style={{ fontSize: 13, color: "#C0392B", marginTop: 6 }}>⚠ {u.dispute_reason || "No reason given"}</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+              <button onClick={() => refund(u)} style={{ ...btn(W.teal, "#fff"), padding: "7px 12px", fontSize: 12.5 }}>↩ Refund {u.credits} cr</button>
+              {r && r.status === "open" && <button onClick={() => upd(r, { status: "rejected", admin_note: "Reported as fake/invalid" })} style={{ ...btn("#FDECEA", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>Reject lead</button>}
+              {r && <a href={`tel:${r.contact_phone}`} style={{ ...btn("#F0F2F5", W.ink), padding: "7px 12px", fontSize: 12.5, textDecoration: "none" }}>📞 Verify client</a>}
+            </div>
+          </div>
+        );
+      }))}
+
+      {view === "pricing" && (settings === null ? <Center>Loading…</Center> : <div style={{ maxWidth: 720 }}>
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <div style={{ fontWeight: 900, color: W.ink, marginBottom: 10 }}>Rules</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: W.ink, marginBottom: 10 }}>
+            <input type="checkbox" checked={!!settings.auto_publish} onChange={e => setSettings(s => ({ ...s, auto_publish: e.target.checked }))} />
+            Publish new leads instantly (untick to review each lead before organisers see it)
+          </label>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <label style={{ fontSize: 12.5, fontWeight: 700, color: W.soft }}>Max organisers per lead<br /><input value={settings.max_unlocks} onChange={e => setSettings(s => ({ ...s, max_unlocks: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" style={{ ...sel, width: 110, marginTop: 4 }} /></label>
+            <label style={{ fontSize: 12.5, fontWeight: 700, color: W.soft }}>Fallback price (credits)<br /><input value={settings.default_credits} onChange={e => setSettings(s => ({ ...s, default_credits: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" style={{ ...sel, width: 110, marginTop: 4 }} /></label>
+          </div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, overflowX: "auto" }}>
+          <div style={{ fontWeight: 900, color: W.ink, marginBottom: 4 }}>Unlock price (credits) by event type × budget</div>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10 }}>1 credit = ₹1. Bigger budgets are worth more to organisers, so price them higher.</div>
+          <table style={{ borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
+            <thead><tr><th style={{ textAlign: "left", padding: 6, color: W.soft }}>Type</th>{GW_LEAD_BUDGETS.map(([k, l]) => <th key={k} style={{ padding: 6, color: W.soft, fontSize: 11.5, whiteSpace: "nowrap" }}>{l}</th>)}</tr></thead>
+            <tbody>{GW_LEAD_TYPES.map(([t, ic, tl]) => <tr key={t} style={{ borderTop: `1px solid ${W.line}` }}>
+              <td style={{ padding: 6, fontWeight: 800, color: W.ink, whiteSpace: "nowrap" }}>{ic} {tl}</td>
+              {GW_LEAD_BUDGETS.map(([b]) => <td key={b} style={{ padding: 4 }}><input value={pricing[`${t}|${b}`] ?? ""} onChange={e => setPricing(p => ({ ...p, [`${t}|${b}`]: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" style={{ ...sel, width: 76, textAlign: "center" }} /></td>)}
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <button disabled={saving} onClick={savePricing} style={{ ...btn(W.teal, "#fff"), marginTop: 12, padding: "11px 20px" }}>{saving ? "Saving…" : "Save pricing & rules"}</button>
+      </div>)}
+    </div>
+  );
+}
+// =================== END EVENT LEADS MARKETPLACE ===================
+
 const GW_ADMIN_GROUPS = [
   ['Overview', ['dash','analytics']],
   ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
-  ['Events', ['events','private','door','directory','rooms']],
+  ['Events', ['events','private','leads','door','directory','rooms']],
   ['Money', ['accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
   ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
-const GW_ADMIN_ICONS = {dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+const GW_ADMIN_ICONS = {leads:'📋',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
 function AdminNavigation({ tabs, selected, onSelect, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const dialog = useRef(null), trigger = useRef(null);
@@ -13293,6 +13767,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(caps.host ? [["events", "Events"], ["invite", "💌 INVITE"]] : []),
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
+    ...((isSuper || canApprove) ? [["leads", "📋 Event Leads"]] : canManageOrganiserStaff ? [["leads", "📋 Event Leads"]] : []),
     ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
     ...((myEventsOnly && caps.privateMembers) ? [["orgmembers", "👥 My Members"]] : []),
     ...((canApprove || caps.door) ? [["checkin", "✅ Check-in"], ["doorsales", "💵 Door Sales"]] : []),
@@ -13347,6 +13822,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <PromotersPanel />
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
+        : seg === "leads" ? ((isSuper || canApprove) ? <AdminLeadsPanel /> : <OrganiserLeadsPanel meId={meId} />)
         : seg === "orgstaff" ? <OrganiserStaffPanel />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
         : seg === "invite" ? <AdminInviteHub events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} />
