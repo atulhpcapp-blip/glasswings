@@ -59,11 +59,31 @@ function ticketGenderAllowed(t, profile) {
   // Example: a male account may purchase a Women Pass for a female guest.
   return true;
 }
+// ----- Festival ticket options: zones, passes, bundles, sale windows -----
+const GW_ZONES = [["GA", "#008069"], ["Fan Pit", "#E8590C"], ["VIP", "#B8860B"], ["VVIP", "#7C3AED"], ["Lounge", "#0369A1"], ["Backstage", "#D81B7A"]];
+function gwZoneColor(t) { return t?.zone_color || (GW_ZONES.find(z => z[0].toLowerCase() === String(t?.zone || "").toLowerCase()) || [null, "#475569"])[1]; }
+function gwAdmits(t) { return Math.max(1, Number(t?.admits) || 1); }
+function gwFmtWhen(iso) { try { return new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); } catch { return ""; } }
+function gwCountdown(iso) {
+  const ms = new Date(iso).getTime() - Date.now(); if (!(ms > 0)) return "";
+  const d = Math.floor(ms / 86400000), h = Math.floor(ms % 86400000 / 3600000), m = Math.floor(ms % 3600000 / 60000);
+  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+function gwZoneSorted(list) {
+  const order = []; (list || []).forEach(t => { const z = t.zone || ""; if (!order.includes(z)) order.push(z); });
+  return [...(list || [])].sort((a, b) => order.indexOf(a.zone || "") - order.indexOf(b.zone || ""));
+}
+function gwToLocalInput(iso) { if (!iso) return ""; const d = new Date(iso); if (isNaN(d)) return ""; return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
 function ticketStatus(t, e, stats, typeSold, profile) {
   const sold = Number((typeSold && typeSold[t.id]) || 0);
   const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
   const hasCap = cap != null && Number.isFinite(cap);
-  if (hasCap && cap - sold <= 0) return { ok: false, label: "Sold out", reason: "capacity" };
+  const admits = gwAdmits(t);
+  if (t.sale_starts_at && new Date(t.sale_starts_at).getTime() > Date.now()) return { ok: false, label: `Opens ${gwFmtWhen(t.sale_starts_at)}`, reason: "window" };
+  if (t.sale_ends_at && new Date(t.sale_ends_at).getTime() <= Date.now()) return { ok: false, label: "Sale ended", reason: "ended" };
+  if (hasCap && cap - sold < admits) return { ok: false, label: "Sold out", reason: "capacity" };
+  const endsSoon = t.sale_ends_at && (new Date(t.sale_ends_at).getTime() - Date.now()) < 10 * 86400000;
+  const note = endsSoon ? `⏰ This price ends in ${gwCountdown(t.sale_ends_at)}` : "";
 
   const restrict = ticketAudience(t);
 
@@ -74,7 +94,7 @@ function ticketStatus(t, e, stats, typeSold, profile) {
     const mb = menBudget(e, stats);
     if (mb && mb.remaining <= 0) return { ok: false, label: "Opens as women join", reason: "balance" };
   }
-  return { ok: true, label: hasCap ? `${Math.max(0, cap - sold)} left` : "", reason: null };
+  return { ok: true, label: hasCap ? `${Math.max(0, Math.floor((cap - sold) / admits))} left` : "", reason: null, note };
 }
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
 function loadRazorpay() {
@@ -2383,7 +2403,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       button.blur();
     }));
   };
-  const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, cap - ((typeSold && typeSold[t.id]) || 0)) : null; };
+  const leftFor = t => { const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null; return cap != null ? Math.max(0, Math.floor((cap - ((typeSold && typeSold[t.id]) || 0)) / gwAdmits(t))) : null; };
   const adminModerated = gwIsAdminModeratedEvent(e);
   const availabilityStatus = gwEventAvailability(e);
   const manualClosed = availabilityStatus !== "open";
@@ -2451,22 +2471,28 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             : `⚖️ Only ${menRemain} men's ticket${menRemain === 1 ? "" : "s"} open right now — more open as more women join.`}
         </div>
       )}
-      {visTypes.map(t => {
+      {gwZoneSorted(visTypes).map((t, ti, zarr) => {
         const st = ticketStatus(t, e, stats, typeSold, profile);
+        const zoneHead = t.zone && (ti === 0 || zarr[ti - 1].zone !== t.zone);
         const soldOut = !st.ok && st.label === "Sold out";
         const left = leftFor(t);
         const fast = st.ok && left != null && left > 0 && left <= 5;
         const sold = Number((typeSold && typeSold[t.id]) || 0);
         const cap = t.capacity != null && t.capacity !== "" ? Number(t.capacity) : null;
         const typePct = cap && cap > 0 ? Math.min(100, Math.round((sold / cap) * 100)) : null;
-        const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : null;
+        const tag = soldOut ? ["Sold out", "#C0392B"] : !st.ok ? [st.label, "#B45309"] : fast ? [`Only ${left} left · fast filling`, "#D35400"] : st.note ? [st.note, "#D81B7A"] : null;
         const q = qtyMap[t.id] || 0;
         const audience = ticketAudience(t);
         const balanceHeadroom = audience === "male" ? (menRemain == null ? Infinity : Math.max(0, menRemain - selMaleQty)) : Infinity;
         const headroom = Math.min(MAX_TIX - selQty, balanceHeadroom);
         const max = Math.min(q + headroom, left == null ? MAX_TIX : left);
         return (
-        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}`, opacity: (soldOut || manualClosed) ? .5 : 1 }}>
+        <React.Fragment key={t.id}>
+        {zoneHead && <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: ti === 0 ? 8 : 16, padding: "8px 12px", borderRadius: 10, background: gwZoneColor(t) + "18", borderLeft: `5px solid ${gwZoneColor(t)}` }}>
+          <span style={{ fontWeight: 900, fontSize: 14, color: gwZoneColor(t), letterSpacing: .5 }}>{String(t.zone).toUpperCase()}</span>
+          <span style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>zone</span>
+        </div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: `1px solid ${W.line}`, opacity: (soldOut || manualClosed || st.reason === "ended") ? .5 : 1 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 14.5, color: W.ink, display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>{t.name}
               {Number(t.disc_female_pct) > 0 && <span style={{ background: "#FCE7F1", color: "#D6618F", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{t.disc_female_pct}% off for women</span>}
@@ -2474,7 +2500,11 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               {ticketAudience(t) === "female" && <span style={{ background: "#FBE9F2", color: "#C0246E", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>Women only</span>}
               {ticketAudience(t) === "male" && <span style={{ background: "#E8F2FB", color: "#1B6FB8", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>Men only</span>}
               {t.segment_id && <span style={{ background: "#F3E8FF", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>⭐ {segName(t.segment_id)} only</span>}
+              {t.pass_label && <span style={{ background: "#E0F2FE", color: "#0369A1", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>📅 {t.pass_label}</span>}
+              {gwAdmits(t) > 1 && <span style={{ background: "#FFF4D6", color: "#92400E", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>👥 Admits {gwAdmits(t)}</span>}
+              {t.sale_ends_at && st.ok && <span style={{ background: "#FCE7F3", color: "#BE185D", fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>🐦 Limited-time price</span>}
             </div>
+            {gwAdmits(t) > 1 && Number(t.price) > 0 && <div style={{ fontSize: 11.5, color: "#92400E", fontWeight: 700, marginTop: 2 }}>One ticket = {gwAdmits(t)} entries · works out to ₹{Math.round(Number(t.price) / gwAdmits(t))} per person</div>}
             <div style={{ fontSize: 13.5, color: W.teal, fontWeight: 800, marginTop: 2 }}>{(() => { const base = t.price || 0; const eff = genderNet(t, null, profile); return eff === 0 ? (base > 0 ? <>Free <s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : "Free") : eff < base ? <>{`₹${eff} `}<s style={{ color: W.soft, fontWeight: 600 }}>₹{base}</s></> : `₹${base}`; })()}</div>
             {tag && <div style={{ fontSize: 11.5, color: tag[1], fontWeight: 700, marginTop: 3 }}>{tag[0]}</div>}
             {!canBuyType(t) && <div style={{ fontSize: 11.5, color: "#7C3AED", fontWeight: 800, marginTop: 3 }}>🔒 This ticket is restricted — {segName(t.segment_id)} members only</div>}
@@ -2486,9 +2516,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             : !canBuyType(t)
             ? <button disabled title="Restricted ticket" style={{ ...btn("#F3E8FF", "#7C3AED"), padding: "9px 15px", cursor: "not-allowed", fontWeight: 800 }}>🔒 Restricted</button>
             : !st.ok
-            ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : (st.reason === "gender" ? st.label : "Closed")}</button>
+            ? <button disabled style={{ ...btn("#EEE", "#999"), padding: "9px 15px", cursor: "not-allowed" }}>{soldOut ? "Sold out" : (["gender", "window", "ended"].includes(st.reason) ? (st.reason === "window" ? "Opens soon" : st.label) : "Closed")}</button>
             : q > 0 ? stepper(t.id, q, max) : addBtn(t.id)}
         </div>
+        </React.Fragment>
       ); })}</>) : (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0" }}>
           <div style={{ flex: 1 }}>
@@ -15722,6 +15753,11 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
   const [dRoom, setDRoom] = useState(t.discount_plan_id ? "plan:" + t.discount_plan_id : (t.discount_room_id || ""));
   const [dKind, setDKind] = useState(t.discount_kind || "percent");
   const [dVal, setDVal] = useState(t.discount_value == null ? "" : String(t.discount_value));
+  const [zone, setZone] = useState(t.zone || "");
+  const [passLabel, setPassLabel] = useState(t.pass_label || "");
+  const [admits, setAdmits] = useState(String(t.admits || 1));
+  const [saleStart, setSaleStart] = useState(gwToLocalInput(t.sale_starts_at));
+  const [saleEnd, setSaleEnd] = useState(gwToLocalInput(t.sale_ends_at));
   const [busy, setBusy] = useState(false);
   const repeatPrevious = () => {
     if (!previous) return;
@@ -15732,7 +15768,7 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
   const save = async () => {
     if (!name.trim() || !onUpdate) return;
     setBusy(true);
-    await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null });
+    await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null, zone: zone.trim() || null, zone_color: zone.trim() ? (GW_ZONES.find(z => z[0].toLowerCase() === zone.trim().toLowerCase()) || [null, null])[1] : null, pass_label: passLabel.trim() || null, admits: Math.min(50, Math.max(1, Number(admits) || 1)), sale_starts_at: saleStart ? new Date(saleStart).toISOString() : null, sale_ends_at: saleEnd ? new Date(saleEnd).toISOString() : null });
     setBusy(false); setEd(false);
   };
   if (!ed) {
@@ -15747,7 +15783,11 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6, fontSize: 13 }}>
             {t.disc_female_pct != null && <span style={{ color: "#C0246E", fontWeight: 800, background: "#FBE9F2", padding: "2px 9px", borderRadius: 9 }}>♀ {t.disc_female_pct}% off</span>}
             {t.disc_male_pct != null && <span style={{ color: "#1B6FB8", fontWeight: 800, background: "#E8F2FB", padding: "2px 9px", borderRadius: 9 }}>♂ {t.disc_male_pct}% off</span>}
-            {t.capacity != null && <span style={{ color: W.soft, fontWeight: 700 }}>cap {t.capacity}</span>}
+            {t.capacity != null && <span style={{ color: W.soft, fontWeight: 700 }}>cap {t.capacity}{gwAdmits(t) > 1 ? " people" : ""}</span>}
+            {t.zone && <span style={{ color: "#fff", fontWeight: 800, background: gwZoneColor(t), padding: "2px 9px", borderRadius: 9 }}>{t.zone}</span>}
+            {t.pass_label && <span style={{ color: "#0369A1", fontWeight: 800, background: "#E0F2FE", padding: "2px 9px", borderRadius: 9 }}>📅 {t.pass_label}</span>}
+            {gwAdmits(t) > 1 && <span style={{ color: "#92400E", fontWeight: 800, background: "#FFF4D6", padding: "2px 9px", borderRadius: 9 }}>👥 admits {gwAdmits(t)}</span>}
+            {(t.sale_starts_at || t.sale_ends_at) && <span style={{ color: "#BE185D", fontWeight: 800, background: "#FCE7F3", padding: "2px 9px", borderRadius: 9 }}>🕒 {t.sale_starts_at ? gwFmtWhen(t.sale_starts_at) : "now"} → {t.sale_ends_at ? gwFmtWhen(t.sale_ends_at) : "event"}</span>}
             {t.segment_id && <span style={{ color: "#7C3AED", fontWeight: 800, background: "#F3E8FF", padding: "2px 9px", borderRadius: 9 }}>⭐ {(segsList.find(s => s.id === t.segment_id) || {}).name || "segment"} only</span>}
             {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal, fontWeight: 700 }}>{t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
           </div>
@@ -15794,6 +15834,24 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
           </select>
           <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
         </div>
+      </div>
+      <div style={{ marginTop: 8, background: "#FFF8EC", border: "1px solid #F5D9A8", borderRadius: 10, padding: 10 }}>
+        <div style={{ fontSize: 12, color: "#92400E", fontWeight: 800, marginBottom: 6 }}>🎪 Festival options (optional)</div>
+        <div style={{ fontSize: 11.5, color: W.ink, fontWeight: 700, marginBottom: 4 }}>Zone</div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
+          {[["", "#94A3B8"], ...GW_ZONES].map(([z, c]) => <button key={z || "none"} type="button" onClick={() => setZone(z)} style={{ border: `1.5px solid ${c}`, background: zone === z ? c : "#fff", color: zone === z ? "#fff" : c, borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>{z || "No zone"}</button>)}
+        </div>
+        <input value={zone} onChange={e => setZone(e.target.value)} placeholder="…or type your own zone name" style={{ ...ip, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <label style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, flex: "1 1 160px" }}>Pass / day label<input value={passLabel} onChange={e => setPassLabel(e.target.value)} placeholder="e.g. Day 1 · Sat 12 Dec / All 3 days" style={{ ...ip, width: "100%", boxSizing: "border-box", marginTop: 3 }} /></label>
+          <label style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, width: 120 }}>People per ticket<input value={admits} onChange={e => setAdmits(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="1" style={{ ...ip, width: "100%", boxSizing: "border-box", marginTop: 3 }} /></label>
+        </div>
+        {Number(admits) > 1 && <div style={{ fontSize: 11.5, color: "#92400E", marginTop: 5, lineHeight: 1.45 }}>Group bundle: one ticket lets in {admits} people. Set the price for the whole group (e.g. Buy 5 pay 4 → price of 4). Enter "Qty" above in <b>people</b>.</div>}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+          <label style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, flex: "1 1 160px" }}>Sale starts (optional)<input type="datetime-local" value={saleStart} onChange={e => setSaleStart(e.target.value)} style={{ ...ip, width: "100%", boxSizing: "border-box", marginTop: 3 }} /></label>
+          <label style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, flex: "1 1 160px" }}>Sale ends (optional)<input type="datetime-local" value={saleEnd} onChange={e => setSaleEnd(e.target.value)} style={{ ...ip, width: "100%", boxSizing: "border-box", marginTop: 3 }} /></label>
+        </div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 5, lineHeight: 1.45 }}>Early bird: create "Early Bird GA" with a low price and a <b>Sale ends</b> time, plus a normal "GA" ticket. Buyers see a countdown, and the early-bird ticket closes itself on time.</div>
       </div>
       <div style={{ marginTop: 8, background: "#F5F0FF", border: "1px solid #E4D3F5", borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: "#7C3AED", fontWeight: 800, marginBottom: 6 }}>⭐ Restrict to a segment (e.g. VIP)</div>
