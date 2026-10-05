@@ -1210,6 +1210,7 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "", 
   };
   return (
     <div>
+      <GwGuideTip id="money" />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
         <div style={{ fontWeight: 800, fontSize: 16.5, color: W.ink }}>Organiser payouts</div>
         {displayRows && displayRows.length > 0 && <button onClick={() => exportPdf(displayRows, focusHostId ? (organisationName || organiserName(displayRows[0])) : isSuper ? "All organisers" : "Your settlement")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 13px", fontSize: 12.5 }}>📄 Export PDF</button>}
@@ -11542,6 +11543,7 @@ function DoorCheckin({ mode = "checkin", events, ticketTypes, myEventsOnly, meId
     <div style={{ padding: "16px 16px 40px", maxWidth: 620, margin: "0 auto" }}>
       <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>{showCheckin ? "✅ Event Check-in" : "💵 Door Sales"}</div>
       <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{showCheckin ? "Scan ticket QRs or enter a ticket code to admit guests." : "Sell tickets at the venue using cash or your UPI QR. Door-sale history stays here."}</div>
+      <GwGuideTip id="door" />
       {showCheckin
         ? <HelpBox title="How check-in works" tips={["Pick the event first from the dropdown below.", "Point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the ticket code and tap Check.", "Recent scans appear below for quick reference."]} />
         : <HelpBox title="How door sales work" tips={["Pick the event first from the dropdown below.", "Enter the buyer or guest details and choose the ticket type.", "Take cash or UPI payment and record the sale.", "Door-sale history and walk-in leads stay on this screen."]} />}
@@ -13023,6 +13025,7 @@ function PlanEventSheet({ profile, onClose }) {
         ))}
       </div>
 
+      {view === "new" && step === 1 && <GwGuideTip id="client" admin={false} />}
       {view === "new" && step === 1 && <>
         <div style={gwLeadLbl}>WHAT ARE YOU PLANNING?</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
@@ -13288,6 +13291,8 @@ function OrganiserLeadsPanel({ meId }) {
           <button disabled={proBusy} onClick={buyPro} style={{ ...btn("#FFE08A", "#3B2A00"), padding: "10px 16px", marginTop: 11, fontWeight: 900 }}>{proBusy ? "…" : `Go Pro · ${pro.price} credits / ${pro.days} days`}</button>
         </div>
       ))}
+      <GwGuideTip id="leads" />
+      <GwGuideTip id="pro" />
       <HelpBox title="How leads work" tips={["Clients post weddings, birthdays, corporate and community events they want organised.", "Contact details stay hidden until you unlock the lead with credits.", "Each lead goes to at most a few organisers, so contact the client quickly.", "Fake or wrong-number lead? Tap 'Report' and we'll refund your credits after review."]} />
       {bizProfile !== undefined && <div style={{ background: "#fff", border: `1px solid ${bizProfile ? W.line : "#F5D9A8"}`, borderRadius: 14, padding: "12px 14px", marginTop: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -13525,6 +13530,7 @@ function AdminLeadsPanel() {
   const sel = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13, background: "#fff", color: W.ink };
   return (
     <div style={{ padding: 14 }}>
+      <GwGuideTip id="leads" />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {stat("TOTAL LEADS", all.length)}
         {stat("PENDING REVIEW", all.filter(r => r.status === "pending").length, "#B45309")}
@@ -13619,6 +13625,7 @@ function AdminLeadsPanel() {
       }))}
 
       {view === "pricing" && (settings === null ? <Center>Loading…</Center> : <div style={{ maxWidth: 720 }}>
+        <GwGuideTip id="leadsettings" />
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 12 }}>
           <div style={{ fontWeight: 900, color: W.ink, marginBottom: 10 }}>Rules</div>
           <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: W.ink, marginBottom: 10 }}>
@@ -13637,6 +13644,7 @@ function AdminLeadsPanel() {
           </div>
         </div>
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <GwGuideTip id="pro" />
           <div style={{ fontWeight: 900, color: W.ink, marginBottom: 4 }}>⭐ Organiser Pro</div>
           <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.5 }}>Organisers buy Pro with wallet credits. Pro gets early access to new leads, a discount on every unlock, a ⭐ PRO badge and top placement in the client's list.</div>
           <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: W.ink, marginBottom: 10 }}>
@@ -13674,6 +13682,7 @@ function AdminLeadsPanel() {
           <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Save first, then test. Organisers choose their cities and event types in their own Event Leads tab.</div>
         </div>
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <GwGuideTip id="whatsapp" />
           <div style={{ fontWeight: 900, color: W.ink, marginBottom: 4 }}>🎟 Tickets on WhatsApp</div>
           <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.5 }}>Every member ticket (purchase, credits, RSVP approval, admin-issued) is sent once on WhatsApp with its QR code, through your AiSensy ticket campaign.</div>
           <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: W.ink, marginBottom: 10 }}>
@@ -13802,6 +13811,7 @@ function OrganiserProfileEditor({ meId, initial, onClose, onSaved }) {
     <Sheet onClose={onClose}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}><div style={{ fontWeight: 900, fontSize: 18, color: W.ink, flex: 1 }}>🏢 Business profile</div><span onClick={onClose} style={{ cursor: "pointer", color: W.soft, fontSize: 20 }}>✕</span></div>
       <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6 }}>Clients see this when you pick up their request. A full profile with photos wins more bookings.</div>
+      <GwGuideTip id="profiles" admin={false} />
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
         <label style={{ cursor: "pointer" }}><PersonAvatar url={f.logo_url} name={f.business_name || "?"} size={58} /><input type="file" accept="image/*" hidden onChange={e => upload(e.target.files, "logo")} /></label>
         <div style={{ flex: 1 }}><div style={gwLeadLbl}>BUSINESS NAME *</div><input value={f.business_name} onChange={e => set("business_name", e.target.value)} placeholder="e.g. Royal Touch Events" style={gwLeadInp} /></div>
@@ -13873,6 +13883,7 @@ function AdminOrganisersView() {
   const list = [...(rows || [])].sort((a, b) => sort === "rating" ? (Number(b.rating_avg) || 0) - (Number(a.rating_avg) || 0) : sort === "spent" ? Number(b.credits_spent) - Number(a.credits_spent) : (Number(b.won) - Number(a.won)) || (Number(b.unlocks) - Number(a.unlocks)));
   return (
     <div>
+      <GwGuideTip id="profiles" />
       {proSum && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {[["⭐ ACTIVE PRO", proSum.active], ["PRO CREDITS · 30 DAYS", proSum.credits_30d], ["PRO CREDITS · ALL TIME", proSum.credits_total], ["EXPIRING IN 7 DAYS", proSum.expiring_7d]].map(([l, v]) => <div key={l} style={{ flex: "1 1 120px", background: "#FFFBEB", border: "1px solid #F5D9A8", borderRadius: 12, padding: "9px 12px" }}><div style={{ fontSize: 10.5, fontWeight: 800, color: "#92400E" }}>{l}</div><div style={{ fontSize: 20, fontWeight: 900, color: W.ink }}>{Number(v) || 0}</div></div>)}
       </div>}
@@ -13970,6 +13981,7 @@ function QuoteSheet({ lead, quote, defaultAdvance = 30, commissionPct, onClose, 
     <Sheet onClose={onClose}>
       <div style={{ display: "flex", alignItems: "center" }}><div style={{ fontWeight: 900, fontSize: 18, color: W.ink, flex: 1 }}>📝 {quote ? "Update quote" : "Send a quote"}</div><span onClick={onClose} style={{ cursor: "pointer", color: W.soft, fontSize: 20 }}>✕</span></div>
       <div style={{ fontSize: 12.5, color: W.soft, marginTop: 3 }}>{gwLeadType(lead.event_type)[2]} · {lead.contact_name} · {gwLeadDate(lead.event_date, lead.date_flexible)} · {lead.city}</div>
+      <GwGuideTip id="bookings" admin={false} style={{ marginTop: 10 }} />
       <div style={gwLeadLbl}>TOTAL PRICE (₹) *</div>
       <input value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 45000" style={gwLeadInp} />
       <div style={gwLeadLbl}>ADVANCE TO CONFIRM</div>
@@ -14049,6 +14061,7 @@ function OrganiserBookingsView({ data }) {
   const due = Math.max(0, Number(data.earned) - Number(data.paid_out));
   return (
     <div>
+      <GwGuideTip id="bookings" />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {[["EARNED", data.earned, W.teal], ["PAID TO YOU", data.paid_out, W.ink], ["DUE TO YOU", due, "#B45309"]].map(([l, v, c]) => <div key={l} style={{ flex: "1 1 100px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "9px 12px" }}><div style={{ fontSize: 10.5, fontWeight: 800, color: W.soft }}>{l}</div><div style={{ fontSize: 19, fontWeight: 900, color: c }}>{gwINR(v)}</div></div>)}
       </div>
@@ -14109,6 +14122,7 @@ function AdminBookingsView() {
   const outstanding = pay.reduce((a, o) => a + Math.max(0, Number(o.outstanding)), 0);
   return (
     <div>
+      <GwGuideTip id="bookings" />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {[["BOOKINGS", tot.length, W.ink], ["COLLECTED", gwINR(collected), W.ink], ["YOUR COMMISSION", gwINR(commission), W.teal], ["OWED TO ORGANISERS", gwINR(outstanding), "#B45309"]].map(([l, v, c]) => <div key={l} style={{ flex: "1 1 120px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "9px 12px" }}><div style={{ fontSize: 10.5, fontWeight: 800, color: W.soft }}>{l}</div><div style={{ fontSize: 19, fontWeight: 900, color: c }}>{v}</div></div>)}
       </div>
@@ -14455,6 +14469,7 @@ function VendorStallSheet({ event, profile, data, onClose }) {
       </div>
       <div style={{ height: 14 }} />
 
+      <GwGuideTip id="vendor" admin={false} />
       {(mine || []).length > 0 && <div style={{ marginBottom: 14 }}>
         <div style={{ fontWeight: 900, color: W.ink, fontSize: 15, marginBottom: 6 }}>Your stalls</div>
         {mine.map(b => {
@@ -14624,6 +14639,7 @@ function AdminStallsPanel() {
           ))}
         </div>}
       </div>
+      <GwGuideTip id="stalls" />
       <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12 }}>
         {[["apps", `📥 Applications (${apps.length})`], ["types", `🧩 Stall types (${types.length})`], ["settings", "⚙️ Page & rules"]].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? "#DB2777" : W.soft }}>{l}</button>
@@ -14818,6 +14834,7 @@ function SponsorSheet({ event, profile, d, onClose }) {
         </div>
       </div>
       <div style={{ height: 14 }} />
+      <GwGuideTip id="brand" admin={false} />
       {(mine || []).length > 0 && <div style={{ marginBottom: 14 }}>
         <div style={{ fontWeight: 900, color: W.ink, fontSize: 15, marginBottom: 6 }}>Your sponsorships</div>
         {mine.map(b => {
@@ -14969,6 +14986,7 @@ function AdminSponsorsPanel() {
           ))}
         </div>}
       </div>
+      <GwGuideTip id="sponsors" />
       <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12 }}>
         {[["apps", `📥 Requests (${apps.length})`], ["types", `🏅 Packages (${types.length})`], ["settings", "⚙️ Sponsor page"]].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? "#B45309" : W.soft }}>{l}</button>
@@ -15146,14 +15164,363 @@ function EventFeeCard({ event, canEdit }) {
 
 
 
+// =================== GLASSWINGS GUIDE (admin guide + tips on every screen) ===================
+// GW_GUIDE holds every explanation in one place. <GwGuideTip id="..."/> shows a short tip on a screen;
+// <AdminGuidePanel/> is the full illustrated guide (Admin → 📘 Guide).
+const GW_GUIDE = {
+  start: {
+    icon: "🚀", title: "How an event runs, start to finish", grad: "linear-gradient(120deg,#008069,#0EA5E9)",
+    one: "Every event follows the same six steps. Do them in this order and nothing gets missed.",
+    where: "Admin → 📅 Events → ➕ New event", tab: "events",
+    flow: [["📝", "Create", "Name, date, venue, photos"], ["🎟️", "Tickets", "Prices, zones, early bird"], ["📣", "Promote", "Share link, WhatsApp, promoters"], ["💳", "Sell", "Online + door sales"], ["✅", "Check-in", "Scan QR at the gate"], ["💰", "Settle", "Pay the organiser"]],
+    steps: [
+      "Open 📅 Events and tap ➕ New event. Fill in the title, date and time, city, venue and a cover photo.",
+      "Open the event and go to 🎟️ Tickets. Add at least one ticket type (for example Early Bird ₹499, Regular ₹799).",
+      "For big events, also open 🏪 Stalls and 🤝 Sponsors to sell stall space and sponsorships.",
+      "Share the event from 🖼️ Media & share. Paid tickets reach buyers on WhatsApp automatically.",
+      "On event day, use ✅ Check-in to scan tickets and 💵 Door Sales to record cash/UPI sales at the gate.",
+      "After the event, check 💰 Sales and the Settlements (Payouts) screen, then pay the organiser.",
+    ],
+    tips: ["Coloured 💡 boxes like this one appear on every screen. Tap them whenever you're unsure.", "Tap the 📘 Guide button (bottom right) to come back to this guide from any screen."],
+  },
+  tickets: {
+    icon: "🎪", title: "Tickets, zones, group passes & early bird", grad: "linear-gradient(120deg,#7C3AED,#EC4899)",
+    one: "One event can have many ticket types. Festival options add zones (GA, VIP…), group passes and sale dates.",
+    where: "Admin → 📅 Events → open event → 🎟️ Tickets → ✏️ Edit a ticket → 🎪 Festival options", tab: "events",
+    flow: [["🐦", "Early Bird", "₹499 · ends 10 Oct"], ["🎫", "Regular", "₹799 · opens 11 Oct"], ["👑", "VIP zone", "₹2,499 · own entry"], ["👨‍👩‍👧‍👦", "Group of 4", "1 pass = 4 entries"]],
+    steps: [
+      "Zone: tap GA, Fan Pit, VIP, VVIP, Lounge or Backstage. Buyers see tickets grouped by zone, each in its own colour.",
+      "Pass / day label: a short name printed on the ticket, such as \"Day 1\", \"Season pass\" or \"Couple\".",
+      "People per ticket: how many people one ticket lets in. Set 4 for a \"Group of 4\" pass. Check-in counts all 4.",
+      "Sale starts / Sale ends (optional): the ticket can only be bought between these dates. This is how early bird works: Early Bird ends on 10 Oct and Regular starts on 11 Oct.",
+      "Capacity: the number of tickets you can sell. The ticket shows SOLD OUT when it runs out.",
+    ],
+    tips: ["Leave the festival options empty for small events. Tickets then work exactly as before.", "Before the start date buyers see \"Opens …\" with the date. After the end date they see \"Sale ended\"."],
+  },
+  whatsapp: {
+    icon: "💬", title: "Tickets on WhatsApp", grad: "linear-gradient(120deg,#25D366,#128C7E)",
+    one: "Every ticket is sent on WhatsApp as a colourful ticket card with a QR code. The buyer just shows it at the gate.",
+    where: "Admin → 📋 Event Leads → ₹ Pricing & rules → 🎟 Tickets on WhatsApp", tab: "leads",
+    flow: [["🛒", "Buys ticket", "Online / credits / RSVP"], ["🎨", "Card made", "Colours + QR + sponsor"], ["📲", "WhatsApp", "Sent through AiSensy"], ["📷", "Gate", "QR scanned at check-in"]],
+    steps: [
+      "Tick \"Send tickets on WhatsApp\" and type your AiSensy campaign name exactly as it appears in AiSensy, then save.",
+      "Tap 🧪 Send me a test ticket. Within a minute you should get the ticket on your own WhatsApp.",
+      "The RECENT TICKET WHATSAPPS list shows every message. ✓ means sent, ✕ means failed (the reason is shown).",
+      "If someone didn't get their ticket, find them in the list and tap ↻ to send it again.",
+      "If the event has a paid Title sponsor, the ticket card also shows \"PRESENTED BY\" with their logo.",
+    ],
+    tips: ["AiSensy charges per message and needs a paid plan (you're on Basic).", "\"Campaign does not exist\" means the name is wrong or the campaign isn't Live in AiSensy."],
+  },
+  leads: {
+    icon: "📋", title: "Event Leads (weddings, birthdays, corporate)", grad: "linear-gradient(120deg,#008069,#04B08F)",
+    one: "People post the private events they want organised. Organisers pay credits to unlock their contact details. Glasswings earns on every unlock.",
+    where: "Admin → 📋 Event Leads → 📋 Leads", tab: "leads",
+    flow: [["🙋", "Client asks", "\"Plan my event\" form"], ["🛡️", "You approve", "Or auto-publish"], ["📣", "Alerts", "WhatsApp to matching organisers"], ["🔓", "Unlock", "Organiser pays credits"], ["📞", "Quote", "Organiser calls & quotes"], ["🎉", "Booked", "Client pays in app"]],
+    steps: [
+      "New requests show as PENDING. Check that the name and phone look real, then tap Approve (or Reject a fake one).",
+      "Once approved, the lead is LIVE. Tap 📣 Send alerts to WhatsApp organisers whose cities and event types match.",
+      "Each lead can be unlocked by only a few organisers (you set the number). After that it is full.",
+      "If an organiser reports a fake or wrong number, it appears under ⚠ Reports. Refund their credits there.",
+      "Set the unlock price in ₹ Pricing & rules. Bigger budgets cost more credits (1 credit = ₹1).",
+    ],
+    tips: ["Organisers choose their own cities and event types under 🔔 New-lead alerts.", "Pro organisers see new leads first and pay less (see ⭐ Organiser Pro)."],
+  },
+  leadsettings: {
+    icon: "⚙️", title: "Lead pricing & rules: what each setting means", grad: "linear-gradient(120deg,#334155,#008069)",
+    one: "These settings decide how much organisers pay for a lead, how many can unlock it, and what you earn on bookings.",
+    where: "Admin → 📋 Event Leads → ₹ Pricing & rules", tab: "leads",
+    steps: [
+      "Publish new leads instantly: when on, leads go live without your review. Keep it off if you want to check every lead.",
+      "Max organisers per lead: how many organisers can unlock one lead. Three is a good balance.",
+      "Booking commission %: Glasswings' share when a client pays the organiser through the app.",
+      "Default advance %: the share of the price the client pays upfront to book (organisers can change it per quote).",
+      "Refund lead fee when the client pays in app: rewards organisers who bring the payment through Glasswings.",
+      "Price table: credits needed to unlock each event type × budget. Leave a cell empty to use the fallback price.",
+    ],
+    tips: ["Tap \"Save pricing & rules\" at the bottom. Nothing changes until you save."],
+  },
+  pro: {
+    icon: "⭐", title: "Organiser Pro", grad: "linear-gradient(120deg,#3B2A00,#C98A00)",
+    one: "A paid membership for organisers. They see leads early, pay less per unlock and get a ⭐ PRO badge. Extra income for you.",
+    where: "Admin → 📋 Event Leads → ₹ Pricing & rules → ⭐ Organiser Pro", tab: "leads",
+    flow: [["💳", "Buys Pro", "With wallet credits"], ["⏰", "Early access", "Sees leads first"], ["🏷️", "Discount", "Cheaper unlocks"], ["⭐", "Badge", "Shown first to clients"]],
+    steps: [
+      "Tick \"Offer Pro to organisers\". Set the price (credits), how many days it lasts, the unlock discount % and the early-access hours.",
+      "Early access: for this many hours after a lead goes live, only Pro organisers can see it. Set 0 to turn it off.",
+      "The 🏢 Organisers view shows how many organisers are Pro and whose Pro is about to expire.",
+    ],
+    tips: ["Organisers renew from their own Event Leads screen. A reminder appears there five days before Pro expires."],
+  },
+  profiles: {
+    icon: "🏢", title: "Organiser profiles & reviews", grad: "linear-gradient(120deg,#0369A1,#8B5CF6)",
+    one: "Each organiser has a business profile with photos and star reviews. Clients see it before they book.",
+    where: "Admin → 📋 Event Leads → 🏢 Organisers", tab: "leads",
+    steps: [
+      "Organisers create their profile from Event Leads → ➕ Create profile (logo, about, photos, services).",
+      "After an event is booked, the client can leave a star rating and review.",
+      "In 🏢 Organisers you can mark a profile ✔ Verified, or hide it if something is wrong.",
+    ],
+    tips: ["A complete profile with photos wins more bookings. Encourage organisers to fill it to 100%."],
+  },
+  bookings: {
+    icon: "💰", title: "In-app booking payments", grad: "linear-gradient(120deg,#059669,#0EA5E9)",
+    one: "The client pays Glasswings in the app (advance, then balance). You keep your commission and pay the organiser the rest.",
+    where: "Admin → 📋 Event Leads → 💰 Bookings", tab: "leads",
+    flow: [["📝", "Quote", "Organiser sends price"], ["💳", "Advance", "Client pays e.g. 30%"], ["🎉", "Event", "Organiser delivers"], ["💳", "Balance", "Client pays the rest"], ["🏦", "Payout", "You pay organiser − commission"]],
+    steps: [
+      "The organiser sends a quote from the unlocked lead: total price and advance %.",
+      "The client accepts and pays the advance with Razorpay. The money comes to the Glasswings account.",
+      "Before or after the event, the client pays the balance the same way.",
+      "In 💰 Bookings, \"OWED TO ORGANISERS\" shows what you still have to pay. Pay by bank or UPI, then mark the payout as done.",
+    ],
+    tips: ["The Razorpay webhook records the payment even if the client closes the app mid-payment.", "Your commission % is set in ₹ Pricing & rules."],
+  },
+  stalls: {
+    icon: "🏪", title: "Vendor stalls", grad: "linear-gradient(120deg,#F97316,#EC4899 55%,#8B5CF6)",
+    one: "Food, merch and brand vendors book stalls from the event page. You approve them, they pay online, and they get a Stall Pass. Glasswings keeps 18%.",
+    where: "Admin → 🏪 Stalls → pick the event", tab: "stalls",
+    flow: [["🧩", "Stall types", "Price, size, how many"], ["📥", "Vendor applies", "From the event page"], ["✓", "Approve", "Or reject"], ["💳", "Vendor pays", "Online or cash/UPI"], ["🔢", "Stall no.", "e.g. F-12"], ["🎫", "Stall Pass", "Setup info + QR"]],
+    steps: [
+      "🧩 Stall types: add each kind of stall, for example \"Food Stall 10×10 · ₹8,000 · 20 stalls\". Write what's included (table, power…).",
+      "⚙️ Page & rules: switch bookings on, write a headline, vendor guidelines and setup details (timing, power, parking).",
+      "A \"Book a stall\" card now appears on the public event page.",
+      "📥 Applications: tap ✓ Approve. The vendor gets a Pay button in the app. If they pay cash, tap 💵 Mark paid.",
+      "Tap 🔢 Assign stall no. The vendor's Stall Pass shows their number and your setup details.",
+    ],
+    tips: ["The top bar shows NEW / APPROVED / PAID, the money collected and the Glasswings fee.", "Use 💬 WhatsApp on any application to talk to the vendor directly."],
+  },
+  sponsors: {
+    icon: "🤝", title: "Sponsors", grad: "linear-gradient(120deg,#B8860B,#F5C451 50%,#D97706)",
+    one: "Brands buy sponsor packages (Title, Gold, Silver…). Paid sponsors appear on the event page, and the Title sponsor appears on every WhatsApp ticket. Glasswings keeps 18%.",
+    where: "Admin → 🤝 Sponsors → pick the event", tab: "sponsors",
+    flow: [["🏅", "Packages", "Title, Gold, Silver"], ["📥", "Brand applies", "Logo + contact"], ["✓", "Approve", "You check the brand"], ["💳", "Brand pays", "Online or offline"], ["🌟", "Goes live", "Event page + ticket"]],
+    steps: [
+      "🏅 Packages: create each tier with a price, how many you'll sell and what the brand gets (logo on stage, stall, social posts…).",
+      "Tap the \"Title Sponsor\" chip when you create the top package. The paid Title Sponsor's logo and name go on every WhatsApp ticket as \"PRESENTED BY\".",
+      "⚙️ Sponsor page: write why brands should sponsor (audience, footfall, reach). This shows on the event page.",
+      "📥 Requests: approve the brand. They pay in the app, or you tap 💵 Mark paid for cash/bank transfer.",
+      "Once paid, their logo appears in the sponsors section of the event page. Tap 🙈 Hide logo if you ever need to remove it.",
+    ],
+    tips: ["Sponsorships always need your approval, so no brand goes live without your check."],
+  },
+  fees: {
+    icon: "💼", title: "Platform fee & volume pricing", grad: "linear-gradient(120deg,#0E5C54,#008069 40%,#8B5CF6)",
+    one: "Normally Glasswings takes the organiser's fixed %. For big events you can give a lower % as they sell more tickets, or charge a flat ₹ per ticket.",
+    where: "Admin → 📅 Events → open event → 💰 Sales → 💼 Platform fee card", tab: "events",
+    extra: "tiers",
+    steps: [
+      "Standard: the organiser's normal % (set when they were approved). Use this for most events.",
+      "Volume tiers: the more paid tickets the event sells, the lower the %. Default: up to 500 tickets 10%, 501–2,000 7%, 2,001+ 5%.",
+      "₹ per ticket: a flat amount on each paid ticket, for example ₹20. Good for very cheap or very large events.",
+      "Pick the option and tap Save fee. Admins can change the tiers for all events with ⚙️ Edit volume tiers.",
+      "Organisers see the same card with a progress bar: \"Sell 120 more to drop to 7%\". It motivates them to sell more.",
+    ],
+    tips: ["Once an event crosses a tier, the lower % applies to ALL its tickets.", "Free and complimentary passes don't count towards a tier.", "Set the fee before sales start. Changing it later also recalculates tickets already sold."],
+  },
+  money: {
+    icon: "🏦", title: "Where the money goes (settlements)", grad: "linear-gradient(120deg,#0F766E,#2563EB)",
+    one: "Online ticket money comes to Glasswings first. Fees are taken out, and the rest is paid to the organiser.",
+    where: "Admin → 🏢 Organisers → open organiser → Payouts", tab: "orgapps",
+    extra: "money",
+    steps: [
+      "Gross = online sales (Razorpay) + door sales (cash/UPI collected by the organiser).",
+      "Gateway fee: the Razorpay charge, on online money only.",
+      "Platform cut: the Glasswings fee (standard %, volume tier or ₹ per ticket).",
+      "Promotion fee: only if the event was promoted (the promo % on the event).",
+      "Payable = online money − gateway fee − platform cut − promotion fee. This is what you transfer to the organiser.",
+    ],
+    tips: ["Door cash is already with the organiser, so your cut on it is taken out of the online money.", "Use the 📄 PDF button to send the organiser a clean statement."],
+  },
+  door: {
+    icon: "✅", title: "Event day: check-in & door sales", grad: "linear-gradient(120deg,#16A34A,#0EA5E9)",
+    one: "Scan each guest's QR at the gate. Sell tickets at the door for cash or UPI so every sale is counted.",
+    where: "Admin → ✅ Check-in  /  💵 Door Sales", tab: "checkin",
+    flow: [["📲", "Guest shows QR", "From WhatsApp or the app"], ["📷", "Scan", "✅ Check-in tab"], ["🟢", "Let in", "Shows zone + admits"], ["💵", "No ticket?", "Sell at Door Sales"]],
+    steps: [
+      "Open ✅ Check-in, pick the event and scan the QR (or type the ticket code). A valid ticket is checked in; one already used shows a warning.",
+      "Group passes (People per ticket) show how many people can enter on that one ticket.",
+      "A guest without a ticket: open 💵 Door Sales, choose the ticket and mark cash or UPI. They get a ticket right away.",
+    ],
+    tips: ["Door sales count towards volume tiers and appear in settlements automatically."],
+  },
+  // ----- short tips for the public / vendor / brand screens -----
+  vendor: { icon: "🏪", title: "How booking a stall works", grad: "linear-gradient(120deg,#F97316,#EC4899)", one: "Apply → organiser approves → pay in the app → get your stall number and Stall Pass.", steps: ["Pick a stall type and fill in your business details.", "The organiser reviews it. You'll see \"Approved\" in My stalls.", "Tap Pay to confirm. Your Stall Pass shows your stall number and setup time."] },
+  brand: { icon: "🤝", title: "How sponsoring works", grad: "linear-gradient(120deg,#B8860B,#F5C451)", one: "Choose a package → send your brand details → organiser approves → pay → your logo goes live.", steps: ["Pick a package and add your logo and contact.", "The organiser approves your brand.", "Pay in the app. Your logo appears on the event page (and on every ticket for Title sponsors)."] },
+  client: { icon: "🎉", title: "How it works", grad: "linear-gradient(120deg,#008069,#8B5CF6)", one: "Tell us your event → verified organisers call you with quotes → book and pay safely in the app.", steps: ["Fill in the event type, date, city, guests and budget.", "A few matching organisers contact you with quotes. Your number is shared only with them.", "Pick one and pay the advance in the app. The money is held safely by Glasswings."] },
+};
+const GW_GUIDE_ORDER = ["start", "tickets", "whatsapp", "door", "leads", "leadsettings", "pro", "profiles", "bookings", "stalls", "sponsors", "fees", "money"];
+const GW_GUIDE_FOR_TAB = { events: "start", private: "start", invite: "start", leads: "leads", stalls: "stalls", sponsors: "sponsors", checkin: "door", doorsales: "door", orgapps: "money", settle: "money", dash: "start", analytics: "start" };
+function gwOpenGuide(id) { try { window.dispatchEvent(new CustomEvent("gwopenguide", { detail: id || "start" })); } catch { } }
+
+// Flow infographic: coloured numbered boxes joined by arrows; wraps on phones.
+function GwFlow({ flow, grad }) {
+  const cols = ["#008069", "#7C3AED", "#EC4899", "#F97316", "#0EA5E9", "#16A34A"];
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 6, margin: "10px 0" }}>
+      {flow.map(([ic, t, s], i) => (
+        <React.Fragment key={i}>
+          <div style={{ flex: "1 1 92px", minWidth: 92, maxWidth: 170, borderRadius: 14, padding: "10px 9px", background: `${cols[i % cols.length]}12`, border: `1.5px solid ${cols[i % cols.length]}55`, textAlign: "center", position: "relative" }}>
+            <div style={{ position: "absolute", top: -8, left: -6, width: 20, height: 20, borderRadius: 99, background: cols[i % cols.length], color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</div>
+            <div style={{ fontSize: 24 }}>{ic}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 900, color: cols[i % cols.length], marginTop: 2 }}>{t}</div>
+            {s && <div style={{ fontSize: 10.5, color: "#55656B", marginTop: 2, lineHeight: 1.3 }}>{s}</div>}
+          </div>
+          {i < flow.length - 1 && <div aria-hidden="true" style={{ alignSelf: "center", color: "#94A3B8", fontWeight: 900, fontSize: 16 }}>➜</div>}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+// Volume tier infographic
+function GwTierBars() {
+  const tiers = [["0 – 500 tickets", 10, "#EF4444"], ["501 – 2,000", 7, "#F59E0B"], ["2,001 +", 5, "#10B981"]];
+  return (
+    <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 14, padding: 12, margin: "10px 0" }}>
+      <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1.5, color: "#64748B", marginBottom: 8 }}>EXAMPLE: MORE TICKETS → LOWER FEE</div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 120 }}>
+        {tiers.map(([l, p, c]) => (
+          <div key={l} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }}>
+            <div style={{ fontSize: 15, fontWeight: 900, color: c }}>{p}%</div>
+            <div style={{ width: "100%", height: `${p * 9}%`, background: `linear-gradient(180deg,${c},${c}AA)`, borderRadius: "10px 10px 4px 4px" }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>{tiers.map(([l]) => <div key={l} style={{ flex: 1, textAlign: "center", fontSize: 11, fontWeight: 800, color: "#334155" }}>{l}</div>)}</div>
+      <div style={{ fontSize: 11.5, color: "#55656B", marginTop: 8, lineHeight: 1.45 }}>An event that sells 700 paid tickets at ₹500 (₹3,50,000) pays <b>7% = ₹24,500</b> instead of 10% = ₹35,000.</div>
+    </div>
+  );
+}
+// Money split infographic for one ₹1,000 online ticket (example numbers)
+function GwMoneySplit() {
+  const parts = [["Organiser gets", 830, "#008069"], ["Glasswings fee 10%", 100, "#7C3AED"], ["Promotion 5%", 50, "#EC4899"], ["Razorpay 2%", 20, "#F59E0B"]];
+  return (
+    <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 14, padding: 12, margin: "10px 0" }}>
+      <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1.5, color: "#64748B", marginBottom: 8 }}>EXAMPLE: ONE ₹1,000 ONLINE TICKET</div>
+      <div style={{ display: "flex", height: 30, borderRadius: 9, overflow: "hidden" }}>
+        {parts.map(([l, v, c]) => <div key={l} title={`${l}: ₹${v}`} style={{ width: `${v / 10}%`, background: c, color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 6 }}>{v >= 100 ? `₹${v}` : ""}</div>)}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 9 }}>
+        {parts.map(([l, v, c]) => <div key={l} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#334155", fontWeight: 700 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: c }} />{l}: ₹{v}</div>)}
+      </div>
+      <div style={{ fontSize: 11, color: "#64748B", marginTop: 6 }}>Percentages are examples. The real ones come from the organiser's %, the event's fee mode, the promo % and your gateway setting.</div>
+    </div>
+  );
+}
+
+// Tip card used on every screen
+function GwGuideTip({ id, admin = true, open: openInit = false, style }) {
+  const g = GW_GUIDE[id];
+  const [open, setOpen] = useState(openInit);
+  if (!g) return null;
+  return (
+    <div style={{ borderRadius: 14, overflow: "hidden", margin: "0 0 12px", background: "#fff", border: "1px solid #E2E8F0", boxShadow: "0 4px 14px rgba(15,23,42,.06)", ...style }}>
+      <div onClick={() => setOpen(o => !o)} role="button" aria-expanded={open} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer", background: g.grad, color: "#fff" }}>
+        <div style={{ fontSize: 22, flexShrink: 0 }}>{g.icon}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1.6, opacity: .9 }}>💡 GUIDE</div>
+          <div style={{ fontSize: 13.5, fontWeight: 900, lineHeight: 1.25 }}>{g.title}</div>
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 900, background: "rgba(255,255,255,.22)", borderRadius: 999, padding: "4px 10px", whiteSpace: "nowrap" }}>{open ? "Hide ▴" : "How? ▾"}</span>
+      </div>
+      <div style={{ padding: "9px 12px", fontSize: 12.5, color: "#334155", lineHeight: 1.5 }}>{g.one}</div>
+      {open && <div style={{ padding: "0 12px 12px" }}>
+        {g.flow && <GwFlow flow={g.flow} />}
+        {g.extra === "tiers" && <GwTierBars />}
+        {g.extra === "money" && <GwMoneySplit />}
+        <ol style={{ margin: "6px 0 0", paddingLeft: 0, listStyle: "none" }}>
+          {g.steps.map((s, i) => <li key={i} style={{ display: "flex", gap: 9, fontSize: 12.5, color: "#1E293B", lineHeight: 1.5, marginBottom: 7 }}><span style={{ flexShrink: 0, width: 21, height: 21, borderRadius: 99, background: "#0F172A", color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{i + 1}</span><span>{s}</span></li>)}
+        </ol>
+        {(g.tips || []).map((t, i) => <div key={i} style={{ fontSize: 12, color: "#92400E", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 9, padding: "6px 9px", marginTop: 6 }}>👉 {t}</div>)}
+        {admin && g.where && <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+          <span style={{ fontSize: 11.5, color: "#64748B", flex: 1, minWidth: 160 }}>📍 {g.where}</span>
+          <button onClick={() => gwOpenGuide(id)} style={{ ...btn("#0F172A", "#fff"), padding: "7px 12px", fontSize: 12 }}>📘 Full guide</button>
+        </div>}
+      </div>}
+    </div>
+  );
+}
+
+// Full guide page (Admin → 📘 Guide)
+function AdminGuidePanel({ section, tabs = [], onGo }) {
+  const refs = useRef({});
+  const [q, setQ] = useState("");
+  useEffect(() => { if (section && refs.current[section]) setTimeout(() => refs.current[section]?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }, [section]);
+  const has = t => tabs.some(x => x[0] === t);
+  const ids = GW_GUIDE_ORDER.filter(id => { if (!q.trim()) return true; const g = GW_GUIDE[id]; return JSON.stringify(g).toLowerCase().includes(q.trim().toLowerCase()); });
+  return (
+    <div style={{ padding: 14, maxWidth: 860 }}>
+      <div style={{ borderRadius: 20, padding: "20px 18px", color: "#fff", background: "linear-gradient(120deg,#0F172A,#008069 45%,#8B5CF6)", marginBottom: 14, boxShadow: "0 12px 30px rgba(0,128,105,.22)" }}>
+        <div style={{ fontSize: 11, letterSpacing: 3, fontWeight: 900, opacity: .9 }}>📘 GLASSWINGS ADMIN GUIDE</div>
+        <div style={{ fontSize: 22, fontWeight: 900, marginTop: 4, lineHeight: 1.2 }}>Everything you need to run an event</div>
+        <div style={{ fontSize: 13, opacity: .92, marginTop: 6, lineHeight: 1.5 }}>Simple steps with pictures. Every screen also has a coloured 💡 Guide box. Tap it when you're unsure.</div>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search the guide, e.g. stall, refund, early bird" style={{ width: "100%", boxSizing: "border-box", marginTop: 12, border: 0, borderRadius: 12, padding: "11px 13px", fontSize: 14, fontFamily: "inherit" }} />
+      </div>
+
+      {/* Map of everything */}
+      {!q && <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+        <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 15, marginBottom: 2 }}>🗺️ The big picture: how Glasswings earns from an event</div>
+        <div style={{ fontSize: 12.5, color: "#55656B", marginBottom: 10 }}>Tap any box to jump to its guide.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
+          {[["tickets", "🎟️ Tickets", "Platform fee on every ticket", "#7C3AED"], ["fees", "💼 Big events", "Volume pricing keeps big organisers", "#0E5C54"], ["stalls", "🏪 Stalls", "18% of every stall booking", "#F97316"], ["sponsors", "🤝 Sponsors", "18% of every sponsorship", "#B8860B"], ["leads", "📋 Leads", "Credits for every unlock", "#008069"], ["pro", "⭐ Pro", "Paid Pro memberships", "#C98A00"], ["bookings", "💰 Bookings", "Commission on private events", "#059669"], ["whatsapp", "💬 WhatsApp", "Tickets delivered automatically", "#25D366"]].map(([id, t, s, c]) => (
+            <button key={id} onClick={() => refs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ textAlign: "left", border: `1.5px solid ${c}44`, background: `${c}10`, borderRadius: 14, padding: "11px 12px", cursor: "pointer", fontFamily: "inherit" }}>
+              <div style={{ fontWeight: 900, color: c, fontSize: 14 }}>{t}</div>
+              <div style={{ fontSize: 11.5, color: "#334155", marginTop: 3, lineHeight: 1.35 }}>{s}</div>
+            </button>
+          ))}
+        </div>
+      </div>}
+
+      {/* chips */}
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 8 }}>
+        {ids.map(id => <button key={id} onClick={() => refs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ ...gwChip(section === id), whiteSpace: "nowrap" }}>{GW_GUIDE[id].icon} {GW_GUIDE[id].title.split(/[(:,]/)[0].trim()}</button>)}
+      </div>
+      {!ids.length && <Center>Nothing matches “{q}”.</Center>}
+
+      {ids.map((id, n) => {
+        const g = GW_GUIDE[id];
+        return (
+          <section key={id} ref={el => { refs.current[id] = el; }} style={{ scrollMarginTop: 120, background: "#fff", border: section === id ? "2px solid #8B5CF6" : "1px solid #E2E8F0", borderRadius: 18, overflow: "hidden", marginBottom: 14, boxShadow: "0 6px 18px rgba(15,23,42,.05)" }}>
+            <div style={{ background: g.grad, color: "#fff", padding: "14px 16px", display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ width: 46, height: 46, borderRadius: 14, background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 25, flexShrink: 0 }}>{g.icon}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 1.8, opacity: .9 }}>CHAPTER {GW_GUIDE_ORDER.indexOf(id) + 1}</div>
+                <div style={{ fontSize: 17, fontWeight: 900, lineHeight: 1.25 }}>{g.title}</div>
+              </div>
+            </div>
+            <div style={{ padding: "12px 16px 16px" }}>
+              <div style={{ fontSize: 14, color: "#0F172A", fontWeight: 650, lineHeight: 1.55 }}>{g.one}</div>
+              {g.flow && <GwFlow flow={g.flow} />}
+              {g.extra === "tiers" && <GwTierBars />}
+              {g.extra === "money" && <GwMoneySplit />}
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1.5, color: "#64748B", margin: "12px 0 8px" }}>STEP BY STEP</div>
+              <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                {g.steps.map((s, i) => <li key={i} style={{ display: "flex", gap: 10, fontSize: 13.5, color: "#1E293B", lineHeight: 1.55, marginBottom: 9 }}><span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: 99, background: "#0F172A", color: "#fff", fontSize: 12, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{i + 1}</span><span>{s}</span></li>)}
+              </ol>
+              {(g.tips || []).map((t, i) => <div key={i} style={{ fontSize: 12.5, color: "#92400E", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "8px 10px", marginTop: 7 }}>👉 {t}</div>)}
+              {g.where && <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 12, background: "#F1F5F9", borderRadius: 12, padding: "9px 11px" }}>
+                <div style={{ flex: 1, minWidth: 180, fontSize: 12.5, color: "#334155" }}><b>📍 Where:</b> {g.where}</div>
+                {g.tab && has(g.tab) && <button onClick={() => onGo && onGo(g.tab)} style={{ ...btn("#008069", "#fff"), padding: "8px 14px", fontSize: 12.5 }}>Go there →</button>}
+              </div>}
+            </div>
+          </section>
+        );
+      })}
+      <div style={{ textAlign: "center", fontSize: 12, color: "#64748B", padding: "6px 0 70px" }}>Stuck? Message the Glasswings team on WhatsApp with a screenshot.</div>
+    </div>
+  );
+}
+// =================== END GUIDE ===================
+
+
 const GW_ADMIN_GROUPS = [
+  ['Start here', ['guide']],
   ['Overview', ['dash','analytics']],
   ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
   ['Events', ['events','private','stalls','sponsors','leads','door','directory','rooms']],
   ['Money', ['accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
   ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
-const GW_ADMIN_ICONS = {leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
 function AdminNavigation({ tabs, selected, onSelect, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const dialog = useRef(null), trigger = useRef(null);
@@ -15165,7 +15532,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
     mq.addEventListener('change', close);
     return () => mq.removeEventListener('change', close);
   }, []);
-  const item = ([id, title]) => <button key={id} type="button" title={title} aria-label={title} aria-current={selected === id ? 'page' : undefined} className={'gw-an-item'+(selected===id?' active':'')} onClick={()=>choose(id)}><span aria-hidden="true">{GW_ADMIN_ICONS[id] || '•'}</span><span className="gw-an-label">{title.replace(/^[^\p{L}\p{N}]+/u,'')}</span></button>;
+  const item = ([id, title]) => <button key={id} type="button" title={title} aria-label={title} aria-current={selected === id ? 'page' : undefined} className={'gw-an-item'+(id==='guide'?' gw-an-guide':'')+(selected===id?' active':'')} onClick={()=>choose(id)}><span aria-hidden="true">{GW_ADMIN_ICONS[id] || '•'}</span><span className="gw-an-label">{title.replace(/^[^\p{L}\p{N}]+/u,'')}</span></button>;
   const groups = () => GW_ADMIN_GROUPS.map(([title, ids]) => {
     const visible = ids.flatMap(id => tabs.filter(t=>t[0]===id));
     return visible.length ? <section key={title}><h3>{title}</h3>{visible.map(item)}</section> : null;
@@ -15178,7 +15545,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
       .gw-admin-sidebar header button,.gw-admin-mobilebar button,.gw-admin-drawer header button{border:0;background:#e5f3ee;color:#075d50;border-radius:10px;min-height:44px;min-width:44px;cursor:pointer;font:inherit;font-weight:800}
       .gw-an-item{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:10px 12px;margin:3px 0;border:1px solid transparent;border-radius:11px;background:transparent;color:#405660;cursor:pointer;font:inherit;font-size:13px;font-weight:650;text-align:left}
       .gw-an-item>span:first-child{width:24px;flex-shrink:0;text-align:center;font-size:18px}
-      .gw-an-item:hover{background:#f0f6f3}.gw-an-item.active{background:#dff3eb;color:#005b48;border-color:#b4ddce;box-shadow:inset 3px 0 #008069;font-weight:850}
+      .gw-an-item.gw-an-guide{background:linear-gradient(90deg,#EDE9FE,#E0F2FE);color:#4C1D95;font-weight:850;border-color:#C4B5FD}.gw-an-item:hover{background:#f0f6f3}.gw-an-item.active{background:#dff3eb;color:#005b48;border-color:#b4ddce;box-shadow:inset 3px 0 #008069;font-weight:850}
       .gw-admin-layout :focus-visible,.gw-admin-drawer :focus-visible{outline:3px solid #e9a132;outline-offset:2px}
       .gw-admin-sidebar h3,.gw-admin-drawer h3{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#778c93;margin:22px 12px 9px}
       .gw-admin-content{min-width:0;overflow-wrap:anywhere}.gw-admin-mobilebar{display:none}
@@ -15189,7 +15556,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
     `}</style>
     <aside className="gw-admin-sidebar"><header><strong>ADMIN WORKSPACE</strong><button type="button" aria-label={collapsed?'Expand admin sidebar':'Collapse admin sidebar'} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>{collapsed?'»':'«'}</button></header><nav aria-label="Admin navigation">{groups()}</nav></aside>
     <div className="gw-admin-content"><div className="gw-admin-mobilebar"><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>dialog.current?.showModal()}>☰ Admin Menu</button><strong>{label(selected)}</strong></div>{children}</div>
-    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['dash','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
+    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['guide','dash','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
   </div>;
 }
 
@@ -15617,6 +15984,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
   }, [leadAdmin, canManageOrganiserStaff]);
   const leadTabLabel = `📋 Event Leads${leadBadge ? ` (${leadBadge})` : ""}`;
   const tabs = [
+    ["guide", "📘 Guide"],
     ...(canUseDirectory ? [["directory", "☎️ Directory"]] : []),
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
@@ -15653,14 +16021,26 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     const targetIndex = tabs.findIndex(t => t[0] === "members" || t[0] === "orgmembers");
     tabs.splice(targetIndex + 1, 0, segmentsTab);
   }
-  const [seg, setSeg] = useState(tabs[0]?.[0] || "none");
-  if (!tabs.length) return <div><TopBar title="Staff" /><Center>You don't have any staff tools enabled yet.</Center></div>;
+  const [seg, setSeg] = useState(() => {
+    let seen = false;
+    try { seen = !!localStorage.getItem("gw_guide_seen"); localStorage.setItem("gw_guide_seen", "1"); } catch { seen = true; }
+    return seen ? (tabs[1]?.[0] || "guide") : "guide";
+  });
+  const [guideSection, setGuideSection] = useState(null);
+  useEffect(() => {
+    const h = ev => { setGuideSection(ev.detail || "start"); setSeg("guide"); try { window.scrollTo({ top: 0 }); } catch { } };
+    window.addEventListener("gwopenguide", h);
+    return () => window.removeEventListener("gwopenguide", h);
+  }, []);
+  if (tabs.length <= 1) return <div><TopBar title="Staff" /><Center>You don't have any staff tools enabled yet.</Center></div>;
   return (
     <div>
       <TopBar title={isSuper ? "Superadmin Panel" : organiserStaff ? `${organiserStaff.organiser_name} · ${organiserStaff.job_title}` : "Organiser Panel"} />
       {myCity && !isSuper && <div style={{ background: "#FEF3C7", color: "#92400E", fontSize: 12.5, fontWeight: 600, padding: "7px 14px", textAlign: "center" }}>Scoped to {myCity}</div>}
       <AdminNavigation tabs={tabs} selected={seg} onSelect={setSeg}>
-      {seg === "directory" && canUseDirectory ? <SupplierDirectory />
+      {seg !== "guide" && <button onClick={() => gwOpenGuide(GW_GUIDE_FOR_TAB[seg] || "start")} aria-label="Open the guide" style={{ position: "fixed", right: 14, bottom: "calc(86px + env(safe-area-inset-bottom))", zIndex: 30, border: 0, borderRadius: 999, padding: "11px 16px", fontWeight: 900, fontSize: 13.5, color: "#fff", background: "linear-gradient(120deg,#4C1D95,#8B5CF6 55%,#0EA5E9)", boxShadow: "0 10px 24px rgba(76,29,149,.35)", cursor: "pointer", fontFamily: "inherit" }}>📘 Guide</button>}
+      {seg === "guide" ? <AdminGuidePanel section={guideSection} tabs={tabs} onGo={t => { setGuideSection(null); setSeg(t); }} />
+        : seg === "directory" && canUseDirectory ? <SupplierDirectory />
         : seg === "reports" ? <ReportsAdmin />
         : seg === "subcoupons" ? <PlanCouponsAdmin />
         : seg === "accounts" ? <AccountsAdmin />
@@ -16559,6 +16939,7 @@ function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onU
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
+      <GwGuideTip id="tickets" />
       <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity. Choose Anyone / Men only / Women only for every ticket.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
@@ -16783,6 +17164,7 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
       </div>
       <div style={{ marginTop: 8, background: "#FFF8EC", border: "1px solid #F5D9A8", borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: "#92400E", fontWeight: 800, marginBottom: 6 }}>🎪 Festival options (optional)</div>
+        <div style={{ fontSize: 11.5, color: "#7C5A00", lineHeight: 1.5, marginBottom: 8, background: "#fff", borderRadius: 8, padding: "6px 8px" }}>For big events only. <b>Zone</b> groups tickets (GA, VIP…). <b>Pass / day label</b> prints on the ticket. <b>People per ticket</b> = group pass (4 = 1 ticket lets in 4). <b>Sale starts/ends</b> = early bird windows. Leave empty for normal events.</div>
         <div style={{ fontSize: 11.5, color: W.ink, fontWeight: 700, marginBottom: 4 }}>Zone</div>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
           {[["", "#94A3B8"], ...GW_ZONES].map(([z, c]) => <button key={z || "none"} type="button" onClick={() => setZone(z)} style={{ border: `1.5px solid ${c}`, background: zone === z ? c : "#fff", color: zone === z ? "#fff" : c, borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>{z || "No zone"}</button>)}
@@ -18696,6 +19078,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
       {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
       {checkIn && <CheckInSheet event={checkIn} onClose={() => setCheckIn(null)} />}
       {membersFor && <EventMembersSheet event={membersFor} onClose={() => setMembersFor(null)} />}
+      {!creating && <GwGuideTip id="start" />}
       {!creating && <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: privateOnly ? "#F5F0FF" : "#EEF6FF", border: `1px solid ${privateOnly ? "#E0D4FF" : "#CFE2FA"}`, color: privateOnly ? "#6D28D9" : "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 12 }}>{privateOnly ? "🔒 Private parties are shown only to the selected segments" : "📖 Organiser guide — how event bookings work"}</a>}
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
@@ -19104,7 +19487,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <GenderBalance ev={e} onUpdate={onUpdate} />
                     <CreditCapEditor ev={e} onUpdate={onUpdate} />
                   </>)}
-                  {mSeg === "sales" && <><EventFeeCard event={e} canEdit={!!(isSuper || canApprove)} /><EventSalesTab event={e} /></>}
+                  {mSeg === "sales" && <><GwGuideTip id="fees" style={{ marginTop: 8 }} /><EventFeeCard event={e} canEdit={!!(isSuper || canApprove)} /><GwGuideTip id="money" /><EventSalesTab event={e} /></>}
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
                   {mSeg === "analytics" && <EventAnalyticsTab event={e} />}
                   {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} isSuper={isSuper} />}
