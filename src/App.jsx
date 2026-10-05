@@ -2620,6 +2620,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
           {onOpenDM && <Sec title="Who's going"><EventGoers eventId={e.id} onOpenDM={onOpenDM} /></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
+          <EventStallsCard event={e} profile={profile} />
           {Array.isArray(e.about_media) && e.about_media.length > 0 && (
             <Sec title="Gallery & media">
               {e.about_media.filter(m => m.kind === "image").length > 0 && (
@@ -14203,14 +14204,522 @@ function TicketWaLog() {
 }
 // =================== END EVENT LEADS MARKETPLACE ===================
 
+// ===================== RICH TEXT + VENDOR STALLS =====================
+// Rich text: **bold**, *italic*, __underline__, "- " or "• " bullets, "# " heading, emojis.
+function gwRichInline(line, keyBase) {
+  const out = []; let rest = String(line); let k = 0;
+  const re = /(\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*)/;
+  while (rest.length) {
+    const m = rest.match(re);
+    if (!m) { out.push(rest); break; }
+    if (m.index > 0) out.push(rest.slice(0, m.index));
+    const tok = m[0];
+    if (tok.startsWith("**")) out.push(<b key={keyBase + "b" + k++} style={{ fontWeight: 850 }}>{tok.slice(2, -2)}</b>);
+    else if (tok.startsWith("__")) out.push(<u key={keyBase + "u" + k++}>{tok.slice(2, -2)}</u>);
+    else out.push(<i key={keyBase + "i" + k++}>{tok.slice(1, -1)}</i>);
+    rest = rest.slice(m.index + tok.length);
+  }
+  return out;
+}
+function GwRich({ text, color = W.ink, size = 13.5, accent = W.teal }) {
+  if (!String(text || "").trim()) return null;
+  const lines = String(text).split(/\r?\n/);
+  const blocks = []; let list = null;
+  lines.forEach((ln, i) => {
+    const t = ln.trim();
+    const bullet = t.match(/^([-•*]|\d+[.)])\s+(.*)$/);
+    if (bullet && !t.startsWith("**")) {
+      if (!list) { list = []; blocks.push({ list }); }
+      list.push(bullet[2]);
+      return;
+    }
+    list = null;
+    if (!t) { blocks.push({ gap: true }); return; }
+    if (t.startsWith("# ")) blocks.push({ h: t.slice(2) });
+    else blocks.push({ p: t });
+  });
+  return (
+    <div style={{ color, fontSize: size, lineHeight: 1.6 }}>
+      {blocks.map((b, i) => b.gap ? <div key={i} style={{ height: 6 }} />
+        : b.h ? <div key={i} style={{ fontWeight: 900, fontSize: size + 2, color: accent, margin: "6px 0 2px" }}>{gwRichInline(b.h, i)}</div>
+        : b.p ? <div key={i}>{gwRichInline(b.p, i)}</div>
+        : <div key={i} style={{ margin: "2px 0" }}>{b.list.map((li, j) => (
+            <div key={j} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{ width: 7, height: 7, borderRadius: 7, background: accent, marginTop: size * 0.62, flexShrink: 0 }} />
+              <span>{gwRichInline(li, i + "_" + j)}</span>
+            </div>))}</div>)}
+    </div>
+  );
+}
+function GwRichEditor({ value, onChange, placeholder, rows = 4 }) {
+  const ref = useRef(null);
+  const [preview, setPreview] = useState(false);
+  const wrap = (a, b = a) => {
+    const el = ref.current; if (!el) return;
+    const s = el.selectionStart, e = el.selectionEnd, v = value || "";
+    const sel = v.slice(s, e) || "text";
+    onChange(v.slice(0, s) + a + sel + b + v.slice(e));
+    setTimeout(() => { el.focus(); el.setSelectionRange(s + a.length, s + a.length + sel.length); }, 0);
+  };
+  const linePrefix = p => {
+    const el = ref.current; if (!el) return; const v = value || ""; const s = el.selectionStart;
+    const ls = v.lastIndexOf("\n", s - 1) + 1;
+    onChange(v.slice(0, ls) + p + v.slice(ls));
+    setTimeout(() => { el.focus(); el.setSelectionRange(s + p.length, s + p.length); }, 0);
+  };
+  const insert = t => { const el = ref.current; const v = value || ""; const s = el ? el.selectionStart : v.length; onChange(v.slice(0, s) + t + v.slice(s)); };
+  const tb = { border: `1px solid ${W.line}`, background: "#fff", borderRadius: 7, padding: "4px 9px", fontSize: 13, cursor: "pointer", color: W.ink };
+  return (
+    <div style={{ border: `1.5px solid ${W.line}`, borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", padding: 6, background: "linear-gradient(90deg,#FFF4E6,#FCE7F3,#EDE9FE)", borderBottom: `1px solid ${W.line}` }}>
+        <button type="button" onClick={() => wrap("**")} style={{ ...tb, fontWeight: 900 }}>B</button>
+        <button type="button" onClick={() => wrap("*")} style={{ ...tb, fontStyle: "italic" }}>I</button>
+        <button type="button" onClick={() => wrap("__")} style={{ ...tb, textDecoration: "underline" }}>U</button>
+        <button type="button" onClick={() => linePrefix("- ")} style={tb}>• List</button>
+        <button type="button" onClick={() => linePrefix("# ")} style={{ ...tb, fontWeight: 800 }}>H</button>
+        {["🍔", "🥤", "⚡", "🅿️", "⏰", "✅", "❌", "📍"].map(em => <button key={em} type="button" onClick={() => insert(em)} style={tb}>{em}</button>)}
+        <button type="button" onClick={() => setPreview(v => !v)} style={{ ...tb, marginLeft: "auto", background: preview ? W.teal : "#fff", color: preview ? "#fff" : W.ink }}>{preview ? "✏️ Edit" : "👁 Preview"}</button>
+      </div>
+      {preview ? <div style={{ padding: 11, minHeight: rows * 20 }}><GwRich text={value} /></div>
+        : <textarea ref={ref} value={value || ""} onChange={e => onChange(e.target.value)} rows={rows} placeholder={placeholder} style={{ width: "100%", border: 0, outline: "none", padding: 11, fontSize: 14, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", color: W.ink }} />}
+    </div>
+  );
+}
+
+const GW_STALL_CATS = [
+  ["food", "🍔", "Food", "#F97316", "#FFF1E6"],
+  ["beverage", "🥤", "Beverages", "#06B6D4", "#E6FAFD"],
+  ["merch", "🛍️", "Merchandise", "#A855F7", "#F5EDFF"],
+  ["services", "💆", "Services", "#10B981", "#E7FAF2"],
+  ["sponsor", "⭐", "Sponsor / Brand", "#EAB308", "#FEF9E3"],
+  ["other", "✨", "Other", "#EC4899", "#FDECF5"],
+];
+const gwStallCat = k => GW_STALL_CATS.find(c => c[0] === k) || GW_STALL_CATS[5];
+const GW_STALL_STATUS = {
+  pending: ["⏳ Under review", "#B45309", "#FEF3C7"],
+  approved: ["✅ Approved, pay to confirm", "#047857", "#D1FAE5"],
+  paid: ["🎉 Confirmed", "#6D28D9", "#EDE9FE"],
+  rejected: ["Not approved", "#B91C1C", "#FEE2E2"],
+  cancelled: ["Cancelled", "#475569", "#F1F5F9"],
+};
+
+async function gwPayStall(bookingId, onDone) {
+  try {
+    const ready = await loadRazorpay();
+    if (!ready) return window.gwConfirm("Couldn't open the payment window. Check your connection and try again.", () => {});
+    const { data: ses } = await supabase.auth.getSession();
+    const token = ses?.session?.access_token;
+    const r = await fetch("/api/razorpay/stall-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, booking_id: bookingId }) });
+    const od = await r.json().catch(() => ({}));
+    if (!r.ok || !od.order_id) return window.gwConfirm(od.error || "Could not start the payment.", () => {});
+    const rzp = new window.Razorpay({
+      key: od.key_id, amount: od.amount, currency: od.currency, order_id: od.order_id,
+      name: "Glasswings", description: rzpDesc(od.description || "Stall booking"), theme: { color: "#F97316" },
+      handler: async (resp) => {
+        try {
+          const v = await fetch("/api/razorpay/stall-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token, booking_id: bookingId }) });
+          const vd = await v.json().catch(() => ({}));
+          window.gwConfirm(v.ok && vd.ok ? "🎉 Payment received! Your stall is confirmed. Your Stall Pass is ready." : (vd.error || "Payment couldn't be confirmed.") + "\n\nIf money was deducted, contact us with payment ID " + (resp.razorpay_payment_id || ""), () => {});
+        } catch { window.gwConfirm("Payment couldn't be confirmed. If money was deducted, contact us with payment ID " + (resp.razorpay_payment_id || ""), () => {}); }
+        onDone && onDone();
+      },
+    });
+    rzp.on("payment.failed", () => window.gwConfirm("Payment failed or was cancelled. Nothing was charged.", () => {}));
+    rzp.open();
+  } catch { window.gwConfirm("Could not start the payment. Please try again.", () => {}); }
+}
+
+// Colourful Stall Pass
+function StallPass({ b }) {
+  const [, ic, cl, col] = gwStallCat(b.category);
+  const qr = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=0&data=" + encodeURIComponent(b.code);
+  const share = `🏪 Glasswings Stall Pass\n${b.business_name}\n${b.event_title || ""}${b.event_date ? " · " + b.event_date : ""}\nStall: ${b.stall_no || "to be assigned"} (${b.stall_name})\nPass code: ${b.code}`;
+  return (
+    <div style={{ borderRadius: 20, overflow: "hidden", boxShadow: "0 14px 34px rgba(124,58,237,.25)", marginTop: 10 }}>
+      <div style={{ background: `linear-gradient(135deg,#1E1B4B,#6D28D9 45%,${col})`, color: "#fff", padding: "16px 18px", position: "relative" }}>
+        <div style={{ position: "absolute", right: -40, top: -40, width: 160, height: 160, borderRadius: 160, background: "rgba(255,255,255,.08)" }} />
+        <div style={{ fontSize: 10.5, letterSpacing: 3, fontWeight: 800, opacity: .9 }}>GLASSWINGS · VENDOR STALL PASS</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+          <PersonAvatar url={b.logo_url} name={b.business_name} size={50} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 900, fontSize: 19, lineHeight: 1.15 }}>{b.business_name}</div>
+            <div style={{ fontSize: 12.5, opacity: .92 }}>{ic} {cl} · {b.stall_name}{b.size_label ? ` · ${b.size_label}` : ""}</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 13, marginTop: 10, opacity: .95 }}>📅 {b.event_title}{b.event_date ? ` · ${b.event_date}` : ""}{b.place ? <><br />📍 {b.place}</> : null}</div>
+      </div>
+      <div style={{ background: "#fff", display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderTop: "2px dashed #DDD6FE" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 800, letterSpacing: 1.5 }}>STALL NUMBER</div>
+          <div style={{ fontSize: 34, fontWeight: 950, background: `linear-gradient(90deg,#6D28D9,${col})`, WebkitBackgroundClip: "text", color: "transparent", lineHeight: 1.1 }}>{b.stall_no || "TBA"}</div>
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 4 }}>Pass code <b style={{ fontFamily: "monospace", color: W.ink }}>{b.code}</b></div>
+          {!b.stall_no && <div style={{ fontSize: 11, color: "#B45309", marginTop: 3 }}>Your stall number will appear here once assigned.</div>}
+        </div>
+        <img src={qr} alt="QR" style={{ width: 92, height: 92, borderRadius: 8 }} />
+      </div>
+      {b.setup_info && <div style={{ background: "#FAF5FF", padding: "10px 18px", borderTop: "1px solid #EDE9FE" }}><div style={{ fontSize: 11, fontWeight: 900, color: "#6D28D9", letterSpacing: 1, marginBottom: 3 }}>SETUP INFO</div><GwRich text={b.setup_info} size={12.5} accent="#7C3AED" /></div>}
+      <div style={{ background: "#fff", padding: "10px 18px 14px", display: "flex", gap: 8 }}>
+        <a href={`https://wa.me/?text=${encodeURIComponent(share)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "8px 12px", fontSize: 12.5, textDecoration: "none" }}>Share on WhatsApp</a>
+        {b.contact_phone && <a href={`tel:${b.contact_phone}`} style={{ ...btn("#F5F3FF", "#6D28D9"), padding: "8px 12px", fontSize: 12.5, textDecoration: "none" }}>📞 Call organiser</a>}
+      </div>
+    </div>
+  );
+}
+
+// Card on the event page
+function EventStallsCard({ event, profile }) {
+  const [data, setData] = useState(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!event?.id) return;
+    Promise.all([
+      supabase.from("event_stall_types").select("*").eq("event_id", event.id).eq("active", true).order("sort"),
+      supabase.from("event_stall_settings").select("*").eq("event_id", event.id).maybeSingle(),
+      supabase.rpc("stall_availability", { p_event: event.id }),
+    ]).then(([{ data: t }, { data: s }, { data: a }]) => {
+      const taken = {}; (a || []).forEach(x => { taken[x.stall_type_id] = Number(x.taken) || 0; });
+      setData({ types: t || [], settings: s || null, taken });
+    }).catch(() => setData({ types: [] }));
+  }, [event?.id]);
+  if (!data || !data.types.length || (data.settings && data.settings.open === false)) return null;
+  const left = data.types.reduce((a, t) => a + Math.max(0, t.quantity - (data.taken[t.id] || 0)), 0);
+  const from = Math.min(...data.types.map(t => Number(t.price) || 0));
+  const cats = [...new Set(data.types.map(t => t.category))];
+  return (
+    <div style={{ margin: "18px 0" }}>
+      <div onClick={() => setOpen(true)} style={{ cursor: "pointer", borderRadius: 20, padding: "18px 18px 16px", color: "#fff", background: "linear-gradient(120deg,#F97316,#EC4899 50%,#8B5CF6)", position: "relative", overflow: "hidden", boxShadow: "0 12px 30px rgba(236,72,153,.28)" }}>
+        <div style={{ position: "absolute", right: -30, top: -30, width: 140, height: 140, borderRadius: 140, background: "rgba(255,255,255,.12)" }} />
+        <div style={{ position: "absolute", right: 40, bottom: -50, width: 110, height: 110, borderRadius: 110, background: "rgba(255,255,255,.08)" }} />
+        <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900, opacity: .95 }}>🏪 FOR VENDORS & BRANDS</div>
+        <div style={{ fontSize: 21, fontWeight: 950, marginTop: 6, lineHeight: 1.2 }}>{data.settings?.headline || "Set up your stall at this event"}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {cats.map(c => <span key={c} style={{ background: "rgba(255,255,255,.22)", borderRadius: 999, padding: "4px 10px", fontSize: 12, fontWeight: 800 }}>{gwStallCat(c)[1]} {gwStallCat(c)[2]}</span>)}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
+          <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>{left > 0 ? `${left} stall${left === 1 ? "" : "s"} left` : "All stalls taken. Join the waitlist"} · from {from > 0 ? `₹${from.toLocaleString("en-IN")}` : "Free"}</div>
+          <span style={{ background: "#fff", color: "#DB2777", fontWeight: 900, borderRadius: 12, padding: "9px 14px", fontSize: 13.5 }}>Book a stall →</span>
+        </div>
+      </div>
+      {open && <VendorStallSheet event={event} profile={profile} data={data} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
+function VendorStallSheet({ event, profile, data, onClose }) {
+  const [pick, setPick] = useState(null);
+  const [mine, setMine] = useState(null);
+  const [f, setF] = useState({ business: "", category: "", items: "", phone: "", logo: "", fssai: "", notes: "" });
+  const [busy, setBusy] = useState(false);
+  const [up, setUp] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const loadMine = async () => { if (!profile?.id) return setMine([]); const { data: d } = await supabase.rpc("my_stall_bookings"); setMine((d || []).filter(b => b.event_id === event.id)); };
+  useEffect(() => {
+    loadMine();
+    if (profile?.id) supabase.from("member_phone").select("phone").eq("user_id", profile.id).maybeSingle().then(({ data: d }) => { if (d?.phone) setF(p => p.phone ? p : { ...p, phone: d.phone }); });
+  }, [profile?.id]);
+  const s = data.settings || {};
+  const uploadLogo = async file => { if (!file) return; setUp(true); try { set("logo", await uploadPhoto(profile.id, file)); } catch (e) { window.gwConfirm(e.message || "Upload failed", () => {}); } setUp(false); };
+  const submit = async () => {
+    if (!profile?.id) return window.gwConfirm("Please log in to book a stall.", () => {});
+    if (!f.business.trim()) return window.gwConfirm("Enter your business / brand name.", () => {});
+    if (String(f.phone).replace(/\D/g, "").length < 10) return window.gwConfirm("Enter a valid 10-digit phone number.", () => {});
+    setBusy(true);
+    const { data: r, error } = await supabase.rpc("apply_for_stall", { p_type: pick.id, p_business: f.business, p_category: f.category || pick.category, p_items: f.items, p_phone: f.phone, p_logo: f.logo || null, p_fssai: f.fssai || null, p_notes: f.notes || null });
+    setBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!r?.ok) return window.gwConfirm({ full: "Sorry, this stall type just filled up.", closed: "Stall bookings are closed for this event.", limit: "You can book up to 3 stalls per event.", not_available: "This stall type isn't available now." }[r?.reason] || "Couldn't submit. Please try again.", () => {});
+    setPick(null); await loadMine();
+    if (r.status === "approved" && r.amount > 0) window.gwConfirm(`✅ Stall reserved! Pay ₹${r.amount.toLocaleString("en-IN")} now to confirm it.`, () => gwPayStall(r.id, loadMine));
+    else window.gwConfirm(r.status === "pending" ? "🎉 Application sent! The organiser will review it. You'll be able to pay here once approved." : "🎉 Your stall is reserved!", () => {});
+  };
+  const cancel = b => window.gwConfirm("Cancel this stall application?", async () => { await supabase.rpc("cancel_my_stall", { p_id: b.id }); loadMine(); });
+  const steps = ["Applied", "Approved", "Paid", "Stall assigned"];
+  const stepOf = b => b.status === "paid" ? (b.stall_no ? 4 : 3) : b.status === "approved" ? 2 : 1;
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ margin: -18, marginBottom: 0, padding: "20px 18px 16px", background: "linear-gradient(120deg,#F97316,#EC4899 55%,#8B5CF6)", color: "#fff", borderRadius: "18px 18px 0 0" }}>
+        <div style={{ display: "flex", alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900, opacity: .95 }}>🏪 VENDOR STALLS</div>
+            <div style={{ fontSize: 20, fontWeight: 950, marginTop: 4, lineHeight: 1.2 }}>{event.title}</div>
+            <div style={{ fontSize: 12.5, opacity: .95, marginTop: 3 }}>{[event.event_date, [event.venue, event.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}</div>
+          </div>
+          <span onClick={onClose} style={{ cursor: "pointer", fontSize: 22, lineHeight: 1 }}>✕</span>
+        </div>
+      </div>
+      <div style={{ height: 14 }} />
+
+      {(mine || []).length > 0 && <div style={{ marginBottom: 14 }}>
+        <div style={{ fontWeight: 900, color: W.ink, fontSize: 15, marginBottom: 6 }}>Your stalls</div>
+        {mine.map(b => {
+          const [lab, fg, bg] = GW_STALL_STATUS[b.status] || GW_STALL_STATUS.pending;
+          const st = stepOf(b);
+          return (
+            <div key={b.id} style={{ border: `1.5px solid ${bg}`, borderRadius: 16, padding: 12, marginBottom: 10, background: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, fontWeight: 850, color: W.ink }}>{b.business_name} <span style={{ color: W.soft, fontWeight: 600, fontSize: 12.5 }}>· {b.stall_name}</span></div>
+                <span style={{ fontSize: 11.5, fontWeight: 900, color: fg, background: bg, borderRadius: 999, padding: "4px 10px" }}>{lab}</span>
+              </div>
+              {!["rejected", "cancelled"].includes(b.status) && <div style={{ display: "flex", alignItems: "flex-start", marginTop: 12 }}>
+                {steps.map((label, i) => (
+                  <React.Fragment key={label}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 62 }}>
+                      <div style={{ width: 22, height: 22, borderRadius: 22, background: i < st ? "linear-gradient(135deg,#F97316,#EC4899)" : "#E5E7EB", color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center" }}>{i < st ? "✓" : i + 1}</div>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: i < st ? "#DB2777" : W.soft, marginTop: 3, textAlign: "center" }}>{label}</div>
+                    </div>
+                    {i < steps.length - 1 && <div style={{ flex: 1, height: 3, borderRadius: 3, background: i < st - 1 ? "linear-gradient(90deg,#F97316,#EC4899)" : "#E5E7EB", marginTop: 10 }} />}
+                  </React.Fragment>
+                ))}
+              </div>}
+              {b.admin_note && <div style={{ fontSize: 12.5, color: W.ink, background: "#F8FAFC", borderRadius: 9, padding: "7px 9px", marginTop: 8 }}>💬 {b.admin_note}</div>}
+              {b.status === "approved" && <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                {b.amount > 0 && <button onClick={() => gwPayStall(b.id, loadMine)} style={{ ...btn("linear-gradient(90deg,#F97316,#EC4899)", "#fff"), padding: "10px 16px", fontWeight: 900 }}>Pay ₹{Number(b.amount).toLocaleString("en-IN")} to confirm</button>}
+                <button onClick={() => cancel(b)} style={{ ...btn("#F1F5F9", W.soft), padding: "10px 12px" }}>Cancel</button>
+              </div>}
+              {b.status === "pending" && <button onClick={() => cancel(b)} style={{ ...btn("#F1F5F9", W.soft), padding: "7px 12px", fontSize: 12.5, marginTop: 10 }}>Withdraw application</button>}
+              {b.status === "paid" && <StallPass b={b} />}
+            </div>
+          );
+        })}
+      </div>}
+
+      {(s.guidelines || s.setup_info) && !pick && <div style={{ background: "linear-gradient(135deg,#FFF7ED,#FDF2F8)", border: "1px solid #FBCFE8", borderRadius: 16, padding: 14, marginBottom: 14 }}>
+        {s.guidelines && <><div style={{ fontSize: 11.5, fontWeight: 900, color: "#DB2777", letterSpacing: 1.2, marginBottom: 4 }}>VENDOR GUIDELINES</div><GwRich text={s.guidelines} accent="#EC4899" /></>}
+        {s.setup_info && <><div style={{ fontSize: 11.5, fontWeight: 900, color: "#EA580C", letterSpacing: 1.2, margin: s.guidelines ? "12px 0 4px" : "0 0 4px" }}>SETUP DETAILS</div><GwRich text={s.setup_info} accent="#F97316" /></>}
+      </div>}
+
+      {!pick ? <>
+        <div style={{ fontWeight: 900, color: W.ink, fontSize: 15, marginBottom: 8 }}>Choose a stall</div>
+        {data.types.map(t => {
+          const [, ic, cl, col, bg] = gwStallCat(t.category);
+          const taken = data.taken[t.id] || 0, left = Math.max(0, t.quantity - taken);
+          const pct = Math.min(100, Math.round(taken / t.quantity * 100));
+          return (
+            <div key={t.id} onClick={() => left > 0 && setPick(t)} style={{ cursor: left > 0 ? "pointer" : "default", borderRadius: 18, marginBottom: 12, overflow: "hidden", border: `1.5px solid ${col}40`, background: `linear-gradient(135deg,${bg},#fff 70%)`, opacity: left > 0 ? 1 : .6 }}>
+              <div style={{ display: "flex", gap: 12, padding: 14 }}>
+                <div style={{ width: 52, height: 52, borderRadius: 16, background: `linear-gradient(135deg,${col},${col}AA)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, boxShadow: `0 6px 14px ${col}55` }}>{ic}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, fontSize: 16, color: W.ink }}>{t.name}</div>
+                  <div style={{ fontSize: 12, color: col, fontWeight: 800 }}>{cl}{t.size_label ? ` · ${t.size_label}` : ""}</div>
+                  <div style={{ fontSize: 21, fontWeight: 950, color: W.ink, marginTop: 4 }}>{t.price > 0 ? `₹${Number(t.price).toLocaleString("en-IN")}` : "Free"}<span style={{ fontSize: 12, color: W.soft, fontWeight: 700 }}> per stall</span></div>
+                </div>
+              </div>
+              {(t.description || t.includes) && <div style={{ padding: "0 14px 10px" }}>
+                {t.description && <GwRich text={t.description} size={13} accent={col} />}
+                {t.includes && <div style={{ marginTop: 6 }}><div style={{ fontSize: 11, fontWeight: 900, color: col, letterSpacing: 1 }}>INCLUDED</div><GwRich text={t.includes} size={13} accent={col} /></div>}
+              </div>}
+              <div style={{ padding: "0 14px 14px" }}>
+                <div style={{ height: 7, background: "#F1F5F9", borderRadius: 7, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg,${col},#EC4899)` }} /></div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 12, fontWeight: 800 }}>
+                  <span style={{ color: left <= 2 && left > 0 ? "#DC2626" : W.soft }}>{left > 0 ? `${left} of ${t.quantity} left${left <= 2 ? " · filling fast!" : ""}` : "All taken"}</span>
+                  {left > 0 && <span style={{ color: col }}>Select →</span>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </> : <>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, borderRadius: 14, padding: 12, background: `linear-gradient(135deg,${gwStallCat(pick.category)[4]},#fff)`, border: `1.5px solid ${gwStallCat(pick.category)[3]}55` }}>
+          <div style={{ fontSize: 26 }}>{gwStallCat(pick.category)[1]}</div>
+          <div style={{ flex: 1 }}><div style={{ fontWeight: 900, color: W.ink }}>{pick.name}</div><div style={{ fontSize: 12.5, color: W.soft }}>{pick.price > 0 ? `₹${Number(pick.price).toLocaleString("en-IN")}` : "Free"} · {pick.size_label || "standard"}</div></div>
+          <button onClick={() => setPick(null)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 10px", fontSize: 12 }}>Change</button>
+        </div>
+        <div style={gwLeadLbl}>BUSINESS / BRAND NAME *</div>
+        <input value={f.business} onChange={e => set("business", e.target.value)} placeholder="e.g. Guntur Biryani House" style={gwLeadInp} />
+        <div style={gwLeadLbl}>WHAT DO YOU SELL?</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 7 }}>{GW_STALL_CATS.map(([k, ic, l, col]) => { const on = (f.category || pick.category) === k; return <button key={k} type="button" onClick={() => set("category", k)} style={{ border: `1.5px solid ${col}`, background: on ? col : "#fff", color: on ? "#fff" : col, borderRadius: 999, padding: "6px 11px", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>{ic} {l}</button>; })}</div>
+        <textarea value={f.items} onChange={e => set("items", e.target.value)} rows={2} placeholder="e.g. Chicken biryani, haleem, soft drinks" style={{ ...gwLeadInp, fontFamily: "inherit", resize: "vertical" }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>PHONE / WHATSAPP *</div><input value={f.phone} onChange={e => set("phone", e.target.value)} inputMode="tel" placeholder="10-digit number" style={gwLeadInp} /></div>
+          {(f.category || pick.category) === "food" && <div style={{ flex: 1 }}><div style={gwLeadLbl}>FSSAI NO.</div><input value={f.fssai} onChange={e => set("fssai", e.target.value)} placeholder="Food licence" style={gwLeadInp} /></div>}
+        </div>
+        <div style={gwLeadLbl}>LOGO (optional)</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+          <PersonAvatar url={f.logo} name={f.business || "?"} size={46} />
+          <span style={{ ...btn("#F5F3FF", "#6D28D9"), padding: "8px 12px", fontSize: 12.5 }}>{up ? "Uploading…" : f.logo ? "Change logo" : "Upload logo"}</span>
+          <input type="file" accept="image/*" hidden onChange={e => uploadLogo(e.target.files?.[0])} />
+        </label>
+        <div style={gwLeadLbl}>ANYTHING ELSE?</div>
+        <textarea value={f.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Power needs, gas cylinder, extra table…" style={{ ...gwLeadInp, fontFamily: "inherit", resize: "vertical" }} />
+        <button disabled={busy || up} onClick={submit} style={{ ...btn("linear-gradient(90deg,#F97316,#EC4899 60%,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: 14, fontSize: 15.5, fontWeight: 900, marginTop: 16, opacity: busy ? .6 : 1, boxShadow: "0 10px 22px rgba(236,72,153,.3)" }}>{busy ? "Sending…" : s.requires_approval === false ? (pick.price > 0 ? `Reserve & pay ₹${Number(pick.price).toLocaleString("en-IN")}` : "Reserve stall") : "Apply for this stall"}</button>
+        <div style={{ fontSize: 11.5, color: W.soft, textAlign: "center", marginTop: 7 }}>{s.requires_approval === false ? "Your stall is held once you pay." : "The organiser reviews applications. You pay only after approval."}</div>
+      </>}
+    </Sheet>
+  );
+}
+
+// Admin / organiser: manage stalls
+function AdminStallsPanel() {
+  const [events, setEvents] = useState(null);
+  const [evId, setEvId] = useState("");
+  const [settings, setSettings] = useState(null);
+  const [types, setTypes] = useState([]);
+  const [apps, setApps] = useState([]);
+  const [sum, setSum] = useState(null);
+  const [view, setView] = useState("apps");
+  const [filter, setFilter] = useState("all");
+  const [editType, setEditType] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const loadEvents = async () => { const { data, error } = await supabase.rpc("my_stall_events"); if (error) window.gwConfirm(error.message, () => {}); setEvents(data || []); if (!evId && data?.length) setEvId(data[0].id); };
+  useEffect(() => { loadEvents(); }, []);
+  const loadEvent = async () => {
+    if (!evId) return;
+    const [{ data: s }, { data: t }, { data: a }, { data: su }] = await Promise.all([
+      supabase.from("event_stall_settings").select("*").eq("event_id", evId).maybeSingle(),
+      supabase.from("event_stall_types").select("*").eq("event_id", evId).order("sort"),
+      supabase.rpc("stall_admin_list", { p_event: evId }),
+      supabase.rpc("stall_event_summary", { p_event: evId }),
+    ]);
+    setSettings(s || { event_id: evId, open: true, requires_approval: true, headline: "", guidelines: "", setup_info: "", contact_phone: "" });
+    setTypes(t || []); setApps(Array.isArray(a) ? a : []); setSum(su || null);
+  };
+  useEffect(() => { loadEvent(); }, [evId]);
+  const saveSettings = async () => {
+    setSaving(true);
+    const { error } = await supabase.from("event_stall_settings").upsert({ event_id: evId, open: settings.open !== false, requires_approval: settings.requires_approval !== false, headline: settings.headline || null, guidelines: settings.guidelines || null, setup_info: settings.setup_info || null, contact_phone: settings.contact_phone || null, updated_at: new Date().toISOString() });
+    setSaving(false);
+    window.gwConfirm(error ? error.message : "✅ Stall settings saved.", () => {});
+  };
+  const saveType = async () => {
+    const t = editType;
+    if (!t.name?.trim()) return window.gwConfirm("Give the stall type a name.", () => {});
+    const row = { event_id: evId, name: t.name.trim(), category: t.category || "food", size_label: t.size_label || null, price: Number(t.price) || 0, quantity: Math.max(1, Number(t.quantity) || 1), includes: t.includes || null, description: t.description || null, active: t.active !== false, sort: Number(t.sort) || 0 };
+    const { error } = t.id ? await supabase.from("event_stall_types").update(row).eq("id", t.id) : await supabase.from("event_stall_types").insert(row);
+    if (error) return window.gwConfirm(error.message, () => {});
+    setEditType(null); loadEvent(); loadEvents();
+  };
+  const delType = t => window.gwConfirm(`Delete "${t.name}"? (Only possible if nobody has applied for it.)`, async () => { const { error } = await supabase.from("event_stall_types").delete().eq("id", t.id); if (error) window.gwConfirm("This stall type has applications, so it can't be deleted. Turn it off instead.", () => {}); loadEvent(); });
+  const act = async (b, fn, args, okMsg) => {
+    const { data, error } = await supabase.rpc(fn, args);
+    if (error || !data?.ok) return window.gwConfirm(error?.message || ({ full: "All stalls of this type are taken.", already_paid: "This stall is already paid." }[data?.reason] || "Couldn't update."), () => {});
+    if (okMsg) window.gwConfirm(okMsg, () => {});
+    loadEvent(); loadEvents();
+  };
+  const approve = b => act(b, "stall_set_status", { p_id: b.id, p_status: "approved", p_note: null });
+  const reject = async b => { const note = await window.gwPrompt("Reason (the vendor will see this)", ""); if (note == null) return; act(b, "stall_set_status", { p_id: b.id, p_status: "rejected", p_note: note || null }); };
+  const assign = async b => { const no = await window.gwPrompt(`Stall number for ${b.business_name}`, b.stall_no || ""); if (no == null) return; act(b, "stall_assign_no", { p_id: b.id, p_no: no }); };
+  const offline = async b => { const m = await window.gwPrompt(`Mark ₹${b.amount} as received directly?\nType how it was paid: cash / upi / other`, "cash"); if (m == null) return; act(b, "stall_mark_paid_offline", { p_id: b.id, p_method: (m || "cash").toLowerCase() }); };
+  const note = async b => { const n = await window.gwPrompt("Message to vendor (shown on their stall card)", b.admin_note || ""); if (n == null) return; act(b, "stall_set_status", { p_id: b.id, p_status: b.status, p_note: n }); };
+  const list = apps.filter(a => filter === "all" || a.status === filter);
+  const sel = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "9px 11px", fontSize: 13.5, background: "#fff", color: W.ink };
+  const ev = (events || []).find(e => e.id === evId);
+  if (events === null) return <Center>Loading…</Center>;
+  if (!events.length) return <Center>No events you can manage yet. Create an event first.</Center>;
+  return (
+    <div style={{ padding: 14, maxWidth: 820 }}>
+      <div style={{ borderRadius: 18, padding: "16px 18px", color: "#fff", background: "linear-gradient(120deg,#F97316,#EC4899 55%,#8B5CF6)", marginBottom: 12 }}>
+        <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>🏪 VENDOR STALLS</div>
+        <select value={evId} onChange={e => setEvId(e.target.value)} style={{ ...sel, width: "100%", marginTop: 8, fontWeight: 800 }}>
+          {events.map(e => <option key={e.id} value={e.id}>{e.title}{e.event_date ? ` · ${e.event_date}` : ""}{Number(e.pending) ? ` · ${e.pending} new` : ""}</option>)}
+        </select>
+        {sum && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+          {[["NEW", sum.pending], ["APPROVED", sum.approved], ["PAID", sum.paid], ["COLLECTED", "₹" + (Number(sum.collected_online) + Number(sum.collected_offline)).toLocaleString("en-IN")], ["GLASSWINGS FEE", "₹" + Number(sum.commission).toLocaleString("en-IN")]].map(([l, v]) => (
+            <div key={l} style={{ flex: "1 1 90px", background: "rgba(255,255,255,.18)", borderRadius: 12, padding: "8px 10px" }}><div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1, opacity: .9 }}>{l}</div><div style={{ fontSize: 18, fontWeight: 950 }}>{v}</div></div>
+          ))}
+        </div>}
+      </div>
+      <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12 }}>
+        {[["apps", `📥 Applications (${apps.length})`], ["types", `🧩 Stall types (${types.length})`], ["settings", "⚙️ Page & rules"]].map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? "#DB2777" : W.soft }}>{l}</button>
+        ))}
+      </div>
+
+      {view === "apps" && <>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>{["all", "pending", "approved", "paid", "rejected", "cancelled"].map(k => <button key={k} onClick={() => setFilter(k)} style={gwChip(filter === k)}>{k === "all" ? "All" : (GW_STALL_STATUS[k] || [k])[0]}</button>)}</div>
+        {!types.length && <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: 12, fontSize: 13, color: "#9A3412", marginBottom: 10 }}>Add at least one stall type (🧩 Stall types) so the "Book a stall" card appears on this event's page.</div>}
+        {!list.length ? <Center>No applications yet.</Center> : list.map(b => {
+          const [, ic, cl, col, bg] = gwStallCat(b.category);
+          const [lab, fg, sbg] = GW_STALL_STATUS[b.status] || GW_STALL_STATUS.pending;
+          return (
+            <div key={b.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${col}`, borderRadius: 14, padding: 12, marginBottom: 9 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <PersonAvatar url={b.logo_url} name={b.business_name} size={40} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 850, color: W.ink, fontSize: 14.5 }}>{b.business_name}{b.stall_no && <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 900, color: "#fff", background: "linear-gradient(90deg,#6D28D9,#EC4899)", borderRadius: 7, padding: "2px 7px" }}>#{b.stall_no}</span>}</div>
+                  <div style={{ fontSize: 12, color: W.soft }}>{ic} {cl} · {b.stall_name} · ₹{Number(b.amount).toLocaleString("en-IN")} · {b.vendor_name || "Vendor"}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 900, color: fg, background: sbg, borderRadius: 999, padding: "4px 9px", whiteSpace: "nowrap" }}>{lab}</span>
+              </div>
+              {b.items && <div style={{ fontSize: 12.5, color: W.ink, marginTop: 7 }}>🛒 {b.items}</div>}
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>📞 <a href={`tel:${b.phone}`}>{b.phone}</a>{b.fssai ? ` · FSSAI ${b.fssai}` : ""}{b.payment_method ? ` · paid via ${b.payment_method}` : ""} · {gwTimeAgo(b.created_at)}</div>
+              {b.notes && <div style={{ fontSize: 12.5, color: "#92400E", background: "#FFFBEB", borderRadius: 8, padding: "5px 8px", marginTop: 6 }}>📝 {b.notes}</div>}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+                {b.status === "pending" && <button onClick={() => approve(b)} style={{ ...btn("#10B981", "#fff"), padding: "6px 11px", fontSize: 12 }}>✓ Approve</button>}
+                {["pending", "approved"].includes(b.status) && <button onClick={() => reject(b)} style={{ ...btn("#FEE2E2", "#B91C1C"), padding: "6px 11px", fontSize: 12 }}>✕ Reject</button>}
+                {b.status === "approved" && <button onClick={() => offline(b)} style={{ ...btn("#EDE9FE", "#6D28D9"), padding: "6px 11px", fontSize: 12 }}>💵 Mark paid (cash/UPI)</button>}
+                {["approved", "paid"].includes(b.status) && <button onClick={() => assign(b)} style={{ ...btn("#FFF4D6", "#92400E"), padding: "6px 11px", fontSize: 12 }}>🔢 {b.stall_no ? "Change stall no." : "Assign stall no."}</button>}
+                <a href={`https://wa.me/${waNum(b.phone)}?text=${encodeURIComponent(`Hi ${b.business_name}, this is the organiser of ${ev?.title || "the event"} on Glasswings regarding your stall application.`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "6px 11px", fontSize: 12, textDecoration: "none" }}>WhatsApp</a>
+                {["pending", "approved"].includes(b.status) && <button onClick={() => note(b)} style={{ ...btn("#F1F5F9", W.ink), padding: "6px 11px", fontSize: 12 }}>💬 Message</button>}
+              </div>
+            </div>
+          );
+        })}
+      </>}
+
+      {view === "types" && <>
+        {types.map(t => {
+          const [, ic, cl, col, bg] = gwStallCat(t.category);
+          const taken = apps.filter(a => a.stall_type_id === t.id && ["approved", "paid"].includes(a.status)).length;
+          return (
+            <div key={t.id} style={{ display: "flex", gap: 12, alignItems: "center", borderRadius: 14, padding: 12, marginBottom: 8, background: `linear-gradient(135deg,${bg},#fff)`, border: `1px solid ${col}44`, opacity: t.active ? 1 : .55 }}>
+              <div style={{ fontSize: 26 }}>{ic}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 900, color: W.ink }}>{t.name}{!t.active && <span style={{ fontSize: 11, color: W.soft }}> · hidden</span>}</div>
+                <div style={{ fontSize: 12, color: W.soft }}>{cl}{t.size_label ? ` · ${t.size_label}` : ""} · ₹{Number(t.price).toLocaleString("en-IN")} · {taken}/{t.quantity} booked</div>
+              </div>
+              <button onClick={() => setEditType({ ...t })} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 11px", fontSize: 12.5 }}>✏️ Edit</button>
+              <button onClick={() => delType(t)} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "7px 9px" }}><Trash2 size={14} /></button>
+            </div>
+          );
+        })}
+        <button onClick={() => setEditType({ name: "", category: "food", size_label: "10 x 10 ft", price: "", quantity: "10", includes: "- 1 table & 2 chairs\n- 1 power point (5A)\n- Listing on the event page", description: "", active: true })} style={{ ...btn("linear-gradient(90deg,#F97316,#EC4899)", "#fff"), padding: "11px 16px", fontWeight: 900, marginTop: 4 }}>➕ Add stall type</button>
+      </>}
+
+      {view === "settings" && settings && <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 14 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, fontWeight: 700, color: W.ink, marginBottom: 8 }}><input type="checkbox" checked={settings.open !== false} onChange={e => setSettings(s => ({ ...s, open: e.target.checked }))} /> Stall bookings open (shows "Book a stall" on the event page)</label>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, fontWeight: 700, color: W.ink }}><input type="checkbox" checked={settings.requires_approval !== false} onChange={e => setSettings(s => ({ ...s, requires_approval: e.target.checked }))} /> Review each application before the vendor can pay</label>
+        <div style={gwLeadLbl}>HEADLINE ON THE EVENT PAGE</div>
+        <input value={settings.headline || ""} onChange={e => setSettings(s => ({ ...s, headline: e.target.value }))} placeholder="e.g. 40 food & merch stalls · 15,000+ footfall expected!" style={gwLeadInp} />
+        <div style={gwLeadLbl}>VENDOR GUIDELINES (rich text)</div>
+        <GwRichEditor value={settings.guidelines || ""} onChange={v => setSettings(s => ({ ...s, guidelines: v }))} rows={5} placeholder={"# Who can apply\n- **Food & beverage** with valid FSSAI\n- Local brands & handmade products\n\n❌ No loud music from stalls"} />
+        <div style={gwLeadLbl}>SETUP DETAILS (rich text, shown on the Stall Pass)</div>
+        <GwRichEditor value={settings.setup_info || ""} onChange={v => setSettings(s => ({ ...s, setup_info: v }))} rows={4} placeholder={"⏰ **Setup:** 2 PM – 5 PM on event day\n⚡ Power till 11 PM\n🅿️ Vendor parking at Gate 3"} />
+        <div style={gwLeadLbl}>ORGANISER CONTACT NUMBER</div>
+        <input value={settings.contact_phone || ""} onChange={e => setSettings(s => ({ ...s, contact_phone: e.target.value }))} inputMode="tel" placeholder="Shown to confirmed vendors" style={gwLeadInp} />
+        <button disabled={saving} onClick={saveSettings} style={{ ...btn("linear-gradient(90deg,#F97316,#EC4899)", "#fff"), padding: "12px 18px", fontWeight: 900, marginTop: 14 }}>{saving ? "Saving…" : "Save page & rules"}</button>
+      </div>}
+
+      {editType && <Sheet onClose={() => setEditType(null)}>
+        <div style={{ fontWeight: 900, fontSize: 18, color: W.ink, marginBottom: 6 }}>🧩 {editType.id ? "Edit stall type" : "New stall type"}</div>
+        <div style={gwLeadLbl}>NAME *</div>
+        <input value={editType.name} onChange={e => setEditType(t => ({ ...t, name: e.target.value }))} placeholder="e.g. Food Stall · Premium" style={gwLeadInp} />
+        <div style={gwLeadLbl}>CATEGORY</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{GW_STALL_CATS.map(([k, ic, l, col]) => <button key={k} type="button" onClick={() => setEditType(t => ({ ...t, category: k }))} style={{ border: `1.5px solid ${col}`, background: editType.category === k ? col : "#fff", color: editType.category === k ? "#fff" : col, borderRadius: 999, padding: "6px 11px", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>{ic} {l}</button>)}</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>PRICE (₹)</div><input value={editType.price} onChange={e => setEditType(t => ({ ...t, price: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="5000" style={gwLeadInp} /></div>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>HOW MANY</div><input value={editType.quantity} onChange={e => setEditType(t => ({ ...t, quantity: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" placeholder="10" style={gwLeadInp} /></div>
+          <div style={{ flex: 1 }}><div style={gwLeadLbl}>SIZE</div><input value={editType.size_label || ""} onChange={e => setEditType(t => ({ ...t, size_label: e.target.value }))} placeholder="10 x 10 ft" style={gwLeadInp} /></div>
+        </div>
+        <div style={gwLeadLbl}>DESCRIPTION (rich text)</div>
+        <GwRichEditor value={editType.description || ""} onChange={v => setEditType(t => ({ ...t, description: v }))} rows={3} placeholder="**Prime spot** next to the main stage 🎵" />
+        <div style={gwLeadLbl}>WHAT'S INCLUDED (rich text)</div>
+        <GwRichEditor value={editType.includes || ""} onChange={v => setEditType(t => ({ ...t, includes: v }))} rows={4} />
+        <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, fontWeight: 700, color: W.ink, marginTop: 10 }}><input type="checkbox" checked={editType.active !== false} onChange={e => setEditType(t => ({ ...t, active: e.target.checked }))} /> Show to vendors</label>
+        <button onClick={saveType} style={{ ...btn("linear-gradient(90deg,#F97316,#EC4899)", "#fff"), width: "100%", justifyContent: "center", padding: 13, fontWeight: 900, marginTop: 14 }}>Save stall type</button>
+      </Sheet>}
+    </div>
+  );
+}
+// =================== END VENDOR STALLS ===================
+
 const GW_ADMIN_GROUPS = [
   ['Overview', ['dash','analytics']],
   ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
-  ['Events', ['events','private','leads','door','directory','rooms']],
+  ['Events', ['events','private','stalls','leads','door','directory','rooms']],
   ['Money', ['accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
   ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
-const GW_ADMIN_ICONS = {leads:'📋',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+const GW_ADMIN_ICONS = {leads:'📋',stalls:'🏪',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
 function AdminNavigation({ tabs, selected, onSelect, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const dialog = useRef(null), trigger = useRef(null);
@@ -14680,6 +15189,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     ...(caps.host ? [["events", "Events"], ["invite", "💌 INVITE"]] : []),
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...((leadAdmin || canManageOrganiserStaff) ? [["leads", leadTabLabel]] : []),
+    ...((isSuper || caps.host) ? [["stalls", "🏪 Stalls"]] : []),
     ...(canManageOrganiserStaff ? [["orgstaff", "🧑‍💼 My Staff"]] : []),
     ...((myEventsOnly && caps.privateMembers) ? [["orgmembers", "👥 My Members"]] : []),
     ...((canApprove || caps.door) ? [["checkin", "✅ Check-in"], ["doorsales", "💵 Door Sales"]] : []),
@@ -14734,6 +15244,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
         : seg === "emailmkt" ? <EmailMarketingPanel meId={meId} />
         : seg === "settle" ? <PromotersPanel />
         : seg === "orgapps" ? <OrganiserApplicationsAdmin onReload={onReload} events={events} />
+        : seg === "stalls" ? <AdminStallsPanel />
         : seg === "leads" ? ((isSuper || canApprove) ? <AdminLeadsPanel /> : <OrganiserLeadsPanel meId={meId} />)
         : seg === "orgstaff" ? <OrganiserStaffPanel />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
