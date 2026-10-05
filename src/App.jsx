@@ -572,10 +572,32 @@ function PushToggle({ user }) {
   );
 }
 
+// Every time the app sends a member ticket email, also send the ticket on WhatsApp (server sends each ticket once).
+if (typeof window !== "undefined" && window.fetch && !window.__gwWaTicketHook) {
+  window.__gwWaTicketHook = true;
+  const _gwFetch = window.fetch.bind(window);
+  window.fetch = (url, opts) => {
+    const p = _gwFetch(url, opts);
+    try {
+      if (url === "/api/email/ticket" && opts && typeof opts.body === "string") {
+        const b = JSON.parse(opts.body);
+        if (!b.mode && b.event_id) p.then(() => _gwFetch("/api/whatsapp/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: opts.body }).catch(() => {})).catch(() => {});
+      }
+    } catch { }
+    return p;
+  };
+}
 function GuestTicketPage({ code }) {
   const [t, setT] = useState(undefined);
   const [showGT, setShowGT] = useState(false);
-  useEffect(() => { supabase.rpc("gw_guest_ticket_v2", { p_code: code }).then(({ data, error }) => setT(error ? null : (data || null))); }, [code]);
+  useEffect(() => {
+    supabase.rpc("gw_guest_ticket_v2", { p_code: code }).then(async ({ data, error }) => {
+      if (!error && data) return setT(data);
+      // not a guest ticket: try a member ticket (link sent on WhatsApp)
+      const { data: m, error: e2 } = await supabase.rpc("gw_member_ticket_public", { p_code: code });
+      setT(!e2 && m ? m : null);
+    });
+  }, [code]);
   if (t === undefined) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#5d6f6b", fontSize: 14 }}>Loading your ticket…</div>;
   if (!t) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#eef2f1", padding: 20 }}>
@@ -13455,7 +13477,7 @@ function AdminLeadsPanel() {
     const up = Object.entries(pricing).map(([k, v]) => { const [event_type, budget_band] = k.split("|"); return { event_type, budget_band, credits: Math.max(0, Math.floor(Number(v) || 0)) }; });
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
       supabase.from("lead_pricing").upsert(up),
-      supabase.from("lead_settings").update({ max_unlocks: Math.max(1, Number(settings.max_unlocks) || 5), auto_publish: !!settings.auto_publish, default_credits: Math.max(0, Number(settings.default_credits) || 0), wa_campaign: String(settings.wa_campaign || "").trim() || null, auto_alert: !!settings.auto_alert, pro_enabled: settings.pro_enabled !== false, pro_price: Math.max(0, Number(settings.pro_price) || 0), pro_days: Math.max(1, Number(settings.pro_days) || 30), pro_discount_pct: Math.min(100, Math.max(0, Number(settings.pro_discount_pct) || 0)), pro_early_hours: Math.max(0, Number(settings.pro_early_hours) || 0), booking_commission_pct: Math.min(50, Math.max(0, Number(settings.booking_commission_pct) || 0)), booking_default_advance_pct: Math.min(100, Math.max(10, Number(settings.booking_default_advance_pct) || 30)), booking_refund_lead_fee: settings.booking_refund_lead_fee !== false, updated_at: new Date().toISOString() }).eq("id", 1),
+      supabase.from("lead_settings").update({ max_unlocks: Math.max(1, Number(settings.max_unlocks) || 5), auto_publish: !!settings.auto_publish, default_credits: Math.max(0, Number(settings.default_credits) || 0), wa_campaign: String(settings.wa_campaign || "").trim() || null, auto_alert: !!settings.auto_alert, pro_enabled: settings.pro_enabled !== false, pro_price: Math.max(0, Number(settings.pro_price) || 0), pro_days: Math.max(1, Number(settings.pro_days) || 30), pro_discount_pct: Math.min(100, Math.max(0, Number(settings.pro_discount_pct) || 0)), pro_early_hours: Math.max(0, Number(settings.pro_early_hours) || 0), booking_commission_pct: Math.min(50, Math.max(0, Number(settings.booking_commission_pct) || 0)), booking_default_advance_pct: Math.min(100, Math.max(10, Number(settings.booking_default_advance_pct) || 30)), booking_refund_lead_fee: settings.booking_refund_lead_fee !== false, ticket_wa_enabled: settings.ticket_wa_enabled !== false, ticket_wa_campaign: String(settings.ticket_wa_campaign || "").trim() || null, updated_at: new Date().toISOString() }).eq("id", 1),
     ]);
     setSaving(false);
     window.gwConfirm(e1 || e2 ? (e1 || e2).message : "✅ Saved. New prices apply to new leads only.", () => {});
@@ -13612,6 +13634,15 @@ function AdminLeadsPanel() {
             }} style={{ ...btn("#25D366", "#fff"), padding: "8px 14px" }}>{alertBusy === "test" ? "Sending…" : "🧪 Send test"}</button>
           </div>
           <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Save first, then test. Organisers choose their cities and event types in their own Event Leads tab.</div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <div style={{ fontWeight: 900, color: W.ink, marginBottom: 4 }}>🎟 Tickets on WhatsApp</div>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.5 }}>Every member ticket (purchase, credits, RSVP approval, admin-issued) is sent once on WhatsApp with its QR code, through your AiSensy ticket campaign.</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: W.ink, marginBottom: 10 }}>
+            <input type="checkbox" checked={settings.ticket_wa_enabled !== false} onChange={e => setSettings(s => ({ ...s, ticket_wa_enabled: e.target.checked }))} /> Send tickets on WhatsApp
+          </label>
+          <input value={settings.ticket_wa_campaign ?? ""} onChange={e => setSettings(s => ({ ...s, ticket_wa_campaign: e.target.value }))} placeholder="AiSensy ticket campaign name, e.g. ticket_confirmation_v2" style={{ ...sel, width: "100%", boxSizing: "border-box" }} />
+          <TicketWaLog />
         </div>
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, overflowX: "auto" }}>
           <div style={{ fontWeight: 900, color: W.ink, marginBottom: 4 }}>Unlock price (credits) by event type × budget</div>
@@ -14081,6 +14112,22 @@ function AdminBookingsView() {
             {b.status === "confirmed" && <button onClick={() => setStatus(b, "completed")} style={{ ...btn("#E7F6EF", W.teal), padding: "5px 10px", fontSize: 11.5 }}>✓ Event completed</button>}
             <button onClick={() => setStatus(b, "cancelled")} style={{ ...btn("#F0F2F5", "#C0392B"), padding: "5px 10px", fontSize: 11.5 }}>Cancel booking</button>
           </div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+function TicketWaLog() {
+  const [rows, setRows] = useState(null);
+  const load = () => supabase.rpc("admin_ticket_whatsapp_log").then(({ data }) => setRows(data || []));
+  useEffect(() => { load(); }, []);
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ fontSize: 12, fontWeight: 800, color: W.soft, flex: 1 }}>RECENT TICKET WHATSAPPS</div><button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "4px 10px", fontSize: 11.5 }}>↻</button></div>
+      {rows === null ? <div style={{ fontSize: 12.5, color: W.soft, marginTop: 6 }}>Loading…</div> : !rows.length ? <div style={{ fontSize: 12.5, color: W.soft, marginTop: 6 }}>None yet. The next ticket issued will show here.</div> : rows.slice(0, 15).map((r, i) => (
+        <div key={i} style={{ fontSize: 12, padding: "6px 0", borderTop: `1px solid ${W.line}`, color: W.ink }}>
+          <b style={{ color: r.status === "sent" ? W.teal : "#C0392B" }}>{r.status === "sent" ? "✓ Sent" : r.status === "no_phone" ? "No phone" : "✕ Failed"}</b> · {r.name || "Member"} · {r.event_title || ""} <span style={{ color: W.soft }}>· {gwTimeAgo(r.created_at)}</span>
+          {r.status === "failed" && r.detail && <div style={{ color: "#C0392B" }}>AiSensy says: {r.detail}</div>}
         </div>
       ))}
     </div>
