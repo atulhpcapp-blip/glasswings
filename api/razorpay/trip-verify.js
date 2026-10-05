@@ -1,6 +1,7 @@
 // POST /api/razorpay/trip-verify
 // body: { access_token, razorpay_order_id, razorpay_payment_id, razorpay_signature }
 import { body, getUser, rpc, rzpGetPayment, rzpCapture, signatureOk, missingEnv } from "./_booking-lib.js";
+import { notifyTrip } from "../whatsapp/_trip-wa.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -17,6 +18,7 @@ export default async function handler(req, res) {
     if (pay.status !== "captured") return res.status(400).json({ error: `Payment is ${pay.status}` });
     const out = await rpc("trip_mark_paid", { p_order: razorpay_order_id, p_payment: razorpay_payment_id, p_amount_paise: pay.amount });
     if (!out?.ok) return res.status(400).json({ error: out?.error || "Couldn't confirm the payment" });
+    try { await notifyTrip(out.booking_id); } catch { /* WhatsApp is a bonus; never block the payment */ }
     return res.status(200).json({ ok: true });
   } catch (e) {
     return res.status(500).json({ error: e.message || "Couldn't confirm the payment" });
