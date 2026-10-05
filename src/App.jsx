@@ -15645,7 +15645,7 @@ function TripSetupTab({ event }) {
     const { data, error } = await supabase.rpc("trip_board", { p_event: event.id });
     if (error) return setErr(error.message);
     setAdmin(!!data?.is_admin);
-    setS({ ...defaults, ...(data?.settings || {}), event_id: event.id });
+    setS({ ...defaults, ...Object.fromEntries(Object.entries(data?.settings || {}).filter(([, v]) => v !== null)), event_id: event.id });
     setPk(data?.packages || []); setEx(data?.extras || []);
   };
   useEffect(() => { load(); }, [event.id]);
