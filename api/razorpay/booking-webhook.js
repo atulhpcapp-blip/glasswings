@@ -8,6 +8,7 @@
 // If RAZORPAY_WEBHOOK_SECRET is set, the Razorpay signature is checked too.
 import crypto from "node:crypto";
 import { rpc, rzpGetPayment, missingEnv, RZP_KEY_ID, RZP_SECRET } from "./_booking-lib.js";
+import { notifyTrip } from "../whatsapp/_trip-wa.js";
 
 const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RZP_WEBHOOK_SECRET || "";
 
@@ -70,6 +71,7 @@ export default async function handler(req, res) {
     if (pay.status !== "captured") return res.status(200).json({ ok: true, ignored: `payment ${pay.status}` });
     if (isTrip) {
       const to = await rpc("trip_mark_paid", { p_order: order.id, p_payment: pay.id, p_amount_paise: pay.amount });
+      if (to?.ok) { try { await notifyTrip(to.booking_id); } catch { } }
       return res.status(200).json({ ok: !!to?.ok, already: !!to?.already, detail: to?.error || undefined });
     }
     if (isStall) {
