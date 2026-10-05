@@ -19223,6 +19223,11 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
           <input type="checkbox" defaultChecked={profile?.meet_visible !== false} onChange={async (e) => { await supabase.from("profiles").update({ meet_visible: e.target.checked }).eq("id", user.id); }} style={{ width: 20, height: 20, accentColor: W.teal, cursor: "pointer" }} />
         </div>
         <button onClick={() => supabase.auth.signOut()} style={{ marginTop: 16, width: "100%", padding: 14, borderRadius: 12, border: `1px solid ${W.line}`, background: "#fff", color: "#C0392B", fontWeight: 700, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><LogOut size={18} />Log out</button>
+        <section aria-label="Account deletion" style={{ marginTop: 16, padding: 16, border: "1px solid #F2C4C0", borderRadius: 14, background: "#FFF8F7" }}>
+          <div style={{ fontWeight: 800, color: "#922B21", fontSize: 16 }}>Delete account</div>
+          <p style={{ fontSize: 13, lineHeight: 1.6, margin: "8px 0 14px", color: W.ink }}>Request permanent deletion of your Glasswings account and associated personal data. Our team will verify and process your request.</p>
+          <a href="/delete-account.html" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 44, padding: "12px 16px", boxSizing: "border-box", borderRadius: 10, background: "#922B21", color: "#fff", fontWeight: 800, textDecoration: "none", textAlign: "center" }}>Request account deletion</a>
+        </section>
         <div style={{ marginTop: 20 }}><LegalLinks /></div>
         {streak && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 14 }}>
