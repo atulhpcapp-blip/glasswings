@@ -1158,7 +1158,7 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "", 
       <td class="r">${r.events_count}</td><td class="r">${r.tickets_sold}</td>
       <td class="r"><b>${f(r.gross)}</b></td>
       <td class="r rz">${r.gateway_pct == null ? "—" : `${r.gateway_pct}%<br><b>− ${f(r.gateway_fee)}</b>`}</td>
-      <td class="r pf">${r.pct == null ? "—" : `${r.pct}%<br><b>− ${f(r.platform_cut)}</b>`}</td>
+      <td class="r pf">${r.platform_cut == null ? "—" : `${Number(r.volume_events) > 0 ? r.effective_pct + "% eff." : r.pct + "%"}<br><b>− ${f(r.platform_cut)}</b>`}</td>
       <td class="r pm">${Number(r.promo_fees) > 0 ? `<b>− ${f(r.promo_fees)}</b>` : "—"}</td>
       <td class="r pm">${Number(r.extra_fees) > 0 ? `<b>− ${f(r.extra_fees)}</b>` : "—"}</td>
       <td class="r pay"><b>${r.payable == null ? "—" : f(r.payable)}</b></td>
@@ -1168,7 +1168,7 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "", 
       <div class="boxes">
         <div class="bx" style="background:#E8F2FB;color:#1B6FB8"><div class="bl">GROSS COLLECTED</div><div class="bv">${f(single.gross)}</div></div>
         <div class="bx" style="background:#FBE9E7;color:#C0392B"><div class="bl">RAZORPAY FEE ${single.gateway_pct == null ? "" : "(" + single.gateway_pct + "%)"}</div><div class="bv">${single.gateway_fee == null ? "—" : "− " + f(single.gateway_fee)}</div></div>
-        <div class="bx" style="background:#FDF6EC;color:#B45309"><div class="bl">PLATFORM CUT ${single.pct == null ? "" : "(" + single.pct + "%)"}</div><div class="bv">${single.platform_cut == null ? "—" : "− " + f(single.platform_cut)}</div></div>
+        <div class="bx" style="background:#FDF6EC;color:#B45309"><div class="bl">PLATFORM CUT ${single.platform_cut == null ? "" : "(" + (Number(single.volume_events) > 0 ? single.effective_pct + "% effective, volume pricing" : single.pct + "%") + ")"}</div><div class="bv">${single.platform_cut == null ? "—" : "− " + f(single.platform_cut)}</div></div>
         ${Number(single.promo_fees) > 0 ? `<div class="bx" style="background:#EFEAFB;color:#7C3AED"><div class="bl">PROMOTION FEES</div><div class="bv">− ${f(single.promo_fees)}</div></div>` : ""}
         ${Number(single.extra_fees) > 0 ? `<div class="bx" style="background:#FFF3E6;color:#C2410C"><div class="bl">OTHER FEES</div><div class="bv">− ${f(single.extra_fees)}</div></div>` : ""}
         <div class="bx" style="background:#E7F6EF;color:#008069"><div class="bl">PAYABLE TO ORGANISER</div><div class="bv">${single.payable == null ? "—" : f(single.payable)}</div></div>
@@ -1298,7 +1298,7 @@ function SettlementsPanel({ isSuper, focusHostId = null, organisationName = "", 
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>TICKETS</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{r.tickets_sold}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>GROSS (ALL)</div><div style={{ fontWeight: 800, color: W.ink, fontSize: 16 }}>{inr(r.gross)}</div><div style={{ fontSize: 10.5, color: W.soft, marginTop: 1 }}>online {inr(r.online_gross)} · door {inr(r.door_gross)}</div></div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>RAZORPAY FEE</div><div style={{ fontWeight: 800, color: "#C0392B", fontSize: 16 }}>{r.gateway_pct == null ? "set % first" : "− " + inr(r.gateway_fee)}</div></div>
-                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PLATFORM CUT</div><div style={{ fontWeight: 800, color: "#B45309", fontSize: 16 }}>{r.pct == null ? "set % first" : "− " + inr(r.platform_cut)}</div></div>
+                <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PLATFORM CUT</div><div style={{ fontWeight: 800, color: "#B45309", fontSize: 16 }}>{r.platform_cut == null ? "set % first" : "− " + inr(r.platform_cut)}</div>{Number(r.volume_events) > 0 && <div style={{ fontSize: 10.5, color: "#7C3AED", fontWeight: 800, marginTop: 1 }}>incl. volume pricing on {r.volume_events} event{Number(r.volume_events) === 1 ? "" : "s"} · effective {r.effective_pct}%</div>}</div>
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>PROMO FEES</div><div style={{ fontWeight: 800, color: "#7C3AED", fontSize: 16 }}>− {inr(r.promo_fees || 0)}</div></div>
                 {feeTotalFor(r.host_id) > 0 && <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>OTHER FEES</div><div style={{ fontWeight: 800, color: "#C2410C", fontSize: 16 }}>− {inr(feeTotalFor(r.host_id))}</div></div>}
                 <div><div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>NET PAYABLE</div><div style={{ fontWeight: 800, color: W.teal, fontSize: 16 }}>{netPayable(r) == null ? "—" : inr(netPayable(r))}</div></div>
@@ -15046,6 +15046,105 @@ function AdminSponsorsPanel() {
 }
 // =================== END SPONSOR PACKAGES ===================
 
+// ===================== VOLUME PRICING (platform fee per event) =====================
+function EventFeeCard({ event, canEdit }) {
+  const [st, setSt] = useState(null);
+  const [err, setErr] = useState("");
+  const [mode, setMode] = useState("default");
+  const [perTicket, setPerTicket] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [tiersOpen, setTiersOpen] = useState(false);
+  const [tiers, setTiers] = useState([]);
+  const load = async () => {
+    const { data, error } = await supabase.rpc("event_fee_status", { p_event: event.id });
+    if (error) { setErr(/does not exist|not find/i.test(error.message) ? "Run volume_pricing.sql in Supabase to enable this." : error.message); return; }
+    setErr(""); setSt(data); setMode(data?.mode || "default"); setPerTicket(data?.fee_per_ticket != null ? String(data.fee_per_ticket) : "");
+  };
+  useEffect(() => { load(); }, [event.id]);
+  const save = async () => {
+    setBusy(true);
+    const { error } = await supabase.rpc("admin_set_event_fee", { p_event: event.id, p_mode: mode, p_per_ticket: mode === "per_ticket" ? Number(perTicket) || 0 : null });
+    setBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    window.gwConfirm("✅ Platform fee for this event updated. Settlements use it right away.", () => {}); load();
+  };
+  const openTiers = async () => { const { data } = await supabase.from("platform_fee_tiers").select("*").order("min_tickets"); setTiers((data || []).map(t => ({ ...t, min_tickets: String(t.min_tickets), pct: String(t.pct) }))); setTiersOpen(true); };
+  const saveTiers = async () => {
+    const clean = tiers.map(t => ({ min_tickets: Math.max(0, parseInt(t.min_tickets, 10) || 0), pct: Math.min(100, Math.max(0, Number(t.pct) || 0)) }));
+    if (!clean.some(t => t.min_tickets === 0)) return window.gwConfirm("The first tier must start at 0 tickets.", () => {});
+    if (new Set(clean.map(t => t.min_tickets)).size !== clean.length) return window.gwConfirm("Two tiers start at the same ticket count.", () => {});
+    const { error: e1 } = await supabase.from("platform_fee_tiers").delete().gte("min_tickets", 0);
+    const { error: e2 } = e1 ? { error: e1 } : await supabase.from("platform_fee_tiers").insert(clean);
+    if (e2) return window.gwConfirm(e2.message, () => {});
+    setTiersOpen(false); load();
+  };
+  if (err) return canEdit ? <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: 12, fontSize: 13, color: "#9A3412", margin: "8px 0 12px" }}>{err}</div> : null;
+  if (!st) return null;
+  const ladder = st.tiers || [];
+  const tierColors = ["#F97316", "#EC4899", "#8B5CF6", "#06B6D4", "#10B981", "#EAB308"];
+  const curIdx = ladder.reduce((acc, t, i) => (st.paid_tickets >= t.min ? i : acc), 0);
+  const nextMin = st.next_min, prevMin = ladder[curIdx]?.min || 0;
+  const pct = nextMin ? Math.min(100, Math.round((st.paid_tickets - prevMin) / Math.max(1, nextMin - prevMin) * 100)) : 100;
+  const modeLabel = { default: "Standard commission", tiered: "Volume pricing (tiered)", per_ticket: "Flat fee per ticket" }[st.mode] || st.mode;
+  return (
+    <div style={{ borderRadius: 18, overflow: "hidden", margin: "8px 0 14px", boxShadow: "0 10px 26px rgba(139,92,246,.18)" }}>
+      <div style={{ background: "linear-gradient(120deg,#0E5C54,#008069 40%,#8B5CF6)", color: "#fff", padding: "14px 16px" }}>
+        <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>💼 PLATFORM FEE · {modeLabel.toUpperCase()}</div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: 6 }}>
+          <div style={{ fontSize: 34, fontWeight: 950, lineHeight: 1 }}>{st.mode === "per_ticket" ? `₹${Number(st.fee_per_ticket || 0).toLocaleString("en-IN")}` : st.current_pct != null ? `${Number(st.current_pct)}%` : "—"}</div>
+          <div style={{ fontSize: 12.5, opacity: .95, paddingBottom: 4 }}>{st.mode === "per_ticket" ? "per paid ticket" : st.current_pct == null ? "commission not set yet" : "of ticket revenue"}</div>
+          <div style={{ marginLeft: "auto", textAlign: "right" }}><div style={{ fontSize: 22, fontWeight: 950 }}>{Number(st.paid_tickets).toLocaleString("en-IN")}</div><div style={{ fontSize: 11, opacity: .9 }}>paid tickets</div></div>
+        </div>
+      </div>
+      {st.mode === "tiered" && <div style={{ background: "#fff", padding: "14px 16px" }}>
+        <div style={{ display: "flex", gap: 6 }}>
+          {ladder.map((t, i) => {
+            const on = i === curIdx, done = i < curIdx, c = tierColors[i % tierColors.length];
+            return <div key={i} style={{ flex: 1, borderRadius: 12, padding: "8px 6px", textAlign: "center", background: on ? `linear-gradient(135deg,${c},${c}CC)` : done ? `${c}22` : "#F1F5F9", color: on ? "#fff" : done ? c : W.soft, border: on ? "none" : `1px solid ${done ? c + "55" : "#E2E8F0"}`, boxShadow: on ? `0 6px 14px ${c}55` : "none" }}>
+              <div style={{ fontSize: 18, fontWeight: 950 }}>{Number(t.pct)}%</div>
+              <div style={{ fontSize: 10.5, fontWeight: 800 }}>{i === ladder.length - 1 ? `${Number(t.min).toLocaleString("en-IN")}+` : `${Number(t.min).toLocaleString("en-IN")}–${Number(ladder[i + 1].min - 1).toLocaleString("en-IN")}`}</div>
+            </div>;
+          })}
+        </div>
+        {nextMin ? <>
+          <div style={{ height: 9, background: "#F1F5F9", borderRadius: 9, overflow: "hidden", marginTop: 12 }}><div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg,#F97316,#EC4899,#8B5CF6)" }} /></div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: W.ink, marginTop: 7 }}>🚀 Sell <span style={{ color: "#DB2777" }}>{Number(st.to_next).toLocaleString("en-IN")} more</span> paid tickets and the fee drops to <span style={{ color: "#7C3AED" }}>{Number(st.next_pct)}%</span> for the whole event.</div>
+        </> : <div style={{ fontSize: 13, fontWeight: 800, color: "#047857", marginTop: 10 }}>🏆 Lowest fee tier reached!</div>}
+      </div>}
+      {canEdit && <div style={{ background: "#FAFAFF", borderTop: "1px solid #EDE9FE", padding: "12px 16px" }}>
+        <div style={{ fontSize: 11.5, fontWeight: 900, color: "#6D28D9", letterSpacing: 1, marginBottom: 7 }}>ADMIN · FEE FOR THIS EVENT</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {[["default", `Standard (${st.org_pct != null ? Number(st.org_pct) + "%" : "organiser %"})`], ["tiered", "Volume tiers"], ["per_ticket", "₹ per ticket"]].map(([k, l]) => <button key={k} onClick={() => setMode(k)} style={gwChip(mode === k)}>{l}</button>)}
+        </div>
+        {mode === "per_ticket" && <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}><span style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>₹</span><input value={perTicket} onChange={e => setPerTicket(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="20" style={{ ...gwLeadInp, width: 110, padding: "8px 10px" }} /><span style={{ fontSize: 12.5, color: W.soft }}>per paid ticket</span></div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          <button disabled={busy} onClick={save} style={{ ...btn("linear-gradient(90deg,#008069,#8B5CF6)", "#fff"), padding: "9px 14px", fontWeight: 900 }}>{busy ? "Saving…" : "Save fee"}</button>
+          <button onClick={openTiers} style={{ ...btn("#EDE9FE", "#6D28D9"), padding: "9px 14px" }}>⚙️ Edit volume tiers (all events)</button>
+        </div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 7, lineHeight: 1.45 }}>Paid tickets = online orders + door sales (cash/UPI). Free and complimentary tickets don't count towards tiers.</div>
+      </div>}
+      {tiersOpen && <Sheet onClose={() => setTiersOpen(false)}>
+        <div style={{ fontWeight: 900, fontSize: 18, color: W.ink }}>⚙️ Volume tiers</div>
+        <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>Used by every event set to "Volume tiers". When an event crosses a tier, the lower % applies to the whole event.</div>
+        {tiers.map((t, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 13, color: W.ink, fontWeight: 700, width: 64 }}>From</span>
+            <input value={t.min_tickets} onChange={e => setTiers(ts => ts.map((x, j) => j === i ? { ...x, min_tickets: e.target.value.replace(/\D/g, "") } : x))} inputMode="numeric" style={{ ...gwLeadInp, width: 100, padding: "8px 10px" }} />
+            <span style={{ fontSize: 13, color: W.soft }}>tickets →</span>
+            <input value={t.pct} onChange={e => setTiers(ts => ts.map((x, j) => j === i ? { ...x, pct: e.target.value.replace(/[^\d.]/g, "") } : x))} inputMode="decimal" style={{ ...gwLeadInp, width: 76, padding: "8px 10px" }} />
+            <span style={{ fontSize: 13, color: W.soft }}>%</span>
+            <button onClick={() => setTiers(ts => ts.filter((_, j) => j !== i))} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 9px" }}>✕</button>
+          </div>
+        ))}
+        <button onClick={() => setTiers(ts => [...ts, { min_tickets: "", pct: "" }])} style={{ ...btn("#F1F5F9", W.ink), padding: "8px 12px" }}>➕ Add tier</button>
+        <button onClick={saveTiers} style={{ ...btn("linear-gradient(90deg,#008069,#8B5CF6)", "#fff"), width: "100%", justifyContent: "center", padding: 13, fontWeight: 900, marginTop: 14 }}>Save tiers</button>
+      </Sheet>}
+    </div>
+  );
+}
+// =================== END VOLUME PRICING ===================
+
+
 
 const GW_ADMIN_GROUPS = [
   ['Overview', ['dash','analytics']],
@@ -19005,7 +19104,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <GenderBalance ev={e} onUpdate={onUpdate} />
                     <CreditCapEditor ev={e} onUpdate={onUpdate} />
                   </>)}
-                  {mSeg === "sales" && <EventSalesTab event={e} />}
+                  {mSeg === "sales" && <><EventFeeCard event={e} canEdit={!!(isSuper || canApprove)} /><EventSalesTab event={e} /></>}
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
                   {mSeg === "analytics" && <EventAnalyticsTab event={e} />}
                   {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} isSuper={isSuper} />}
