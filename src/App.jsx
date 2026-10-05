@@ -13034,7 +13034,7 @@ function PlanEventSheet({ profile, onClose }) {
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 8, padding: booked ? "8px 9px" : 0, borderRadius: 10, background: booked ? "#F3EEFD" : "transparent" }}>
                   <div onClick={() => o.has_profile && setViewOrg(o.organiser_id)} style={{ cursor: o.has_profile ? "pointer" : "default" }}><PersonAvatar url={o.avatar} name={o.name} size={34} /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: W.ink }}>{o.name || "Organiser"}{o.verified && <GwVerified />}{booked && <span style={{ fontSize: 11, color: "#7C3AED", fontWeight: 900 }}> · BOOKED</span>}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: W.ink }}>{o.name || "Organiser"}{o.verified && <GwVerified />}{o.pro && <GwPro />}{booked && <span style={{ fontSize: 11, color: "#7C3AED", fontWeight: 900 }}> · BOOKED</span>}</div>
                     <div><GwRatingLine rating={o.rating} size={11.5} /></div>
                     {canRate && <div style={{ marginTop: 3, fontSize: 11.5, color: W.soft }}>{o.my_rating ? "Your rating: " : "Rate them: "}<GwStars value={o.my_rating || 0} size={17} onPick={n => rate(r, o, n)} /></div>}
                   </div>
@@ -13097,6 +13097,23 @@ function OrganiserLeadsPanel({ meId }) {
     setBizProfile(bp || null); setMyStats(st || null);
   };
   useEffect(() => { loadBiz(); }, [meId]);
+  const [pro, setPro] = useState(null);
+  const [proBusy, setProBusy] = useState(false);
+  const loadPro = async () => { const { data } = await supabase.rpc("my_pro_status"); setPro(data || null); };
+  useEffect(() => { loadPro(); }, [meId]);
+  const fmtD = d => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const buyPro = () => window.gwConfirm(`${pro.is_pro ? "Renew" : "Get"} Glasswings Pro for ${pro.price} credits?\n\n• See new leads ${pro.early_hours} hour${Number(pro.early_hours) === 1 ? "" : "s"} before other organisers\n• ${pro.discount_pct}% off every lead unlock\n• ⭐ PRO badge, shown first to clients\n\nValid ${pro.days} days${pro.is_pro ? " (added to your current Pro time)" : ""}.`, async () => {
+    setProBusy(true);
+    const { data, error } = await supabase.rpc("buy_organiser_pro");
+    setProBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) {
+      if (data?.reason === "credits") return window.gwConfirm(`Pro needs ${data.need} credits. You have ${data.have}.\n\nBuy credits now?`, () => setBuyOpen(true));
+      return window.gwConfirm(data?.reason === "disabled" ? "Pro isn't available right now." : "Couldn't activate Pro right now.", () => {});
+    }
+    window.gwConfirm(`⭐ You're Pro until ${fmtD(data.pro_until)}!`, () => {});
+    loadPro(); load();
+  });
   const onBizSaved = async row => {
     await loadBiz();
     // first time: use the profile's cities & event types for lead alerts too
@@ -13132,14 +13149,14 @@ function OrganiserLeadsPanel({ meId }) {
     setBal(Number(pr?.game_credits) || 0); setMyName(pr?.full_name || "");
   };
   useEffect(() => { load(); }, [meId]);
-  const unlock = r => window.gwConfirm(`Unlock this ${gwLeadType(r.event_type)[2].toLowerCase()} lead for ${r.unlock_cost} credits?\n\nYou'll get the client's name, phone & email.`, async () => {
+  const unlock = r => window.gwConfirm(`Unlock this ${gwLeadType(r.event_type)[2].toLowerCase()} lead for ${r.my_cost ?? r.unlock_cost} credits?${r.my_cost != null && r.my_cost < r.unlock_cost ? ` (Pro price, normally ${r.unlock_cost})` : ""}\n\nYou'll get the client's name, phone & email.`, async () => {
     setBusy(r.id);
     const { data, error } = await supabase.rpc("unlock_event_lead", { p_request: r.id });
     setBusy(null);
     if (error) return window.gwConfirm(error.message, () => {});
     if (!data?.ok) {
       if (data?.reason === "credits") return window.gwConfirm(`You need ${data.need} credits. You have ${data.have}.\n\nBuy credits now?`, () => setBuyOpen(true));
-      const msg = { full: "Sorry, this lead has already been taken by the maximum number of organisers.", closed: "This request is no longer open.", own_request: "This is your own request.", not_organiser: "Only approved organisers can unlock leads." }[data?.reason] || "Couldn't unlock right now.";
+      const msg = { pro_only: "This lead is in Pro early access right now. It opens to all organisers soon, or go Pro to unlock it now.", full: "Sorry, this lead has already been taken by the maximum number of organisers.", closed: "This request is no longer open.", own_request: "This is your own request.", not_organiser: "Only approved organisers can unlock leads." }[data?.reason] || "Couldn't unlock right now.";
       window.gwConfirm(msg, () => {}); return load();
     }
     setTab("mine"); load();
@@ -13175,6 +13192,28 @@ function OrganiserLeadsPanel({ meId }) {
         </div>
         <button onClick={() => setBuyOpen(true)} style={{ ...btn("#fff", W.teal), padding: "9px 14px" }}>+ Buy credits</button>
       </div>
+      {pro && pro.enabled && (pro.is_pro ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, borderRadius: 14, padding: "12px 14px", marginBottom: 10, background: "linear-gradient(135deg,#FFF6D8,#FFE08A)", border: "1px solid #F5C451" }}>
+          <div style={{ fontSize: 28 }}>⭐</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 900, color: "#5B3A00", fontSize: 14.5 }}>You're Pro until {fmtD(pro.pro_until)}</div>
+            <div style={{ fontSize: 12, color: "#7A5200" }}>{pro.early_hours > 0 ? `${pro.early_hours}h early access · ` : ""}{pro.discount_pct}% off unlocks{Number(pro.saved) > 0 ? ` · saved ${pro.saved} credits so far` : ""}</div>
+            {new Date(pro.pro_until) - Date.now() < 5 * 86400000 && <div style={{ fontSize: 12, color: "#B45309", fontWeight: 800 }}>Expires soon. Renew to keep early access.</div>}
+          </div>
+          <button disabled={proBusy} onClick={buyPro} style={{ ...btn("#5B3A00", "#FFE08A"), padding: "8px 12px", fontSize: 12.5 }}>{proBusy ? "…" : "Renew"}</button>
+        </div>
+      ) : (
+        <div style={{ borderRadius: 14, padding: "14px 15px", marginBottom: 10, color: "#fff", background: "linear-gradient(135deg,#3B2A00,#7A5200 55%,#C98A00)" }}>
+          <div style={{ fontWeight: 900, fontSize: 16 }}>⭐ Go Pro. Get leads before everyone else.</div>
+          <div style={{ fontSize: 12.5, opacity: .95, marginTop: 5, lineHeight: 1.55 }}>
+            {pro.early_hours > 0 && <>• See new leads <b>{pro.early_hours} hour{Number(pro.early_hours) === 1 ? "" : "s"} early</b>, before other organisers<br /></>}
+            • <b>{pro.discount_pct}% off</b> every lead unlock<br />
+            • ⭐ PRO badge, shown first to clients
+          </div>
+          {Number(pro.early_waiting) > 0 && <div style={{ background: "rgba(255,255,255,.15)", borderRadius: 9, padding: "7px 10px", fontSize: 12.5, fontWeight: 800, marginTop: 9 }}>🔒 {pro.early_waiting} new lead{Number(pro.early_waiting) === 1 ? " is" : "s are"} in Pro early access right now</div>}
+          <button disabled={proBusy} onClick={buyPro} style={{ ...btn("#FFE08A", "#3B2A00"), padding: "10px 16px", marginTop: 11, fontWeight: 900 }}>{proBusy ? "…" : `Go Pro · ${pro.price} credits / ${pro.days} days`}</button>
+        </div>
+      ))}
       <HelpBox title="How leads work" tips={["Clients post weddings, birthdays, corporate and community events they want organised.", "Contact details stay hidden until you unlock the lead with credits.", "Each lead goes to at most a few organisers, so contact the client quickly.", "Fake or wrong-number lead? Tap 'Report' and we'll refund your credits after review."]} />
       {bizProfile !== undefined && <div style={{ background: "#fff", border: `1px solid ${bizProfile ? W.line : "#F5D9A8"}`, borderRadius: 14, padding: "12px 14px", marginTop: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -13238,7 +13277,7 @@ function OrganiserLeadsPanel({ meId }) {
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
               <div style={{ fontSize: 26 }}>{ic}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 900, color: W.ink, fontSize: 15 }}>{!r.unlocked && prevSeen && new Date(r.created_at) > new Date(prevSeen) && <span style={{ fontSize: 10, fontWeight: 900, color: "#fff", background: "#e53955", borderRadius: 5, padding: "2px 6px", marginRight: 6, verticalAlign: 2 }}>NEW</span>}{r.event_title || tl}</div>
+                <div style={{ fontWeight: 900, color: W.ink, fontSize: 15 }}>{!r.unlocked && prevSeen && new Date(r.created_at) > new Date(prevSeen) && <span style={{ fontSize: 10, fontWeight: 900, color: "#fff", background: "#e53955", borderRadius: 5, padding: "2px 6px", marginRight: 6, verticalAlign: 2 }}>NEW</span>}{!r.unlocked && r.early_access && <span style={{ fontSize: 10, fontWeight: 900, color: "#5B3A00", background: "linear-gradient(135deg,#FFE08A,#F5A524)", borderRadius: 5, padding: "2px 6px", marginRight: 6, verticalAlign: 2 }}>⭐ PRO EARLY ACCESS</span>}{r.event_title || tl}</div>
                 <div style={{ fontSize: 12.5, color: W.soft, marginTop: 2 }}>{tl} · {gwLeadDate(r.event_date, r.date_flexible)}</div>
                 <div style={{ fontSize: 12.5, color: W.soft }}>📍 {r.city}{r.area ? `, ${r.area}` : ""}{r.guests ? ` · 👥 ${r.guests}` : ""} · 💰 {gwLeadBudget(r.budget_band)}</div>
               </div>
@@ -13252,7 +13291,8 @@ function OrganiserLeadsPanel({ meId }) {
                 <div style={{ fontSize: 13, color: W.ink, fontFamily: "monospace" }}>📞 {r.contact_phone}{r.contact_email ? `  ·  ✉ ${r.contact_email}` : ""}</div>
               </div>
               {!r.unlocked ? <div style={{ textAlign: "right" }}>
-                <button disabled={busy === r.id} onClick={() => unlock(r)} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px" }}>{busy === r.id ? "…" : `🔓 Unlock · ${r.unlock_cost} cr`}</button>
+                <button disabled={busy === r.id} onClick={() => unlock(r)} style={{ ...btn(W.teal, "#fff"), padding: "9px 14px" }}>{busy === r.id ? "…" : `🔓 Unlock · ${r.my_cost ?? r.unlock_cost} cr`}</button>
+                {r.my_cost != null && r.my_cost < r.unlock_cost && <div style={{ fontSize: 10.5, color: "#92400E", fontWeight: 800, marginTop: 3 }}>⭐ Pro price <s style={{ color: W.soft }}>{r.unlock_cost}</s></div>}
                 <div style={{ fontSize: 10.5, color: left <= 1 ? "#C0392B" : W.soft, fontWeight: 700, marginTop: 4 }}>{left} of {r.max_unlocks} slots left</div>
               </div> : <div style={{ display: "flex", gap: 6 }}>
                 <a href={`https://wa.me/${waNum(r.contact_phone)}?text=${encodeURIComponent(waMsg(r))}`} target="_blank" rel="noreferrer" onClick={() => r.my_status === "unlocked" && setStatus(r, "contacted")} style={{ ...btn("#25D366", "#fff"), padding: "8px 11px", textDecoration: "none" }}>WhatsApp</a>
@@ -13298,13 +13338,28 @@ function AdminLeadsPanel() {
     return { ok: res.ok && !!j.sent, detail: j.error || j.detail || "" };
   };
   // Sends the AiSensy campaign to every matching organiser, one number at a time.
-  const sendAlerts = async (r, quiet = false) => {
+  // Pro early-access window: Pro organisers are alerted first, everyone else after the window.
+  const earlyHours = settings?.pro_enabled !== false ? Math.max(0, Number(settings?.pro_early_hours) || 0) : 0;
+  const inEarly = r => earlyHours > 0 && (Date.now() - new Date(r.published_at || r.created_at || Date.now()).getTime()) < earlyHours * 3600000;
+  const alertScope = r => inEarly(r) ? (r.alerted_pro_at ? null : "pro") : (r.alerted_pro_at ? "rest" : "all");
+  const markAlerted = async (r, scope, sent) => {
+    const now = new Date().toISOString();
+    const patch = scope === "pro" ? { alerted_pro_at: now, alert_count: (Number(r.alert_count) || 0) + sent } : { alerted_at: now, alert_count: (Number(r.alert_count) || 0) + sent };
+    setRows(rs => rs.map(x => x.id === r.id ? { ...x, ...patch } : x));
+    await supabase.from("event_requests").update(patch).eq("id", r.id);
+    window.dispatchEvent(new Event("gwleadsseen"));
+  };
+  const sendAlerts = async (r, quiet = false, scope = "all") => {
     const campaign = String(settings?.wa_campaign || "").trim();
     if (!campaign) { if (!quiet) window.gwConfirm("Add your AiSensy campaign name first: Pricing & rules → WhatsApp alerts.", () => setView("pricing")); return 0; }
-    const { data: targets, error } = await supabase.rpc("lead_alert_targets", { p_request: r.id });
+    const { data: targets, error } = await supabase.rpc("lead_alert_targets", { p_request: r.id, p_scope: scope });
     if (error) { if (!quiet) window.gwConfirm(error.message, () => {}); return 0; }
     const list = targets || [];
-    if (!list.length) { if (!quiet) window.gwConfirm("No organisers match this lead's city and event type (or they've all switched WhatsApp alerts off).", () => {}); return 0; }
+    if (!list.length) {
+      await markAlerted(r, scope, 0);   // nobody to alert in this phase: don't keep nagging
+      if (!quiet) window.gwConfirm(scope === "pro" ? "No Pro organisers match this lead. Everyone else will be alerted after the early-access window." : "No organisers match this lead's city and event type (or they've all switched WhatsApp alerts off).", () => {});
+      return 0;
+    }
     let sent = 0, failed = 0, lastErr = "";
     const params = alertParams(r);
     for (let i = 0; i < list.length; i++) {
@@ -13313,19 +13368,19 @@ function AdminLeadsPanel() {
       await new Promise(res => setTimeout(res, 250));
     }
     setAlertMsg("");
-    if (sent) {
-      const patch = { alerted_at: new Date().toISOString(), alert_count: (Number(r.alert_count) || 0) + sent };
-      setRows(rs => rs.map(x => x.id === r.id ? { ...x, ...patch } : x));
-      await supabase.from("event_requests").update(patch).eq("id", r.id);
-      window.dispatchEvent(new Event("gwleadsseen"));
-    }
-    if (!quiet) window.gwConfirm(`📣 WhatsApp alert sent to ${sent} organiser${sent === 1 ? "" : "s"}.${failed ? `\n\n${failed} failed.${lastErr ? "\nAiSensy says: " + lastErr : ""}` : ""}`, () => {});
+    if (sent) await markAlerted(r, scope, sent);
+    if (!quiet) window.gwConfirm(`📣 WhatsApp alert sent to ${sent} ${scope === "pro" ? "Pro " : ""}organiser${sent === 1 ? "" : "s"}.${scope === "pro" ? `\n\nEveryone else can be alerted after the ${earlyHours}-hour early-access window.` : ""}${failed ? `\n\n${failed} failed.${lastErr ? "\nAiSensy says: " + lastErr : ""}` : ""}`, () => {});
     return sent;
   };
-  const alertOne = r => window.gwConfirm(`Send a WhatsApp alert about this ${gwLeadType(r.event_type)[2].toLowerCase()} lead to matching organisers?${r.alerted_at ? "\n\n(Already alerted once. Organisers who were alerted before will get it again.)" : ""}`, async () => { setAlertBusy(r.id); await sendAlerts(r); setAlertBusy(null); });
+  const alertOne = r => {
+    const sc = alertScope(r) || "all";
+    const who = sc === "pro" ? "Pro organisers (early access)" : sc === "rest" ? "the remaining (non-Pro) organisers" : "matching organisers";
+    window.gwConfirm(`Send a WhatsApp alert about this ${gwLeadType(r.event_type)[2].toLowerCase()} lead to ${who}?${r.alerted_at ? "\n\n(Already alerted once. Organisers who were alerted before will get it again.)" : ""}`, async () => { setAlertBusy(r.id); await sendAlerts(r, false, sc); setAlertBusy(null); });
+  };
   const approve = async r => {
     await upd(r, { status: "open" });
-    if (settings?.auto_alert && String(settings?.wa_campaign || "").trim()) { setAlertBusy(r.id); await sendAlerts({ ...r, status: "open" }); setAlertBusy(null); }
+    const fresh = { ...r, status: "open", published_at: r.published_at || new Date().toISOString() };
+    if (settings?.auto_alert && String(settings?.wa_campaign || "").trim()) { setAlertBusy(r.id); await sendAlerts(fresh, false, alertScope(fresh) || "all"); setAlertBusy(null); }
   };
   const load = async () => {
     const [{ data: r, error }, { data: u }] = await Promise.all([
@@ -13338,7 +13393,7 @@ function AdminLeadsPanel() {
   const loadPricing = async () => {
     const [{ data: p }, { data: s }] = await Promise.all([supabase.from("lead_pricing").select("*"), supabase.from("lead_settings").select("*").eq("id", 1).maybeSingle()]);
     const m = {}; (p || []).forEach(x => { m[`${x.event_type}|${x.budget_band}`] = String(x.credits); }); setPricing(m);
-    setSettings(s || { max_unlocks: 5, auto_publish: true, default_credits: 199, wa_campaign: "", auto_alert: true });
+    setSettings(s || { max_unlocks: 5, auto_publish: true, default_credits: 199, wa_campaign: "", auto_alert: true, pro_enabled: true, pro_price: 2999, pro_days: 30, pro_discount_pct: 20, pro_early_hours: 2 });
   };
   useEffect(() => { load(); loadPricing(); }, []);
   const byReq = useMemo(() => { const m = {}; unlocks.forEach(u => { (m[u.request_id] = m[u.request_id] || []).push(u); }); return m; }, [unlocks]);
@@ -13348,11 +13403,11 @@ function AdminLeadsPanel() {
   const list = all.filter(r => (status === "all" || r.status === status) && (type === "all" || r.event_type === type) && (!ql || [r.contact_name, r.contact_phone, r.city, r.area, r.event_title].filter(Boolean).some(s => String(s).toLowerCase().includes(ql))));
   const earned = unlocks.filter(u => u.status !== "refunded").reduce((a, u) => a + (Number(u.credits) || 0), 0);
   const won = unlocks.filter(u => u.status === "won").length;
-  const unalerted = all.filter(r => r.status === "open" && !r.alerted_at && r.unlock_count < r.max_unlocks && (!r.event_date || r.event_date >= new Date().toISOString().slice(0, 10)));
+  const unalerted = all.filter(r => r.status === "open" && !r.alerted_at && alertScope(r) && r.unlock_count < r.max_unlocks && (!r.event_date || r.event_date >= new Date().toISOString().slice(0, 10)));
   const alertAll = () => window.gwConfirm(`Send WhatsApp alerts for ${unalerted.length} live lead${unalerted.length === 1 ? "" : "s"} that haven't been alerted yet?`, async () => {
     if (!String(settings?.wa_campaign || "").trim()) return window.gwConfirm("Add your AiSensy campaign name first: Pricing & rules → WhatsApp alerts.", () => setView("pricing"));
     setAlertBusy("bulk"); let total = 0;
-    for (const r of unalerted) total += await sendAlerts(r, true);
+    for (const r of unalerted) total += await sendAlerts(r, true, alertScope(r));
     setAlertBusy(null);
     window.gwConfirm(`📣 Done. ${total} WhatsApp alert${total === 1 ? "" : "s"} sent across ${unalerted.length} lead${unalerted.length === 1 ? "" : "s"}.`, () => {});
   });
@@ -13375,7 +13430,7 @@ function AdminLeadsPanel() {
     const up = Object.entries(pricing).map(([k, v]) => { const [event_type, budget_band] = k.split("|"); return { event_type, budget_band, credits: Math.max(0, Math.floor(Number(v) || 0)) }; });
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
       supabase.from("lead_pricing").upsert(up),
-      supabase.from("lead_settings").update({ max_unlocks: Math.max(1, Number(settings.max_unlocks) || 5), auto_publish: !!settings.auto_publish, default_credits: Math.max(0, Number(settings.default_credits) || 0), wa_campaign: String(settings.wa_campaign || "").trim() || null, auto_alert: !!settings.auto_alert, updated_at: new Date().toISOString() }).eq("id", 1),
+      supabase.from("lead_settings").update({ max_unlocks: Math.max(1, Number(settings.max_unlocks) || 5), auto_publish: !!settings.auto_publish, default_credits: Math.max(0, Number(settings.default_credits) || 0), wa_campaign: String(settings.wa_campaign || "").trim() || null, auto_alert: !!settings.auto_alert, pro_enabled: settings.pro_enabled !== false, pro_price: Math.max(0, Number(settings.pro_price) || 0), pro_days: Math.max(1, Number(settings.pro_days) || 30), pro_discount_pct: Math.min(100, Math.max(0, Number(settings.pro_discount_pct) || 0)), pro_early_hours: Math.max(0, Number(settings.pro_early_hours) || 0), updated_at: new Date().toISOString() }).eq("id", 1),
     ]);
     setSaving(false);
     window.gwConfirm(e1 || e2 ? (e1 || e2).message : "✅ Saved. New prices apply to new leads only.", () => {});
@@ -13423,7 +13478,7 @@ function AdminLeadsPanel() {
                   <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{r.event_title || tl} · <span style={{ color: W.soft, fontWeight: 700 }}>{r.contact_name}</span></div>
                   <div style={{ fontSize: 12, color: W.soft }}>{gwLeadDate(r.event_date, r.date_flexible)} · {r.city} · {gwLeadBudget(r.budget_band)}{r.guests ? ` · ${r.guests} guests` : ""}</div>
                 </div>
-                <div style={{ textAlign: "right" }}>{pill(r.status)}<div style={{ fontSize: 11, color: W.soft, marginTop: 4 }}>{r.unlock_count}/{r.max_unlocks} · {r.unlock_cost} cr</div>{r.status === "open" && <div style={{ fontSize: 10.5, fontWeight: 800, marginTop: 3, color: r.alerted_at ? W.teal : "#B45309" }}>{r.alerted_at ? `📣 ${r.alert_count} alerted` : "Not alerted"}</div>}</div>
+                <div style={{ textAlign: "right" }}>{pill(r.status)}<div style={{ fontSize: 11, color: W.soft, marginTop: 4 }}>{r.unlock_count}/{r.max_unlocks} · {r.unlock_cost} cr</div>{r.status === "open" && <div style={{ fontSize: 10.5, fontWeight: 800, marginTop: 3, color: r.alerted_at ? W.teal : "#B45309" }}>{r.alerted_at ? `📣 ${r.alert_count} alerted` : r.alerted_pro_at ? (inEarly(r) ? "⭐ Pro alerted · rest later" : "⭐ Pro alerted · send rest") : "Not alerted"}</div>}</div>
               </div>
               {isOpen && <div style={{ marginTop: 11, borderTop: `1px solid ${W.line}`, paddingTop: 11 }}>
                 <div style={{ fontSize: 13, color: W.ink, lineHeight: 1.6 }}>
@@ -13435,8 +13490,8 @@ function AdminLeadsPanel() {
                   <span style={{ color: W.soft, fontSize: 11.5 }}>Posted {new Date(r.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                  {r.status === "pending" && <button disabled={!!alertBusy} onClick={() => approve(r)} style={{ ...btn(W.teal, "#fff"), padding: "7px 12px", fontSize: 12.5 }}>✓ Approve & publish{settings?.auto_alert && settings?.wa_campaign ? " + alert" : ""}</button>}
-                  {r.status === "open" && <button disabled={!!alertBusy} onClick={() => alertOne(r)} style={{ ...btn("#25D366", "#fff"), padding: "7px 12px", fontSize: 12.5, opacity: alertBusy ? .6 : 1 }}>{alertBusy === r.id ? "Sending…" : r.alerted_at ? "📣 Alert again" : "📣 Alert organisers"}</button>}
+                  {r.status === "pending" && <button disabled={!!alertBusy} onClick={() => approve(r)} style={{ ...btn(W.teal, "#fff"), padding: "7px 12px", fontSize: 12.5 }}>✓ Approve & publish{settings?.auto_alert && settings?.wa_campaign ? (earlyHours > 0 ? " + alert Pro" : " + alert") : ""}</button>}
+                  {r.status === "open" && <button disabled={!!alertBusy} onClick={() => alertOne(r)} style={{ ...btn("#25D366", "#fff"), padding: "7px 12px", fontSize: 12.5, opacity: alertBusy ? .6 : 1 }}>{alertBusy === r.id ? "Sending…" : r.alerted_at ? "📣 Alert again" : alertScope(r) === "pro" ? "⭐ Alert Pro" : alertScope(r) === "rest" ? "📣 Alert the rest" : r.alerted_pro_at ? "📣 Alert again" : "📣 Alert organisers"}</button>}
                   {r.status === "pending" && <button onClick={() => upd(r, { status: "rejected" })} style={{ ...btn("#FDECEA", "#C0392B"), padding: "7px 12px", fontSize: 12.5 }}>✕ Reject</button>}
                   {r.status === "open" && <button onClick={() => upd(r, { status: "paused" })} style={{ ...btn("#FEF3C7", "#92400E"), padding: "7px 12px", fontSize: 12.5 }}>⏸ Pause</button>}
                   {["paused", "closed", "rejected"].includes(r.status) && <button onClick={() => upd(r, { status: "open" })} style={{ ...btn("#E7F6EF", W.teal), padding: "7px 12px", fontSize: 12.5 }}>▶ Re-open</button>}
@@ -13490,6 +13545,19 @@ function AdminLeadsPanel() {
           </div>
         </div>
         <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <div style={{ fontWeight: 900, color: W.ink, marginBottom: 4 }}>⭐ Organiser Pro</div>
+          <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.5 }}>Organisers buy Pro with wallet credits. Pro gets early access to new leads, a discount on every unlock, a ⭐ PRO badge and top placement in the client's list.</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: W.ink, marginBottom: 10 }}>
+            <input type="checkbox" checked={settings.pro_enabled !== false} onChange={e => setSettings(s => ({ ...s, pro_enabled: e.target.checked }))} /> Offer Pro to organisers
+          </label>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {[["pro_price", "Price (credits)"], ["pro_days", "Lasts (days)"], ["pro_discount_pct", "Unlock discount %"], ["pro_early_hours", "Early access (hours)"]].map(([k, l]) => (
+              <label key={k} style={{ fontSize: 12.5, fontWeight: 700, color: W.soft }}>{l}<br /><input value={settings[k] ?? ""} onChange={e => setSettings(s => ({ ...s, [k]: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" style={{ ...sel, width: 110, marginTop: 4 }} /></label>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8 }}>Early access: new leads are hidden from non-Pro organisers for this many hours after they go live. Set 0 to turn it off.</div>
+        </div>
+        <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 12 }}>
           <div style={{ fontWeight: 900, color: W.ink, marginBottom: 4 }}>📣 WhatsApp alerts to organisers</div>
           <div style={{ fontSize: 12, color: W.soft, marginBottom: 10, lineHeight: 1.5 }}>Sent through your AiSensy account to organisers whose cities and event types match the lead. AiSensy charges apply per message.</div>
           <input value={settings.wa_campaign || ""} onChange={e => setSettings(s => ({ ...s, wa_campaign: e.target.value }))} placeholder="AiSensy campaign name (exactly as in AiSensy)" style={{ ...sel, width: "100%", boxSizing: "border-box" }} />
@@ -13541,6 +13609,7 @@ function GwRatingLine({ rating, size = 12 }) {
   if (!n) return <span style={{ fontSize: size, color: W.soft }}>No reviews yet</span>;
   return <span style={{ fontSize: size, color: W.ink, fontWeight: 700 }}><GwStars value={rating.avg} size={size + 1} /> {Number(rating.avg).toFixed(1)} <span style={{ color: W.soft, fontWeight: 600 }}>({n})</span></span>;
 }
+const GwPro = () => <span title="Glasswings Pro organiser" style={{ fontSize: 10.5, fontWeight: 900, color: "#5B3A00", background: "linear-gradient(135deg,#FFE08A,#F5A524)", borderRadius: 999, padding: "2px 7px", marginLeft: 6, verticalAlign: 2 }}>⭐ PRO</span>;
 const GwVerified = () => <span title="Verified by Glasswings" style={{ fontSize: 10.5, fontWeight: 900, color: "#fff", background: "#1D9BF0", borderRadius: 999, padding: "2px 7px", marginLeft: 6, verticalAlign: 2 }}>✔ VERIFIED</span>;
 
 // Public profile (clients, admins and the organiser themselves)
@@ -13556,7 +13625,7 @@ function OrganiserProfileSheet({ organiserId, onClose }) {
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <PersonAvatar url={p.logo_url || p.avatar_url} name={p.business_name} size={58} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 900, fontSize: 18, color: W.ink }}>{p.business_name}{p.verified && <GwVerified />}</div>
+            <div style={{ fontWeight: 900, fontSize: 18, color: W.ink }}>{p.business_name}{p.verified && <GwVerified />}{p.pro && <GwPro />}</div>
             {p.tagline && <div style={{ fontSize: 13, color: W.soft, marginTop: 2 }}>{p.tagline}</div>}
             <div style={{ marginTop: 4 }}><GwRatingLine rating={p.rating} size={12.5} />{Number(p.rating?.won) > 0 && <span style={{ fontSize: 12, color: "#7C3AED", fontWeight: 800 }}> · {p.rating.won} booked via Glasswings</span>}</div>
           </div>
@@ -13686,6 +13755,15 @@ function AdminOrganisersView() {
     const { error } = await supabase.rpc("admin_set_organiser_flags", { p_org: o.organiser_id, p_verified: patch.p_verified ?? null, p_hidden: patch.p_hidden ?? null });
     if (error) { window.gwConfirm(error.message, () => {}); load(); }
   };
+  const [proSum, setProSum] = useState(null);
+  useEffect(() => { supabase.rpc("admin_pro_summary").then(({ data }) => setProSum(data || null)); }, []);
+  const givePro = async o => {
+    const v = await window.gwPrompt(`Give ${o.business_name || o.name || "this organiser"} free Pro days (use a negative number to remove days)`, "30");
+    if (v == null) return; const n = parseInt(v, 10); if (!n) return;
+    const { error } = await supabase.rpc("admin_grant_pro", { p_org: o.organiser_id, p_days: n });
+    if (error) return window.gwConfirm(error.message, () => {});
+    load(); supabase.rpc("admin_pro_summary").then(({ data }) => setProSum(data || null));
+  };
   const hideReview = async (rv) => {
     setReviews(rs => rs.map(x => x.id === rv.id ? { ...x, hidden: !rv.hidden } : x));
     const { error } = await supabase.from("organiser_reviews").update({ hidden: !rv.hidden }).eq("id", rv.id);
@@ -13694,6 +13772,9 @@ function AdminOrganisersView() {
   const list = [...(rows || [])].sort((a, b) => sort === "rating" ? (Number(b.rating_avg) || 0) - (Number(a.rating_avg) || 0) : sort === "spent" ? Number(b.credits_spent) - Number(a.credits_spent) : (Number(b.won) - Number(a.won)) || (Number(b.unlocks) - Number(a.unlocks)));
   return (
     <div>
+      {proSum && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {[["⭐ ACTIVE PRO", proSum.active], ["PRO CREDITS · 30 DAYS", proSum.credits_30d], ["PRO CREDITS · ALL TIME", proSum.credits_total], ["EXPIRING IN 7 DAYS", proSum.expiring_7d]].map(([l, v]) => <div key={l} style={{ flex: "1 1 120px", background: "#FFFBEB", border: "1px solid #F5D9A8", borderRadius: 12, padding: "9px 12px" }}><div style={{ fontSize: 10.5, fontWeight: 800, color: "#92400E" }}>{l}</div><div style={{ fontSize: 20, fontWeight: 900, color: W.ink }}>{Number(v) || 0}</div></div>)}
+      </div>}
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
         <div style={{ fontWeight: 900, color: W.ink, flex: 1 }}>Organisers ({list.length})</div>
         <select value={sort} onChange={e => setSort(e.target.value)} style={{ border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13, background: "#fff" }}><option value="won">Most bookings won</option><option value="spent">Most credits spent</option><option value="rating">Best rated</option></select>
@@ -13703,14 +13784,16 @@ function AdminOrganisersView() {
         <div key={o.organiser_id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 12, marginBottom: 8, opacity: o.hidden_by_admin ? .6 : 1 }}>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{o.business_name || o.name || "Organiser"}{o.verified && <GwVerified />}{o.hidden_by_admin && <span style={{ fontSize: 11, color: "#C0392B", fontWeight: 800 }}> · HIDDEN</span>}</div>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{o.business_name || o.name || "Organiser"}{o.verified && <GwVerified />}{o.is_pro && <GwPro />}{o.hidden_by_admin && <span style={{ fontSize: 11, color: "#C0392B", fontWeight: 800 }}> · HIDDEN</span>}</div>
               <div style={{ fontSize: 12, color: W.soft }}>{o.business_name ? `${o.name || ""} · ` : ""}{(o.cities || []).join(", ") || (o.has_profile ? "No cities set" : "⚠ No business profile yet")}</div>
               <div style={{ fontSize: 12, color: W.ink, marginTop: 3 }}>🔓 {o.unlocks} unlocks · 🏆 {o.won} won · 💳 {o.credits_spent} cr · {o.rating_count ? <><GwStars value={o.rating_avg} size={12} /> {o.rating_avg} ({o.rating_count})</> : "no reviews"}{o.last_unlock ? ` · last ${gwTimeAgo(o.last_unlock)}` : ""}</div>
+              {o.pro_until && <div style={{ fontSize: 11.5, color: o.is_pro ? "#92400E" : W.soft, marginTop: 2 }}>⭐ Pro {o.is_pro ? "until" : "expired"} {new Date(o.pro_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
             {o.has_profile && <button onClick={() => setViewId(o.organiser_id)} style={{ ...btn("#F0F2F5", W.ink), padding: "6px 11px", fontSize: 12 }}>👁 View profile</button>}
             <button onClick={() => flag(o, { p_verified: !o.verified })} style={{ ...btn(o.verified ? "#F0F2F5" : "#E0F2FE", o.verified ? W.soft : "#0369A1"), padding: "6px 11px", fontSize: 12 }}>{o.verified ? "Remove verified" : "✔ Mark verified"}</button>
+            <button onClick={() => givePro(o)} style={{ ...btn("#FFF4D6", "#92400E"), padding: "6px 11px", fontSize: 12 }}>🎁 Give Pro days</button>
             <button onClick={() => flag(o, { p_hidden: !o.hidden_by_admin })} style={{ ...btn(o.hidden_by_admin ? "#E7F6EF" : "#FDECEA", o.hidden_by_admin ? W.teal : "#C0392B"), padding: "6px 11px", fontSize: 12 }}>{o.hidden_by_admin ? "Unhide profile" : "Hide profile"}</button>
           </div>
         </div>
