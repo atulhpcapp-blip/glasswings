@@ -50,9 +50,25 @@ export default async function handler(req, res) {
       buttons: [{ type: "button", sub_type: "url", index: 0, parameters: [{ type: "text", text: code }] }],
     };
 
-    let out = await aisensy(payload);
-    // If AiSensy rejects the button value, send again without it (the ticket still arrives)
-    if (!out.ok && /button/i.test(out.detail)) { const { buttons, ...noBtn } = payload; out = await aisensy(noBtn); }
+    // Try the standard format first, then the variants AiSensy sometimes expects:
+    //  - button URL variable counted inside templateParams (7 values)
+    //  - no separate "buttons" field
+    const { buttons, ...noBtn } = payload;
+    const p7 = [...payload.templateParams, code];
+    const attempts = [
+      payload,
+      noBtn,
+      { ...noBtn, templateParams: p7 },
+      { ...payload, templateParams: p7 },
+    ];
+    let out = null, used = 0;
+    for (let i = 0; i < attempts.length; i++) {
+      out = await aisensy(attempts[i]);
+      used = i;
+      if (out.ok) break;
+      if (!/param|button|variable|template/i.test(out.detail)) break;   // other errors: no point retrying
+    }
+    if (out.ok && used > 0) out.detail = `sent (format ${used + 1})`;
 
     await rpc("gw_ticket_whatsapp_mark", { p_ticket_ids: ids, p_event: event_id, p_user: target, p_phone: destination, p_status: out.ok ? "sent" : "failed", p_detail: String(out.detail).slice(0, 500) });
     return res.status(200).json({ ok: out.ok, detail: out.detail });
