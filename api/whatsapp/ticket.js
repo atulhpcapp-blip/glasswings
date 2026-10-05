@@ -17,6 +17,20 @@ async function aisensy(payload) {
   return { ok, detail: ok ? "sent" : ((j && (j.errorMessage || j.message || j.error)) || text || `HTTP ${r.status}`) };
 }
 
+// Colourful ticket card from /api/ticket-image; falls back to a plain QR if the card can't be drawn.
+async function ticketImageUrl(req, code) {
+  const plain = "https://api.qrserver.com/v1/create-qr-code/?size=800x800&margin=40&format=png&data=" + encodeURIComponent(code);
+  try {
+    const host = req.headers["x-forwarded-host"] || req.headers.host;
+    if (!host) return plain;
+    const url = `https://${host}/api/ticket-image?code=${encodeURIComponent(code)}`;
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 9000);
+    const r = await fetch(url, { signal: ctl.signal }); clearTimeout(t);
+    const type = r.headers.get("content-type") || "";
+    return r.ok && type.startsWith("image/") ? url : plain;   // also warms the image cache for WhatsApp
+  } catch { return plain; }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   if (!SB_URL || !SB_SERVICE || !AISENSY_KEY) return res.status(200).json({ ok: false, skipped: "not_configured", missing: [!SB_URL && "SUPABASE_URL", !SB_SERVICE && "SUPABASE_SERVICE_ROLE_KEY", !AISENSY_KEY && "AISENSY_API_KEY"].filter(Boolean) });
@@ -46,7 +60,7 @@ export default async function handler(req, res) {
       userName: clean(p.name),
       source: "glasswings-ticket",
       templateParams: [clean(p.name), clean(p.title), clean(p.when), clean(p.venue), clean(p.tickets), code],
-      media: { url: "https://api.qrserver.com/v1/create-qr-code/?size=800x800&margin=40&format=png&data=" + encodeURIComponent(code), filename: `ticket-${code}.png` },
+      media: { url: await ticketImageUrl(req, code), filename: `ticket-${code}.png` },
       buttons: [{ type: "button", sub_type: "url", index: 0, parameters: [{ type: "text", text: code }] }],
     };
 
