@@ -12922,9 +12922,26 @@ function PlanEventSheet({ profile, onClose }) {
     if (error) return setErr(error.message || "Could not submit. Please try again.");
     setStep(3); loadMine();
   };
-  const closeReq = (r, status) => window.gwConfirm(status === "booked" ? "Mark this as booked? Organisers will stop seeing it." : "Close this request? Organisers will stop seeing it.", async () => {
-    await supabase.rpc("close_my_event_request", { p_id: r.id, p_status: status }); loadMine();
-  });
+  const [bookPick, setBookPick] = useState(null);
+  const [viewOrg, setViewOrg] = useState(null);
+  const doClose = async (r, status, orgId = null) => {
+    const { data, error } = await supabase.rpc("close_my_event_request", { p_id: r.id, p_status: status, p_organiser: orgId });
+    if (error || !data?.ok) window.gwConfirm(error?.message || "Couldn't update this request.", () => {});
+    setBookPick(null); await loadMine();
+    if (status === "booked" && orgId) window.gwConfirm("🎉 Congratulations! Please rate your organiser once your event is done. It helps other members choose.", () => {});
+  };
+  const closeReq = (r, status) => {
+    const orgs = Array.isArray(r.organisers) ? r.organisers : [];
+    if (status === "booked" && orgs.length) return setBookPick(r);
+    window.gwConfirm(status === "booked" ? "Mark this as booked? Organisers will stop seeing it." : "Close this request? Organisers will stop seeing it.", () => doClose(r, status));
+  };
+  const rate = async (r, o, n) => {
+    const comment = await window.gwPrompt(`${"★".repeat(n)}${"☆".repeat(5 - n)} for ${o.name}\n\nAdd a short review (optional)`, o.my_comment || "");
+    if (comment === null || comment === undefined) return;
+    const { data, error } = await supabase.rpc("submit_organiser_review", { p_request: r.id, p_organiser: o.organiser_id, p_rating: n, p_comment: comment });
+    if (error || !data?.ok) return window.gwConfirm(error?.message || "Couldn't save your review.", () => {});
+    loadMine();
+  };
   const statusPill = s => {
     const m = { pending: ["Under review", "#92400E", "#FEF3C7"], open: ["Live", W.teal, "#E7F6EF"], paused: ["Paused", "#92400E", "#FEF3C7"], booked: ["Booked 🎉", "#7C3AED", "#EFEAFB"], closed: ["Closed", W.soft, "#F0F2F5"], rejected: ["Not approved", "#C0392B", "#FDECEA"] }[s] || [s, W.soft, "#F0F2F5"];
     return <span style={{ fontSize: 11, fontWeight: 800, color: m[1], background: m[2], borderRadius: 999, padding: "3px 9px" }}>{m[0]}</span>;
@@ -13010,7 +13027,24 @@ function PlanEventSheet({ profile, onClose }) {
               {statusPill(r.status)}
             </div>
             <div style={{ fontSize: 12.5, color: W.ink, marginTop: 9, fontWeight: 700 }}>{orgs.length ? `${orgs.length} organiser${orgs.length > 1 ? "s" : ""} picked this up and will contact you:` : (r.status === "pending" ? "Our team is reviewing your request." : "Waiting for organisers to respond…")}</div>
-            {orgs.map((o, i) => <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7 }}><PersonAvatar url={o.avatar} name={o.name} size={28} /><div style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>{o.name || "Organiser"}</div></div>)}
+            {orgs.map((o, i) => {
+              const booked = r.booked_organiser_id && r.booked_organiser_id === o.organiser_id;
+              const canRate = ["booked", "closed"].includes(r.status) || (r.event_date && r.event_date < new Date().toISOString().slice(0, 10));
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 8, padding: booked ? "8px 9px" : 0, borderRadius: 10, background: booked ? "#F3EEFD" : "transparent" }}>
+                  <div onClick={() => o.has_profile && setViewOrg(o.organiser_id)} style={{ cursor: o.has_profile ? "pointer" : "default" }}><PersonAvatar url={o.avatar} name={o.name} size={34} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, color: W.ink }}>{o.name || "Organiser"}{o.verified && <GwVerified />}{booked && <span style={{ fontSize: 11, color: "#7C3AED", fontWeight: 900 }}> · BOOKED</span>}</div>
+                    <div><GwRatingLine rating={o.rating} size={11.5} /></div>
+                    {canRate && <div style={{ marginTop: 3, fontSize: 11.5, color: W.soft }}>{o.my_rating ? "Your rating: " : "Rate them: "}<GwStars value={o.my_rating || 0} size={17} onPick={n => rate(r, o, n)} /></div>}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {o.has_profile && <button onClick={() => setViewOrg(o.organiser_id)} style={{ ...btn("#F0F2F5", W.ink), padding: "5px 9px", fontSize: 11.5 }}>Profile</button>}
+                    {o.public_phone && <a href={`https://wa.me/${waNum(o.public_phone)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "5px 9px", fontSize: 11.5, textDecoration: "none" }}>WhatsApp</a>}
+                  </div>
+                </div>
+              );
+            })}
             {active && <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
               <button onClick={() => closeReq(r, "booked")} style={{ ...btn("#E7F6EF", W.teal), padding: "7px 12px", fontSize: 12.5 }}>✓ I've booked</button>
               <button onClick={() => closeReq(r, "closed")} style={{ ...btn("#F0F2F5", W.soft), padding: "7px 12px", fontSize: 12.5 }}>Close request</button>
@@ -13018,6 +13052,19 @@ function PlanEventSheet({ profile, onClose }) {
           </div>
         );
       }))}
+      {bookPick && <Sheet onClose={() => setBookPick(null)}>
+        <div style={{ fontWeight: 900, fontSize: 17, color: W.ink }}>🎉 Who did you book?</div>
+        <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>This helps us show the best organisers to other members.</div>
+        {(bookPick.organisers || []).map(o => (
+          <div key={o.organiser_id} onClick={() => doClose(bookPick, "booked", o.organiser_id)} style={{ display: "flex", alignItems: "center", gap: 10, border: `1.5px solid ${W.line}`, borderRadius: 12, padding: "10px 12px", marginBottom: 8, cursor: "pointer" }}>
+            <PersonAvatar url={o.avatar} name={o.name} size={34} />
+            <div style={{ flex: 1, fontWeight: 800, color: W.ink, fontSize: 14 }}>{o.name}{o.verified && <GwVerified />}</div>
+            <span style={{ color: W.teal, fontWeight: 900 }}>›</span>
+          </div>
+        ))}
+        <button onClick={() => doClose(bookPick, "booked", null)} style={{ ...btn("#F0F2F5", W.ink), width: "100%", justifyContent: "center", padding: 11, marginTop: 4 }}>Someone else / not on this list</button>
+      </Sheet>}
+      {viewOrg && <OrganiserProfileSheet organiserId={viewOrg} onClose={() => setViewOrg(null)} />}
     </Sheet>
   );
 }
@@ -13038,6 +13085,28 @@ function OrganiserLeadsPanel({ meId }) {
   const [alertOpen, setAlertOpen] = useState(false);
   const [cityInp, setCityInp] = useState("");
   const [prefSaving, setPrefSaving] = useState(false);
+  const [bizProfile, setBizProfile] = useState(undefined);
+  const [myStats, setMyStats] = useState(null);
+  const [bizEdit, setBizEdit] = useState(false);
+  const [bizView, setBizView] = useState(false);
+  const loadBiz = async () => {
+    const [{ data: bp }, { data: st }] = await Promise.all([
+      supabase.from("organiser_profiles").select("*").eq("organiser_id", meId).maybeSingle(),
+      supabase.rpc("my_organiser_stats"),
+    ]);
+    setBizProfile(bp || null); setMyStats(st || null);
+  };
+  useEffect(() => { loadBiz(); }, [meId]);
+  const onBizSaved = async row => {
+    await loadBiz();
+    // first time: use the profile's cities & event types for lead alerts too
+    if (prefs && !prefs.cities.length && !prefs.types.length && (row.cities.length || row.event_types.length)) {
+      const np = { ...prefs, cities: row.cities, types: row.event_types };
+      setPrefs(np);
+      await supabase.from("lead_alert_prefs").upsert({ organiser_id: meId, cities: np.cities, types: np.types, whatsapp: !!np.whatsapp, updated_at: new Date().toISOString() });
+    }
+  };
+  const bizScore = bp => !bp ? 0 : Math.round(100 * [bp.business_name, bp.tagline, bp.about, (bp.cities || []).length, (bp.event_types || []).length, (bp.services || []).length, bp.price_from, (bp.portfolio || []).length >= 3, bp.logo_url].filter(Boolean).length / 9);
   useEffect(() => {
     // remember when they last looked (for NEW tags), then reset their badge
     supabase.from("lead_alert_prefs").select("*").eq("organiser_id", meId).maybeSingle().then(async ({ data }) => {
@@ -13107,6 +13176,27 @@ function OrganiserLeadsPanel({ meId }) {
         <button onClick={() => setBuyOpen(true)} style={{ ...btn("#fff", W.teal), padding: "9px 14px" }}>+ Buy credits</button>
       </div>
       <HelpBox title="How leads work" tips={["Clients post weddings, birthdays, corporate and community events they want organised.", "Contact details stay hidden until you unlock the lead with credits.", "Each lead goes to at most a few organisers, so contact the client quickly.", "Fake or wrong-number lead? Tap 'Report' and we'll refund your credits after review."]} />
+      {bizProfile !== undefined && <div style={{ background: "#fff", border: `1px solid ${bizProfile ? W.line : "#F5D9A8"}`, borderRadius: 14, padding: "12px 14px", marginTop: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <PersonAvatar url={bizProfile?.logo_url} name={bizProfile?.business_name || "?"} size={40} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{bizProfile ? bizProfile.business_name : "Create your business profile"}{bizProfile?.verified && <GwVerified />}</div>
+            {bizProfile ? <div style={{ fontSize: 12, color: W.soft }}><GwRatingLine rating={myStats?.rating} size={11.5} />{Number(myStats?.rating?.won) > 0 ? ` · 🏆 ${myStats.rating.won} won` : ""} · profile {bizScore(bizProfile)}% complete</div>
+              : <div style={{ fontSize: 12, color: "#92400E" }}>Clients see your profile when you pick up their request. Organisers with photos and reviews win more bookings.</div>}
+          </div>
+        </div>
+        {bizProfile && bizScore(bizProfile) < 100 && <div style={{ height: 6, background: W.bg, borderRadius: 9, marginTop: 9, overflow: "hidden" }}><div style={{ width: `${bizScore(bizProfile)}%`, height: "100%", background: W.teal }} /></div>}
+        <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
+          <button onClick={() => setBizEdit(true)} style={{ ...btn(bizProfile ? "#EBEEF0" : W.teal, bizProfile ? W.ink : "#fff"), padding: "8px 13px", fontSize: 12.5 }}>{bizProfile ? "✏️ Edit profile" : "➕ Create profile"}</button>
+          {bizProfile && <button onClick={() => setBizView(true)} style={{ ...btn("#EBEEF0", W.ink), padding: "8px 13px", fontSize: 12.5 }}>👁 See what clients see</button>}
+        </div>
+        {bizProfile && bizProfile.hidden_by_admin && <div style={{ fontSize: 12, color: "#C0392B", fontWeight: 700, marginTop: 8 }}>Your profile is hidden by the Glasswings team. Contact support.</div>}
+        {(myStats?.reviews || []).length > 0 && <div style={{ marginTop: 10, borderTop: `1px solid ${W.line}`, paddingTop: 8 }}>
+          {myStats.reviews.slice(0, 3).map((rv, i) => <div key={i} style={{ fontSize: 12.5, color: W.ink, padding: "4px 0" }}><GwStars value={rv.rating} size={12} /> <b>{rv.client}</b>{rv.comment ? `: ${rv.comment}` : ""}</div>)}
+        </div>}
+      </div>}
+      {bizEdit && <OrganiserProfileEditor meId={meId} initial={bizProfile} onClose={() => setBizEdit(false)} onSaved={onBizSaved} />}
+      {bizView && <OrganiserProfileSheet organiserId={meId} onClose={() => setBizView(false)} />}
       {prefs && <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "12px 14px", marginTop: 10 }}>
         <div onClick={() => setAlertOpen(v => !v)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
           <div style={{ fontSize: 22 }}>🔔</div>
@@ -13303,8 +13393,8 @@ function AdminLeadsPanel() {
         {stat("CREDITS EARNED", earned, W.teal)}
         {stat("WON BY ORGANISERS", won, "#7C3AED")}
       </div>
-      <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12, maxWidth: 520 }}>
-        {[["leads", "📋 Leads"], ["disputes", `⚠ Reports (${disputes.length})`], ["pricing", "₹ Pricing & rules"]].map(([k, l]) => (
+      <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12, maxWidth: 640, overflowX: "auto" }}>
+        {[["leads", "📋 Leads"], ["orgs", "🏢 Organisers"], ["disputes", `⚠ Reports (${disputes.length})`], ["pricing", "₹ Pricing & rules"]].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? W.teal : W.soft }}>{l}</button>
         ))}
       </div>
@@ -13368,6 +13458,8 @@ function AdminLeadsPanel() {
           );
         })}
       </>}
+
+      {view === "orgs" && <AdminOrganisersView />}
 
       {view === "disputes" && (!disputes.length ? <Center>No reported leads. 👍</Center> : disputes.map(u => {
         const r = all.find(x => x.id === u.request_id);
@@ -13434,6 +13526,207 @@ function AdminLeadsPanel() {
         </div>
         <button disabled={saving} onClick={savePricing} style={{ ...btn(W.teal, "#fff"), marginTop: 12, padding: "11px 20px" }}>{saving ? "Saving…" : "Save pricing & rules"}</button>
       </div>)}
+    </div>
+  );
+}
+// ---------- Organiser profiles & reviews ----------
+function GwStars({ value = 0, size = 14, onPick }) {
+  const v = Number(value) || 0;
+  return <span style={{ whiteSpace: "nowrap" }}>{[1, 2, 3, 4, 5].map(i => (
+    <span key={i} onClick={onPick ? (e => { e.stopPropagation(); onPick(i); }) : undefined} style={{ fontSize: size, color: i <= Math.round(v) ? "#F5A524" : "#D5D9DD", cursor: onPick ? "pointer" : "default", padding: onPick ? "0 2px" : 0 }}>★</span>
+  ))}</span>;
+}
+function GwRatingLine({ rating, size = 12 }) {
+  const n = Number(rating?.count) || 0;
+  if (!n) return <span style={{ fontSize: size, color: W.soft }}>No reviews yet</span>;
+  return <span style={{ fontSize: size, color: W.ink, fontWeight: 700 }}><GwStars value={rating.avg} size={size + 1} /> {Number(rating.avg).toFixed(1)} <span style={{ color: W.soft, fontWeight: 600 }}>({n})</span></span>;
+}
+const GwVerified = () => <span title="Verified by Glasswings" style={{ fontSize: 10.5, fontWeight: 900, color: "#fff", background: "#1D9BF0", borderRadius: 999, padding: "2px 7px", marginLeft: 6, verticalAlign: 2 }}>✔ VERIFIED</span>;
+
+// Public profile (clients, admins and the organiser themselves)
+function OrganiserProfileSheet({ organiserId, onClose }) {
+  const [p, setP] = useState(undefined);
+  const [photo, setPhoto] = useState(null);
+  useEffect(() => { supabase.rpc("organiser_public_profile", { p_org: organiserId }).then(({ data }) => setP(data || null)); }, [organiserId]);
+  const chips = (arr, map) => (arr || []).length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>{arr.map(x => <span key={x} style={{ fontSize: 11.5, fontWeight: 700, background: W.bg, color: W.ink, borderRadius: 999, padding: "4px 9px" }}>{map ? map(x) : x}</span>)}</div>;
+  const ig = p?.instagram ? String(p.instagram).replace(/^@/, "").replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/\/.*$/, "") : "";
+  return (
+    <Sheet onClose={onClose}>
+      {p === undefined ? <Center>Loading…</Center> : !p ? <Center>This organiser hasn't set up a profile yet.</Center> : <>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <PersonAvatar url={p.logo_url || p.avatar_url} name={p.business_name} size={58} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 900, fontSize: 18, color: W.ink }}>{p.business_name}{p.verified && <GwVerified />}</div>
+            {p.tagline && <div style={{ fontSize: 13, color: W.soft, marginTop: 2 }}>{p.tagline}</div>}
+            <div style={{ marginTop: 4 }}><GwRatingLine rating={p.rating} size={12.5} />{Number(p.rating?.won) > 0 && <span style={{ fontSize: 12, color: "#7C3AED", fontWeight: 800 }}> · {p.rating.won} booked via Glasswings</span>}</div>
+          </div>
+          <span onClick={onClose} style={{ cursor: "pointer", color: W.soft, fontSize: 20, alignSelf: "flex-start" }}>✕</span>
+        </div>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: W.ink, marginTop: 12 }}>
+          {p.price_from > 0 && <span>💰 From <b>₹{Number(p.price_from).toLocaleString("en-IN")}</b></span>}
+          {p.years_experience > 0 && <span>🗓 <b>{p.years_experience}</b> yrs experience</span>}
+          {(p.cities || []).length > 0 && <span>📍 {p.cities.join(", ")}</span>}
+        </div>
+        {chips(p.event_types, t => `${gwLeadType(t)[1]} ${gwLeadType(t)[2]}`)}
+        {chips(p.services)}
+        {p.about && <div style={{ fontSize: 13.5, color: W.ink, lineHeight: 1.55, marginTop: 12, whiteSpace: "pre-wrap" }}>{p.about}</div>}
+        {(p.portfolio || []).length > 0 && <>
+          <div style={{ ...gwLeadLbl, marginTop: 14 }}>PAST EVENTS</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 5 }}>{p.portfolio.map(u => <img key={u} src={u} alt="" loading="lazy" onClick={() => setPhoto(u)} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, cursor: "pointer" }} />)}</div>
+        </>}
+        {(p.public_phone || ig) && <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+          {p.public_phone && <a href={`https://wa.me/${waNum(p.public_phone)}?text=${encodeURIComponent(`Hi ${p.business_name}, I found you on Glasswings and would like a quote for my event.`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), padding: "10px 14px", textDecoration: "none", flex: 1, justifyContent: "center" }}>WhatsApp</a>}
+          {ig && <a href={`https://instagram.com/${ig}`} target="_blank" rel="noreferrer" style={{ ...btn("#fff", "#C13584"), border: "1px solid #C13584", padding: "10px 14px", textDecoration: "none", flex: 1, justifyContent: "center" }}>Instagram</a>}
+        </div>}
+        <div style={{ ...gwLeadLbl, marginTop: 16 }}>REVIEWS</div>
+        {!(p.reviews || []).length ? <div style={{ fontSize: 13, color: W.soft }}>No reviews yet.</div> : p.reviews.map((rv, i) => (
+          <div key={i} style={{ padding: "9px 0", borderTop: i ? `1px solid ${W.line}` : "none" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><GwStars value={rv.rating} size={13} /><span style={{ fontSize: 12.5, fontWeight: 800, color: W.ink }}>{rv.client}</span><span style={{ fontSize: 11, color: W.soft }}>· {gwLeadType(rv.event_type)[2]} · {gwTimeAgo(rv.created_at)}</span></div>
+            {rv.comment && <div style={{ fontSize: 13, color: W.ink, marginTop: 3 }}>{rv.comment}</div>}
+          </div>
+        ))}
+      </>}
+      {photo && <div onClick={() => setPhoto(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.9)", zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center" }}><img src={photo} alt="" style={{ maxWidth: "94vw", maxHeight: "90vh", borderRadius: 8 }} /></div>}
+    </Sheet>
+  );
+}
+
+// Organiser edits their own business profile
+function OrganiserProfileEditor({ meId, initial, onClose, onSaved }) {
+  const [f, setF] = useState(() => {
+    const i = initial || {};
+    const str = k => i[k] == null ? "" : String(i[k]);
+    const arr = k => Array.isArray(i[k]) ? i[k] : [];
+    return { business_name: str("business_name"), tagline: str("tagline"), about: str("about"), cities: arr("cities"), event_types: arr("event_types"), services: arr("services"), price_from: str("price_from"), years_experience: str("years_experience"), instagram: str("instagram"), public_phone: str("public_phone"), portfolio: arr("portfolio"), logo_url: str("logo_url"), published: i.published !== false };
+  });
+  const [cityInp, setCityInp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [up, setUp] = useState("");
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const toggle = (k, v) => setF(p => ({ ...p, [k]: p[k].includes(v) ? p[k].filter(x => x !== v) : [...p[k], v] }));
+  const addCity = () => { const c = cityInp.trim(); if (c && !f.cities.some(x => x.toLowerCase() === c.toLowerCase())) set("cities", [...f.cities, c]); setCityInp(""); };
+  const upload = async (files, kind) => {
+    const list = [...(files || [])].filter(x => (x.type || "").startsWith("image/"));
+    if (!list.length) return;
+    try {
+      if (kind === "logo") { setUp("Uploading logo…"); set("logo_url", await uploadPhoto(meId, list[0])); }
+      else {
+        const room = 12 - f.portfolio.length; const take = list.slice(0, Math.max(0, room)); const urls = [];
+        for (let i = 0; i < take.length; i++) { setUp(`Uploading photo ${i + 1} of ${take.length}…`); urls.push(await uploadPhoto(meId, take[i])); }
+        setF(p => ({ ...p, portfolio: [...p.portfolio, ...urls].slice(0, 12) }));
+        if (list.length > room) window.gwConfirm("You can show up to 12 photos.", () => {});
+      }
+    } catch (e) { window.gwConfirm(e.message || "Upload failed.", () => {}); }
+    setUp("");
+  };
+  const save = async () => {
+    if (!f.business_name.trim()) return window.gwConfirm("Please enter your business name.", () => {});
+    setBusy(true);
+    const row = { organiser_id: meId, business_name: f.business_name.trim(), tagline: f.tagline.trim() || null, about: f.about.trim() || null, cities: f.cities, event_types: f.event_types, services: f.services, price_from: Number(f.price_from) || null, years_experience: f.years_experience === "" ? null : Number(f.years_experience), instagram: f.instagram.trim() || null, public_phone: String(f.public_phone || "").trim() || null, portfolio: f.portfolio, logo_url: f.logo_url || null, published: !!f.published };
+    const { error } = await supabase.from("organiser_profiles").upsert(row);
+    setBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    onSaved && onSaved(row); onClose();
+  };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}><div style={{ fontWeight: 900, fontSize: 18, color: W.ink, flex: 1 }}>🏢 Business profile</div><span onClick={onClose} style={{ cursor: "pointer", color: W.soft, fontSize: 20 }}>✕</span></div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6 }}>Clients see this when you pick up their request. A full profile with photos wins more bookings.</div>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
+        <label style={{ cursor: "pointer" }}><PersonAvatar url={f.logo_url} name={f.business_name || "?"} size={58} /><input type="file" accept="image/*" hidden onChange={e => upload(e.target.files, "logo")} /></label>
+        <div style={{ flex: 1 }}><div style={gwLeadLbl}>BUSINESS NAME *</div><input value={f.business_name} onChange={e => set("business_name", e.target.value)} placeholder="e.g. Royal Touch Events" style={gwLeadInp} /></div>
+      </div>
+      <div style={{ fontSize: 11, color: W.soft, marginTop: 4 }}>Tap the circle to upload your logo.</div>
+      <div style={gwLeadLbl}>TAGLINE</div>
+      <input value={f.tagline} onChange={e => set("tagline", e.target.value)} placeholder="e.g. Weddings & theme birthdays across Andhra" maxLength={80} style={gwLeadInp} />
+      <div style={gwLeadLbl}>ABOUT YOUR WORK</div>
+      <textarea value={f.about} onChange={e => set("about", e.target.value)} rows={4} placeholder="What you do, what's included, your team, notable events…" style={{ ...gwLeadInp, resize: "vertical", fontFamily: "inherit" }} />
+      <div style={gwLeadLbl}>CITIES YOU SERVE</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 7 }}>{f.cities.map(c => <button key={c} onClick={() => set("cities", f.cities.filter(x => x !== c))} style={gwChip(true)}>{c} ✕</button>)}</div>
+      <div style={{ display: "flex", gap: 7 }}><input value={cityInp} onChange={e => setCityInp(e.target.value)} onKeyDown={e => e.key === "Enter" && addCity()} placeholder="Add a city" style={{ ...gwLeadInp, flex: 1 }} /><button onClick={addCity} style={{ ...btn("#EBEEF0", W.ink), padding: "8px 14px" }}>Add</button></div>
+      <div style={gwLeadLbl}>EVENT TYPES</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{GW_LEAD_TYPES.map(([k, ic, l]) => <button key={k} onClick={() => toggle("event_types", k)} style={gwChip(f.event_types.includes(k))}>{ic} {l}</button>)}</div>
+      <div style={gwLeadLbl}>SERVICES</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{GW_LEAD_SERVICES.map(s => <button key={s} onClick={() => toggle("services", s)} style={gwChip(f.services.includes(s))}>{s}</button>)}</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ flex: 1 }}><div style={gwLeadLbl}>PRICE FROM (₹)</div><input value={f.price_from} onChange={e => set("price_from", e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 25000" style={gwLeadInp} /></div>
+        <div style={{ flex: 1 }}><div style={gwLeadLbl}>YEARS OF EXPERIENCE</div><input value={f.years_experience} onChange={e => set("years_experience", e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 6" style={gwLeadInp} /></div>
+      </div>
+      <div style={gwLeadLbl}>PAST EVENT PHOTOS ({f.portfolio.length}/12)</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 5 }}>
+        {f.portfolio.map(u => <div key={u} style={{ position: "relative" }}><img src={u} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, display: "block" }} /><span onClick={() => set("portfolio", f.portfolio.filter(x => x !== u))} style={{ position: "absolute", top: 3, right: 3, background: "rgba(0,0,0,.6)", color: "#fff", borderRadius: "50%", width: 20, height: 20, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>✕</span></div>)}
+        {f.portfolio.length < 12 && <label style={{ aspectRatio: "1", border: `1.5px dashed ${W.line}`, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: W.soft, cursor: "pointer" }}>+<input type="file" accept="image/*" multiple hidden onChange={e => upload(e.target.files, "portfolio")} /></label>}
+      </div>
+      {up && <div style={{ fontSize: 12.5, color: W.teal, fontWeight: 800, marginTop: 6 }}>{up}</div>}
+      <div style={gwLeadLbl}>INSTAGRAM</div>
+      <input value={f.instagram} onChange={e => set("instagram", e.target.value)} placeholder="@yourpage" style={gwLeadInp} />
+      <div style={gwLeadLbl}>PUBLIC WHATSAPP NUMBER (optional)</div>
+      <input value={f.public_phone} onChange={e => set("public_phone", e.target.value)} inputMode="tel" placeholder="Clients who see your profile can message you" style={gwLeadInp} />
+      <label style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13.5, fontWeight: 700, color: W.ink, marginTop: 12 }}><input type="checkbox" checked={!!f.published} onChange={e => set("published", e.target.checked)} /> Show my profile to clients</label>
+      <button disabled={busy || !!up} onClick={save} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, fontSize: 15, marginTop: 14, opacity: busy || up ? .6 : 1 }}>{busy ? "Saving…" : "Save profile"}</button>
+    </Sheet>
+  );
+}
+
+// Admin: organiser leaderboard + review moderation
+function AdminOrganisersView() {
+  const [rows, setRows] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [viewId, setViewId] = useState(null);
+  const [sort, setSort] = useState("won");
+  const load = async () => {
+    const [{ data, error }, { data: rv }] = await Promise.all([supabase.rpc("admin_organiser_overview"), supabase.rpc("admin_recent_reviews")]);
+    if (error) window.gwConfirm(error.message, () => {});
+    setRows(data || []); setReviews(rv || []);
+  };
+  useEffect(() => { load(); }, []);
+  const flag = async (o, patch) => {
+    if (!o.has_profile) return window.gwConfirm("This organiser hasn't created a business profile yet.", () => {});
+    setRows(rs => rs.map(x => x.organiser_id === o.organiser_id ? { ...x, ...(patch.p_verified != null ? { verified: patch.p_verified } : {}), ...(patch.p_hidden != null ? { hidden_by_admin: patch.p_hidden } : {}) } : x));
+    const { error } = await supabase.rpc("admin_set_organiser_flags", { p_org: o.organiser_id, p_verified: patch.p_verified ?? null, p_hidden: patch.p_hidden ?? null });
+    if (error) { window.gwConfirm(error.message, () => {}); load(); }
+  };
+  const hideReview = async (rv) => {
+    setReviews(rs => rs.map(x => x.id === rv.id ? { ...x, hidden: !rv.hidden } : x));
+    const { error } = await supabase.from("organiser_reviews").update({ hidden: !rv.hidden }).eq("id", rv.id);
+    if (error) { window.gwConfirm(error.message, () => {}); load(); }
+  };
+  const list = [...(rows || [])].sort((a, b) => sort === "rating" ? (Number(b.rating_avg) || 0) - (Number(a.rating_avg) || 0) : sort === "spent" ? Number(b.credits_spent) - Number(a.credits_spent) : (Number(b.won) - Number(a.won)) || (Number(b.unlocks) - Number(a.unlocks)));
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        <div style={{ fontWeight: 900, color: W.ink, flex: 1 }}>Organisers ({list.length})</div>
+        <select value={sort} onChange={e => setSort(e.target.value)} style={{ border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13, background: "#fff" }}><option value="won">Most bookings won</option><option value="spent">Most credits spent</option><option value="rating">Best rated</option></select>
+        <button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "8px 12px" }}>↻</button>
+      </div>
+      {rows === null ? <Center>Loading…</Center> : !list.length ? <Center>No organisers yet.</Center> : list.map(o => (
+        <div key={o.organiser_id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 12, marginBottom: 8, opacity: o.hidden_by_admin ? .6 : 1 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14.5 }}>{o.business_name || o.name || "Organiser"}{o.verified && <GwVerified />}{o.hidden_by_admin && <span style={{ fontSize: 11, color: "#C0392B", fontWeight: 800 }}> · HIDDEN</span>}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{o.business_name ? `${o.name || ""} · ` : ""}{(o.cities || []).join(", ") || (o.has_profile ? "No cities set" : "⚠ No business profile yet")}</div>
+              <div style={{ fontSize: 12, color: W.ink, marginTop: 3 }}>🔓 {o.unlocks} unlocks · 🏆 {o.won} won · 💳 {o.credits_spent} cr · {o.rating_count ? <><GwStars value={o.rating_avg} size={12} /> {o.rating_avg} ({o.rating_count})</> : "no reviews"}{o.last_unlock ? ` · last ${gwTimeAgo(o.last_unlock)}` : ""}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 9 }}>
+            {o.has_profile && <button onClick={() => setViewId(o.organiser_id)} style={{ ...btn("#F0F2F5", W.ink), padding: "6px 11px", fontSize: 12 }}>👁 View profile</button>}
+            <button onClick={() => flag(o, { p_verified: !o.verified })} style={{ ...btn(o.verified ? "#F0F2F5" : "#E0F2FE", o.verified ? W.soft : "#0369A1"), padding: "6px 11px", fontSize: 12 }}>{o.verified ? "Remove verified" : "✔ Mark verified"}</button>
+            <button onClick={() => flag(o, { p_hidden: !o.hidden_by_admin })} style={{ ...btn(o.hidden_by_admin ? "#E7F6EF" : "#FDECEA", o.hidden_by_admin ? W.teal : "#C0392B"), padding: "6px 11px", fontSize: 12 }}>{o.hidden_by_admin ? "Unhide profile" : "Hide profile"}</button>
+          </div>
+        </div>
+      ))}
+      <div style={{ fontWeight: 900, color: W.ink, margin: "18px 0 8px" }}>Recent reviews</div>
+      {!reviews.length ? <Center>No reviews yet.</Center> : reviews.map(rv => (
+        <div key={rv.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 12px", marginBottom: 7, opacity: rv.hidden ? .55 : 1 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <GwStars value={rv.rating} size={13} />
+            <div style={{ flex: 1, fontSize: 12.5, color: W.ink }}><b>{rv.client || "Client"}</b> → {rv.organiser} <span style={{ color: W.soft }}>· {gwTimeAgo(rv.created_at)}</span></div>
+            <button onClick={() => hideReview(rv)} style={{ ...btn("#F0F2F5", rv.hidden ? W.teal : "#C0392B"), padding: "5px 10px", fontSize: 11.5 }}>{rv.hidden ? "Show" : "Hide"}</button>
+          </div>
+          {rv.comment && <div style={{ fontSize: 13, color: W.ink, marginTop: 4 }}>{rv.comment}</div>}
+        </div>
+      ))}
+      {viewId && <OrganiserProfileSheet organiserId={viewId} onClose={() => setViewId(null)} />}
     </div>
   );
 }
