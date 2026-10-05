@@ -2239,6 +2239,8 @@ function RecentBuyerToasts({ eventId, wide }) {
 
 function EventEntryRequestBox({ event, profile, hasTicket }) {
   const [status, setStatus] = useState("");
+  const askFood = !!event?.ask_food;
+  const [fv, setFv] = useState(profile?.food_pref === "veg" ? 1 : 0), [fnv, setFnv] = useState(profile?.food_pref === "nonveg" ? 1 : 0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const load = useCallback(async () => {
@@ -2250,7 +2252,9 @@ function EventEntryRequestBox({ event, profile, hasTicket }) {
   }, [event?.id, profile?.id, hasTicket]);
   useEffect(() => { load(); }, [load]);
   const request = async () => {
+    if (askFood && fv + fnv !== 1) return setErr("Please choose 🥗 Veg or 🍗 Non-veg first.");
     setBusy(true); setErr("");
+    if (askFood) { try { await supabase.rpc("set_my_food", { p_event: event.id, p_veg: fv, p_nonveg: fnv, p_add: false }); } catch { } }
     const { error } = await supabase.rpc("gw_request_event_entry", { p_event: event.id });
     setBusy(false);
     if (error) return setErr(error.message || "Could not send RSVP.");
@@ -2259,7 +2263,7 @@ function EventEntryRequestBox({ event, profile, hasTicket }) {
   if (!gwIsAdminModeratedEvent(event) || hasTicket) return null;
   if (!profile?.id) return <div style={{background:"#F8FAFC",border:"1px solid #CBD5E1",borderRadius:13,padding:"12px 14px",margin:"10px 0"}}><b>🙋 Request Entry / RSVP</b><div style={{fontSize:12.5,color:"#64748B",marginTop:4}}>Sign in as a Glasswings member to request entry.</div></div>;
   if (status === "pending") return <div style={{background:"linear-gradient(135deg,#FFF7ED,#F5F3FF)",border:"1px solid #FED7AA",borderRadius:13,padding:"13px 14px",margin:"10px 0"}}><div style={{fontWeight:950,color:"#9A3412"}}>⏳ RSVP sent — awaiting approval</div><div style={{fontSize:12.3,color:"#7C5A46",marginTop:4,lineHeight:1.45}}>The Glasswings team will review your request. If approved, your ticket will appear automatically.</div></div>;
-  return <div style={{background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1.5px solid #C4B5FD",borderRadius:14,padding:"14px",margin:"10px 0"}}><div style={{fontWeight:950,color:"#6D28D9",fontSize:15}}>🙋 Request Entry / RSVP</div><div style={{fontSize:12.5,color:"#65577A",lineHeight:1.5,marginTop:4}}>This is an admin-moderated event. Send an RSVP request; an admin will review it and, if approved, your QR ticket will be issued directly.</div>{status==="rejected"&&<div style={{fontSize:12,color:"#B45309",fontWeight:750,marginTop:7}}>Your previous request was not approved. You can request again.</div>}{err&&<div style={{fontSize:12,color:"#B42318",marginTop:7}}>{err}</div>}<button onClick={request} disabled={busy} style={{...btn("linear-gradient(95deg,#7C3AED,#2563EB)","#fff"),width:"100%",justifyContent:"center",marginTop:11,padding:"11px 14px",fontWeight:950,opacity:busy?.65:1}}>{busy?"Sending RSVP…":status==="rejected"?"↻ REQUEST ENTRY AGAIN":"🙋 REQUEST ENTRY / RSVP"}</button></div>;
+  return <div style={{background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1.5px solid #C4B5FD",borderRadius:14,padding:"14px",margin:"10px 0"}}><div style={{fontWeight:950,color:"#6D28D9",fontSize:15}}>🙋 Request Entry / RSVP</div><div style={{fontSize:12.5,color:"#65577A",lineHeight:1.5,marginTop:4}}>This is an admin-moderated event. Send an RSVP request; an admin will review it and, if approved, your QR ticket will be issued directly.</div>{status==="rejected"&&<div style={{fontSize:12,color:"#B45309",fontWeight:750,marginTop:7}}>Your previous request was not approved. You can request again.</div>}{askFood&&<div style={{background:"#fff",border:"1px solid #E9D5FF",borderRadius:12,padding:10,marginTop:10}}><div style={{fontWeight:900,fontSize:13.5,color:W.ink,marginBottom:7}}>🍽️ Food: Veg or Non-veg? <span style={{color:"#B91C1C"}}>*</span></div><GwFoodPicker people={1} veg={fv} nonveg={fnv} onChange={(a,b)=>{setFv(a);setFnv(b);setErr("");}}/></div>}{err&&<div style={{fontSize:12,color:"#B42318",marginTop:7}}>{err}</div>}<button onClick={request} disabled={busy} style={{...btn("linear-gradient(95deg,#7C3AED,#2563EB)","#fff"),width:"100%",justifyContent:"center",marginTop:11,padding:"11px 14px",fontWeight:950,opacity:busy?.65:1}}>{busy?"Sending RSVP…":status==="rejected"?"↻ REQUEST ENTRY AGAIN":"🙋 REQUEST ENTRY / RSVP"}</button></div>;
 }
 
 function AdminEventEntryRequests({ event }) {
@@ -15266,6 +15270,25 @@ function FoodByCodeCard({ code }) {
   );
 }
 
+// Organiser: one-tap switch in Edit event details
+function FoodAskToggle({ event, onUpdate }) {
+  const [on, setOn] = useState(!!event.ask_food), [busy, setBusy] = useState(false);
+  useEffect(() => { setOn(!!event.ask_food); }, [event.ask_food]);
+  const flip = async v => {
+    setBusy(true); setOn(v);
+    try { if (onUpdate) await onUpdate(event.id, { ask_food: v }); else await supabase.rpc("set_event_ask_food", { p_event: event.id, p_on: v }); } catch { }
+    setBusy(false);
+  };
+  return (
+    <label style={{ display: "flex", alignItems: "flex-start", gap: 10, background: on ? "#F0FAF4" : "#fff", border: `1.5px solid ${on ? "#16A34A" : W.line}`, borderRadius: 12, padding: "10px 12px", marginBottom: 10, cursor: "pointer" }}>
+      <input type="checkbox" checked={on} disabled={busy} onChange={ev => flip(ev.target.checked)} style={{ width: 18, height: 18, marginTop: 2 }} />
+      <div>
+        <div style={{ fontWeight: 900, color: W.ink, fontSize: 14 }}>🍽️ Food is served: ask 🥗 Veg / 🍗 Non-veg while booking</div>
+        <div style={{ fontSize: 12, color: W.soft, marginTop: 2, lineHeight: 1.45 }}>Buyers must choose for every person before they can pay (or before sending an RSVP). See the count in 🧑‍🤝‍🧑 Guest list → 🍽️ Catering.</div>
+      </div>
+    </label>
+  );
+}
 // Organiser: catering head-count (event → 🧑‍🤝‍🧑 Guest list tab)
 function CateringCard({ event, onUpdate }) {
   const [d, setD] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false), [buffer, setBuffer] = useState(10), [showAll, setShowAll] = useState(false);
@@ -19757,6 +19780,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   {mSeg === "details" && (<>
                     <div style={{display:"inline-flex",alignItems:"center",gap:6,alignSelf:"flex-start",background:gwIsAdminModeratedEvent(e)?"#F5F3FF":"#ECFDF5",color:gwIsAdminModeratedEvent(e)?"#6D28D9":"#047857",border:`1px solid ${gwIsAdminModeratedEvent(e)?"#DDD6FE":"#A7F3D0"}`,borderRadius:999,padding:"6px 10px",fontSize:11.5,fontWeight:900}}>{gwIsAdminModeratedEvent(e)?"🛡️ RSVP → Admin approval → Ticket":"🛒 Public purchase tickets"}</div>
                     <EventAvailabilityControl event={e} onUpdate={onUpdate} />
+                    <FoodAskToggle event={e} onUpdate={onUpdate} />
                     <EventDetailsEditor event={e} onUpdate={onUpdate} />
                     {privateOnly && <div style={{ background: "#F5F0FF", border: "1px solid #E0D4FF", borderRadius: 12, padding: 12 }}><label style={{ fontSize: 13, fontWeight: 850, color: "#6D28D9" }}>🔒 Invited segments</label><div style={{ display: "flex", gap: 7, marginTop: 8, marginBottom: 8 }}><button type="button" onClick={() => { const next = privateSegments.map(s => s.segment_id); if (next.length) onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] }); }} style={{ ...btn("#6D28D9", "#fff"), padding: "6px 10px", fontSize: 11.5 }}>✓ Select all</button></div><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 7 }}>{privateSegments.map(s => { const selected = privateSegIds.includes(s.segment_id); return <label key={s.segment_id} style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${selected ? "#6D28D9" : W.line}`, background: selected ? "#F3E8FF" : "#fff", color: selected ? "#6D28D9" : W.ink, borderRadius: 9, padding: "8px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}><input type="checkbox" checked={selected} onChange={() => { const next = selected ? privateSegIds.filter(id => id !== s.segment_id) : [...privateSegIds, s.segment_id]; if (!next.length) return alert("A private party must have at least one invited segment."); onUpdate(e.id, { private_segment_ids: next, private_segment_id: next[0] || null }); }} style={{ width: 16, height: 16, accentColor: "#6D28D9", cursor: "pointer" }} /><span>{s.emoji || "🎯"} {s.name}</span></label>; })}</div><div style={{ color: W.soft, fontSize: 11.5, marginTop: 7 }}>✓ {privateSegIds.length} selected. Only members in at least one selected segment can discover and buy tickets.</div></div>}
                     <div style={{ marginTop: 4 }}>
