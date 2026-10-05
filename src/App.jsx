@@ -661,6 +661,7 @@ function GuestTicketPage({ code }) {
           </div>
           <div style={{ background: "#08130F", color: "rgba(255,255,255,.6)", fontSize: 11.5, textAlign: "center", padding: "11px 0", letterSpacing: .5 }}>{t.checked_in ? "✓ Already checked in" : "Show this QR at the door"}</div><div style={{padding:"14px 22px",color:"#b7e5ce",fontSize:13,textAlign:"center",lineHeight:1.6}}>You’re not just on our guest list—you’re part of what makes this evening special. We can’t wait to welcome you. ♡</div>
         </div>
+        <FoodByCodeCard code={t.code || code} />
         {(t.terms || "").trim() && (
           <div style={{ background: "#fff", borderRadius: 14, marginTop: 12, overflow: "hidden", border: "1px solid #e3eae7" }}>
             <button onClick={() => setShowGT(v => !v)} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 800, fontSize: 13.5, color: "#1b2a27" }}>
@@ -11543,7 +11544,6 @@ function DoorCheckin({ mode = "checkin", events, ticketTypes, myEventsOnly, meId
     <div style={{ padding: "16px 16px 40px", maxWidth: 620, margin: "0 auto" }}>
       <div style={{ fontWeight: 800, fontSize: 17, color: W.ink }}>{showCheckin ? "✅ Event Check-in" : "💵 Door Sales"}</div>
       <div style={{ fontSize: 12.5, color: W.soft, margin: "4px 0 12px" }}>{showCheckin ? "Scan ticket QRs or enter a ticket code to admit guests." : "Sell tickets at the venue using cash or your UPI QR. Door-sale history stays here."}</div>
-      <GwGuideTip id="door" />
       {showCheckin
         ? <HelpBox title="How check-in works" tips={["Pick the event first from the dropdown below.", "Point the camera at a guest's QR — green means admit, red means already used or invalid.", "No camera? Type the ticket code and tap Check.", "Recent scans appear below for quick reference."]} />
         : <HelpBox title="How door sales work" tips={["Pick the event first from the dropdown below.", "Enter the buyer or guest details and choose the ticket type.", "Take cash or UPI payment and record the sale.", "Door-sale history and walk-in leads stay on this screen."]} />}
@@ -13291,7 +13291,6 @@ function OrganiserLeadsPanel({ meId }) {
           <button disabled={proBusy} onClick={buyPro} style={{ ...btn("#FFE08A", "#3B2A00"), padding: "10px 16px", marginTop: 11, fontWeight: 900 }}>{proBusy ? "…" : `Go Pro · ${pro.price} credits / ${pro.days} days`}</button>
         </div>
       ))}
-      <GwGuideTip id="leads" />
       <GwGuideTip id="pro" />
       <HelpBox title="How leads work" tips={["Clients post weddings, birthdays, corporate and community events they want organised.", "Contact details stay hidden until you unlock the lead with credits.", "Each lead goes to at most a few organisers, so contact the client quickly.", "Fake or wrong-number lead? Tap 'Report' and we'll refund your credits after review."]} />
       {bizProfile !== undefined && <div style={{ background: "#fff", border: `1px solid ${bizProfile ? W.line : "#F5D9A8"}`, borderRadius: 14, padding: "12px 14px", marginTop: 10 }}>
@@ -13530,7 +13529,6 @@ function AdminLeadsPanel() {
   const sel = { border: `1px solid ${W.line}`, borderRadius: 9, padding: "8px 10px", fontSize: 13, background: "#fff", color: W.ink };
   return (
     <div style={{ padding: 14 }}>
-      <GwGuideTip id="leads" />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {stat("TOTAL LEADS", all.length)}
         {stat("PENDING REVIEW", all.filter(r => r.status === "pending").length, "#B45309")}
@@ -14639,7 +14637,6 @@ function AdminStallsPanel() {
           ))}
         </div>}
       </div>
-      <GwGuideTip id="stalls" />
       <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12 }}>
         {[["apps", `📥 Applications (${apps.length})`], ["types", `🧩 Stall types (${types.length})`], ["settings", "⚙️ Page & rules"]].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? "#DB2777" : W.soft }}>{l}</button>
@@ -14986,7 +14983,6 @@ function AdminSponsorsPanel() {
           ))}
         </div>}
       </div>
-      <GwGuideTip id="sponsors" />
       <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12 }}>
         {[["apps", `📥 Requests (${apps.length})`], ["types", `🏅 Packages (${types.length})`], ["settings", "⚙️ Sponsor page"]].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? "#B45309" : W.soft }}>{l}</button>
@@ -15163,6 +15159,200 @@ function EventFeeCard({ event, canEdit }) {
 // =================== END VOLUME PRICING ===================
 
 
+
+// =================== VEG / NON-VEG FOR CATERING ===================
+// Picker used when buying, on My Ticket and on the ticket link page.
+function GwFoodPicker({ people, veg, nonveg, onChange, dark = false }) {
+  const n = Math.max(1, people || 1);
+  const v = Math.max(0, veg || 0), nv = Math.max(0, nonveg || 0);
+  const set = (a, b) => onChange(Math.max(0, Math.min(n, a)), Math.max(0, Math.min(n, b)));
+  const ink = dark ? "#fff" : W.ink, soft = dark ? "rgba(255,255,255,.7)" : W.soft;
+  const step = { width: 30, height: 30, borderRadius: 99, border: `1px solid ${dark ? "rgba(255,255,255,.3)" : W.line}`, background: dark ? "transparent" : "#fff", color: ink, fontSize: 17, cursor: "pointer", lineHeight: 1, fontFamily: "inherit" };
+  const row = (label, icon, col, val, inc, dec) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 12, background: val > 0 ? `${col}1A` : "transparent", border: `1.5px solid ${val > 0 ? col : (dark ? "rgba(255,255,255,.18)" : W.line)}` }}>
+      <span style={{ width: 16, height: 16, border: `2px solid ${col}`, borderRadius: 3, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 7, height: 7, borderRadius: 99, background: col }} /></span>
+      <span style={{ flex: 1, fontWeight: 800, color: ink, fontSize: 14 }}>{icon} {label}</span>
+      {n > 1 && <button type="button" onClick={dec} style={step}>−</button>}
+      <span style={{ minWidth: 20, textAlign: "center", fontWeight: 900, color: ink, fontSize: 15 }}>{n > 1 ? val : (val ? "✓" : "")}</span>
+      {n > 1 && <button type="button" onClick={inc} style={step}>+</button>}
+    </div>
+  );
+  const done = v + nv === n;
+  return (
+    <div>
+      {n === 1 ? <div style={{ display: "flex", gap: 8 }}>
+        {[["Veg", "🥗", "#16A34A", 1, 0], ["Non-veg", "🍗", "#B91C1C", 0, 1]].map(([l, ic, c, a, b]) => {
+          const on = v === a && nv === b;
+          return <button key={l} type="button" onClick={() => set(a, b)} style={{ flex: 1, border: `2px solid ${c}`, background: on ? c : (dark ? "transparent" : "#fff"), color: on ? "#fff" : c, borderRadius: 12, padding: "11px 8px", fontWeight: 900, fontSize: 14.5, cursor: "pointer", fontFamily: "inherit" }}>{ic} {l}</button>;
+        })}
+      </div> : <>
+        <div style={{ display: "flex", gap: 6, marginBottom: 7 }}>
+          <button type="button" onClick={() => set(n, 0)} style={{ ...gwChip(v === n), fontSize: 12 }}>🥗 All veg</button>
+          <button type="button" onClick={() => set(0, n)} style={{ ...gwChip(nv === n), fontSize: 12 }}>🍗 All non-veg</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {row("Veg", "🥗", "#16A34A", v, () => v + nv < n && set(v + 1, nv), () => set(v - 1, nv))}
+          {row("Non-veg", "🍗", "#B91C1C", nv, () => v + nv < n && set(v, nv + 1), () => set(v, nv - 1))}
+        </div>
+        <div style={{ fontSize: 11.5, fontWeight: 800, marginTop: 6, color: done ? (dark ? "#2FD4A8" : W.teal) : "#B45309" }}>{done ? `✓ All ${n} people chosen` : `${v + nv} of ${n} people chosen`}</div>
+      </>}
+    </div>
+  );
+}
+
+// Card on My Ticket (logged-in member)
+function MyFoodCard({ event }) {
+  const [d, setD] = useState(null), [v, setV] = useState(0), [nv, setNv] = useState(0), [edit, setEdit] = useState(false), [busy, setBusy] = useState(false);
+  const load = () => supabase.rpc("my_food", { p_event: event.id }).then(({ data }) => { if (data) { setD(data); setV(data.veg || 0); setNv(data.nonveg || 0); } });
+  useEffect(() => { load(); }, [event.id]);
+  if (!d || !d.ask) return null;
+  const people = Math.max(1, d.people || 1);
+  const answered = (d.veg || 0) + (d.nonveg || 0) > 0;
+  const save = async () => {
+    setBusy(true);
+    const { error } = await supabase.rpc("set_my_food", { p_event: event.id, p_veg: v, p_nonveg: nv, p_add: false });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setEdit(false); load();
+  };
+  return (
+    <div style={{ borderRadius: 14, border: `1.5px solid ${answered ? "#BBE5CF" : "#F5C451"}`, background: answered ? "#F0FAF4" : "#FFF8E1", padding: 12, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ fontSize: 22 }}>🍽️</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 900, color: W.ink, fontSize: 14 }}>{answered ? "Your food choice" : "Choose your food: Veg or Non-veg?"}</div>
+          <div style={{ fontSize: 12, color: W.soft }}>{answered ? `🥗 ${d.veg || 0} veg · 🍗 ${d.nonveg || 0} non-veg` : `So the organiser orders enough food for all ${people} of you.`}</div>
+        </div>
+        {answered && !edit && <button onClick={() => setEdit(true)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "6px 11px", fontSize: 12 }}>Change</button>}
+      </div>
+      {(!answered || edit) && <div style={{ marginTop: 10 }}>
+        <GwFoodPicker people={people} veg={v} nonveg={nv} onChange={(a, b) => { setV(a); setNv(b); }} />
+        <button disabled={busy || v + nv !== people} onClick={save} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 10, opacity: busy || v + nv !== people ? .5 : 1 }}>{busy ? "Saving…" : "Save food choice"}</button>
+      </div>}
+    </div>
+  );
+}
+
+// Card on the ticket link page (no login — guests & WhatsApp link)
+function FoodByCodeCard({ code }) {
+  const [d, setD] = useState(null), [v, setV] = useState(0), [nv, setNv] = useState(0), [edit, setEdit] = useState(false), [busy, setBusy] = useState(false), [saved, setSaved] = useState(false);
+  const load = () => supabase.rpc("food_by_code", { p_code: code }).then(({ data }) => { if (data) { setD(data); setV(data.veg || 0); setNv(data.nonveg || 0); } });
+  useEffect(() => { load(); }, [code]);
+  if (!d || !d.ask) return null;
+  const people = Math.max(1, d.people || 1);
+  const answered = (d.veg || 0) + (d.nonveg || 0) > 0;
+  const save = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("set_food_by_code", { p_code: code, p_veg: v, p_nonveg: nv });
+    setBusy(false);
+    if (error || !data?.ok) return alert(error?.message || "Could not save. Please try again.");
+    setEdit(false); setSaved(true); load();
+  };
+  return (
+    <div style={{ background: "#fff", borderRadius: 14, marginTop: 12, padding: 14, border: `2px solid ${answered ? "#BBE5CF" : "#F5C451"}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+        <div style={{ fontSize: 24 }}>🍽️</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 900, color: "#1b2a27", fontSize: 15 }}>{answered ? (saved ? "Thank you! Food choice saved ✓" : "Your food choice") : "Veg or Non-veg?"}</div>
+          <div style={{ fontSize: 12.5, color: "#5d6f6b" }}>{answered ? `🥗 ${d.veg || 0} veg · 🍗 ${d.nonveg || 0} non-veg` : `Please choose for ${people === 1 ? "yourself" : `all ${people} people on this ticket`} so we order the right food.`}</div>
+        </div>
+        {answered && !edit && <button onClick={() => setEdit(true)} style={{ border: "1px solid #dfe6e3", background: "#fff", borderRadius: 9, padding: "6px 11px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>Change</button>}
+      </div>
+      {(!answered || edit) && <div style={{ marginTop: 10 }}>
+        <GwFoodPicker people={people} veg={v} nonveg={nv} onChange={(a, b) => { setV(a); setNv(b); }} />
+        <button disabled={busy || v + nv !== people} onClick={save} style={{ width: "100%", marginTop: 10, border: 0, borderRadius: 11, padding: "12px", background: "#008069", color: "#fff", fontWeight: 900, fontSize: 14.5, cursor: "pointer", opacity: busy || v + nv !== people ? .5 : 1 }}>{busy ? "Saving…" : "Save"}</button>
+      </div>}
+    </div>
+  );
+}
+
+// Organiser: catering head-count (event → 🧑‍🤝‍🧑 Guest list tab)
+function CateringCard({ event, onUpdate }) {
+  const [d, setD] = useState(null), [err, setErr] = useState(""), [busy, setBusy] = useState(false), [buffer, setBuffer] = useState(10), [showAll, setShowAll] = useState(false);
+  const load = () => supabase.rpc("event_food_summary", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setD(data); } });
+  useEffect(() => { load(); }, [event.id]);
+  const toggle = async on => {
+    setBusy(true);
+    let error = null;
+    if (onUpdate) { try { await onUpdate(event.id, { ask_food: on }); } catch (e) { error = e; } }
+    else ({ error } = await supabase.rpc("set_event_ask_food", { p_event: event.id, p_on: on }));
+    if (error) await supabase.rpc("set_event_ask_food", { p_event: event.id, p_on: on });
+    setBusy(false); load();
+  };
+  const setFor = async (r, a, b) => { await supabase.rpc("organiser_set_food", { p_event: event.id, p_kind: r.kind, p_id: r.id, p_veg: a, p_nonveg: b }); load(); };
+  if (err) return <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 12, fontSize: 12.5, color: "#9A3412" }}>🍽️ Veg / Non-veg count isn't set up yet. Run <b>food_prefs.sql</b> in Supabase → SQL Editor.</div>;
+  if (!d) return null;
+  const known = d.veg + d.nonveg;
+  const share = known > 0 ? d.veg / known : 0.5;
+  const estVeg = Math.round(d.veg + d.unknown * share), estNon = d.people - estVeg;
+  const withBuf = x => Math.ceil(x * (1 + buffer / 100));
+  const pct = x => d.people ? Math.round(x * 100 / d.people) : 0;
+  const pending = (d.rows || []).filter(r => r.veg == null);
+  const link = r => `https://glass-wings.com/?gt=${encodeURIComponent(r.code || "")}`;
+  const askText = r => `Hi ${r.name} 👋\nFor *${event.title}* we're ordering food. Please choose 🥗 Veg or 🍗 Non-veg${r.people > 1 ? ` for all ${r.people} people` : ""} here (takes 5 seconds):\n${link(r)}\n— Glasswings`;
+  const caterer = `🍽️ *${event.title}*${event.event_date ? ` · ${event.event_date}` : ""}\nTotal guests: ${d.people}\n🥗 Veg: ${withBuf(estVeg)}\n🍗 Non-veg: ${withBuf(estNon)}\n(includes ${buffer}% extra${d.unknown ? `, ${d.unknown} not answered estimated` : ""})`;
+  return (
+    <div style={{ borderRadius: 18, overflow: "hidden", border: "1px solid #E2E8F0", background: "#fff", boxShadow: "0 8px 22px rgba(22,163,74,.12)" }}>
+      <div style={{ background: "linear-gradient(120deg,#15803D,#16A34A 45%,#B91C1C)", color: "#fff", padding: "14px 16px" }}>
+        <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>🍽️ CATERING · VEG / NON-VEG</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
+          <input type="checkbox" checked={!!d.ask} disabled={busy} onChange={ev => toggle(ev.target.checked)} style={{ width: 18, height: 18 }} />
+          Ask guests Veg or Non-veg for this event
+        </label>
+        {!d.ask && <div style={{ fontSize: 12, opacity: .92, marginTop: 4 }}>Turn this on for house parties and dinners. Buyers choose when they book, and people who already have tickets can choose from their ticket.</div>}
+      </div>
+      {d.ask && <div style={{ padding: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+          {[["🥗 VEG", d.veg, "#16A34A", "#F0FAF4"], ["🍗 NON-VEG", d.nonveg, "#B91C1C", "#FEF2F2"], ["❓ NOT ANSWERED", d.unknown, "#B45309", "#FFF8E1"]].map(([l, n, c, bg]) => (
+            <div key={l} style={{ background: bg, border: `1.5px solid ${c}44`, borderRadius: 14, padding: "10px 8px", textAlign: "center" }}>
+              <div style={{ fontSize: 10.5, fontWeight: 900, color: c, letterSpacing: .5 }}>{l}</div>
+              <div style={{ fontSize: 28, fontWeight: 950, color: c, lineHeight: 1.1 }}>{n}</div>
+              <div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>{pct(n)}% of {d.people}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", height: 12, borderRadius: 99, overflow: "hidden", marginTop: 10, background: "#F1F5F9" }}>
+          <div style={{ width: `${pct(d.veg)}%`, background: "#16A34A" }} /><div style={{ width: `${pct(d.nonveg)}%`, background: "#B91C1C" }} /><div style={{ width: `${pct(d.unknown)}%`, background: "#F59E0B" }} />
+        </div>
+        <div style={{ marginTop: 12, background: "#0F172A", color: "#fff", borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 900, color: "#93C5FD" }}>👨‍🍳 ORDER THIS FROM THE CATERER</div>
+          <div style={{ display: "flex", gap: 14, marginTop: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+            <div><span style={{ fontSize: 26, fontWeight: 950, color: "#4ADE80" }}>{withBuf(estVeg)}</span> <span style={{ fontWeight: 800 }}>veg</span></div>
+            <div><span style={{ fontSize: 26, fontWeight: 950, color: "#FCA5A5" }}>{withBuf(estNon)}</span> <span style={{ fontWeight: 800 }}>non-veg</span></div>
+          </div>
+          <div style={{ fontSize: 11.5, opacity: .8, marginTop: 4, lineHeight: 1.45 }}>{d.unknown ? `${d.unknown} people haven't answered; they're split in the same ratio as those who did. ` : ""}Includes extra:
+            {[0, 5, 10, 15].map(b => <button key={b} onClick={() => setBuffer(b)} style={{ marginLeft: 5, border: 0, borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 900, cursor: "pointer", background: buffer === b ? "#fff" : "rgba(255,255,255,.18)", color: buffer === b ? "#0F172A" : "#fff" }}>{b}%</button>)}
+          </div>
+          <a href={`https://wa.me/?text=${encodeURIComponent(caterer)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), marginTop: 10, textDecoration: "none", padding: "8px 13px", fontSize: 12.5 }}>📲 Send count to caterer</a>
+        </div>
+        {pending.length > 0 && <div style={{ marginTop: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, fontWeight: 900, color: W.ink, fontSize: 14 }}>⏳ Not answered yet ({pending.length})</div>
+            <button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "5px 10px", fontSize: 12 }}>↻</button>
+          </div>
+          <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 8px" }}>Tap 💬 to ask them on WhatsApp (they choose from their ticket link), or set it yourself if you already know.</div>
+          {(showAll ? pending : pending.slice(0, 8)).map(r => (
+            <div key={r.kind + r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: `1px solid ${W.line}` }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}{r.people > 1 ? ` · ${r.people} people` : ""}</div>
+                <div style={{ fontSize: 11.5, color: W.soft }}>{r.kind === "guest" ? "Guest list" : "Member"}{r.phone ? ` · ${r.phone}` : ""}</div>
+              </div>
+              <a href={r.phone ? `https://wa.me/${waNum(r.phone)}?text=${encodeURIComponent(askText(r))}` : `https://wa.me/?text=${encodeURIComponent(askText(r))}`} target="_blank" rel="noreferrer" title="Ask on WhatsApp" style={{ ...btn("#25D366", "#fff"), padding: "6px 9px", fontSize: 12, textDecoration: "none" }}>💬</a>
+              <button title="All veg" onClick={() => setFor(r, r.people, 0)} style={{ ...btn("#F0FAF4", "#15803D"), border: "1px solid #BBE5CF", padding: "6px 8px", fontSize: 12 }}>🥗</button>
+              <button title="All non-veg" onClick={() => setFor(r, 0, r.people)} style={{ ...btn("#FEF2F2", "#B91C1C"), border: "1px solid #FECACA", padding: "6px 8px", fontSize: 12 }}>🍗</button>
+            </div>
+          ))}
+          {pending.length > 8 && !showAll && <button onClick={() => setShowAll(true)} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.line}`, marginTop: 6, padding: "6px 12px", fontSize: 12.5 }}>Show all {pending.length}</button>}
+        </div>}
+        {(d.rows || []).some(r => r.veg != null) && <details style={{ marginTop: 12 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 13, color: W.teal }}>✓ Answered ({(d.rows || []).filter(r => r.veg != null).length})</summary>
+          {(d.rows || []).filter(r => r.veg != null).map(r => <div key={r.kind + r.id} style={{ display: "flex", gap: 8, fontSize: 12.5, padding: "6px 0", borderTop: `1px solid ${W.line}` }}><span style={{ flex: 1, color: W.ink, fontWeight: 700 }}>{r.name}</span>{r.veg > 0 && <span style={{ color: "#15803D", fontWeight: 800 }}>🥗 {r.veg}</span>}{r.nonveg > 0 && <span style={{ color: "#B91C1C", fontWeight: 800 }}>🍗 {r.nonveg}</span>}</div>)}
+        </details>}
+      </div>}
+    </div>
+  );
+}
+// =================== END VEG / NON-VEG ===================
 
 // =================== GLASSWINGS GUIDE (admin guide + tips on every screen) ===================
 // GW_GUIDE holds every explanation in one place. <GwGuideTip id="..."/> shows a short tip on a screen;
@@ -15343,12 +15533,26 @@ const GW_GUIDE = {
     ],
     tips: ["Door sales count towards volume tiers and appear in settlements automatically."],
   },
+  food: {
+    icon: "🍽️", title: "Veg / Non-veg count for catering", grad: "linear-gradient(120deg,#15803D,#16A34A 45%,#B91C1C)",
+    one: "For house parties and dinners, every guest tells you Veg or Non-veg, so you order the right food and nobody goes hungry.",
+    where: "Admin → 📅 Events → open event → 🧑‍🤝‍🧑 Guest list → 🍽️ Catering card", tab: "events",
+    flow: [["☑️", "Switch on", "Per event"], ["🎟️", "Buyer chooses", "Required at booking"], ["📲", "Old tickets", "Choose from ticket link"], ["💬", "Remind", "WhatsApp the rest"], ["👨‍🍳", "Order", "Count + extra %"]],
+    steps: [
+      "Open the event → 🧑‍🤝‍🧑 Guest list and tick \"Ask guests Veg or Non-veg for this event\".",
+      "From now on, buyers must pick 🥗 Veg or 🍗 Non-veg for every person before paying (e.g. 2 veg + 1 non-veg).",
+      "People who bought earlier see a 🍽️ \"Choose your food\" box on their ticket and on the WhatsApp ticket link.",
+      "The ⏳ Not answered list shows who is left. Tap 💬 to send them a WhatsApp with their link, or tap 🥗 / 🍗 to set it yourself.",
+      "The black \"Order this from the caterer\" box adds people who didn't answer (in the same ratio) plus 0–15% extra. Tap 📲 Send count to caterer.",
+    ],
+    tips: ["Group passes count every person (a Group of 4 = 4 meals).", "Members' usual choice is remembered, so next time it's filled in for them."],
+  },
   // ----- short tips for the public / vendor / brand screens -----
   vendor: { icon: "🏪", title: "How booking a stall works", grad: "linear-gradient(120deg,#F97316,#EC4899)", one: "Apply → organiser approves → pay in the app → get your stall number and Stall Pass.", steps: ["Pick a stall type and fill in your business details.", "The organiser reviews it. You'll see \"Approved\" in My stalls.", "Tap Pay to confirm. Your Stall Pass shows your stall number and setup time."] },
   brand: { icon: "🤝", title: "How sponsoring works", grad: "linear-gradient(120deg,#B8860B,#F5C451)", one: "Choose a package → send your brand details → organiser approves → pay → your logo goes live.", steps: ["Pick a package and add your logo and contact.", "The organiser approves your brand.", "Pay in the app. Your logo appears on the event page (and on every ticket for Title sponsors)."] },
   client: { icon: "🎉", title: "How it works", grad: "linear-gradient(120deg,#008069,#8B5CF6)", one: "Tell us your event → verified organisers call you with quotes → book and pay safely in the app.", steps: ["Fill in the event type, date, city, guests and budget.", "A few matching organisers contact you with quotes. Your number is shared only with them.", "Pick one and pay the advance in the app. The money is held safely by Glasswings."] },
 };
-const GW_GUIDE_ORDER = ["start", "tickets", "whatsapp", "door", "leads", "leadsettings", "pro", "profiles", "bookings", "stalls", "sponsors", "fees", "money"];
+const GW_GUIDE_ORDER = ["start", "tickets", "food", "whatsapp", "door", "leads", "leadsettings", "pro", "profiles", "bookings", "stalls", "sponsors", "fees", "money"];
 const GW_GUIDE_FOR_TAB = { events: "start", private: "start", invite: "start", leads: "leads", stalls: "stalls", sponsors: "sponsors", checkin: "door", doorsales: "door", orgapps: "money", settle: "money", dash: "start", analytics: "start" };
 function gwOpenGuide(id) { try { window.dispatchEvent(new CustomEvent("gwopenguide", { detail: id || "start" })); } catch { } }
 
@@ -15509,6 +15713,98 @@ function AdminGuidePanel({ section, tabs = [], onGo }) {
     </div>
   );
 }
+// ---------- One infographic guide card for EVERY admin tab and every event sub-tab ----------
+// ref: reuse a full chapter from GW_GUIDE. Otherwise: icon, title, grad, one, flow, steps.
+const GW_TAB_GUIDE = {
+  guide: null,
+  events: { ref: "start" }, stalls: { ref: "stalls" }, sponsors: { ref: "sponsors" }, checkin: { ref: "door" },
+  leads: { ref: "leads" },
+  doorsales: { icon: "💵", title: "Door Sales: sell tickets at the gate", grad: "linear-gradient(120deg,#16A34A,#0EA5E9)", one: "When someone arrives without a ticket, sell it here so the sale is recorded and they get a proper ticket.", flow: [["📅", "Pick event", "From the list"], ["🎟️", "Choose ticket", "Type + quantity"], ["🧑", "Buyer details", "Name + WhatsApp"], ["💵", "Cash / UPI", "Mark how they paid"], ["✅", "Ticket issued", "Counted in sales"]], steps: ["Choose the event at the top.", "Select the ticket type and how many.", "Enter the buyer's name and WhatsApp number.", "Choose Cash or UPI and confirm. The sale appears in the event's 💰 Sales and in settlements."], more: "door" },
+  directory: { icon: "☎️", title: "Supplier Directory", grad: "linear-gradient(120deg,#0369A1,#0EA5E9)", one: "Your phone book of trusted suppliers: decorators, DJs, caterers, venues, sound and light.", flow: [["🔍", "Search", "By name or category"], ["📇", "Open card", "Contact & notes"], ["📞", "Call / WhatsApp", "One tap"]], steps: ["Search or filter by category to find a supplier.", "Tap a supplier to see their number and notes.", "Use Call or WhatsApp to contact them directly."] },
+  dash: { icon: "▦", title: "Dashboard: your events at a glance", grad: "linear-gradient(120deg,#0F766E,#4F46E5)", one: "Quick numbers for your latest events: tickets sold, money collected and check-ins.", flow: [["🎟️", "Tickets sold", "Per event"], ["₹", "Collected", "Online + door"], ["✅", "Checked in", "Who came"], ["📈", "Compare", "Latest 8 events"]], steps: ["Look at the top cards for your overall performance.", "Scroll to see each recent event's sales and check-ins.", "For deeper numbers, open the Analytics tab."] },
+  credits: { icon: "💳", title: "Credits (member wallet)", grad: "linear-gradient(120deg,#7C3AED,#0EA5E9)", one: "Members buy credits to pay for tickets, games and lead unlocks. 1 credit = ₹1.", flow: [["📦", "Packs", "What members can buy"], ["🎁", "Signup bonus", "Free credits once"], ["➕", "Adjust", "Add or deduct by hand"], ["🧾", "Ledger", "Every change recorded"]], steps: ["Set the credit packs members can buy and their prices.", "Set a signup bonus (0 turns it off).", "To give a refund or promo, search the member and add credits. Use a negative number to deduct.", "Every change is saved in the credit ledger, so nothing is lost."] },
+  invite: { icon: "💌", title: "Invite: send guests to an event", grad: "linear-gradient(120deg,#B7791F,#EC4899)", one: "Quickly invite a guest or issue a free ticket for an upcoming event.", flow: [["📅", "Choose event", "Upcoming only"], ["🧑", "Add guest", "Name + WhatsApp"], ["🎟️", "Issue", "Invite or ticket"], ["📲", "Delivered", "On WhatsApp"]], steps: ["Choose an upcoming event.", "Enter the guest's name and WhatsApp number.", "Send an invite, or issue a ticket directly (complimentary tickets don't count towards volume tiers)."] },
+  private: { icon: "🔒", title: "Private Parties", grad: "linear-gradient(120deg,#334155,#7C3AED)", one: "Invite-only events. They don't show in the public list, and guests come only by invite or approval.", flow: [["📝", "Create party", "Same as an event"], ["💌", "Invite", "Send the private link"], ["🙋", "Approve", "RSVP requests"], ["✅", "Check-in", "Scan at the door"]], steps: ["Create the party like a normal event. It stays hidden from the public list.", "Share the invite link or invite members directly.", "Approve RSVP requests, then scan tickets at the door as usual."], more: "start" },
+  orgstaff: { icon: "🧑‍💼", title: "My Staff", grad: "linear-gradient(120deg,#B45309,#F59E0B)", one: "Add trusted team members and choose exactly which jobs they can do (door, sales, members…).", flow: [["🔍", "Find member", "Exact email / phone"], ["➕", "Add to staff", "Give a job title"], ["☑️", "Pick access", "Only what they need"], ["💾", "Save", "They see only that"]], steps: ["Type the person's exact Glasswings email or phone and tap Add to my staff.", "Give them a job title (e.g. Door manager).", "Tick only the jobs they need, then tap Save job & access."] },
+  orgmembers: { icon: "👥", title: "My Members", grad: "linear-gradient(120deg,#008069,#0EA5E9)", one: "Everyone who booked your events. Use it to call, message or re-invite past guests.", flow: [["🎟️", "They book", "Any of your events"], ["👥", "Listed here", "Name, phone, events"], ["💬", "Reach out", "WhatsApp / invite"]], steps: ["Search a member by name.", "See which of your events they attended.", "Message them or invite them to your next event."] },
+  verify: { icon: "✔", title: "Verify members", grad: "linear-gradient(120deg,#1D9BF0,#008069)", one: "New members record a short selfie video. You check it's a real person, then approve or ask them to redo.", flow: [["🤳", "Member records", "Short selfie video"], ["👀", "You watch", "Is it a real person?"], ["✔", "Approve", "Gets verified badge"], ["↻", "Or reject", "They redo it"]], steps: ["Play each video.", "Tap Approve if the face matches their profile photo.", "Tap Reject — redo if it's unclear or fake. They'll be asked to record again."] },
+  broadcast: { icon: "📢", title: "Send: announcements & event posts", grad: "linear-gradient(120deg,#DB2777,#7C3AED)", one: "Post an event into every group chat, or send a message to all members or one segment.", flow: [["📅", "Event post", "Card into every room"], ["✉️", "Message", "All members"], ["🎯", "Segment", "Only chosen people"]], steps: ["To promote an event: choose it and post it to all groups.", "To send a message: write it and send to everyone.", "To reach only some people, choose a segment (make segments in 🎯 Segments)."] },
+  inbox: { icon: "✉", title: "Inbox", grad: "linear-gradient(120deg,#0369A1,#7C3AED)", one: "Replies and messages from members land here.", flow: [["💬", "Member writes", "Reply or question"], ["✉", "Inbox", "Newest first"], ["↩️", "You reply", "Opens the chat"]], steps: ["Tap a conversation to open it.", "Reply inside the chat. The member gets it in the app."] },
+  members: { icon: "👥", title: "Members overview", grad: "linear-gradient(120deg,#008069,#4F46E5)", one: "How many members you have, where they are, and who is active.", flow: [["🧑", "Sign-ups", "New members"], ["✔", "Verified", "Real people"], ["💎", "Subscribers", "Paying members"], ["🎟️", "Active", "Booking events"]], steps: ["Use the numbers to track growth.", "To edit a member, use Manage members."] },
+  manage: { icon: "⚙", title: "Manage members", grad: "linear-gradient(120deg,#334155,#008069)", one: "Approve new sign-ups, edit members, give roles, add to rooms, or remove someone.", flow: [["🆕", "Pending", "Approve sign-ups"], ["🔍", "Find member", "Search"], ["✏️", "Edit", "Roles, rooms, stamps"], ["🚫", "Remove", "If needed"]], steps: ["Approve or reject new sign-ups at the top.", "Search a member to edit their details, roles or rooms.", "Use roles carefully: admin and organiser roles give access to these screens."] },
+  segments: { icon: "🎯", title: "Segments: target the right people", grad: "linear-gradient(120deg,#E11D48,#F97316)", one: "Make a group of members (e.g. 'Women, Guntur, attended 2+ events') and message only them.", flow: [["🎛️", "Design", "Pick filters"], ["👥", "Preview", "See who matches"], ["💾", "Save", "Name the segment"], ["📲", "Send", "Chat, email or WhatsApp"]], steps: ["Choose filters (city, gender, events attended…). The member count updates live.", "Save the segment with a clear name.", "Send to it by in-app chat, email or an AiSensy WhatsApp campaign. You can also limit tickets to a segment."] },
+  reports: { icon: "🚩", title: "Reports", grad: "linear-gradient(120deg,#C0392B,#F97316)", one: "Members can report someone for bad behaviour. Review each report and act.", flow: [["🚩", "Report", "From a member"], ["👀", "Review", "Who & why"], ["⚖️", "Act", "Talk / restrict"], ["✅", "Resolve", "Mark resolved"]], steps: ["Read who reported whom and why.", "Check the reported person's profile. Restrict or remove them in Manage members if needed.", "Tap ✓ Mark resolved when it's handled."] },
+  connect: { icon: "🔗", title: "Connections", grad: "linear-gradient(120deg,#0EA5E9,#8B5CF6)", one: "Manually connect two members so they can chat (e.g. after an event introduction).", flow: [["🧑", "Member A", "Search"], ["🔗", "Connect", "Approve"], ["🧑", "Member B", "Can now chat"]], steps: ["Search the two members and connect them.", "The connection appears under Approved connections. Tap Revoke to undo it."] },
+  subs: { icon: "💎", title: "Subscription plans", grad: "linear-gradient(120deg,#7C3AED,#C026D3)", one: "Membership plans members pay for to get cheaper or free tickets.", flow: [["💎", "Plan", "Name + perks"], ["₹", "Prices", "Monthly / yearly"], ["🔁", "Auto-renew", "Razorpay billing"], ["🧑", "Enroll", "Add a member by hand"]], steps: ["Set each plan's prices. Leave a box empty if you don't offer that duration.", "Turn auto-renew billing on if you want automatic monthly charges.", "Use Enroll a member for people who paid you outside the app."] },
+  subscribers: { icon: "💎", title: "Subscribers", grad: "linear-gradient(120deg,#C026D3,#7C3AED)", one: "Everyone on a paid plan: who is active, expiring soon or expired.", flow: [["✅", "Active", "Paying now"], ["⏳", "Expiring", "Renew soon"], ["❌", "Expired", "Win them back"], ["📲", "Nudge", "WhatsApp / in-app"]], steps: ["Switch views to see active, expiring and expired members.", "Use WhatsApp nudge or In-app reminder to get renewals."] },
+  accounts: { icon: "📊", title: "Accounts: income & expenses", grad: "linear-gradient(120deg,#0F766E,#2563EB)", one: "All Glasswings money in one place: where income comes from and what you spent.", flow: [["₹", "Income", "Where money came from"], ["🧾", "Expenses", "By category"], ["💰", "Net", "Income − expenses"], ["📄", "PDF", "Print / share"]], steps: ["Pick a period (or All time).", "See income by source and expenses by category.", "Add costs in each event's 💹 P&L tab so they show here.", "Tap 📄 PDF for a printable statement."] },
+  subcoupons: { icon: "🏷️", title: "Subscription coupons", grad: "linear-gradient(120deg,#F59E0B,#EC4899)", one: "Discount codes for membership plans.", flow: [["🏷️", "Create code", "e.g. DIWALI20"], ["%", "Discount", "% or ₹"], ["🔒", "Limits", "One use per member"]], steps: ["Type a code and the discount.", "Choose limits (one use per member, expiry).", "Tap Create coupon and share the code."] },
+  coupons: { icon: "🏷️", title: "Ticket coupons", grad: "linear-gradient(120deg,#EC4899,#F97316)", one: "Discount codes for one event's tickets.", flow: [["📅", "Pick event", "Upcoming"], ["🏷️", "Code + discount", "% or ₹"], ["🔒", "Limits", "Min order, expiry, uses"], ["📣", "Share", "Buyers enter at checkout"]], steps: ["Choose the upcoming event.", "Enter the code and discount. Add min order, expiry and use limit if needed.", "Share the code. Buyers type it at checkout."] },
+  team: { icon: "♟", title: "Team & permissions", grad: "linear-gradient(120deg,#334155,#7C3AED)", one: "Decide what each role (admin, sub-admin, organiser, promoter) is allowed to do.", flow: [["🎭", "Role", "Admin, organiser…"], ["☑️", "Permissions", "Tick what they can do"], ["🧑", "Assign", "Give roles to people"], ["📈", "Team stats", "Events & attendance"]], steps: ["Tick the permissions for each role and save.", "Give someone a role from their member profile.", "Team analytics shows events hosted and attendance each person brought in."] },
+  analytics: { icon: "◷", title: "Analytics", grad: "linear-gradient(120deg,#4F46E5,#0EA5E9)", one: "Sales, revenue, check-ins and capacity, for one event or all together. Export a report for organisers.", flow: [["📅", "Choose", "One event or all"], ["₹", "Revenue", "Online + door"], ["✅", "Turn-up", "Check-ins vs sold"], ["📄", "Report", "PDF for organiser"]], steps: ["Choose an event, or all events.", "Read the top cards: total collected, tickets, check-ins.", "Export the PDF report to share with the organiser."] },
+  emailmkt: { icon: "@", title: "Email marketing", grad: "linear-gradient(120deg,#2563EB,#DB2777)", one: "Send bulk emails to members and set the banner shown in every ticket email.", flow: [["✍️", "Write", "Subject + message"], ["👥", "Audience", "All members"], ["📤", "Send", "Branded email"], ["🖼️", "Ticket banner", "Ad in every ticket email"]], steps: ["Write the subject and message.", "Send a test to yourself first.", "Set the marketing banner that appears in ticket emails."] },
+  settle: { icon: "📣", title: "Promoters & payouts", grad: "linear-gradient(120deg,#BE185D,#7C3AED)", one: "Promoters earn commission on tickets sold through their link. Review and record their payouts here.", flow: [["🔗", "Promoter link", "Shares event"], ["🎟️", "Sales", "Tracked to promoter"], ["₹", "Commission", "Calculated"], ["🏦", "Payout", "You pay & record"]], steps: ["See each promoter's tickets and commission.", "Pay them by UPI/bank, then record the payout so the balance is correct."] },
+  orgapps: { icon: "🏢", title: "Organisers: applications & payouts", grad: "linear-gradient(120deg,#0E5C54,#2563EB)", one: "Approve new organisers, set their commission %, open their dashboard and settle their money.", flow: [["📝", "Applies", "Organiser form"], ["✓", "Approve", "Set commission %"], ["📅", "Runs events", "Own dashboard"], ["🏦", "Payout", "Settlements"]], steps: ["Review each application and approve good partners.", "Set their commission % (your platform fee for normal events).", "Tap Open dashboard → Payouts to see what you owe them and download the PDF statement."], more: "money" },
+  filters: { icon: "☷", title: "Filters & categories", grad: "linear-gradient(120deg,#475569,#0EA5E9)", one: "The categories and filters members use to find events (genre, vibe, age group…).", flow: [["🏷️", "Category", "e.g. Music"], ["🎛️", "Dimension", "e.g. Vibe"], ["🔘", "Options", "Chill, Party…"], ["🖼️", "Image", "Optional icon"]], steps: ["Add a new dimension (e.g. Language) and its options.", "Delete ones you no longer use.", "Tag each event with these options in the event's Details."] },
+  rooms: { icon: "▣", title: "Rooms (group chats)", grad: "linear-gradient(120deg,#008069,#25D366)", one: "City and community group chats inside the app.", flow: [["➕", "Create room", "Name + city"], ["👥", "Members join", "Or you add them"], ["💬", "Chat", "Event posts go here"]], steps: ["Create a room for a city or community.", "Add members, or let them join.", "Event posts from Send appear in every room."] },
+  // ----- event sub-tabs -----
+  ev_details: { icon: "📝", title: "Event details", grad: "linear-gradient(120deg,#008069,#04B08F)", one: "Name, date, time, venue, description and availability. This is what buyers read first.", flow: [["📝", "Title & date", "Clear and exact"], ["📍", "Venue", "With map pin"], ["📄", "About", "Why come?"], ["🟢", "Availability", "Open / sold out"]], steps: ["Fill the title, date and time, and venue.", "Write a short, exciting description.", "Use Availability to mark the event Open, Sold out or Housefull."] },
+  ev_requests: { icon: "🙋", title: "RSVP requests", grad: "linear-gradient(120deg,#7C3AED,#C026D3)", one: "For approval-only events, guests request to join and you approve them.", flow: [["🙋", "Guest requests", "From event page"], ["👀", "Review", "Profile"], ["✓", "Approve", "Ticket on WhatsApp"]], steps: ["Check each request's profile.", "Approve to issue a ticket (sent on WhatsApp), or decline."] },
+  ev_invite: { icon: "💌", title: "Invites", grad: "linear-gradient(120deg,#B7791F,#EC4899)", one: "Send personal invites and complimentary tickets for this event.", flow: [["🧑", "Guest", "Name + WhatsApp"], ["💌", "Invite", "Personal link"], ["🎟️", "Ticket", "If issued"]], steps: ["Add the guest's name and number.", "Send the invite, or issue a ticket directly."] },
+  ev_media: { icon: "🖼️", title: "Media & share", grad: "linear-gradient(120deg,#2563EB,#0EA5E9)", one: "Banner, photos and videos make people buy. Then share the event link everywhere.", flow: [["🖼️", "Banner", "Wide image"], ["🎬", "Videos", "Reels / teaser"], ["🔗", "Share link", "WhatsApp, Instagram"]], steps: ["Upload a bright banner and a few photos.", "Add a short video if you have one.", "Copy the share link and post it on WhatsApp and Instagram."] },
+  ev_tickets: { ref: "tickets" },
+  ev_sales: { icon: "💰", title: "Sales & platform fee", grad: "linear-gradient(120deg,#059669,#0EA5E9)", one: "Every ticket sold (online and at the door) and the platform fee for this event.", flow: [["💳", "Online", "Razorpay"], ["💵", "Door", "Cash / UPI"], ["💼", "Platform fee", "Std / tiers / ₹ per ticket"], ["🏦", "Payable", "To organiser"]], steps: ["Check the 💼 Platform fee card (admins can switch to volume pricing for big events).", "Scroll down to see each sale.", "Settle the organiser from 🏢 Organisers → Payouts."], more: "fees" },
+  ev_pnl: { icon: "💹", title: "Profit & loss", grad: "linear-gradient(120deg,#0E7A5F,#16A34A)", one: "Income from this event minus its costs, so you know if it made money.", flow: [["₹", "Income", "Tickets, stalls, sponsors"], ["🧾", "Costs", "Venue, DJ, decor…"], ["⚖️", "Profit", "Income − costs"]], steps: ["Ticket income is added automatically (online + door).", "Tap Add a line for every cost (venue, DJ, decor) with its amount.", "Check the net profit before planning the next event."] },
+  ev_analytics: { icon: "📊", title: "Event analytics", grad: "linear-gradient(120deg,#4F46E5,#0EA5E9)", one: "Who bought, when they bought, and how many came.", flow: [["📈", "Sales by day", "When people buy"], ["🎟️", "By ticket type", "What sells"], ["✅", "Check-ins", "Turn-up rate"]], steps: ["See which days and which tickets sold best.", "Use it to time your next promotions."] },
+  ev_promo: { icon: "📣", title: "Promoters for this event", grad: "linear-gradient(120deg,#DB2777,#F97316)", one: "Assign promoters who sell tickets with their own link. They earn a commission % on what they sell.", flow: [["➕", "Assign", "Search a member"], ["%", "Commission", "e.g. 10%"], ["🔗", "They share", "Own link"], ["✅", "Pay & mark", "Paid"]], steps: ["Tap ➕ Assign a promoter and search the member.", "Set their commission %.", "After the event, pay them and tap ✅ Paid (see 📣 Promoters for all payouts)."] },
+  ev_guests: { icon: "🧑‍🤝‍🧑", title: "Guest list & catering count", grad: "linear-gradient(120deg,#D97706,#16A34A)", one: "Everyone with a ticket, plus the 🍽️ Veg / Non-veg count to order food. Export the list for the gate.", flow: [["🍽️", "Switch on", "Ask Veg / Non-veg"], ["🙋", "Guests choose", "When booking / ticket link"], ["💬", "Remind", "WhatsApp the rest"], ["👨‍🍳", "Order", "Send count to caterer"]], steps: ["For dinners and house parties, tick \"Ask guests Veg or Non-veg\" in the 🍽️ Catering card.", "New buyers must choose when they book. People who already have tickets choose from My Ticket or their ticket link.", "Under ⏳ Not answered, tap 💬 to ask them on WhatsApp, or tap 🥗 / 🍗 if you already know.", "The black box shows exactly how many veg and non-veg to order (with extra). Tap 📲 Send count to caterer.", "Below that, search guests and export the PDF guest list for your door staff."], more: "food" },
+  ev_terms: { icon: "📋", title: "Terms & FAQ", grad: "linear-gradient(120deg,#E11D48,#DB2777)", one: "Entry rules, refund policy and FAQs. They're shown to buyers and on the ticket.", flow: [["📋", "Rules", "Age, dress code"], ["↩️", "Refunds", "Clear policy"], ["❓", "FAQ", "Common questions"]], steps: ["Write the entry rules and refund policy.", "Add FAQs to reduce calls and messages."] },
+};
+function GwTabGuide({ id, style }) {
+  let t = GW_TAB_GUIDE[id];
+  const [open, setOpen] = useState(false);
+  if (!t) return null;
+  const more = t.ref || t.more;
+  if (t.ref) t = GW_GUIDE[t.ref];
+  if (!t) return null;
+  const cols = ["#008069", "#7C3AED", "#EC4899", "#F97316", "#0EA5E9", "#16A34A"];
+  return (
+    <div style={{ borderRadius: 16, overflow: "hidden", margin: "0 0 12px", background: "#fff", border: "1px solid #E2E8F0", boxShadow: "0 6px 18px rgba(15,23,42,.07)", ...style }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px", background: t.grad, color: "#fff" }}>
+        <div style={{ width: 38, height: 38, borderRadius: 12, background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{t.icon}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1.6, opacity: .92 }}>💡 GUIDE FOR THIS SCREEN</div>
+          <div style={{ fontSize: 14.5, fontWeight: 900, lineHeight: 1.25 }}>{t.title}</div>
+        </div>
+        <button onClick={() => gwOpenGuide(more || "start")} style={{ border: 0, background: "rgba(255,255,255,.22)", color: "#fff", borderRadius: 999, padding: "6px 10px", fontSize: 11.5, fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}>📘 Guide</button>
+      </div>
+      <div style={{ padding: "10px 13px 4px", fontSize: 13, color: "#1E293B", lineHeight: 1.5, fontWeight: 600 }}>{t.one}</div>
+      {t.flow && <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 13px 8px", scrollbarWidth: "thin" }}>
+        {t.flow.map(([ic, l, s], i) => (
+          <React.Fragment key={i}>
+            <div style={{ flex: "1 0 86px", minWidth: 86, borderRadius: 12, padding: "8px 6px", background: `${cols[i % 6]}12`, border: `1.5px solid ${cols[i % 6]}55`, textAlign: "center", position: "relative" }}>
+              <div style={{ position: "absolute", top: 4, left: 5, fontSize: 9.5, fontWeight: 900, color: cols[i % 6] }}>{i + 1}</div>
+              <div style={{ fontSize: 20 }}>{ic}</div>
+              <div style={{ fontSize: 11.5, fontWeight: 900, color: cols[i % 6], lineHeight: 1.2 }}>{l}</div>
+              {s && <div style={{ fontSize: 10, color: "#55656B", lineHeight: 1.25, marginTop: 2 }}>{s}</div>}
+            </div>
+            {i < t.flow.length - 1 && <div aria-hidden="true" style={{ alignSelf: "center", color: "#94A3B8", fontWeight: 900, flexShrink: 0 }}>➜</div>}
+          </React.Fragment>
+        ))}
+      </div>}
+      {t.flow && t.flow.length > 3 && <div style={{ padding: "0 13px", fontSize: 10.5, color: "#94A3B8", fontWeight: 800, textAlign: "right" }}>swipe for all {t.flow.length} steps →</div>}
+      {t.extra === "tiers" && <div style={{ padding: "0 13px" }}><GwTierBars /></div>}
+      {t.extra === "money" && <div style={{ padding: "0 13px" }}><GwMoneySplit /></div>}
+      <div onClick={() => setOpen(o => !o)} role="button" aria-expanded={open} style={{ padding: "7px 13px 10px", fontSize: 12.5, fontWeight: 900, color: "#4C1D95", cursor: "pointer" }}>{open ? "Hide steps ▴" : `Show ${t.steps.length} easy steps ▾`}</div>
+      {open && <div style={{ padding: "0 13px 12px" }}>
+        <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>
+          {t.steps.map((s, i) => <li key={i} style={{ display: "flex", gap: 9, fontSize: 12.8, color: "#1E293B", lineHeight: 1.5, marginBottom: 7 }}><span style={{ flexShrink: 0, width: 21, height: 21, borderRadius: 99, background: "#0F172A", color: "#fff", fontSize: 11, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{i + 1}</span><span>{s}</span></li>)}
+        </ol>
+        {(t.tips || []).map((x, i) => <div key={i} style={{ fontSize: 12, color: "#92400E", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 9, padding: "6px 9px", marginTop: 6 }}>👉 {x}</div>)}
+      </div>}
+    </div>
+  );
+}
 // =================== END GUIDE ===================
 
 
@@ -15555,7 +15851,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
       @media(max-width:999px){.gw-admin-layout,.gw-admin-collapsed{display:block}.gw-admin-sidebar{display:none}.gw-admin-mobilebar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:white;border-bottom:1px solid #e2e9ea;position:sticky;top:53px;z-index:9}.gw-admin-mobilebar button{padding:10px 12px;white-space:nowrap}.gw-admin-mobilebar strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
     `}</style>
     <aside className="gw-admin-sidebar"><header><strong>ADMIN WORKSPACE</strong><button type="button" aria-label={collapsed?'Expand admin sidebar':'Collapse admin sidebar'} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>{collapsed?'»':'«'}</button></header><nav aria-label="Admin navigation">{groups()}</nav></aside>
-    <div className="gw-admin-content"><div className="gw-admin-mobilebar"><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>dialog.current?.showModal()}>☰ Admin Menu</button><strong>{label(selected)}</strong></div>{children}</div>
+    <div className="gw-admin-content"><div className="gw-admin-mobilebar"><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>dialog.current?.showModal()}>☰ Admin Menu</button><strong style={{flex:1}}>{label(selected)}</strong>{selected!=='guide'&&<button type="button" onClick={()=>choose('guide')} style={{background:'linear-gradient(120deg,#4C1D95,#8B5CF6)',color:'#fff'}}>📘 Guide</button>}</div>{children}</div>
     <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['guide','dash','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
   </div>;
 }
@@ -16039,6 +16335,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
       {myCity && !isSuper && <div style={{ background: "#FEF3C7", color: "#92400E", fontSize: 12.5, fontWeight: 600, padding: "7px 14px", textAlign: "center" }}>Scoped to {myCity}</div>}
       <AdminNavigation tabs={tabs} selected={seg} onSelect={setSeg}>
       {seg !== "guide" && <button onClick={() => gwOpenGuide(GW_GUIDE_FOR_TAB[seg] || "start")} aria-label="Open the guide" style={{ position: "fixed", right: 14, bottom: "calc(86px + env(safe-area-inset-bottom))", zIndex: 30, border: 0, borderRadius: 999, padding: "11px 16px", fontWeight: 900, fontSize: 13.5, color: "#fff", background: "linear-gradient(120deg,#4C1D95,#8B5CF6 55%,#0EA5E9)", boxShadow: "0 10px 24px rgba(76,29,149,.35)", cursor: "pointer", fontFamily: "inherit" }}>📘 Guide</button>}
+      {seg !== "guide" && GW_TAB_GUIDE[seg] && <div style={{ padding: "14px 14px 0", maxWidth: 860 }}><GwTabGuide id={seg} /></div>}
       {seg === "guide" ? <AdminGuidePanel section={guideSection} tabs={tabs} onGo={t => { setGuideSection(null); setSeg(t); }} />
         : seg === "directory" && canUseDirectory ? <SupplierDirectory />
         : seg === "reports" ? <ReportsAdmin />
@@ -16549,7 +16846,18 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
   const ticketTotal = cart.reduce((a, c) => a + unitOf(c) * c.qty, 0);
   const total = ticketTotal + addonTotal;
   const live = cart.filter(c => c.qty > 0);
-  const canConfirm0 = (!needAgree || agree) && live.length > 0;
+  const askFood = !!e.ask_food;
+  const foodPeople = live.reduce((a, c) => a + c.qty * Math.max(1, Number(c.type?.admits) || 1), 0);
+  const [fv, setFv] = useState(0), [fnv, setFnv] = useState(0);
+  useEffect(() => {
+    if (!askFood) return;
+    const usual = profile?.food_pref;
+    if (usual === "veg") { setFv(foodPeople); setFnv(0); }
+    else if (usual === "nonveg") { setFv(0); setFnv(foodPeople); }
+    else { setFv(0); setFnv(0); }
+  }, [askFood, foodPeople]);
+  const foodOk = !askFood || foodPeople === 0 || fv + fnv === foodPeople;
+  const canConfirm0 = (!needAgree || agree) && live.length > 0 && foodOk;
   const [phoneRow, setPhoneRow] = useState(undefined); // undefined = loading, null = none, string = has
   const [phoneVal, setPhoneVal] = useState("");
   useEffect(() => { if (!meId) return; supabase.from("member_phone").select("phone").eq("user_id", meId).maybeSingle().then(({ data }) => setPhoneRow(data?.phone || null)); }, [meId]);
@@ -16631,6 +16939,13 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
           })}
         </div>
       )}
+      {askFood && foodPeople > 0 && (
+        <div style={{ margin: "14px 0 2px", background: foodOk ? "#F0FAF4" : "#FFF8E1", border: `1.5px solid ${foodOk ? "#BBE5CF" : "#F5C451"}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 900, fontSize: 14, color: W.ink }}>🍽️ Food: Veg or Non-veg? <span style={{ color: "#B91C1C" }}>*</span></div>
+          <div style={{ fontSize: 12, color: W.soft, margin: "2px 0 9px" }}>{foodPeople === 1 ? "Food is served at this event. Please choose so we order the right amount." : `Food is served. Choose for all ${foodPeople} people so we order the right amount.`}</div>
+          <GwFoodPicker people={foodPeople} veg={fv} nonveg={fnv} onChange={(a, b) => { setFv(a); setFnv(b); }} />
+        </div>
+      )}
       {needAgree && (
         <div style={{ margin: "14px 0 2px" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: W.soft, marginBottom: 6 }}>Terms &amp; conditions</div>
@@ -16696,7 +17011,7 @@ function TicketSheet({ target, profile, subs, addons = [], onConfirm, onConfirmC
       {total > 0 && <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 10 }}>You'll pay securely via Razorpay (UPI, cards, netbanking). Your tickets are issued the moment payment succeeds.</div>}
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onClose} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-        <button disabled={!canConfirm} onClick={async () => { if (await savePhoneIfNeeded()) onConfirm(live, sel, cApplied?.code || null, creditsUse); }} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? (netPay === 0 ? "Get tickets 🎉" : `Pay ₹${netPay}`) : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
+        <button disabled={!canConfirm} onClick={async () => { if (await savePhoneIfNeeded()) { if (askFood && fv + fnv > 0) { try { await supabase.rpc("set_my_food", { p_event: e.id, p_veg: fv, p_nonveg: fnv, p_add: true }); } catch { } } onConfirm(live, sel, cApplied?.code || null, creditsUse); } }} style={{ ...btn(W.teal, "#fff"), flex: 2, justifyContent: "center", opacity: canConfirm ? 1 : .5 }}>{total > 0 ? (netPay === 0 ? "Get tickets 🎉" : `Pay ₹${netPay}`) : `Get ${totalQty} ticket${totalQty !== 1 ? "s" : ""}`}</button>
       </div>
     </Sheet>
   );
@@ -16878,6 +17193,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
           {displayTicketTypes.map(t => <div key={t.id} style={{ paddingTop: 8 }}><div style={{ fontSize: 15, color: W.ink, fontWeight: 900 }}>{t.name}</div><TicketTypeDetails ticket={t} /></div>)}
         </div>
       )}
+      <MyFoodCard event={e} />
       {(e.terms || "").trim() && (
         <div style={{ background: "#F7F8F8", border: `1px solid ${W.line}`, borderLeft: `5px solid ${W.teal}`, borderRadius: 12, marginTop: 12, padding: "13px 14px" }}>
           <div style={{ fontWeight: 900, fontSize: 13.5, color: W.ink, marginBottom: 7 }}>📋 Terms &amp; conditions</div>
@@ -16939,7 +17255,6 @@ function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onU
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
-      <GwGuideTip id="tickets" />
       <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity. Choose Anyone / Men only / Women only for every ticket.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
@@ -19078,7 +19393,6 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
       {sendFor && <EventSendSheet event={sendFor} members={members} onSend={async (ids) => { await onSendEventDM(sendFor, ids); setSendFor(null); }} onClose={() => setSendFor(null)} />}
       {checkIn && <CheckInSheet event={checkIn} onClose={() => setCheckIn(null)} />}
       {membersFor && <EventMembersSheet event={membersFor} onClose={() => setMembersFor(null)} />}
-      {!creating && <GwGuideTip id="start" />}
       {!creating && <a href="/partner-guide.html" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none", background: privateOnly ? "#F5F0FF" : "#EEF6FF", border: `1px solid ${privateOnly ? "#E0D4FF" : "#CFE2FA"}`, color: privateOnly ? "#6D28D9" : "#1E40AF", fontWeight: 800, fontSize: 13.5, borderRadius: 12, padding: "11px", marginBottom: 12 }}>{privateOnly ? "🔒 Private parties are shown only to the selected segments" : "📖 Organiser guide — how event bookings work"}</a>}
       {creating ? (
         <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
@@ -19438,6 +19752,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     );
                   })}
                 </div>
+                <GwTabGuide id={"ev_" + mSeg} />
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   {mSeg === "details" && (<>
                     <div style={{display:"inline-flex",alignItems:"center",gap:6,alignSelf:"flex-start",background:gwIsAdminModeratedEvent(e)?"#F5F3FF":"#ECFDF5",color:gwIsAdminModeratedEvent(e)?"#6D28D9":"#047857",border:`1px solid ${gwIsAdminModeratedEvent(e)?"#DDD6FE":"#A7F3D0"}`,borderRadius:999,padding:"6px 10px",fontSize:11.5,fontWeight:900}}>{gwIsAdminModeratedEvent(e)?"🛡️ RSVP → Admin approval → Ticket":"🛒 Public purchase tickets"}</div>
@@ -19487,7 +19802,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                     <GenderBalance ev={e} onUpdate={onUpdate} />
                     <CreditCapEditor ev={e} onUpdate={onUpdate} />
                   </>)}
-                  {mSeg === "sales" && <><GwGuideTip id="fees" style={{ marginTop: 8 }} /><EventFeeCard event={e} canEdit={!!(isSuper || canApprove)} /><GwGuideTip id="money" /><EventSalesTab event={e} /></>}
+                  {mSeg === "sales" && <><GwGuideTip id="fees" /><EventFeeCard event={e} canEdit={!!(isSuper || canApprove)} /><EventSalesTab event={e} /></>}
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
                   {mSeg === "analytics" && <EventAnalyticsTab event={e} />}
                   {mSeg === "promo" && <EventPromotionsTab event={e} onUpdate={onUpdate} canApprove={canApprove} isSuper={isSuper} />}
@@ -19495,7 +19810,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                   {mSeg === "invite" && <EventInvitesTab event={e} canIssueAdminTicket={canApprove} />}
                   {mSeg === "guests" && (gwIsAdminModeratedEvent(e) && !canApprove
                     ? <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:14,padding:14,color:"#9A3412",fontSize:13.5,lineHeight:1.55}}><b>🛡️ Admin-moderated event</b><br/>Only admins can issue, add or send tickets for this event.</div>
-                    : <GuestTickets event={e} />)}
+                    : <><CateringCard event={e} onUpdate={onUpdate} /><GuestTickets event={e} /></>)}
                   {mSeg === "terms" && (<>
                     <EventTerms ev={e} onUpdate={onUpdate} />
                   </>)}
