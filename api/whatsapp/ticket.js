@@ -19,15 +19,16 @@ async function aisensy(payload) {
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-  if (!SB_URL || !SB_SERVICE || !AISENSY_KEY) return res.status(200).json({ ok: false, skipped: "not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / AISENSY_API_KEY)" });
+  if (!SB_URL || !SB_SERVICE || !AISENSY_KEY) return res.status(200).json({ ok: false, skipped: "not_configured", missing: [!SB_URL && "SUPABASE_URL", !SB_SERVICE && "SUPABASE_SERVICE_ROLE_KEY", !AISENSY_KEY && "AISENSY_API_KEY"].filter(Boolean) });
   try {
-    const { access_token, event_id, for_user, mode } = body(req);
+    const { access_token, event_id, for_user, mode, force } = body(req);
     if (mode || !event_id) return res.status(200).json({ ok: false, skipped: "not a member ticket" });
     const user = await getUser(access_token);
     if (!user) return res.status(401).json({ error: "Please log in again" });
     const target = for_user || user.id;
 
-    const p = await rpc("gw_ticket_whatsapp_payload", { p_event: event_id, p_user: target });
+    // force = admin "send me a test" for their OWN ticket only (re-sends even if sent before)
+    const p = await rpc("gw_ticket_whatsapp_payload", { p_event: event_id, p_user: target, p_force: !!force && target === user.id });
     if (!p?.ok) return res.status(200).json({ ok: false, skipped: p?.reason || "nothing to send" });
 
     const ids = p.ticket_ids || [];
