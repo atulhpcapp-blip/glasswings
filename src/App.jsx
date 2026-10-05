@@ -12903,7 +12903,12 @@ function PlanEventSheet({ profile, onClose }) {
   const [err, setErr] = useState("");
   const [mine, setMine] = useState(null);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const loadMine = async () => { const { data } = await supabase.rpc("my_event_requests"); setMine(Array.isArray(data) ? data : []); };
+  const [qd, setQd] = useState({ quotes: [], bookings: [] });
+  const loadMine = async () => {
+    const [{ data }, { data: q }] = await Promise.all([supabase.rpc("my_event_requests"), supabase.rpc("my_lead_quotes")]);
+    setMine(Array.isArray(data) ? data : []);
+    setQd({ quotes: q?.quotes || [], bookings: q?.bookings || [] });
+  };
   useEffect(() => {
     supabase.from("member_phone").select("phone").eq("user_id", userId).maybeSingle().then(({ data }) => { if (data?.phone) setF(p => p.contact_phone ? p : { ...p, contact_phone: data.phone }); });
     loadMine();
@@ -13045,7 +13050,8 @@ function PlanEventSheet({ profile, onClose }) {
                 </div>
               );
             })}
-            {active && <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
+            <ClientQuotesBlock request={r} quotes={qd.quotes.filter(q => q.request_id === r.id)} booking={qd.bookings.find(b => b.request_id === r.id)} onChanged={loadMine} onViewOrg={id => setViewOrg(id)} />
+            {active && !qd.bookings.some(b => b.request_id === r.id) && <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
               <button onClick={() => closeReq(r, "booked")} style={{ ...btn("#E7F6EF", W.teal), padding: "7px 12px", fontSize: 12.5 }}>✓ I've booked</button>
               <button onClick={() => closeReq(r, "closed")} style={{ ...btn("#F0F2F5", W.soft), padding: "7px 12px", fontSize: 12.5 }}>Close request</button>
             </div>}
@@ -13097,6 +13103,14 @@ function OrganiserLeadsPanel({ meId }) {
     setBizProfile(bp || null); setMyStats(st || null);
   };
   useEffect(() => { loadBiz(); }, [meId]);
+  const [ob, setOb] = useState(null);
+  const [quoteFor, setQuoteFor] = useState(null);
+  const [bkCfg, setBkCfg] = useState({ commission: 8, advance: 30 });
+  const loadOb = async () => { const { data } = await supabase.rpc("my_organiser_bookings"); setOb(data || { quotes: {}, bookings: [], earned: 0, paid_out: 0, payouts: [] }); };
+  useEffect(() => {
+    loadOb();
+    supabase.from("lead_settings").select("booking_commission_pct, booking_default_advance_pct").eq("id", 1).maybeSingle().then(({ data }) => { if (data) setBkCfg({ commission: Number(data.booking_commission_pct) || 0, advance: Number(data.booking_default_advance_pct) || 30 }); });
+  }, [meId]);
   const [pro, setPro] = useState(null);
   const [proBusy, setProBusy] = useState(false);
   const loadPro = async () => { const { data } = await supabase.rpc("my_pro_status"); setPro(data || null); };
@@ -13259,17 +13273,17 @@ function OrganiserLeadsPanel({ meId }) {
         </div>}
       </div>}
       <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, margin: "12px 0" }}>
-        {[["browse", `New leads (${browse.length})`], ["mine", `My unlocked (${mine.length})`]].map(([k, l]) => (
+        {[["browse", `New leads (${browse.length})`], ["mine", `My unlocked (${mine.length})`], ["bookings", `💰 Bookings${(ob?.bookings || []).length ? ` (${ob.bookings.length})` : ""}`]].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 0", fontWeight: 800, fontSize: 13, cursor: "pointer", background: tab === k ? "#fff" : "transparent", color: tab === k ? W.teal : W.soft }}>{l}</button>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: tab === "bookings" ? "none" : "flex", gap: 8, marginBottom: 12 }}>
         <select value={city} onChange={e => setCity(e.target.value)} style={sel}><option value="all">All cities</option>{[...new Set([...cities, ...mine.map(r => r.city)])].filter(Boolean).sort().map(c => <option key={c}>{c}</option>)}</select>
         <select value={type} onChange={e => setType(e.target.value)} style={sel}><option value="all">All event types</option>{GW_LEAD_TYPES.map(([k, , l]) => <option key={k} value={k}>{l}</option>)}</select>
         <button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "8px 12px" }}>↻</button>
       </div>
       {err && <div style={{ background: "#FDECEA", color: "#C0392B", borderRadius: 10, padding: 12, fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{err}</div>}
-      {rows === null ? <Center>Loading leads…</Center> : !list.length ? <Center>{tab === "browse" ? "No new leads right now. Check back soon." : "You haven't unlocked any leads yet."}</Center> : list.map(r => {
+      {tab === "bookings" ? <OrganiserBookingsView data={ob} /> : rows === null ? <Center>Loading leads…</Center> : !list.length ? <Center>{tab === "browse" ? "No new leads right now. Check back soon." : "You haven't unlocked any leads yet."}</Center> : list.map(r => {
         const [, ic, tl] = gwLeadType(r.event_type);
         const left = Math.max(0, r.max_unlocks - r.unlock_count);
         return (
@@ -13306,11 +13320,22 @@ function OrganiserLeadsPanel({ meId }) {
                   <button onClick={() => dispute(r)} style={{ ...gwChip(false), padding: "5px 10px", fontSize: 12, color: "#C0392B" }}>⚠ Report</button></>}
               <button onClick={() => saveNote(r)} style={{ ...gwChip(false), padding: "5px 10px", fontSize: 12 }}>📝 {r.my_note ? "Edit note" : "Note"}</button>
             </div>}
+            {r.unlocked && !["disputed", "refunded"].includes(r.my_status) && (() => {
+              const q = ob?.quotes?.[r.id];
+              const bk = (ob?.bookings || []).find(b => b.request_id === r.id);
+              if (bk) return <div style={{ marginTop: 9, fontSize: 12.5, fontWeight: 800, color: W.teal }}>💰 Booked in-app · client paid {gwINR(bk.paid)} · your share {gwINR(bk.earning)}</div>;
+              const canQuote = ["open", "paused"].includes(r.request_status);
+              return <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, flexWrap: "wrap" }}>
+                {q && q.status !== "withdrawn" && <span style={{ fontSize: 12.5, fontWeight: 800, color: q.status === "declined" ? "#C0392B" : q.status === "accepted" ? "#7C3AED" : W.ink }}>📝 Quote {gwINR(q.amount)} · {q.status === "sent" ? "waiting for client" : q.status === "accepted" ? "accepted, awaiting payment" : "declined"}</span>}
+                {canQuote && (!q || q.status === "sent" || q.status === "withdrawn" || q.status === "declined") && <button onClick={() => setQuoteFor({ lead: r, quote: q && q.status === "sent" ? q : null })} style={{ ...btn(q && q.status === "sent" ? "#EBEEF0" : "#7C3AED", q && q.status === "sent" ? W.ink : "#fff"), padding: "7px 12px", fontSize: 12.5 }}>{q && q.status === "sent" ? "✏️ Edit quote" : q ? "📝 Send new quote" : "📝 Send quote · client pays in app"}</button>}
+              </div>;
+            })()}
             {r.unlocked && r.my_note && <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>📝 {r.my_note}</div>}
           </div>
         );
       })}
       {buyOpen && <BuyCreditsSheet onClose={() => setBuyOpen(false)} onBought={load} />}
+      {quoteFor && <QuoteSheet lead={quoteFor.lead} quote={quoteFor.quote} defaultAdvance={bkCfg.advance} commissionPct={bkCfg.commission} onClose={() => setQuoteFor(null)} onSaved={() => { loadOb(); load(); }} />}
     </div>
   );
 }
@@ -13430,7 +13455,7 @@ function AdminLeadsPanel() {
     const up = Object.entries(pricing).map(([k, v]) => { const [event_type, budget_band] = k.split("|"); return { event_type, budget_band, credits: Math.max(0, Math.floor(Number(v) || 0)) }; });
     const [{ error: e1 }, { error: e2 }] = await Promise.all([
       supabase.from("lead_pricing").upsert(up),
-      supabase.from("lead_settings").update({ max_unlocks: Math.max(1, Number(settings.max_unlocks) || 5), auto_publish: !!settings.auto_publish, default_credits: Math.max(0, Number(settings.default_credits) || 0), wa_campaign: String(settings.wa_campaign || "").trim() || null, auto_alert: !!settings.auto_alert, pro_enabled: settings.pro_enabled !== false, pro_price: Math.max(0, Number(settings.pro_price) || 0), pro_days: Math.max(1, Number(settings.pro_days) || 30), pro_discount_pct: Math.min(100, Math.max(0, Number(settings.pro_discount_pct) || 0)), pro_early_hours: Math.max(0, Number(settings.pro_early_hours) || 0), updated_at: new Date().toISOString() }).eq("id", 1),
+      supabase.from("lead_settings").update({ max_unlocks: Math.max(1, Number(settings.max_unlocks) || 5), auto_publish: !!settings.auto_publish, default_credits: Math.max(0, Number(settings.default_credits) || 0), wa_campaign: String(settings.wa_campaign || "").trim() || null, auto_alert: !!settings.auto_alert, pro_enabled: settings.pro_enabled !== false, pro_price: Math.max(0, Number(settings.pro_price) || 0), pro_days: Math.max(1, Number(settings.pro_days) || 30), pro_discount_pct: Math.min(100, Math.max(0, Number(settings.pro_discount_pct) || 0)), pro_early_hours: Math.max(0, Number(settings.pro_early_hours) || 0), booking_commission_pct: Math.min(50, Math.max(0, Number(settings.booking_commission_pct) || 0)), booking_default_advance_pct: Math.min(100, Math.max(10, Number(settings.booking_default_advance_pct) || 30)), booking_refund_lead_fee: settings.booking_refund_lead_fee !== false, updated_at: new Date().toISOString() }).eq("id", 1),
     ]);
     setSaving(false);
     window.gwConfirm(e1 || e2 ? (e1 || e2).message : "✅ Saved. New prices apply to new leads only.", () => {});
@@ -13449,7 +13474,7 @@ function AdminLeadsPanel() {
         {stat("WON BY ORGANISERS", won, "#7C3AED")}
       </div>
       <div style={{ display: "flex", gap: 6, background: W.bg, borderRadius: 12, padding: 4, marginBottom: 12, maxWidth: 640, overflowX: "auto" }}>
-        {[["leads", "📋 Leads"], ["orgs", "🏢 Organisers"], ["disputes", `⚠ Reports (${disputes.length})`], ["pricing", "₹ Pricing & rules"]].map(([k, l]) => (
+        {[["leads", "📋 Leads"], ["bookings", "💰 Bookings"], ["orgs", "🏢 Organisers"], ["disputes", `⚠ Reports (${disputes.length})`], ["pricing", "₹ Pricing & rules"]].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} style={{ flex: 1, border: 0, borderRadius: 9, padding: "9px 4px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", background: view === k ? "#fff" : "transparent", color: view === k ? W.teal : W.soft }}>{l}</button>
         ))}
       </div>
@@ -13515,6 +13540,7 @@ function AdminLeadsPanel() {
       </>}
 
       {view === "orgs" && <AdminOrganisersView />}
+      {view === "bookings" && <AdminBookingsView />}
 
       {view === "disputes" && (!disputes.length ? <Center>No reported leads. 👍</Center> : disputes.map(u => {
         const r = all.find(x => x.id === u.request_id);
@@ -13539,8 +13565,14 @@ function AdminLeadsPanel() {
             <input type="checkbox" checked={!!settings.auto_publish} onChange={e => setSettings(s => ({ ...s, auto_publish: e.target.checked }))} />
             Publish new leads instantly (untick to review each lead before organisers see it)
           </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: W.ink, marginBottom: 10 }}>
+            <input type="checkbox" checked={settings.booking_refund_lead_fee !== false} onChange={e => setSettings(s => ({ ...s, booking_refund_lead_fee: e.target.checked }))} />
+            Refund the organiser's lead fee when the client pays in the app
+          </label>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <label style={{ fontSize: 12.5, fontWeight: 700, color: W.soft }}>Max organisers per lead<br /><input value={settings.max_unlocks} onChange={e => setSettings(s => ({ ...s, max_unlocks: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" style={{ ...sel, width: 110, marginTop: 4 }} /></label>
+            <label style={{ fontSize: 12.5, fontWeight: 700, color: W.soft }}>Booking commission %<br /><input value={settings.booking_commission_pct ?? ""} onChange={e => setSettings(s => ({ ...s, booking_commission_pct: e.target.value.replace(/[^\d.]/g, "") }))} inputMode="decimal" style={{ ...sel, width: 110, marginTop: 4 }} /></label>
+            <label style={{ fontSize: 12.5, fontWeight: 700, color: W.soft }}>Default advance %<br /><input value={settings.booking_default_advance_pct ?? ""} onChange={e => setSettings(s => ({ ...s, booking_default_advance_pct: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" style={{ ...sel, width: 110, marginTop: 4 }} /></label>
             <label style={{ fontSize: 12.5, fontWeight: 700, color: W.soft }}>Fallback price (credits)<br /><input value={settings.default_credits} onChange={e => setSettings(s => ({ ...s, default_credits: e.target.value.replace(/\D/g, "") }))} inputMode="numeric" style={{ ...sel, width: 110, marginTop: 4 }} /></label>
           </div>
         </div>
@@ -13810,6 +13842,247 @@ function AdminOrganisersView() {
         </div>
       ))}
       {viewId && <OrganiserProfileSheet organiserId={viewId} onClose={() => setViewId(null)} />}
+    </div>
+  );
+}
+// ---------- Quotes, bookings & in-app payments ----------
+const gwINR = n => "₹" + (Number(n) || 0).toLocaleString("en-IN");
+
+// Pays one booking instalment through Razorpay. Amount is decided by the server.
+async function gwPayMilestone(milestoneId, onDone) {
+  try {
+    const ready = await loadRazorpay();
+    if (!ready) return window.gwConfirm("Couldn't open the payment window. Check your connection and try again.", () => {});
+    const { data: ses } = await supabase.auth.getSession();
+    const token = ses?.session?.access_token;
+    const r = await fetch("/api/razorpay/booking-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, milestone_id: milestoneId }) });
+    const od = await r.json().catch(() => ({}));
+    if (!r.ok || !od.order_id) return window.gwConfirm(od.error || "Could not start the payment.", () => {});
+    const rzp = new window.Razorpay({
+      key: od.key_id, amount: od.amount, currency: od.currency, order_id: od.order_id,
+      name: "Glasswings", description: rzpDesc(od.description || "Event booking"),
+      theme: { color: "#008069" },
+      handler: async (resp) => {
+        try {
+          const v = await fetch("/api/razorpay/booking-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token, milestone_id: milestoneId }) });
+          const vd = await v.json().catch(() => ({}));
+          if (v.ok && vd.ok) window.gwConfirm("✅ Payment received. Your booking is confirmed!", () => {});
+          else window.gwConfirm((vd.error || "Payment couldn't be confirmed.") + "\n\nIf money was deducted, don't worry: contact us with your payment ID " + (resp.razorpay_payment_id || "") + ".", () => {});
+        } catch { window.gwConfirm("Payment couldn't be confirmed. If money was deducted, contact us with payment ID " + (resp.razorpay_payment_id || "") + ".", () => {}); }
+        onDone && onDone();
+      },
+    });
+    rzp.on("payment.failed", () => window.gwConfirm("Payment failed or was cancelled. Nothing was charged.", () => {}));
+    rzp.open();
+  } catch { window.gwConfirm("Could not start the payment. Please try again.", () => {}); }
+}
+
+// Organiser: create / edit a quote for an unlocked lead
+function QuoteSheet({ lead, quote, defaultAdvance = 30, commissionPct, onClose, onSaved }) {
+  const [amount, setAmount] = useState(quote?.amount ? String(quote.amount) : "");
+  const [adv, setAdv] = useState(String(quote?.advance_pct ?? defaultAdvance));
+  const [inc, setInc] = useState(quote?.inclusions || "");
+  const [valid, setValid] = useState(quote?.valid_until || "");
+  const [busy, setBusy] = useState(false);
+  const amt = Number(amount) || 0, advN = Math.min(100, Math.max(10, Number(adv) || 0));
+  const today = new Date(); const minDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const save = async () => {
+    if (amt < 500) return window.gwConfirm("Enter the total quote amount (at least ₹500).", () => {});
+    setBusy(true);
+    const { data, error } = await supabase.rpc("send_lead_quote", { p_request: lead.id, p_amount: amt, p_advance_pct: advN, p_inclusions: inc, p_valid_until: valid || null });
+    setBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) return window.gwConfirm({ closed: "This request is no longer open.", already_booked: "The client has already booked.", not_unlocked: "Unlock the lead first." }[data?.reason] || "Couldn't send the quote.", () => {});
+    onSaved && onSaved(); onClose();
+    window.gwConfirm("📝 Quote sent! The client can accept it and pay the advance in the app.", () => {});
+  };
+  const withdraw = () => window.gwConfirm("Withdraw this quote?", async () => { await supabase.rpc("withdraw_lead_quote", { p_quote: quote.id }); onSaved && onSaved(); onClose(); });
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center" }}><div style={{ fontWeight: 900, fontSize: 18, color: W.ink, flex: 1 }}>📝 {quote ? "Update quote" : "Send a quote"}</div><span onClick={onClose} style={{ cursor: "pointer", color: W.soft, fontSize: 20 }}>✕</span></div>
+      <div style={{ fontSize: 12.5, color: W.soft, marginTop: 3 }}>{gwLeadType(lead.event_type)[2]} · {lead.contact_name} · {gwLeadDate(lead.event_date, lead.date_flexible)} · {lead.city}</div>
+      <div style={gwLeadLbl}>TOTAL PRICE (₹) *</div>
+      <input value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 45000" style={gwLeadInp} />
+      <div style={gwLeadLbl}>ADVANCE TO CONFIRM</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{[20, 30, 50, 100].map(p => <button key={p} onClick={() => setAdv(String(p))} style={gwChip(advN === p)}>{p === 100 ? "Full payment" : `${p}%`}</button>)}</div>
+      {amt > 0 && <div style={{ fontSize: 12.5, color: W.ink, marginTop: 8 }}>Client pays <b>{gwINR(Math.round(amt * advN / 100))}</b> now{advN < 100 ? <> and <b>{gwINR(amt - Math.round(amt * advN / 100))}</b> before the event</> : null}.</div>}
+      <div style={gwLeadLbl}>WHAT'S INCLUDED</div>
+      <textarea value={inc} onChange={e => setInc(e.target.value)} rows={4} placeholder={"e.g. Stage decor, balloon arch, DJ 4 hrs, anchor, cake 3 kg, photographer…"} style={{ ...gwLeadInp, resize: "vertical", fontFamily: "inherit" }} />
+      <div style={gwLeadLbl}>QUOTE VALID TILL</div>
+      <input type="date" min={minDate} value={valid} onChange={e => setValid(e.target.value)} style={gwLeadInp} />
+      {amt > 0 && commissionPct != null && <div style={{ fontSize: 11.5, color: W.soft, marginTop: 10, lineHeight: 1.5 }}>Payments are collected by Glasswings via Razorpay. You receive {gwINR(Math.floor(amt * (100 - commissionPct) / 100))} ({100 - commissionPct}%) after the {commissionPct}% platform fee. If the client pays in the app, your lead fee is refunded.</div>}
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        {quote && quote.status === "sent" && <button onClick={withdraw} style={{ ...btn("#FDECEA", "#C0392B"), padding: "12px 14px" }}>Withdraw</button>}
+        <button disabled={busy} onClick={save} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: 13, fontSize: 15, opacity: busy ? .6 : 1 }}>{busy ? "Sending…" : quote ? "Update quote" : "Send quote"}</button>
+      </div>
+    </Sheet>
+  );
+}
+
+// Client: quotes + booking/payments for one request
+function ClientQuotesBlock({ request, quotes, booking, onChanged, onViewOrg }) {
+  const [busy, setBusy] = useState(null);
+  const live = (quotes || []).filter(q => q.status === "sent" || q.status === "accepted");
+  const accept = q => window.gwConfirm(`Accept ${q.organiser}'s quote of ${gwINR(q.amount)}?\n\nYou'll pay ${q.advance_pct >= 100 ? "the full amount" : `a ${q.advance_pct}% advance (${gwINR(Math.round(q.amount * q.advance_pct / 100))})`} now to confirm the booking.`, async () => {
+    setBusy(q.id);
+    const { data, error } = await supabase.rpc("accept_lead_quote", { p_quote: q.id });
+    setBusy(null);
+    if (error) return window.gwConfirm(error.message, () => {});
+    if (!data?.ok) return window.gwConfirm({ expired: "This quote has expired. Ask the organiser for a new one.", already_booked: "You've already booked an organiser for this event.", closed: "This request is closed." }[data?.reason] || "Couldn't accept this quote.", () => {});
+    onChanged && onChanged();
+    gwPayMilestone(data.milestone_id, onChanged);
+  });
+  const decline = q => window.gwConfirm(`Decline ${q.organiser}'s quote?`, async () => { await supabase.rpc("decline_lead_quote", { p_quote: q.id }); onChanged && onChanged(); });
+  if (!booking && !live.length) return null;
+  const nextDue = booking ? (booking.milestones || []).find(m => m.status === "due") : null;
+  const paid = booking ? (booking.milestones || []).filter(m => m.status === "paid").reduce((a, m) => a + Number(m.amount), 0) : 0;
+  return (
+    <div style={{ marginTop: 10 }}>
+      {booking && <div style={{ border: `1.5px solid ${booking.status === "pending_payment" ? "#F5D9A8" : "#B4DDCE"}`, background: booking.status === "pending_payment" ? "#FFFBEB" : "#F1FAF6", borderRadius: 12, padding: "10px 12px", marginBottom: 8 }}>
+        <div style={{ fontWeight: 900, fontSize: 13.5, color: W.ink }}>{booking.status === "pending_payment" ? "⏳ Pay the advance to confirm" : "✅ Booked"} · {booking.organiser}</div>
+        <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>Total {gwINR(booking.total)} · paid {gwINR(paid)}</div>
+        {(booking.milestones || []).map(m => (
+          <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7, fontSize: 12.5 }}>
+            <div style={{ flex: 1, color: W.ink }}>{m.status === "paid" ? "✓" : "○"} {m.label} · <b>{gwINR(m.amount)}</b>{m.status === "paid" ? <span style={{ color: W.teal }}> · paid {new Date(m.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span> : m.due_date ? <span style={{ color: W.soft }}> · due {new Date(m.due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span> : null}{m.status === "refunded" ? <span style={{ color: "#C0392B" }}> · refunded</span> : null}</div>
+            {nextDue && nextDue.id === m.id && <button onClick={() => gwPayMilestone(m.id, onChanged)} style={{ ...btn(W.teal, "#fff"), padding: "6px 12px", fontSize: 12 }}>Pay {gwINR(m.amount)}</button>}
+          </div>
+        ))}
+        <div style={{ fontSize: 10.5, color: W.soft, marginTop: 7 }}>🔒 Paid securely to Glasswings via Razorpay.</div>
+      </div>}
+      {!booking || booking.status === "pending_payment" ? live.map(q => {
+        const isBookingQuote = booking && booking.organiser_id === q.organiser_id;
+        if (isBookingQuote) return null;
+        return (
+          <div key={q.id} style={{ border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 12px", marginBottom: 7 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div onClick={() => onViewOrg && onViewOrg(q.organiser_id)} style={{ flex: 1, minWidth: 0, cursor: onViewOrg ? "pointer" : "default" }}>
+                <div style={{ fontWeight: 800, fontSize: 13.5, color: W.ink }}>📝 {q.organiser}</div>
+                <div style={{ fontSize: 12, color: W.soft }}>{q.advance_pct >= 100 ? "Full payment upfront" : `${q.advance_pct}% advance`}{q.valid_until ? ` · valid till ${new Date(q.valid_until + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}</div>
+              </div>
+              <div style={{ fontWeight: 900, fontSize: 16, color: W.ink }}>{gwINR(q.amount)}</div>
+            </div>
+            {q.inclusions && <div style={{ fontSize: 12.5, color: W.ink, marginTop: 6, whiteSpace: "pre-wrap", background: "#FAFAFA", borderRadius: 8, padding: "6px 8px" }}>{q.inclusions}</div>}
+            <div style={{ display: "flex", gap: 7, marginTop: 8 }}>
+              <button disabled={!!busy} onClick={() => accept(q)} style={{ ...btn(W.teal, "#fff"), padding: "7px 12px", fontSize: 12.5 }}>{busy === q.id ? "…" : `Accept & pay ${gwINR(Math.round(q.amount * q.advance_pct / 100))}`}</button>
+              <button onClick={() => decline(q)} style={{ ...btn("#F0F2F5", W.soft), padding: "7px 12px", fontSize: 12.5 }}>Decline</button>
+            </div>
+          </div>
+        );
+      }) : null}
+    </div>
+  );
+}
+
+// Organiser: bookings & earnings
+function OrganiserBookingsView({ data }) {
+  if (!data) return <Center>Loading…</Center>;
+  const bookings = data.bookings || [];
+  const due = Math.max(0, Number(data.earned) - Number(data.paid_out));
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {[["EARNED", data.earned, W.teal], ["PAID TO YOU", data.paid_out, W.ink], ["DUE TO YOU", due, "#B45309"]].map(([l, v, c]) => <div key={l} style={{ flex: "1 1 100px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "9px 12px" }}><div style={{ fontSize: 10.5, fontWeight: 800, color: W.soft }}>{l}</div><div style={{ fontSize: 19, fontWeight: 900, color: c }}>{gwINR(v)}</div></div>)}
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 10 }}>Earned = what clients have paid in the app minus the platform fee. Glasswings transfers this to your bank account.</div>
+      {!bookings.length ? <Center>No in-app bookings yet. Send quotes from your unlocked leads. When a client accepts and pays, it shows up here.</Center> : bookings.map(b => (
+        <div key={b.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 12, marginBottom: 9 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ fontSize: 22 }}>{gwLeadType(b.event_type)[1]}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{b.event_title || gwLeadType(b.event_type)[2]} · {b.client}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>{gwLeadDate(b.event_date)} · {b.city}</div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: b.status === "pending_payment" ? "#B45309" : W.teal }}>{b.status === "pending_payment" ? "AWAITING ADVANCE" : String(b.status).toUpperCase()}</span>
+          </div>
+          <div style={{ fontSize: 12.5, color: W.ink, marginTop: 7 }}>Total {gwINR(b.total)} · client paid <b>{gwINR(b.paid)}</b> · your share <b style={{ color: W.teal }}>{gwINR(b.earning)}</b> <span style={{ color: W.soft }}>({b.commission_pct}% fee)</span></div>
+          {(b.milestones || []).map((m, i) => <div key={i} style={{ fontSize: 12, color: m.status === "paid" ? W.teal : W.soft, marginTop: 3 }}>{m.status === "paid" ? "✓" : "○"} {m.label} {gwINR(m.amount)}{m.status === "paid" && m.paid_at ? ` · paid ${new Date(m.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : m.due_date ? ` · due ${new Date(m.due_date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}</div>)}
+        </div>
+      ))}
+      {(data.payouts || []).length > 0 && <>
+        <div style={{ fontWeight: 900, color: W.ink, margin: "14px 0 6px" }}>Payouts received</div>
+        {data.payouts.map((p, i) => <div key={i} style={{ fontSize: 12.5, color: W.ink, padding: "6px 0", borderTop: i ? `1px solid ${W.line}` : "none" }}><b>{gwINR(p.amount)}</b> · {new Date(p.at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}{p.reference ? ` · Ref ${p.reference}` : ""}{p.note ? ` · ${p.note}` : ""}</div>)}
+      </>}
+    </div>
+  );
+}
+
+// Admin: bookings, payments & organiser payouts
+function AdminBookingsView() {
+  const [list, setList] = useState(null);
+  const [pay, setPay] = useState([]);
+  const [f, setF] = useState("all");
+  const load = async () => {
+    const [{ data: b, error }, { data: p }] = await Promise.all([supabase.rpc("admin_bookings"), supabase.rpc("admin_booking_payables")]);
+    if (error) window.gwConfirm(error.message, () => {});
+    setList(Array.isArray(b) ? b : []); setPay(p || []);
+  };
+  useEffect(() => { load(); }, []);
+  const payout = async o => {
+    const amt = await window.gwPrompt(`Record a bank/UPI transfer to ${o.organiser}.\n\nAmount (₹). Outstanding: ${gwINR(o.outstanding)}`, String(Math.max(0, Number(o.outstanding) || 0)));
+    if (amt == null) return; const n = parseInt(String(amt).replace(/[^\d-]/g, ""), 10); if (!n) return;
+    const ref = await window.gwPrompt("UTR / UPI reference (optional)", "");
+    const { data, error } = await supabase.rpc("admin_record_booking_payout", { p_org: o.organiser_id, p_amount: n, p_reference: ref || null, p_note: null });
+    if (error || !data?.ok) return window.gwConfirm(error?.message || "Couldn't record payout.", () => {});
+    load();
+  };
+  const setStatus = (b, s) => window.gwConfirm(s === "cancelled" ? "Cancel this booking? Any unpaid instalments are cancelled. Refund paid amounts from your Razorpay dashboard, then mark them refunded here." : `Mark this booking as ${s}?`, async () => {
+    const { error } = await supabase.rpc("admin_booking_set_status", { p_booking: b.id, p_status: s, p_note: null });
+    if (error) window.gwConfirm(error.message, () => {}); load();
+  });
+  const refund = m => window.gwConfirm(`Mark ${m.label} (${gwINR(m.amount)}) as refunded?\n\nDo the actual refund first in Razorpay → Payments → ${m.payment_id || "this payment"} → Refund.`, async () => {
+    const { error } = await supabase.rpc("admin_booking_refund_milestone", { p_milestone: m.id });
+    if (error) window.gwConfirm(error.message, () => {}); load();
+  });
+  const rows = (list || []).filter(b => f === "all" || b.status === f);
+  const tot = (list || []).filter(b => b.status !== "cancelled");
+  const collected = tot.reduce((a, b) => a + Number(b.paid), 0);
+  const commission = tot.reduce((a, b) => a + (Number(b.paid) - Math.floor(Number(b.paid) * (100 - Number(b.commission_pct)) / 100)), 0);
+  const outstanding = pay.reduce((a, o) => a + Math.max(0, Number(o.outstanding)), 0);
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {[["BOOKINGS", tot.length, W.ink], ["COLLECTED", gwINR(collected), W.ink], ["YOUR COMMISSION", gwINR(commission), W.teal], ["OWED TO ORGANISERS", gwINR(outstanding), "#B45309"]].map(([l, v, c]) => <div key={l} style={{ flex: "1 1 120px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "9px 12px" }}><div style={{ fontSize: 10.5, fontWeight: 800, color: W.soft }}>{l}</div><div style={{ fontSize: 19, fontWeight: 900, color: c }}>{v}</div></div>)}
+      </div>
+      <div style={{ fontWeight: 900, color: W.ink, marginBottom: 6 }}>Organiser payouts</div>
+      {!pay.length ? <div style={{ fontSize: 13, color: W.soft, marginBottom: 12 }}>Nothing collected yet.</div> : pay.map(o => (
+        <div key={o.organiser_id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "9px 12px", marginBottom: 7 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5 }}>{o.organiser || "Organiser"}</div>
+            <div style={{ fontSize: 12, color: W.soft }}>{o.bookings} booking{Number(o.bookings) === 1 ? "" : "s"} · collected {gwINR(o.collected)} · fee {gwINR(o.commission)} · paid out {gwINR(o.paid_out)}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontWeight: 900, color: Number(o.outstanding) > 0 ? "#B45309" : W.teal }}>{gwINR(o.outstanding)}</div>
+            <button onClick={() => payout(o)} style={{ ...btn("#E7F6EF", W.teal), padding: "5px 10px", fontSize: 11.5, marginTop: 3 }}>Record payout</button>
+          </div>
+        </div>
+      ))}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "16px 0 8px" }}>
+        <div style={{ fontWeight: 900, color: W.ink, flex: 1 }}>Bookings</div>
+        <select value={f} onChange={e => setF(e.target.value)} style={{ border: `1px solid ${W.line}`, borderRadius: 9, padding: "7px 10px", fontSize: 13, background: "#fff" }}>{["all", "pending_payment", "confirmed", "completed", "cancelled"].map(s => <option key={s} value={s}>{s === "all" ? "All" : s.replace("_", " ")}</option>)}</select>
+        <button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "7px 11px" }}>↻</button>
+      </div>
+      {list === null ? <Center>Loading…</Center> : !rows.length ? <Center>No bookings yet.</Center> : rows.map(b => (
+        <div key={b.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 12, marginBottom: 8, opacity: b.status === "cancelled" ? .6 : 1 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, color: W.ink, fontSize: 14 }}>{gwLeadType(b.event_type)[1]} {b.event_title || gwLeadType(b.event_type)[2]} · {b.organiser}</div>
+              <div style={{ fontSize: 12, color: W.soft }}>Client {b.client} · <a href={`tel:${b.client_phone}`}>{b.client_phone}</a> · {gwLeadDate(b.event_date)} · {b.city}</div>
+              <div style={{ fontSize: 12.5, color: W.ink, marginTop: 3 }}>Total {gwINR(b.total)} · paid <b>{gwINR(b.paid)}</b> · fee {b.commission_pct}%</div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: b.status === "cancelled" ? "#C0392B" : b.status === "pending_payment" ? "#B45309" : W.teal, whiteSpace: "nowrap" }}>{String(b.status).replace("_", " ").toUpperCase()}</span>
+          </div>
+          {(b.milestones || []).map(m => (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginTop: 5 }}>
+              <div style={{ flex: 1, color: m.status === "paid" ? W.teal : m.status === "refunded" ? "#C0392B" : W.soft }}>{m.label} {gwINR(m.amount)} · {m.status}{m.payment_id ? ` · ${m.payment_id}` : ""}</div>
+              {m.status === "paid" && <button onClick={() => refund(m)} style={{ ...btn("#FDECEA", "#C0392B"), padding: "4px 9px", fontSize: 11 }}>Mark refunded</button>}
+            </div>
+          ))}
+          {b.status !== "cancelled" && <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            {b.status === "confirmed" && <button onClick={() => setStatus(b, "completed")} style={{ ...btn("#E7F6EF", W.teal), padding: "5px 10px", fontSize: 11.5 }}>✓ Event completed</button>}
+            <button onClick={() => setStatus(b, "cancelled")} style={{ ...btn("#F0F2F5", "#C0392B"), padding: "5px 10px", fontSize: 11.5 }}>Cancel booking</button>
+          </div>}
+        </div>
+      ))}
     </div>
   );
 }
