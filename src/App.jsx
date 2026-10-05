@@ -745,6 +745,8 @@ function AppRoot() {
   let gtCode = null; try { gtCode = new URLSearchParams(window.location.search).get("gt"); } catch {}
   if (gtCode) return <Shell><GuestTicketPage code={gtCode} /></Shell>;
   if (!session) return <PublicLanding />;
+  let tripCode = null; try { tripCode = new URLSearchParams(window.location.search).get("trip"); } catch {}
+  if (tripCode) return <Shell><TripPayPage code={tripCode} /></Shell>;
   return <Shell><Main user={session.user} /></Shell>;
 }
 
@@ -1780,6 +1782,7 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved
           ? <img src={e.vertical_banner_url || e.poster_url || e.banner_url} alt={e.title} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{e.emoji || "🎟️"}</div>}
         {popular && <span style={{ position: "absolute", top: 8, left: 8, background: "#D35400", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>🔥 Popular</span>}
+        {gwIsGetaway(e) && <span style={{ position: "absolute", top: popular ? 34 : 8, left: 8, background: GW_TRIP_GRAD, color: "#fff", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 10, boxShadow: "0 3px 10px rgba(0,0,0,.2)" }}>🏝️ GETAWAY · pay in parts</span>}
         {going && <span style={{ position: "absolute", top: 8, right: onToggleSave ? 46 : 8, background: "#008069", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 10 }}>✓ Going</span>}
         {gwEventClosed(e) && <div style={{position:"absolute",left:8,right:8,bottom:date?34:8,zIndex:4,textAlign:"center",background:gwEventAvailability(e)==="housefull"?"rgba(0,0,0,.92)":"rgba(185,28,28,.94)",color:gwEventAvailability(e)==="housefull"?"#F6D365":"#fff",border:gwEventAvailability(e)==="housefull"?"1px solid #D4AF37":"1px solid rgba(255,255,255,.25)",borderRadius:10,padding:"7px 8px",fontSize:12,fontWeight:950,letterSpacing:.8,boxShadow:"0 4px 14px rgba(0,0,0,.22)"}}>{gwEventAvailability(e)==="housefull"?"⚫ HOUSEFULL":"🔴 SOLD OUT"}</div>}
         {onToggleSave && <button onClick={(ev) => { ev.stopPropagation(); onToggleSave(e.id); }} aria-label={saved ? "Remove from saved" : "Save"} style={{ position: "absolute", top: 7, right: 7, zIndex: 3, width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.42)", fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{saved ? "❤️" : "🤍"}</button>}
@@ -1789,7 +1792,7 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved
       <div style={{ padding: "8px 2px 0" }}>
         <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.title}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 3 }}>
-          <span style={{ fontSize: 12.5, color: W.teal, fontWeight: 800 }}>{price}</span>
+          <span style={{ fontSize: 12.5, color: gwIsGetaway(e) ? "#0369A1" : W.teal, fontWeight: 800 }}>{gwIsGetaway(e) ? "🧳 Trip · pay in parts" : price}</span>
           {rating && rating.cnt > 0 && <span style={{ fontSize: 11.5, color: "#B45309", fontWeight: 800 }}>⭐ {rating.avg}<span style={{ color: W.soft, fontWeight: 600 }}> ({rating.cnt})</span></span>}
         </div>
         {(e.entry_badge || (e.dress_code || "").trim()) && <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
@@ -2451,7 +2454,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       {children}
     </div>
   );
-  const ticketList = (
+  const ticketList = gwIsGetaway(e) ? <GetawayBox event={e} profile={profile} /> : (
     <div>
       {hasTicket && (
         <div style={{ background: "#E7F6EF", borderRadius: 12, padding: "12px 14px", margin: "10px 0 4px" }}>
@@ -2625,7 +2628,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               <span style={{ background: "#fff", color: W.teal, fontWeight: 800, fontSize: 12.5, padding: "8px 12px", borderRadius: 9, whiteSpace: "nowrap", flexShrink: 0 }}>View plans</span>
             </div>
           )}
-          {!wide && <div ref={ticketRef}><Sec title={hasTicket ? "Buy more tickets" : "Tickets"}><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec></div>}
+          {!wide && <div ref={ticketRef}><Sec title={gwIsGetaway(e) ? "🏝️ Book this trip" : hasTicket ? "Buy more tickets" : "Tickets"}><div style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: "4px 16px 14px" }}>{ticketList}</div></Sec></div>}
           {onOpenDM && hasTicket && <EventJoinNudge eventId={e.id} eventTitle={e.title} />}
           {onOpenDM && <SelfCheckin eventId={e.id} hasTicket={hasTicket} />}
           {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
@@ -2883,7 +2886,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
                     : "💎 Go Premium — perks, all rooms & ticket discounts → "}
                 </div>
               )}
-              <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>{hasTicket ? "Buy more tickets" : "Tickets"}</div>
+              <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>{gwIsGetaway(e) ? "🏝️ Book this trip" : hasTicket ? "Buy more tickets" : "Tickets"}</div>
               {ticketList}
               {selQty > 0 && (
                 <div style={{ marginTop: 12, background: "#F4FBF8", border: "1px solid #D9EAE4", borderRadius: 12, padding: "11px 13px" }}>
@@ -2898,7 +2901,15 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           </div>
         )}
       </div>
-      {(selQty > 0 || !wide) && (
+      {gwIsGetaway(e) && !wide && (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -8px 28px rgba(14,48,40,.13)", padding: "11px 16px calc(11px + env(safe-area-inset-bottom))" }}>
+          <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+            <div style={{ minWidth: 0 }}><div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>🏝️ Getaway</div><div style={{ fontSize: 16, fontWeight: 900, color: W.ink }}>Book now, pay in parts</div></div>
+            <button onClick={scrollToTickets} style={{ ...btn(GW_TRIP_GRAD, "#fff"), padding: "13px 22px", fontSize: 15, borderRadius: 12, fontWeight: 900 }}>🧳 Book trip</button>
+          </div>
+        </div>
+      )}
+      {!gwIsGetaway(e) && (selQty > 0 || !wide) && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -8px 28px rgba(14,48,40,.13)", padding: "11px 16px calc(11px + env(safe-area-inset-bottom))" }}>
           <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
             <div style={{ minWidth: 0 }}>
@@ -14257,7 +14268,8 @@ function GwRich({ text, color = W.ink, size = 13.5, accent = W.teal }) {
     }
     list = null;
     if (!t) { blocks.push({ gap: true }); return; }
-    if (t.startsWith("# ")) blocks.push({ h: t.slice(2) });
+    const hm = t.match(/^#{1,3}\s+(.*)$/);
+    if (hm) blocks.push({ h: hm[1] });
     else blocks.push({ p: t });
   });
   return (
@@ -15164,6 +15176,779 @@ function EventFeeCard({ event, canEdit }) {
 
 
 
+// =================== GETAWAYS (trips · pay in parts) ===================
+const GW_TRIP_BSTATUS = {
+  pending: ["⏳ Booking not paid yet", "#B45309", "#FEF3C7"],
+  booked: ["🧳 Booked · paying in parts", "#0369A1", "#E0F2FE"],
+  paid: ["🎉 Fully paid", "#15803D", "#DCFCE7"],
+  cancelled: ["Cancelled", "#475569", "#F1F5F9"],
+  released: ["Seat released", "#B91C1C", "#FEE2E2"],
+};
+const GW_TRIP_GRAD = "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)";
+const gwIsGetaway = e => String(e?.event_kind || "") === "getaway";
+const gwDateShort = d => { if (!d) return ""; const x = new Date(String(d).length <= 10 ? d + "T00:00:00" : d); return isNaN(x) ? String(d) : x.toLocaleDateString("en-IN", { day: "numeric", month: "short" }); };
+const gwDaysTo = d => { if (!d) return null; const x = new Date(String(d).length <= 10 ? d + "T00:00:00" : d); const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((x - t) / 86400000); };
+// suggested weekly amount to finish by the deadline
+function gwTripWeekly(left, deadline) {
+  const days = gwDaysTo(deadline);
+  if (!left || left <= 0) return 0;
+  if (days == null || days <= 7) return left;
+  const weeks = Math.max(1, Math.ceil(days / 7));
+  return Math.min(left, Math.ceil(left / weeks / 100) * 100);
+}
+// expected-by-today (straight line from booking day to deadline) → who is behind
+function gwTripBehind(b) {
+  if (!b || b.status !== "booked") return 0;
+  const start = new Date(b.created_at).getTime(), end = new Date(b.deadline + "T23:59:59").getTime(), now = Date.now();
+  if (!(end > start)) return Math.max(0, b.total - b.paid);
+  const frac = Math.min(1, Math.max(0, (now - start) / (end - start)));
+  const expected = b.first_due + (b.total - b.first_due) * frac;
+  return Math.max(0, Math.round(expected - b.paid));
+}
+
+async function gwPayTrip(bookingId, amount, onDone) {
+  try {
+    const ready = await loadRazorpay();
+    if (!ready) return window.gwConfirm("Couldn't open the payment window. Check your connection and try again.", () => {});
+    const { data: ses } = await supabase.auth.getSession();
+    const token = ses?.session?.access_token;
+    if (!token) return window.gwConfirm("Please log in to pay.", () => {});
+    const r = await fetch("/api/razorpay/trip-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, booking_id: bookingId, amount }) });
+    const od = await r.json().catch(() => ({}));
+    if (!r.ok || !od.order_id) return window.gwConfirm(od.error || "Could not start the payment.", () => {});
+    const rzp = new window.Razorpay({
+      key: od.key_id, amount: od.amount, currency: od.currency, order_id: od.order_id,
+      name: "Glasswings", description: rzpDesc(od.description || "Trip payment"), theme: { color: "#0EA5E9" },
+      handler: async (resp) => {
+        try {
+          const v = await fetch("/api/razorpay/trip-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
+          const vd = await v.json().catch(() => ({}));
+          window.gwConfirm(v.ok && vd.ok ? `🎉 Payment of ₹${Math.round(od.amount / 100).toLocaleString("en-IN")} received! Your trip progress is updated.` : (vd.error || "Payment couldn't be confirmed.") + "\n\nIf money was deducted, it will update automatically within a few minutes. Payment ID: " + (resp.razorpay_payment_id || ""), () => {});
+        } catch { window.gwConfirm("Payment couldn't be confirmed yet. If money was deducted, it will update automatically within a few minutes. Payment ID: " + (resp.razorpay_payment_id || ""), () => {}); }
+        onDone && onDone();
+      },
+    });
+    rzp.on("payment.failed", () => window.gwConfirm("Payment failed or was cancelled. Nothing was charged.", () => {}));
+    rzp.open();
+  } catch { window.gwConfirm("Could not start the payment. Please try again.", () => {}); }
+}
+
+function GwTripProgress({ paid, total, firstDue, dark = false }) {
+  const pct = total > 0 ? Math.min(100, Math.round(paid * 100 / total)) : 0;
+  const fpct = total > 0 ? Math.min(100, Math.round(firstDue * 100 / total)) : 0;
+  return (
+    <div>
+      <div style={{ position: "relative", height: 14, borderRadius: 99, background: dark ? "rgba(255,255,255,.2)" : "#E2E8F0", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: pct >= 100 ? "linear-gradient(90deg,#16A34A,#22C55E)" : "linear-gradient(90deg,#0EA5E9,#F59E0B)", borderRadius: 99, transition: "width .4s" }} />
+        {fpct > 0 && fpct < 100 && <div title="Booking amount" style={{ position: "absolute", left: `${fpct}%`, top: 0, bottom: 0, width: 2, background: dark ? "#fff" : "#0F172A", opacity: .5 }} />}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 800, marginTop: 4, color: dark ? "#fff" : W.ink }}>
+        <span>{gwINR(paid)} paid</span><span>{pct}%</span><span style={{ color: dark ? "#FDE68A" : "#B45309" }}>{gwINR(Math.max(0, total - paid))} left</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Public trip box on the event page ----------
+function GetawayBox({ event, profile }) {
+  const [t, setT] = useState(null), [mine, setMine] = useState([]), [book, setBook] = useState(false), [open, setOpen] = useState("itinerary");
+  const load = () => {
+    supabase.rpc("trip_public", { p_event: event.id }).then(({ data }) => setT(data || { ready: false }));
+    if (profile?.id) supabase.rpc("my_trip_bookings", { p_event: event.id }).then(({ data }) => setMine(data || []));
+  };
+  useEffect(() => { load(); }, [event.id, profile?.id]);
+  if (!t) return <div style={{ padding: 14, color: W.soft, fontSize: 13 }}>Loading trip…</div>;
+  if (!t.ready) return <div style={{ padding: 14, color: W.soft, fontSize: 13.5 }}>🏝️ Trip packages are being set up. Check back soon!</div>;
+  const pk = t.packages || [];
+  const from = pk.length ? Math.min(...pk.map(p => Number(p.now_price))) : 0;
+  const allFull = pk.length > 0 && pk.every(p => p.left <= 0);
+  const early = pk.find(p => p.early_price && p.early_until && gwDaysTo(p.early_until) >= 0);
+  const dl = gwDaysTo(t.deadline);
+  const closed = t.status === "cancelled" || t.status === "closed" || (dl != null && dl < 0);
+  const active = (mine || []).filter(b => ["pending", "booked", "paid"].includes(b.status));
+  const pctGroup = t.min_people ? Math.min(100, Math.round(t.booked_people * 100 / t.min_people)) : 100;
+  const sec = (k, title, body) => body && String(body).trim() ? (
+    <div key={k} style={{ borderTop: `1px solid ${W.line}` }}>
+      <div onClick={() => setOpen(o => o === k ? "" : k)} style={{ display: "flex", alignItems: "center", padding: "12px 2px", cursor: "pointer", fontWeight: 850, color: W.ink, fontSize: 14.5 }}><span style={{ flex: 1 }}>{title}</span><span style={{ color: W.soft }}>{open === k ? "▴" : "▾"}</span></div>
+      {open === k && <div style={{ padding: "0 2px 12px" }}><GwRich text={body} /></div>}
+    </div>) : null;
+  const rulesText = `- Booking amount: **${gwINR(t.booking_amount)} per person** holds your seat (plus flights, if you book them with us).\n- Pay the rest **any amount, any day** (minimum ${gwINR(t.min_part)}) until **${gwDateShort(t.deadline)}**.\n- Cancel more than ${t.cancel_full_days} days before the trip: everything above the booking amount back${t.refund_mode === "credits" ? " as Glasswings credits" : ""}.\n- Cancel ${t.cancel_half_days}–${t.cancel_full_days} days before: 50% of that back. Closer than ${t.cancel_half_days} days: no refund.\n- Not fully paid by the deadline: the seat is released; money above the booking amount comes back${t.refund_mode === "credits" ? " as credits" : ""}.\n- Can't go? **Pass your seat to a friend** before the deadline. Nothing is lost.\n- If the trip doesn't reach ${t.min_people} travellers or we cancel it, you get **100% back**.\n- Travellers must be ${t.min_age}+ and carry a government photo ID.`;
+  return (
+    <div style={{ padding: "6px 0" }}>
+      <div style={{ borderRadius: 18, overflow: "hidden", background: GW_TRIP_GRAD, color: "#fff", padding: "16px 16px 14px", margin: "10px 0" }}>
+        <div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900, opacity: .95 }}>🏝️ GETAWAY · PAY IN PARTS</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, opacity: .9 }}>from</span><span style={{ fontSize: 30, fontWeight: 950 }}>{gwINR(from)}</span><span style={{ fontSize: 13, opacity: .9 }}>per person</span>
+        </div>
+        {early && <div style={{ display: "inline-block", background: "#FDE68A", color: "#78350F", fontWeight: 900, fontSize: 12, borderRadius: 99, padding: "3px 10px", marginTop: 4 }}>🐦 Early-bird price till {gwDateShort(early.early_until)} · locked once you book</div>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginTop: 12 }}>
+          {[["1️⃣", `${gwINR(t.booking_amount)}`, "to book your seat"], ["2️⃣", "Any amount", `any day (min ${gwINR(t.min_part)})`], ["3️⃣", gwDateShort(t.deadline), "finish paying by"]].map(([n, a, b]) => (
+            <div key={n} style={{ background: "rgba(255,255,255,.16)", borderRadius: 12, padding: "8px 6px", textAlign: "center" }}>
+              <div style={{ fontSize: 15 }}>{n}</div><div style={{ fontWeight: 950, fontSize: 14 }}>{a}</div><div style={{ fontSize: 10.5, opacity: .92, lineHeight: 1.25 }}>{b}</div>
+            </div>))}
+        </div>
+        {t.status === "confirmed" ? <div style={{ marginTop: 12, fontWeight: 900, fontSize: 13 }}>✅ Trip confirmed · {t.booked_people} travellers going</div>
+          : t.status === "open" && t.min_people > 0 && <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 850 }}>🔥 {t.booked_people} of {t.min_people} travellers needed to confirm the trip{t.confirm_by ? ` by ${gwDateShort(t.confirm_by)}` : ""}</div>
+            <div style={{ height: 8, borderRadius: 99, background: "rgba(255,255,255,.25)", marginTop: 5, overflow: "hidden" }}><div style={{ width: `${pctGroup}%`, height: "100%", background: "#FDE68A" }} /></div>
+            <div style={{ fontSize: 11, opacity: .9, marginTop: 3 }}>If it doesn't fill, everyone gets 100% back.</div>
+          </div>}
+      </div>
+
+      {active.map(b => <MyTripCard key={b.id} b={b} onChange={load} />)}
+      {(mine || []).filter(b => ["cancelled", "released"].includes(b.status)).map(b => (
+        <div key={b.id} style={{ background: "#F8FAFC", border: `1px solid ${W.line}`, borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: W.soft, marginBottom: 8 }}>
+          {GW_TRIP_BSTATUS[b.status][0]} · {b.code}{Number(b.refund_amount) > 0 ? ` · ${gwINR(b.refund_amount)} ${b.refund_status === "credited" ? "returned as credits" : b.refund_status === "refunded" ? "refunded to your bank" : "refund in process"}` : ""}
+        </div>))}
+
+      {t.status === "cancelled" ? <div style={{ background: "#FEE2E2", color: "#B91C1C", borderRadius: 12, padding: 12, fontWeight: 800 }}>This trip was cancelled. Everyone's payments are being returned.</div>
+        : closed ? <div style={{ background: "#F1F5F9", color: W.soft, borderRadius: 12, padding: 12, fontWeight: 800 }}>Bookings for this trip are closed.</div>
+          : allFull ? <TripWaitlist event={event} profile={profile} />
+            : <button onClick={() => profile?.id ? setBook(true) : window.gwConfirm("Please log in to book this trip.", () => {})} style={{ ...btn(GW_TRIP_GRAD, "#fff"), width: "100%", justifyContent: "center", padding: 14, fontSize: 16, fontWeight: 950, borderRadius: 14, boxShadow: "0 8px 20px rgba(14,165,233,.3)" }}>🧳 {active.length ? "Book for more people" : `Book now · pay ${gwINR(t.booking_amount)} today`}</button>}
+
+      {pk.length > 0 && <div style={{ display: "flex", gap: 8, overflowX: "auto", margin: "12px 0 4px", paddingBottom: 4 }}>
+        {pk.map(p => (
+          <div key={p.id} style={{ flex: "0 0 auto", minWidth: 140, border: `1.5px solid ${p.left > 0 ? "#BAE6FD" : W.line}`, borderRadius: 14, padding: "10px 12px", background: p.left > 0 ? "#F0F9FF" : "#F8FAFC" }}>
+            <div style={{ fontWeight: 900, color: W.ink, fontSize: 13.5 }}>🛏️ {p.name}</div>
+            <div style={{ fontSize: 18, fontWeight: 950, color: "#0369A1" }}>{gwINR(p.now_price)}{Number(p.now_price) < Number(p.price) && <s style={{ fontSize: 12, color: W.soft, marginLeft: 5 }}>{gwINR(p.price)}</s>}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: p.left <= 0 ? "#B91C1C" : p.left <= 5 ? "#B45309" : W.soft }}>{p.left <= 0 ? "Sold out" : `${p.left} seat${p.left === 1 ? "" : "s"} left`}</div>
+          </div>))}
+      </div>}
+
+      <div style={{ marginTop: 8 }}>
+        {sec("itinerary", "🗓️ Day-by-day plan", t.itinerary)}
+        {sec("stay", "🏨 Where you'll stay", t.stay_info)}
+        {sec("travel", "✈️ Travel & pickup", t.travel_info)}
+        {sec("inc", "✅ What's included", t.inclusions)}
+        {sec("exc", "❌ Not included", t.exclusions)}
+        {(t.extras || []).length > 0 && sec("extras", "➕ Optional extras", (t.extras || []).map(x => `- **${x.name}**: ${gwINR(x.price)} per person${x.pay_upfront ? " (paid in full when you book)" : ""}${x.description ? ` · ${x.description}` : ""}`).join("\n"))}
+        {sec("pack", "🎒 What to pack", t.packing)}
+        {sec("rules", "💳 Payments, cancellation & refunds", rulesText)}
+        {sec("terms", "📋 Trip terms", t.terms)}
+      </div>
+      {book && <TripBookSheet event={event} trip={t} profile={profile} onClose={() => setBook(false)} onDone={() => { setBook(false); load(); }} />}
+    </div>
+  );
+}
+
+function TripWaitlist({ event, profile }) {
+  const [n, setN] = useState(1), [ph, setPh] = useState(""), [done, setDone] = useState(false);
+  const join = async () => {
+    if (!profile?.id) return window.gwConfirm("Please log in first.", () => {});
+    const { data, error } = await supabase.rpc("trip_join_waitlist", { p_event: event.id, p_people: n, p_phone: ph });
+    if (error || !data?.ok) return window.gwConfirm(error?.message || data?.error || "Couldn't join.", () => {});
+    setDone(true);
+  };
+  if (done) return <div style={{ background: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: 12, padding: 12, fontWeight: 800, color: "#0369A1" }}>✓ You're on the waitlist. We'll WhatsApp you the moment a seat opens.</div>;
+  return (
+    <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 12 }}>
+      <div style={{ fontWeight: 900, color: "#9A3412" }}>😮 All seats are taken</div>
+      <div style={{ fontSize: 12.5, color: "#9A3412", margin: "3px 0 8px" }}>People sometimes drop out. Join the waitlist and you'll be offered the next free seat.</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <select value={n} onChange={e => setN(Number(e.target.value))} style={{ ...gwLeadInp, width: 110 }}>{[1, 2, 3, 4, 5, 6].map(x => <option key={x} value={x}>{x} {x === 1 ? "person" : "people"}</option>)}</select>
+        <input value={ph} onChange={e => setPh(e.target.value)} inputMode="tel" placeholder="WhatsApp number" style={{ ...gwLeadInp, flex: 1, minWidth: 0 }} />
+      </div>
+      <button onClick={join} style={{ ...btn("#EA580C", "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}>Join waitlist</button>
+    </div>
+  );
+}
+
+// ---------- Booking sheet (4 steps) ----------
+function TripBookSheet({ event, trip, profile, onClose, onDone }) {
+  const pk = (trip.packages || []).filter(p => p.left > 0);
+  const [step, setStep] = useState(0);
+  const [pid, setPid] = useState(pk[0]?.id || null);
+  const [people, setPeople] = useState(1);
+  const [room, setRoom] = useState("any");
+  const [ex, setEx] = useState(() => Object.fromEntries((trip.extras || []).map(x => [x.id, x.pay_upfront ? 1 : 0])));
+  const blank = i => ({ name: i === 0 ? (profile?.full_name || "") : "", age: "", gender: i === 0 ? (profile?.gender || "") : "", phone: "", emergency: "", food: i === 0 ? (profile?.food_pref || "") : "", from_city: trip.from_city || "" });
+  const [tr, setTr] = useState([blank(0)]);
+  const [agree, setAgree] = useState(false), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const pkg = pk.find(p => p.id === pid);
+  useEffect(() => { setTr(old => Array.from({ length: people }, (_, i) => old[i] || blank(i))); setEx(o => Object.fromEntries(Object.entries(o).map(([k, v]) => { const x = (trip.extras || []).find(e => e.id === k); return [k, x?.pay_upfront && v > 0 ? people : Math.min(v, people)]; }))); }, [people]);
+  const extrasSel = (trip.extras || []).map(x => ({ ...x, qty: ex[x.id] || 0 })).filter(x => x.qty > 0);
+  const unit = Number(pkg?.now_price) || 0;
+  const total = unit * people + extrasSel.reduce((s, x) => s + Number(x.price) * x.qty, 0);
+  const upfront = extrasSel.filter(x => x.pay_upfront).reduce((s, x) => s + Number(x.price) * x.qty, 0);
+  const first = Math.min(total, Number(trip.booking_amount) * people + upfront);
+  const weekly = gwTripWeekly(total - first, trip.deadline);
+  const setT = (i, k, v) => setTr(a => a.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  const minAge = Number(trip.min_age) || 18;
+  const trOk = tr.every(x => x.name.trim().length >= 3 && Number(x.age) >= minAge && x.gender && x.food && String(x.phone || "").replace(/\D/g, "").length >= 10);
+  const next = () => {
+    setErr("");
+    if (step === 0 && !pkg) return setErr("Please choose a package.");
+    if (step === 0 && people > pkg.left) return setErr(`Only ${pkg.left} seat${pkg.left === 1 ? "" : "s"} left in ${pkg.name}.`);
+    if (step === 2 && !trOk) return setErr(`Fill every traveller: name as on ID, age (${minAge}+), gender, WhatsApp number and food.`);
+    setStep(s => s + 1);
+  };
+  const submit = async () => {
+    if (!agree) return setErr("Please accept the trip rules.");
+    setBusy(true); setErr("");
+    const { data, error } = await supabase.rpc("trip_book", { p_event: event.id, p_package: pid, p_people: people, p_extras: extrasSel.map(x => ({ id: x.id, qty: x.qty })), p_travellers: tr.map(x => ({ ...x, age: Number(x.age) })), p_room_pref: room, p_notes: null });
+    setBusy(false);
+    if (error || !data?.ok) return setErr(error?.message || data?.error || "Couldn't create the booking.");
+    gwPayTrip(data.booking_id, data.first_due, onDone);
+  };
+  const steps = ["Package", "Extras", "Travellers", "Pay"];
+  const stepper = (v, set, max) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <button type="button" onClick={() => set(Math.max(0, v - 1))} style={{ width: 32, height: 32, borderRadius: 99, border: `1px solid ${W.line}`, background: "#fff", fontSize: 18, cursor: "pointer" }}>−</button>
+      <b style={{ minWidth: 18, textAlign: "center" }}>{v}</b>
+      <button type="button" onClick={() => set(Math.min(max, v + 1))} style={{ width: 32, height: 32, borderRadius: 99, border: `1px solid ${W.line}`, background: "#fff", fontSize: 18, cursor: "pointer" }}>+</button>
+    </div>);
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ margin: -18, marginBottom: 0, padding: "18px 18px 14px", background: GW_TRIP_GRAD, color: "#fff", borderRadius: "18px 18px 0 0" }}>
+        <div style={{ display: "flex" }}><div style={{ flex: 1 }}><div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>🏝️ BOOK YOUR GETAWAY</div><div style={{ fontSize: 19, fontWeight: 950, marginTop: 3 }}>{event.title}</div></div><span onClick={onClose} style={{ cursor: "pointer", fontSize: 22 }}>✕</span></div>
+        <div style={{ display: "flex", gap: 5, marginTop: 10 }}>{steps.map((s, i) => <div key={s} style={{ flex: 1, textAlign: "center" }}><div style={{ height: 5, borderRadius: 9, background: i <= step ? "#FDE68A" : "rgba(255,255,255,.3)" }} /><div style={{ fontSize: 10.5, fontWeight: 800, marginTop: 3, opacity: i === step ? 1 : .8 }}>{s}</div></div>)}</div>
+      </div>
+      <div style={{ height: 12 }} />
+
+      {step === 0 && <>
+        <div style={gwLeadLbl}>CHOOSE YOUR ROOM</div>
+        {pk.map(p => (
+          <div key={p.id} onClick={() => setPid(p.id)} style={{ border: `2px solid ${pid === p.id ? "#0EA5E9" : W.line}`, background: pid === p.id ? "#F0F9FF" : "#fff", borderRadius: 14, padding: "11px 13px", marginBottom: 8, cursor: "pointer" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <div style={{ flex: 1, fontWeight: 900, color: W.ink }}>🛏️ {p.name}</div>
+              <div style={{ fontWeight: 950, color: "#0369A1", fontSize: 17 }}>{gwINR(p.now_price)}</div>
+            </div>
+            <div style={{ fontSize: 12, color: W.soft }}>{p.description || `${p.sharing} people share a room`} · {p.left} left{Number(p.now_price) < Number(p.price) ? ` · 🐦 early-bird (was ${gwINR(p.price)})` : ""}</div>
+          </div>))}
+        <div style={gwLeadLbl}>HOW MANY TRAVELLERS IN THIS BOOKING?</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>{stepper(people, v => setPeople(Math.max(1, v)), Math.min(10, pkg?.left || 10))}<span style={{ fontSize: 12.5, color: W.soft }}>Book your friends together. Each friend can pay their share with your pay link.</span></div>
+        <div style={gwLeadLbl}>ROOM PREFERENCE</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {[["any", "🙂 Any"], ["together", "👯 Keep our group together"], ...(trip.women_room ? [["women_only", "👩 Women-only room"]] : []), ["couple", "💑 Couple room"]].map(([k, l]) => <button key={k} type="button" onClick={() => setRoom(k)} style={gwChip(room === k)}>{l}</button>)}
+        </div>
+      </>}
+
+      {step === 1 && <>
+        <div style={gwLeadLbl}>EXTRAS</div>
+        {!(trip.extras || []).length && <div style={{ color: W.soft, fontSize: 13 }}>No extras for this trip. Tap Next.</div>}
+        {(trip.extras || []).map(x => (
+          <div key={x.id} style={{ border: `1.5px solid ${ex[x.id] ? "#0EA5E9" : W.line}`, borderRadius: 14, padding: "11px 13px", marginBottom: 8, background: ex[x.id] ? "#F0F9FF" : "#fff" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 900, color: W.ink }}>{x.name}</div>
+                <div style={{ fontSize: 12, color: W.soft }}>{gwINR(x.price)} per person{x.description ? ` · ${x.description}` : ""}</div>
+                {x.pay_upfront && <div style={{ fontSize: 11.5, fontWeight: 800, color: "#B45309", marginTop: 2 }}>⚡ Paid in full now, so we can book it at today's price</div>}
+              </div>
+              {stepper(ex[x.id] || 0, v => setEx(o => ({ ...o, [x.id]: v })), people)}
+            </div>
+            {x.pay_upfront && !(ex[x.id] > 0) && <div style={{ fontSize: 11.5, color: W.soft, marginTop: 4 }}>Set to 0 if you'll book this yourself.</div>}
+          </div>))}
+      </>}
+
+      {step === 2 && <>
+        <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6 }}>Use the name <b>exactly as on the government ID</b>: hotels and airlines check it. Travellers must be {minAge}+.</div>
+        {tr.map((x, i) => (
+          <div key={i} style={{ border: `1px solid ${W.line}`, borderRadius: 14, padding: 12, marginBottom: 10 }}>
+            <div style={{ fontWeight: 900, color: "#0369A1", marginBottom: 6 }}>🧑 Traveller {i + 1}{i === 0 ? " (you)" : ""}</div>
+            <input value={x.name} onChange={e => setT(i, "name", e.target.value)} placeholder="Full name as on ID *" style={{ ...gwLeadInp, marginBottom: 7 }} />
+            <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
+              <input value={x.age} onChange={e => setT(i, "age", e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={`Age (${minAge}+) *`} style={{ ...gwLeadInp, width: 110 }} />
+              <select value={x.gender} onChange={e => setT(i, "gender", e.target.value)} style={{ ...gwLeadInp, flex: 1 }}><option value="">Gender *</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select>
+            </div>
+            <input value={x.phone} onChange={e => setT(i, "phone", e.target.value)} inputMode="tel" placeholder="WhatsApp number *" style={{ ...gwLeadInp, marginBottom: 7 }} />
+            <div style={{ display: "flex", gap: 6, marginBottom: 7 }}>
+              {[["veg", "🥗 Veg", "#16A34A"], ["nonveg", "🍗 Non-veg", "#B91C1C"]].map(([k, l, c]) => <button key={k} type="button" onClick={() => setT(i, "food", k)} style={{ flex: 1, border: `2px solid ${c}`, background: x.food === k ? c : "#fff", color: x.food === k ? "#fff" : c, borderRadius: 10, padding: "8px", fontWeight: 900, cursor: "pointer" }}>{l}</button>)}
+            </div>
+            <input value={x.emergency} onChange={e => setT(i, "emergency", e.target.value)} placeholder="Emergency contact (name & number)" style={{ ...gwLeadInp, marginBottom: 7 }} />
+            <input value={x.from_city} onChange={e => setT(i, "from_city", e.target.value)} placeholder="Travelling from (city)" style={gwLeadInp} />
+          </div>))}
+      </>}
+
+      {step === 3 && <>
+        <div style={{ background: "#F8FAFC", border: `1px solid ${W.line}`, borderRadius: 14, padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: W.ink, padding: "3px 0" }}><span>{pkg?.name} × {people}</span><b>{gwINR(unit * people)}</b></div>
+          {extrasSel.map(x => <div key={x.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, color: W.ink, padding: "3px 0" }}><span>{x.name} × {x.qty}</span><b>{gwINR(x.price * x.qty)}</b></div>)}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 950, color: W.ink, borderTop: `1px dashed ${W.line}`, marginTop: 6, paddingTop: 8 }}><span>Trip total</span><span>{gwINR(total)}</span></div>
+        </div>
+        <div style={{ marginTop: 10, borderRadius: 14, background: GW_TRIP_GRAD, color: "#fff", padding: 13 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}><span style={{ fontWeight: 900 }}>Pay today</span><span style={{ fontSize: 24, fontWeight: 950 }}>{gwINR(first)}</span></div>
+          <div style={{ fontSize: 12, opacity: .95 }}>{gwINR(Number(trip.booking_amount) * people)} booking amount{upfront ? ` + ${gwINR(upfront)} for ${extrasSel.filter(x => x.pay_upfront).map(x => x.name).join(", ")}` : ""}</div>
+          {total - first > 0 && <div style={{ background: "rgba(255,255,255,.18)", borderRadius: 10, padding: "8px 10px", marginTop: 8, fontSize: 12.5, lineHeight: 1.5 }}>
+            Then <b>{gwINR(total - first)}</b> in parts, any amount, any day, by <b>{gwDateShort(trip.deadline)}</b>.<br />💡 Easy plan: about <b>{gwINR(weekly)} a week</b>.
+          </div>}
+        </div>
+        <label style={{ display: "flex", gap: 9, alignItems: "flex-start", marginTop: 12, cursor: "pointer", fontSize: 13, color: W.ink, lineHeight: 1.45 }}>
+          <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 3, width: 17, height: 17 }} />
+          <span>I've read the trip plan, the payment & cancellation rules and the trip terms. The booking amount{upfront ? " and flights are" : " is"} non-refundable. All travellers are {minAge}+ and will carry a photo ID.</span>
+        </label>
+      </>}
+
+      {err && <div style={{ background: "#FEE2E2", color: "#B91C1C", borderRadius: 10, padding: "8px 10px", fontSize: 12.5, fontWeight: 700, marginTop: 10 }}>{err}</div>}
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+        <button onClick={() => step === 0 ? onClose() : setStep(s => s - 1)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>{step === 0 ? "Cancel" : "← Back"}</button>
+        {step < 3 ? <button onClick={next} style={{ ...btn("#0EA5E9", "#fff"), flex: 2, justifyContent: "center", fontWeight: 900 }}>Next →</button>
+          : <button disabled={busy} onClick={submit} style={{ ...btn(GW_TRIP_GRAD, "#fff"), flex: 2, justifyContent: "center", fontWeight: 950, opacity: busy ? .6 : 1 }}>{busy ? "Please wait…" : `Pay ${gwINR(first)} & book`}</button>}
+      </div>
+    </Sheet>
+  );
+}
+
+// ---------- Member's booking card (pay in parts, share link, transfer, cancel, trip pass) ----------
+function MyTripCard({ b, onChange }) {
+  const [amt, setAmt] = useState(""), [edit, setEdit] = useState(null), [showPass, setShowPass] = useState(false);
+  const left = Math.max(0, Number(b.total) - Number(b.paid));
+  const minPart = Math.min(Number(b.min_part) || 500, left);
+  const weekly = gwTripWeekly(left, b.deadline);
+  const dl = gwDaysTo(b.deadline);
+  const [lab, fg, bg] = GW_TRIP_BSTATUS[b.status] || GW_TRIP_BSTATUS.booked;
+  const link = `https://glass-wings.com/?trip=${b.code}`;
+  const share = `🏝️ ${b.event_title}\nI've booked our trip on Glasswings! Pay your share here (any amount, any day):\n${link}\nTrip code: ${b.code}`;
+  const pay = () => {
+    const a = Math.round(Number(amt) || 0);
+    if (a < minPart) return window.gwConfirm(`Minimum payment is ₹${minPart}.`, () => {});
+    gwPayTrip(b.id, Math.min(a, left), () => { setAmt(""); onChange && onChange(); });
+  };
+  const cancel = () => window.gwConfirm(`Cancel this booking?\n\nYou'll get ${gwINR(b.refund_now)} back${b.refund_mode === "bank" ? " to your bank" : " as Glasswings credits"} under the trip's cancellation rule. The booking amount${(b.extras || []).some(x => x.upfront) ? " and flights are" : " is"} not refundable.\n\nTip: you can pass your seat to a friend instead (✏️ Edit traveller), and nothing is lost.`, async () => {
+    const { data, error } = await supabase.rpc("trip_cancel_my", { p_booking: b.id });
+    if (error || !data?.ok) return window.gwConfirm(error?.message || data?.error || "Couldn't cancel.", () => {});
+    onChange && onChange();
+  });
+  return (
+    <div style={{ background: "#fff", border: `1.5px solid ${bg}`, borderRadius: 16, padding: 13, marginBottom: 10, boxShadow: "0 6px 16px rgba(14,165,233,.1)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 900, color: W.ink, fontSize: 14.5 }}>Your booking · {b.people} {b.people === 1 ? "traveller" : "travellers"}</div>
+          <div style={{ fontSize: 12, color: W.soft }}>{b.package} · code {b.code}</div>
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 900, color: fg, background: bg, borderRadius: 99, padding: "4px 9px", whiteSpace: "nowrap" }}>{lab}</span>
+      </div>
+      <div style={{ marginTop: 10 }}><GwTripProgress paid={Number(b.paid)} total={Number(b.total)} firstDue={Number(b.first_due)} /></div>
+
+      {b.status === "pending" && <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 12.5, color: "#92400E", fontWeight: 700 }}>Your seat isn't held until the booking amount is paid.</div>
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <button onClick={() => gwPayTrip(b.id, Number(b.first_due) - Number(b.paid), onChange)} style={{ ...btn(GW_TRIP_GRAD, "#fff"), flex: 2, justifyContent: "center", fontWeight: 900 }}>Pay {gwINR(Number(b.first_due) - Number(b.paid))} to book</button>
+          <button onClick={cancel} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Remove</button>
+        </div>
+      </div>}
+
+      {b.status === "booked" && <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 12.5, color: dl != null && dl <= 3 ? "#B91C1C" : W.ink, fontWeight: 800 }}>⏰ Finish by {gwDateShort(b.deadline)}{dl != null ? ` · ${dl <= 0 ? "today!" : `${dl} day${dl === 1 ? "" : "s"} left`}` : ""}{weekly && dl > 7 ? ` · suggested ${gwINR(weekly)}/week` : ""}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+          {[...new Set([minPart, weekly, left].filter(v => v > 0))].map(v => <button key={v} onClick={() => setAmt(String(v))} style={{ ...gwChip(Number(amt) === v), fontSize: 12 }}>{v === left ? `Pay all ${gwINR(v)}` : gwINR(v)}</button>)}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <input value={amt} onChange={e => setAmt(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={`Any amount (min ₹${minPart})`} style={{ ...gwLeadInp, flex: 1, minWidth: 0 }} />
+          <button onClick={pay} style={{ ...btn("#0EA5E9", "#fff"), padding: "10px 16px", fontWeight: 900 }}>Pay</button>
+        </div>
+        {b.people > 1 && <a href={`https://wa.me/?text=${encodeURIComponent(share)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", width: "100%", justifyContent: "center", marginTop: 8, boxSizing: "border-box" }}>👯 Send pay link to your friends</a>}
+      </div>}
+
+      {b.status === "paid" && <button onClick={() => setShowPass(v => !v)} style={{ ...btn("linear-gradient(90deg,#15803D,#0EA5E9)", "#fff"), width: "100%", justifyContent: "center", marginTop: 10, fontWeight: 900 }}>🎫 {showPass ? "Hide" : "Show"} Trip Pass</button>}
+      {b.status === "paid" && showPass && <TripPass b={b} />}
+
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, color: W.teal }}>Travellers, payments & options</summary>
+        {(b.travellers || []).map(t => (
+          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${W.line}`, fontSize: 13 }}>
+            <div style={{ flex: 1, minWidth: 0 }}><b>{t.name}</b> <span style={{ color: W.soft }}>· {t.age} · {t.food === "veg" ? "🥗" : t.food === "nonveg" ? "🍗" : ""}{t.room_no ? ` · Room ${t.room_no}` : ""}</span>{t.ticket_info && <div style={{ fontSize: 11.5, color: "#0369A1", fontWeight: 700 }}>✈️ {t.ticket_info}</div>}</div>
+            {["pending", "booked", "paid"].includes(b.status) && dl != null && dl >= 0 && <button onClick={() => setEdit({ ...t })} style={{ ...btn("#F1F5F9", W.ink), padding: "5px 9px", fontSize: 11.5 }}>✏️ Edit</button>}
+          </div>))}
+        {(b.payments || []).length > 0 && <div style={{ borderTop: `1px solid ${W.line}`, paddingTop: 6, marginTop: 4 }}>{b.payments.map((p, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: W.soft, padding: "2px 0" }}><span>{p.paid_at ? new Date(p.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""} · {p.method === "razorpay" ? "Online" : p.method}</span><b style={{ color: W.ink }}>{gwINR(p.amount)}</b></div>)}</div>}
+        {["booked", "paid"].includes(b.status) && <button onClick={cancel} style={{ ...btn("#fff", "#B91C1C"), border: "1px solid #FECACA", marginTop: 8, padding: "6px 12px", fontSize: 12 }}>Cancel booking</button>}
+      </details>
+
+      {edit && <Sheet onClose={() => setEdit(null)}>
+        <div style={{ fontWeight: 900, fontSize: 17, color: W.ink }}>✏️ Edit traveller</div>
+        <div style={{ fontSize: 12.5, color: W.soft, margin: "3px 0 8px" }}>Can't go? Put your friend's details here to pass the seat on. All money paid stays with the seat.</div>
+        <input value={edit.name || ""} onChange={e => setEdit(x => ({ ...x, name: e.target.value }))} placeholder="Full name as on ID" style={{ ...gwLeadInp, marginBottom: 7 }} />
+        <div style={{ display: "flex", gap: 7, marginBottom: 7 }}>
+          <input value={edit.age || ""} onChange={e => setEdit(x => ({ ...x, age: e.target.value.replace(/\D/g, "") }))} placeholder="Age" style={{ ...gwLeadInp, width: 100 }} />
+          <select value={edit.gender || ""} onChange={e => setEdit(x => ({ ...x, gender: e.target.value }))} style={{ ...gwLeadInp, flex: 1 }}><option value="">Gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select>
+        </div>
+        <input value={edit.phone || ""} onChange={e => setEdit(x => ({ ...x, phone: e.target.value }))} placeholder="WhatsApp number" style={{ ...gwLeadInp, marginBottom: 7 }} />
+        <div style={{ display: "flex", gap: 6, marginBottom: 7 }}>{[["veg", "🥗 Veg"], ["nonveg", "🍗 Non-veg"]].map(([k, l]) => <button key={k} type="button" onClick={() => setEdit(x => ({ ...x, food: k }))} style={{ ...gwChip(edit.food === k), flex: 1 }}>{l}</button>)}</div>
+        <input value={edit.emergency || ""} onChange={e => setEdit(x => ({ ...x, emergency: e.target.value }))} placeholder="Emergency contact" style={gwLeadInp} />
+        <button onClick={async () => {
+          const { data, error } = await supabase.rpc("trip_update_traveller", { p_traveller: edit.id, p: { name: edit.name, age: edit.age, gender: edit.gender, phone: edit.phone, food: edit.food, emergency: edit.emergency } });
+          if (error || !data?.ok) return window.gwConfirm(error?.message || data?.error || "Couldn't save.", () => {});
+          setEdit(null); onChange && onChange();
+        }} style={{ ...btn("#0EA5E9", "#fff"), width: "100%", justifyContent: "center", marginTop: 10, fontWeight: 900 }}>Save</button>
+      </Sheet>}
+    </div>
+  );
+}
+
+function TripPass({ b }) {
+  const qr = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=" + encodeURIComponent(b.code);
+  return (
+    <div style={{ borderRadius: 18, overflow: "hidden", marginTop: 10, boxShadow: "0 12px 30px rgba(14,116,144,.3)" }}>
+      <div style={{ background: GW_TRIP_GRAD, color: "#fff", padding: "14px 16px" }}>
+        <div style={{ fontSize: 10.5, letterSpacing: 3, fontWeight: 900 }}>GLASSWINGS · TRIP PASS</div>
+        <div style={{ fontSize: 20, fontWeight: 950, marginTop: 4 }}>{b.event_title}</div>
+        <div style={{ fontSize: 12.5, opacity: .95 }}>{b.event_date} · {b.package}</div>
+      </div>
+      <div style={{ background: "#0C1A16", color: "#fff", padding: "14px 16px", display: "flex", gap: 14, alignItems: "center" }}>
+        <img src={qr} alt="Trip QR" width={110} height={110} style={{ background: "#fff", padding: 6, borderRadius: 10, flexShrink: 0 }} />
+        <div style={{ minWidth: 0, fontSize: 12.5, lineHeight: 1.55 }}>
+          {(b.travellers || []).map(t => <div key={t.id}><b>{t.name}</b>{t.room_no ? ` · Room ${t.room_no}` : ""}{t.ticket_info ? <div style={{ color: "#7DD3FC", fontSize: 11.5 }}>✈️ {t.ticket_info}</div> : null}</div>)}
+          <div style={{ marginTop: 6, display: "inline-block", background: "#2FD4A8", color: "#08130F", fontWeight: 900, borderRadius: 7, padding: "2px 8px", fontFamily: "ui-monospace,monospace" }}>{b.code}</div>
+          {b.captain_phone && <div style={{ marginTop: 6 }}>🧭 Trip captain: {b.captain_name || ""} <a href={`tel:${b.captain_phone}`} style={{ color: "#FDE68A" }}>{b.captain_phone}</a></div>}
+        </div>
+      </div>
+      <div style={{ background: "#08130F", color: "rgba(255,255,255,.65)", fontSize: 11.5, textAlign: "center", padding: "8px 0" }}>Show this pass and your photo ID at boarding</div>
+    </div>
+  );
+}
+
+// ---------- Friend's pay link: glass-wings.com/?trip=CODE ----------
+function TripPayPage({ code }) {
+  const [d, setD] = useState(undefined), [amt, setAmt] = useState("");
+  const load = () => supabase.rpc("trip_by_code", { p_code: code }).then(({ data }) => setD(data || null));
+  useEffect(() => { load(); }, [code]);
+  if (d === undefined) return <Center>Loading trip…</Center>;
+  if (!d) return <Center>Trip link not found. Please check with your friend.</Center>;
+  const left = Number(d.left), minPart = Math.min(Number(d.min_part) || 500, left);
+  return (
+    <div style={{ minHeight: "100vh", background: "#EFF6FF", padding: "26px 14px", display: "flex", justifyContent: "center" }}>
+      <div style={{ maxWidth: 420, width: "100%" }}>
+        <div style={{ borderRadius: 20, overflow: "hidden", background: "#fff", boxShadow: "0 12px 34px rgba(14,116,144,.2)" }}>
+          <div style={{ background: GW_TRIP_GRAD, color: "#fff", padding: "18px 18px 16px" }}>
+            <div style={{ fontSize: 11, letterSpacing: 3, fontWeight: 900 }}>🏝️ GLASSWINGS GETAWAY</div>
+            <div style={{ fontSize: 22, fontWeight: 950, marginTop: 4 }}>{d.event_title}</div>
+            <div style={{ fontSize: 13, opacity: .95 }}>{d.event_date} · booked by {d.booker} · {(d.travellers || []).join(", ")}</div>
+            <div style={{ marginTop: 12 }}><GwTripProgress paid={Number(d.paid)} total={Number(d.total)} firstDue={Number(d.first_due)} dark /></div>
+          </div>
+          <div style={{ padding: 16 }}>
+            {d.status === "pending" ? <div style={{ color: "#92400E", fontWeight: 800 }}>{d.booker} still has to pay the booking amount first. Ask them to complete it, then open this link again.</div>
+              : left <= 0 ? <div style={{ color: "#15803D", fontWeight: 900, fontSize: 16 }}>🎉 This trip is fully paid!</div>
+                : ["cancelled", "released"].includes(d.status) ? <div style={{ color: W.soft, fontWeight: 800 }}>This booking is closed.</div>
+                  : <>
+                    <div style={{ fontWeight: 900, color: W.ink }}>Pay your share (any amount)</div>
+                    <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 8px" }}>Due by {gwDateShort(d.deadline)} · minimum ₹{minPart}</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                      {[...new Set([Math.ceil(left / Math.max(1, d.people) / 100) * 100, left].filter(v => v >= minPart && v <= left))].map(v => <button key={v} onClick={() => setAmt(String(v))} style={gwChip(Number(amt) === v)}>{v === left ? `All ${gwINR(v)}` : `My share ${gwINR(v)}`}</button>)}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input value={amt} onChange={e => setAmt(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="Amount ₹" style={{ ...gwLeadInp, flex: 1, minWidth: 0 }} />
+                      <button onClick={() => { const a = Math.round(Number(amt) || 0); if (a < minPart) return window.gwConfirm(`Minimum payment is ₹${minPart}.`, () => {}); gwPayTrip(d.id, Math.min(a, left), () => { setAmt(""); load(); }); }} style={{ ...btn("#0EA5E9", "#fff"), padding: "10px 18px", fontWeight: 900 }}>Pay</button>
+                    </div>
+                  </>}
+          </div>
+        </div>
+        <a href="/" style={{ display: "block", textAlign: "center", marginTop: 14, color: "#0369A1", fontWeight: 800, fontSize: 13 }}>Open Glasswings →</a>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Organiser: 🏝️ Trip setup tab ----------
+function TripSetupTab({ event }) {
+  const [s, setS] = useState(null), [pk, setPk] = useState([]), [ex, setEx] = useState([]), [admin, setAdmin] = useState(false), [busy, setBusy] = useState(false), [msg, setMsg] = useState(""), [err, setErr] = useState("");
+  const defaults = { booking_amount: 5000, min_people: 10, deadline_days: 7, min_part: 500, min_age: 18, refund_mode: "credits", cancel_full_days: 20, cancel_half_days: 8, women_room: true, cost_per_person: 0, fixed_cost: 0 };
+  const load = async () => {
+    const { data, error } = await supabase.rpc("trip_board", { p_event: event.id });
+    if (error) return setErr(error.message);
+    setAdmin(!!data?.is_admin);
+    setS({ ...defaults, ...(data?.settings || {}), event_id: event.id });
+    setPk(data?.packages || []); setEx(data?.extras || []);
+  };
+  useEffect(() => { load(); }, [event.id]);
+  if (err) return <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 12, fontSize: 13, color: "#9A3412" }}>🏝️ Getaways aren't set up yet. Run <b>getaways.sql</b> in Supabase → SQL Editor, then reopen this tab.<div style={{ fontSize: 11.5, marginTop: 4, opacity: .8 }}>{err}</div></div>;
+  if (!s) return <Center>Loading…</Center>;
+  const num = (k, label, hint, w = 120) => (
+    <label style={{ fontSize: 12, fontWeight: 800, color: W.soft, display: "block" }}>{label}<br />
+      <input value={s[k] ?? ""} onChange={e => setS(x => ({ ...x, [k]: e.target.value.replace(/[^\d.]/g, "") }))} inputMode="numeric" style={{ ...gwLeadInp, width: w, marginTop: 4, padding: "9px 11px" }} />
+      {hint && <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2, maxWidth: 220 }}>{hint}</div>}
+    </label>);
+  const save = async () => {
+    setBusy(true); setMsg("");
+    const row = { ...s };
+    ["booking_amount", "min_people", "deadline_days", "min_part", "min_age", "cancel_full_days", "cancel_half_days", "cost_per_person", "fixed_cost", "commission_pct"].forEach(k => { if (row[k] !== undefined) row[k] = Number(row[k]) || 0; });
+    row.confirm_by = row.confirm_by || null;
+    delete row.updated_at;
+    if (!admin) delete row.commission_pct;
+    const { error } = await supabase.from("trip_settings").upsert(row);
+    setBusy(false);
+    if (error) return window.gwConfirm(error.message, () => {});
+    setMsg("Saved ✓"); load();
+  };
+  const savePkg = async p => {
+    const row = { event_id: event.id, name: (p.name || "").trim(), sharing: Number(p.sharing) || 2, price: Number(p.price) || 0, early_price: p.early_price === "" || p.early_price == null ? null : Number(p.early_price), early_until: p.early_until || null, seats: Number(p.seats) || 0, description: p.description || null, active: p.active !== false, sort: Number(p.sort) || 0 };
+    if (!row.name || !row.price) return window.gwConfirm("Give the package a name and price.", () => {});
+    const { error } = p.id ? await supabase.from("trip_packages").update(row).eq("id", p.id) : await supabase.from("trip_packages").insert(row);
+    if (error) return window.gwConfirm(error.message, () => {});
+    load();
+  };
+  const saveEx = async x => {
+    const row = { event_id: event.id, name: (x.name || "").trim(), description: x.description || null, price: Number(x.price) || 0, pay_upfront: !!x.pay_upfront, active: x.active !== false, sort: Number(x.sort) || 0 };
+    if (!row.name) return window.gwConfirm("Give the extra a name.", () => {});
+    const { error } = x.id ? await supabase.from("trip_extras").update(row).eq("id", x.id) : await supabase.from("trip_extras").insert(row);
+    if (error) return window.gwConfirm(error.message, () => {});
+    load();
+  };
+  const del = (tbl, id) => window.gwConfirm("Remove this? (If people already booked it, switch it off instead.)", async () => { const { error } = await supabase.from(tbl).delete().eq("id", id); if (error) window.gwConfirm(error.message, () => {}); load(); });
+  const box = (title, children, sub) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 14, marginBottom: 12 }}><div style={{ fontWeight: 950, color: W.ink, fontSize: 15 }}>{title}</div>{sub && <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{sub}</div>}<div style={{ marginTop: 10 }}>{children}</div></div>;
+  const mn = Math.min(...pk.filter(p => p.active).map(p => Number(p.price)), Infinity);
+  const perHead = Number(s.cost_per_person) || 0, fixed = Number(s.fixed_cost) || 0;
+  const avg = isFinite(mn) ? mn : 0;
+  const margin = avg - perHead;
+  const be = margin > 0 ? Math.ceil(fixed / margin) : null;
+  return (
+    <div>
+      {box("💳 Money rules", <>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          {num("booking_amount", "Booking amount ₹ / person", "Cover your non-refundable hotel & bus advance per seat.")}
+          {num("min_part", "Minimum part payment ₹")}
+          {num("deadline_days", "Pay in full … days before", "Hotels usually want final payment 7 days before.")}
+          {num("min_people", "Minimum travellers", "Trip confirms at this number.")}
+          <label style={{ fontSize: 12, fontWeight: 800, color: W.soft }}>Confirm-by date<br /><input type="date" value={s.confirm_by || ""} onChange={e => setS(x => ({ ...x, confirm_by: e.target.value }))} style={{ ...gwLeadInp, width: 160, marginTop: 4, padding: "8px 10px" }} /></label>
+          {num("min_age", "Minimum age")}
+        </div>
+        <div style={gwLeadLbl}>REFUNDS GO BACK AS</div>
+        <div style={{ display: "flex", gap: 6 }}>{[["credits", "💳 Glasswings credits (recommended)"], ["bank", "🏦 Bank refund (you send it)"]].map(([k, l]) => <button key={k} onClick={() => setS(x => ({ ...x, refund_mode: k }))} style={gwChip(s.refund_mode === k)}>{l}</button>)}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10 }}>
+          {num("cancel_full_days", "Full refund if cancelled more than … days before", null, 90)}
+          {num("cancel_half_days", "50% refund from … days before", null, 90)}
+          {admin ? num("commission_pct", "Glasswings cut %", "Admins only.", 90) : <div style={{ fontSize: 12, fontWeight: 800, color: W.soft }}>Glasswings cut<br /><b style={{ fontSize: 16, color: W.ink }}>{s.commission_pct ?? 10}%</b></div>}
+        </div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>The booking amount and anything "paid in full" (like flights) are never refunded when a traveller cancels. If you cancel the trip, everyone gets 100% back.</div>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 13.5, fontWeight: 700, color: W.ink }}><input type="checkbox" checked={s.women_room !== false} onChange={e => setS(x => ({ ...x, women_room: e.target.checked }))} /> Offer a women-only room option</label>
+      </>, "These decide how people book and pay.")}
+
+      {box("🛏️ Room packages", <>
+        {pk.map((p, i) => <TripPkgRow key={p.id} p={p} onSave={savePkg} onDel={() => del("trip_packages", p.id)} />)}
+        <TripPkgRow p={{ name: "", sharing: 2, price: "", early_price: "", early_until: "", seats: 10, active: true, sort: pk.length }} isNew onSave={savePkg} />
+      </>, "One price per person for each room type. Add an early-bird price + last date: people who book early keep that price even when paying in parts.")}
+
+      {box("➕ Extras", <>
+        {ex.map(x => <TripExtraRow key={x.id} x={x} onSave={saveEx} onDel={() => del("trip_extras", x.id)} />)}
+        <TripExtraRow x={{ name: "", price: "", pay_upfront: false, active: true, sort: ex.length }} isNew onSave={saveEx} />
+      </>, "Flights → tick 'Paid in full at booking' so you can buy tickets at today's fare. Casino, scooter, scuba → leave unticked: they're added to the balance.")}
+
+      {box("📝 Trip page", <>
+        {[["itinerary", "🗓️ Day-by-day plan", "## Day 1 · Thu 29 Oct\n- 11:15 AM flight HYD → Goa\n- Check-in, lunch\n- 🌙 Club night"], ["stay_info", "🏨 Stay", "**Hotel name**, Anjuna/Vagator\n- Pool, breakfast included"], ["travel_info", "✈️ Travel & pickup", "- Flight HYD → GOX 11:15 AM\n- Airport pickup included"], ["inclusions", "✅ Included", "- 3 nights hotel\n- Breakfast\n- Airport transfers"], ["exclusions", "❌ Not included", "- Drinks\n- Lunch & dinner"], ["packing", "🎒 Packing list", "- Photo ID\n- Sunscreen\n- Party outfits"], ["terms", "📋 Trip terms", "- Respect fellow travellers\n- No drunk driving"]].map(([k, l, ph]) => (
+          <div key={k}><div style={gwLeadLbl}>{l.toUpperCase()}</div><GwRichEditor value={s[k] || ""} onChange={v => setS(x => ({ ...x, [k]: v }))} rows={k === "itinerary" ? 8 : 4} placeholder={ph} /></div>))}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 160px" }}><div style={gwLeadLbl}>TRAVELLING FROM</div><input value={s.from_city || ""} onChange={e => setS(x => ({ ...x, from_city: e.target.value }))} placeholder="Hyderabad" style={gwLeadInp} /></div>
+          <div style={{ flex: "1 1 160px" }}><div style={gwLeadLbl}>TRIP CAPTAIN</div><input value={s.captain_name || ""} onChange={e => setS(x => ({ ...x, captain_name: e.target.value }))} placeholder="Name" style={gwLeadInp} /></div>
+          <div style={{ flex: "1 1 160px" }}><div style={gwLeadLbl}>CAPTAIN PHONE</div><input value={s.captain_phone || ""} onChange={e => setS(x => ({ ...x, captain_phone: e.target.value }))} inputMode="tel" placeholder="Shown on the Trip Pass" style={gwLeadInp} /></div>
+        </div>
+      </>, "Shown on the event page. The event's date (Details tab) is the departure date.")}
+
+      {box("🧮 Cost sheet & break-even (only you see this)", <>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          {num("cost_per_person", "Cost per person ₹", "Hotel share, transfers, entries, food…")}
+          {num("fixed_cost", "Fixed costs ₹", "Same whatever the group size: bus hire, captain, decor…")}
+        </div>
+        {avg > 0 && <div style={{ marginTop: 10, background: "#0F172A", color: "#fff", borderRadius: 12, padding: "10px 12px", fontSize: 13, lineHeight: 1.6 }}>
+          Cheapest package {gwINR(avg)} − cost {gwINR(perHead)} = <b style={{ color: margin > 0 ? "#4ADE80" : "#FCA5A5" }}>{gwINR(margin)} per person</b><br />
+          {be != null ? <>Break-even at <b style={{ color: "#FDE68A" }}>{be} travellers</b>{Number(s.min_people) < be ? <span style={{ color: "#FCA5A5" }}> · ⚠️ your minimum ({s.min_people}) is lower than break-even</span> : ""}</> : <span style={{ color: "#FCA5A5" }}>Price is below cost per person. Raise the price.</span>}
+        </div>}
+      </>)}
+
+      <div style={{ position: "sticky", bottom: 8, zIndex: 5 }}>
+        <button disabled={busy} onClick={save} style={{ ...btn(GW_TRIP_GRAD, "#fff"), width: "100%", justifyContent: "center", padding: 14, fontWeight: 950, fontSize: 15, boxShadow: "0 8px 20px rgba(14,165,233,.35)" }}>{busy ? "Saving…" : msg || "💾 Save trip settings"}</button>
+      </div>
+    </div>
+  );
+}
+function TripPkgRow({ p, isNew, onSave, onDel }) {
+  const [d, setD] = useState(p), [open, setOpen] = useState(!!isNew && false);
+  useEffect(() => setD(p), [p.id, p.price, p.seats]);
+  if (isNew && !open) return <button onClick={() => setOpen(true)} style={{ ...btn("#F0F9FF", "#0369A1"), border: "1px dashed #7DD3FC", width: "100%", justifyContent: "center" }}>➕ Add a room package</button>;
+  const ip = { ...gwLeadInp, padding: "8px 10px", fontSize: 13.5 };
+  return (
+    <div style={{ border: `1px solid ${isNew ? "#7DD3FC" : W.line}`, borderRadius: 12, padding: 10, marginBottom: 8, opacity: d.active === false ? .6 : 1 }}>
+      {!isNew && <div style={{ fontSize: 11.5, fontWeight: 800, color: W.soft, marginBottom: 5 }}>{p.taken || 0} / {p.seats} seats booked</div>}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <input value={d.name} onChange={e => setD(x => ({ ...x, name: e.target.value }))} placeholder="Name, e.g. 2-sharing" style={{ ...ip, flex: "2 1 140px" }} />
+        <input value={d.sharing} onChange={e => setD(x => ({ ...x, sharing: e.target.value.replace(/\D/g, "") }))} placeholder="Per room" title="People per room" style={{ ...ip, flex: "0 1 80px" }} />
+        <input value={d.seats} onChange={e => setD(x => ({ ...x, seats: e.target.value.replace(/\D/g, "") }))} placeholder="Seats" title="Total seats" style={{ ...ip, flex: "0 1 80px" }} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+        <input value={d.price} onChange={e => setD(x => ({ ...x, price: e.target.value.replace(/\D/g, "") }))} placeholder="Price ₹/person" style={{ ...ip, flex: "1 1 110px" }} />
+        <input value={d.early_price ?? ""} onChange={e => setD(x => ({ ...x, early_price: e.target.value.replace(/\D/g, "") }))} placeholder="Early-bird ₹" style={{ ...ip, flex: "1 1 110px" }} />
+        <input type="date" value={d.early_until || ""} onChange={e => setD(x => ({ ...x, early_until: e.target.value }))} title="Early-bird last date" style={{ ...ip, flex: "1 1 140px" }} />
+      </div>
+      <input value={d.description || ""} onChange={e => setD(x => ({ ...x, description: e.target.value }))} placeholder="Short note, e.g. 2 beds + 1 extra mattress" style={{ ...ip, marginTop: 6 }} />
+      <div style={{ display: "flex", gap: 6, marginTop: 7, alignItems: "center" }}>
+        {!isNew && <label style={{ fontSize: 12.5, fontWeight: 700, display: "flex", gap: 5, alignItems: "center", flex: 1 }}><input type="checkbox" checked={d.active !== false} onChange={e => setD(x => ({ ...x, active: e.target.checked }))} /> On sale</label>}
+        {isNew && <div style={{ flex: 1 }} />}
+        {isNew && <button onClick={() => setOpen(false)} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, padding: "6px 10px", fontSize: 12 }}>Cancel</button>}
+        {!isNew && <button onClick={onDel} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 9px", fontSize: 12 }}>🗑</button>}
+        <button onClick={() => { onSave(d); if (isNew) { setOpen(false); } }} style={{ ...btn("#0EA5E9", "#fff"), padding: "6px 12px", fontSize: 12.5 }}>{isNew ? "Add" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
+function TripExtraRow({ x, isNew, onSave, onDel }) {
+  const [d, setD] = useState(x), [open, setOpen] = useState(false);
+  useEffect(() => setD(x), [x.id, x.price]);
+  if (isNew && !open) return <button onClick={() => setOpen(true)} style={{ ...btn("#FFFBEB", "#92400E"), border: "1px dashed #FCD34D", width: "100%", justifyContent: "center" }}>➕ Add an extra (flight, casino, scooter…)</button>;
+  const ip = { ...gwLeadInp, padding: "8px 10px", fontSize: 13.5 };
+  return (
+    <div style={{ border: `1px solid ${isNew ? "#FCD34D" : W.line}`, borderRadius: 12, padding: 10, marginBottom: 8, opacity: d.active === false ? .6 : 1 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <input value={d.name} onChange={e => setD(v => ({ ...v, name: e.target.value }))} placeholder="Name, e.g. Flight HYD ⇄ Goa" style={{ ...ip, flex: "2 1 160px" }} />
+        <input value={d.price} onChange={e => setD(v => ({ ...v, price: e.target.value.replace(/\D/g, "") }))} placeholder="₹ per person" style={{ ...ip, flex: "1 1 100px" }} />
+      </div>
+      <input value={d.description || ""} onChange={e => setD(v => ({ ...v, description: e.target.value }))} placeholder="Short note, e.g. 11:15 AM IndiGo, 15 kg bag" style={{ ...ip, marginTop: 6 }} />
+      <div style={{ display: "flex", gap: 8, marginTop: 7, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12.5, fontWeight: 800, display: "flex", gap: 5, alignItems: "center", color: "#92400E" }}><input type="checkbox" checked={!!d.pay_upfront} onChange={e => setD(v => ({ ...v, pay_upfront: e.target.checked }))} /> ⚡ Paid in full at booking</label>
+        {!isNew && <label style={{ fontSize: 12.5, fontWeight: 700, display: "flex", gap: 5, alignItems: "center" }}><input type="checkbox" checked={d.active !== false} onChange={e => setD(v => ({ ...v, active: e.target.checked }))} /> On sale</label>}
+        <div style={{ flex: 1 }} />
+        {isNew && <button onClick={() => setOpen(false)} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, padding: "6px 10px", fontSize: 12 }}>Cancel</button>}
+        {!isNew && <button onClick={onDel} style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "6px 9px", fontSize: 12 }}>🗑</button>}
+        <button onClick={() => { onSave(d); if (isNew) setOpen(false); }} style={{ ...btn("#F59E0B", "#fff"), padding: "6px 12px", fontSize: 12.5 }}>{isNew ? "Add" : "Save"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Organiser: 🧳 Travellers & payments tab ----------
+function TripBoardTab({ event }) {
+  const [d, setD] = useState(null), [err, setErr] = useState(""), [filter, setFilter] = useState("all"), [openB, setOpenB] = useState(null), [q, setQ] = useState("");
+  const load = () => supabase.rpc("trip_board", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setD(data); } });
+  useEffect(() => { load(); }, [event.id]);
+  if (err) return <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 12, fontSize: 13, color: "#9A3412" }}>Run <b>getaways.sql</b> in Supabase first.<div style={{ fontSize: 11.5, opacity: .8 }}>{err}</div></div>;
+  if (!d) return <Center>Loading…</Center>;
+  const s = d.settings || {}, T = d.totals || {};
+  const rows = (d.bookings || []).map(r => ({ ...r.b, booker: r.booker, booker_phone: r.booker_phone, behind: gwTripBehind(r.b) }));
+  const act = rows.filter(b => ["booked", "paid"].includes(b.status));
+  const dl = gwDaysTo(d.deadline);
+  const net = Number(T.collected) - Number(T.refunds);
+  const comm = Math.round(net * (Number(s.commission_pct) || 0) / 100);
+  const gwFee = T.gateway_pct != null ? Math.round(Number(T.online) * Number(T.gateway_pct) / 100) : 0;
+  const paidOut = (d.payouts || []).reduce((a, p) => a + Number(p.amount), 0);
+  const payable = net - comm - gwFee - paidOut;
+  const minP = Number(s.min_people) || 0;
+  const margin = (act.length ? act.reduce((a, b) => a + Number(b.unit_price), 0) / act.length : 0) - Number(s.cost_per_person || 0);
+  const be = margin > 0 ? Math.ceil(Number(s.fixed_cost || 0) / margin) : null;
+  const list = rows.filter(b => filter === "all" ? ["booked", "paid"].includes(b.status) : filter === "behind" ? b.behind > 0 : filter === "paid" ? b.status === "paid" : filter === "closed" ? ["cancelled", "released"].includes(b.status) : filter === "refunds" ? b.refund_status === "pending" : true)
+    .filter(b => !q.trim() || JSON.stringify([b.booker, b.code, b.travellers?.map(t => t.name)]).toLowerCase().includes(q.trim().toLowerCase()));
+  const remind = b => {
+    const left = Math.max(0, b.total - b.paid);
+    const text = `Hi ${String(b.booker || "").split(" ")[0]} 👋\n🏝️ *${event.title}*\nPaid: ${gwINR(b.paid)} of ${gwINR(b.total)}\nLeft: *${gwINR(left)}* · due by *${gwDateShort(b.deadline)}*${b.behind ? `\nSuggested this week: ${gwINR(Math.min(left, Math.max(b.behind, gwTripWeekly(left, b.deadline))))}` : ""}\nPay any amount here: https://glass-wings.com/?trip=${b.code}\n— Glasswings`;
+    return b.booker_phone ? `https://wa.me/${waNum(b.booker_phone)}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+  };
+  const rpcDo = async (fn, args, okMsg) => { const { data, error } = await supabase.rpc(fn, args); if (error || data?.ok === false) return window.gwConfirm(error?.message || data?.error || "Failed", () => {}); if (okMsg) window.gwConfirm(okMsg(data), () => {}); load(); };
+  const cash = async b => { const v = await window.gwPrompt(`Amount received from ${b.booker} (cash / UPI to you)?`, ""); const n = Number(String(v || "").replace(/\D/g, "")); if (n > 0) rpcDo("trip_mark_cash", { p_booking: b.id, p_amount: n, p_method: "upi", p_note: "Recorded by organiser" }); };
+  const printList = kind => {
+    const trs = act.flatMap(b => (b.travellers || []).map(t => ({ ...t, code: b.code, pkg: b.package, room_pref: b.room_pref, status: b.status, left: Math.max(0, b.total - b.paid) })));
+    const sorted = kind === "rooms" ? [...trs].sort((a, b) => String(a.room_no || "zz").localeCompare(String(b.room_no || "zz"), undefined, { numeric: true })) : trs;
+    const head = kind === "rooms" ? ["Room", "Name (as on ID)", "Gender", "Age", "Package", "Preference", "Food"] : ["#", "Name (as on ID)", "Age", "Gender", "Phone", "Emergency", "From", "Food", "Ticket / PNR", "Room", "Paid?"];
+    const body = sorted.map((t, i) => kind === "rooms" ? [t.room_no || "—", t.name, t.gender || "", t.age || "", t.pkg || "", t.room_pref || "", t.food || ""] : [i + 1, t.name, t.age || "", t.gender || "", t.phone || "", t.emergency || "", t.from_city || "", t.food || "", t.ticket_info || "", t.room_no || "", t.status === "paid" ? "✔" : `₹${t.left} due`]);
+    const w = window.open("", "_blank"); if (!w) return;
+    w.document.write(`<html><head><title>${escapeHtml(event.title)} · ${kind === "rooms" ? "Rooming list" : "Traveller manifest"}</title><style>body{font-family:system-ui,sans-serif;padding:18px;color:#0F172A}h1{font-size:18px;margin:0}p{color:#64748B;font-size:12px;margin:4px 0 12px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #CBD5E1;padding:6px 7px;text-align:left}th{background:#E0F2FE}</style></head><body><h1>${escapeHtml(event.title)} · ${kind === "rooms" ? "Rooming list" : "Traveller manifest"}</h1><p>${escapeHtml(event.event_date || "")} · ${trs.length} travellers · printed ${new Date().toLocaleString("en-IN")}</p><table><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr>${body.map(r => `<tr>${r.map(c => `<td>${escapeHtml(String(c))}</td>`).join("")}</tr>`).join("")}</table><script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`);
+    w.document.close();
+  };
+  const card = (l, v, c, sub) => <div style={{ flex: "1 1 120px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "10px 12px" }}><div style={{ fontSize: 10.5, fontWeight: 900, color: W.soft, letterSpacing: .5 }}>{l}</div><div style={{ fontSize: 21, fontWeight: 950, color: c || W.ink }}>{v}</div>{sub && <div style={{ fontSize: 11, color: W.soft, fontWeight: 700 }}>{sub}</div>}</div>;
+  return (
+    <div>
+      <div style={{ borderRadius: 18, background: GW_TRIP_GRAD, color: "#fff", padding: "14px 16px", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ flex: 1, fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>🧳 TRIP STATUS · {String(s.status || "open").toUpperCase()}</div>
+          <button onClick={load} style={{ border: 0, background: "rgba(255,255,255,.22)", color: "#fff", borderRadius: 99, padding: "4px 10px", cursor: "pointer", fontWeight: 900 }}>↻</button>
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 950, marginTop: 4 }}>{T.people} travellers booked{minP ? ` · need ${minP}` : ""}</div>
+        <div style={{ height: 9, borderRadius: 99, background: "rgba(255,255,255,.25)", marginTop: 6, overflow: "hidden" }}><div style={{ width: `${minP ? Math.min(100, T.people * 100 / minP) : 100}%`, height: "100%", background: "#FDE68A" }} /></div>
+        <div style={{ fontSize: 12, opacity: .95, marginTop: 5 }}>Payment deadline {gwDateShort(d.deadline)}{dl != null ? ` (${dl < 0 ? `${-dl} days ago` : `${dl} days left`})` : ""}{s.confirm_by ? ` · confirm by ${gwDateShort(s.confirm_by)}` : ""}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {s.status === "open" && <button onClick={() => window.gwConfirm(`Confirm the trip with ${T.people} travellers? Do this when you book the hotel and transport.`, () => rpcDo("trip_set_status", { p_event: event.id, p_status: "confirmed" }))} style={{ ...btn("#fff", "#0369A1"), padding: "7px 12px", fontSize: 12.5, fontWeight: 900 }}>✅ Confirm trip</button>}
+          {dl != null && dl < 0 && <button onClick={() => window.gwConfirm("Release every seat that isn't fully paid? Money above the booking amount goes back as per your refund setting.", () => rpcDo("trip_release_unpaid", { p_event: event.id }, x => `Released ${x.released} booking(s).`))} style={{ ...btn("rgba(255,255,255,.2)", "#fff"), padding: "7px 12px", fontSize: 12.5 }}>🔓 Release unpaid seats</button>}
+          {s.status !== "cancelled" && <button onClick={() => window.gwConfirm("Cancel the WHOLE trip? Everyone gets 100% of what they paid back (credits or bank, as per your setting). This can't be undone.", () => rpcDo("trip_set_status", { p_event: event.id, p_status: "cancelled" }, x => `Trip cancelled. ${x.refunded} booking(s) refunded.`))} style={{ ...btn("rgba(255,255,255,.2)", "#fff"), padding: "7px 12px", fontSize: 12.5 }}>✕ Cancel trip</button>}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        {card("COLLECTED", gwINR(T.collected), "#0369A1", `of ${gwINR(T.expected)} expected`)}
+        {card("STILL TO COLLECT", gwINR(act.reduce((a, b) => a + Math.max(0, Number(b.total) - Number(b.paid)), 0)), "#B45309", `${act.filter(b => b.behind > 0).length} behind schedule`)}
+        {card("FULLY PAID", `${T.people_paid}/${T.people}`, "#15803D", "travellers")}
+        {Number(T.refunds_pending) > 0 && card("BANK REFUNDS TO SEND", gwINR(T.refunds_pending), "#B91C1C")}
+      </div>
+      <div style={{ background: "#0F172A", color: "#fff", borderRadius: 14, padding: "11px 13px", fontSize: 12.5, lineHeight: 1.65, marginBottom: 12 }}>
+        <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 900, color: "#93C5FD" }}>💰 MONEY</div>
+        Collected {gwINR(T.collected)}{Number(T.refunds) ? ` − refunds ${gwINR(T.refunds)}` : ""} = <b>{gwINR(net)}</b><br />
+        Glasswings cut {s.commission_pct}% <b>{gwINR(comm)}</b>{gwFee ? ` · gateway ${gwINR(gwFee)}` : ""}{paidOut ? ` · already paid to organiser ${gwINR(paidOut)}` : ""}<br />
+        <span style={{ color: "#4ADE80", fontWeight: 900 }}>Organiser payable now: {gwINR(payable)}</span>
+        {be != null && <div style={{ color: "#FDE68A" }}>Break-even: {be} travellers{T.people >= be ? " ✓ reached" : ` · ${be - T.people} more needed`}</div>}
+        {d.is_admin && <button onClick={async () => { const v = await window.gwPrompt("Record a payout to the organiser (₹). For hotel/bus advances, note it.", ""); const n = Number(String(v || "").replace(/\D/g, "")); if (n > 0) { const note = await window.gwPrompt("Note (e.g. hotel advance / final settlement)", ""); rpcDo("trip_add_payout", { p_event: event.id, p_amount: n, p_note: note || "" }); } }} style={{ ...btn("#fff", "#0F172A"), padding: "5px 10px", fontSize: 12, marginTop: 6 }}>🏦 Record payout</button>}
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        <button onClick={() => printList("manifest")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 11px", fontSize: 12.5 }}>📄 Traveller manifest</button>
+        <button onClick={() => printList("rooms")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 11px", fontSize: 12.5 }}>🛏️ Rooming list</button>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {[["all", `Active (${act.length})`], ["behind", `⚠️ Behind (${act.filter(b => b.behind > 0).length})`], ["paid", `✅ Fully paid (${rows.filter(b => b.status === "paid").length})`], ["refunds", `🏦 Refunds (${rows.filter(b => b.refund_status === "pending").length})`], ["closed", `Closed (${rows.filter(b => ["cancelled", "released"].includes(b.status)).length})`]].map(([k, l]) => <button key={k} onClick={() => setFilter(k)} style={{ ...gwChip(filter === k), fontSize: 12 }}>{l}</button>)}
+      </div>
+      <input value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search name or code" style={{ ...gwLeadInp, marginBottom: 8 }} />
+      {!list.length && <Center>Nothing here yet.</Center>}
+      {list.map(b => {
+        const [lab, fg, bg] = GW_TRIP_BSTATUS[b.status] || GW_TRIP_BSTATUS.booked;
+        const isOpen = openB === b.id;
+        return (
+          <div key={b.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${b.behind > 0 ? "#F59E0B" : fg}`, borderRadius: 14, padding: 11, marginBottom: 8 }}>
+            <div onClick={() => setOpenB(isOpen ? null : b.id)} style={{ cursor: "pointer" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, color: W.ink, fontSize: 14 }}>{b.booker} · {b.people} {b.people === 1 ? "person" : "people"}</div>
+                  <div style={{ fontSize: 11.5, color: W.soft }}>{b.package} · {b.code}{b.room_pref !== "any" ? ` · ${b.room_pref.replace("_", " ")}` : ""}</div>
+                </div>
+                <span style={{ fontSize: 10.5, fontWeight: 900, color: fg, background: bg, borderRadius: 99, padding: "3px 8px", whiteSpace: "nowrap" }}>{lab}</span>
+              </div>
+              {["booked", "paid"].includes(b.status) && <div style={{ marginTop: 7 }}><GwTripProgress paid={Number(b.paid)} total={Number(b.total)} firstDue={Number(b.first_due)} /></div>}
+              {b.behind > 0 && <div style={{ fontSize: 11.5, color: "#B45309", fontWeight: 800, marginTop: 3 }}>⚠️ Behind schedule by {gwINR(b.behind)}</div>}
+              {b.refund_status && b.refund_status !== "none" && <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700, marginTop: 3 }}>Refund {gwINR(b.refund_amount)} · {b.refund_status === "credited" ? "returned as credits" : b.refund_status === "pending" ? "⏳ send to bank" : "✓ refunded"}</div>}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+              {b.status === "booked" && <a href={remind(b)} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", padding: "6px 10px", fontSize: 12 }}>💬 Remind</a>}
+              {["booked", "pending"].includes(b.status) && <button onClick={() => cash(b)} style={{ ...btn("#EDE9FE", "#6D28D9"), padding: "6px 10px", fontSize: 12 }}>💵 Mark cash/UPI</button>}
+              {b.refund_status === "pending" && <button onClick={() => window.gwConfirm(`Mark ${gwINR(b.refund_amount)} as sent to ${b.booker}'s bank?`, () => rpcDo("trip_mark_refunded", { p_booking: b.id }))} style={{ ...btn("#DCFCE7", "#15803D"), padding: "6px 10px", fontSize: 12 }}>✓ Refund sent</button>}
+              <button onClick={() => setOpenB(isOpen ? null : b.id)} style={{ ...btn("#F1F5F9", W.ink), padding: "6px 10px", fontSize: 12 }}>{isOpen ? "Hide" : "Travellers"}</button>
+            </div>
+            {isOpen && <div style={{ marginTop: 8, borderTop: `1px solid ${W.line}`, paddingTop: 8 }}>
+              {(b.travellers || []).map(t => <TripTravellerAdminRow key={t.id} t={t} onSaved={load} />)}
+              {(b.payments || []).length > 0 && <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Payments: {b.payments.map(p => `${gwINR(p.amount)} (${p.method === "razorpay" ? "online" : p.method}${p.paid_at ? ", " + new Date(p.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""})`).join(" · ")}</div>}
+              {(b.extras || []).length > 0 && <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>Extras: {b.extras.map(x => `${x.name} × ${x.qty}`).join(", ")}</div>}
+              {["pending", "booked", "paid"].includes(b.status) && <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                <button onClick={() => window.gwConfirm(`Cancel ${b.booker}'s booking using the trip's cancellation rule? Refund: ${gwINR(b.refund_now)}.`, () => rpcDo("trip_admin_cancel_booking", { p_booking: b.id, p_full: false }))} style={{ ...btn("#fff", "#B91C1C"), border: "1px solid #FECACA", padding: "6px 10px", fontSize: 12 }}>Cancel (rule)</button>
+                <button onClick={() => window.gwConfirm(`Cancel and refund EVERYTHING ${b.booker} paid (${gwINR(b.paid)})?`, () => rpcDo("trip_admin_cancel_booking", { p_booking: b.id, p_full: true }))} style={{ ...btn("#fff", "#B91C1C"), border: "1px solid #FECACA", padding: "6px 10px", fontSize: 12 }}>Cancel + full refund</button>
+              </div>}
+            </div>}
+          </div>
+        );
+      })}
+
+      {(d.waitlist || []).length > 0 && <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 12, marginTop: 12 }}>
+        <div style={{ fontWeight: 900, color: "#9A3412" }}>⏳ Waitlist ({d.waitlist.length})</div>
+        <div style={{ fontSize: 12, color: "#9A3412", marginBottom: 6 }}>When a seat frees up, WhatsApp the first person and give them 24 hours to book.</div>
+        {d.waitlist.map(w => <div key={w.user_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #FED7AA" }}>
+          <div style={{ flex: 1, fontSize: 13, fontWeight: 800, color: W.ink }}>{w.name || "Member"} · {w.people} {w.people === 1 ? "person" : "people"}</div>
+          {w.phone && <a href={`https://wa.me/${waNum(w.phone)}?text=${encodeURIComponent(`Hi ${String(w.name || "").split(" ")[0]} 👋 A seat just opened on *${event.title}*! Book within 24 hours on Glasswings to grab it.`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", padding: "5px 9px", fontSize: 12 }}>💬 Offer seat</a>}
+        </div>)}
+      </div>}
+    </div>
+  );
+}
+function TripTravellerAdminRow({ t, onSaved }) {
+  const [tk, setTk] = useState(t.ticket_info || ""), [rm, setRm] = useState(t.room_no || ""), [busy, setBusy] = useState(false);
+  const save = async (boarded) => {
+    setBusy(true);
+    await supabase.rpc("trip_set_traveller_admin", { p_traveller: t.id, p_ticket: tk, p_room: rm, p_boarded: boarded == null ? null : boarded });
+    setBusy(false); onSaved && onSaved();
+  };
+  return (
+    <div style={{ padding: "7px 0", borderBottom: `1px dashed ${W.line}` }}>
+      <div style={{ fontSize: 13, color: W.ink }}><b>{t.name}</b> · {t.age || "?"} · {t.gender || ""} · {t.food === "veg" ? "🥗" : t.food === "nonveg" ? "🍗" : ""}{t.phone ? <> · <a href={`tel:${t.phone}`}>{t.phone}</a></> : null}</div>
+      {t.emergency && <div style={{ fontSize: 11.5, color: W.soft }}>🆘 {t.emergency}{t.from_city ? ` · from ${t.from_city}` : ""}</div>}
+      <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={tk} onChange={e => setTk(e.target.value)} placeholder="Flight / PNR / seat" style={{ ...gwLeadInp, flex: "2 1 140px", padding: "6px 9px", fontSize: 12.5 }} />
+        <input value={rm} onChange={e => setRm(e.target.value)} placeholder="Room" style={{ ...gwLeadInp, flex: "0 1 80px", padding: "6px 9px", fontSize: 12.5 }} />
+        <button disabled={busy} onClick={() => save(null)} style={{ ...btn("#0EA5E9", "#fff"), padding: "6px 10px", fontSize: 12 }}>Save</button>
+        <button disabled={busy} onClick={() => save(!t.boarded)} style={{ ...btn(t.boarded ? "#DCFCE7" : "#F1F5F9", t.boarded ? "#15803D" : W.ink), padding: "6px 10px", fontSize: 12 }}>{t.boarded ? "✓ Boarded" : "Mark boarded"}</button>
+      </div>
+    </div>
+  );
+}
+// =================== END GETAWAYS ===================
+
 // =================== VEG / NON-VEG FOR CATERING ===================
 // Picker used when buying, on My Ticket and on the ticket link page.
 function GwFoodPicker({ people, veg, nonveg, onChange, dark = false }) {
@@ -15570,12 +16355,29 @@ const GW_GUIDE = {
     ],
     tips: ["Group passes count every person (a Group of 4 = 4 meals).", "Members' usual choice is remembered, so next time it's filled in for them."],
   },
+  getaway: {
+    icon: "🏝️", title: "Getaways: trips people pay for in parts", grad: "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)",
+    one: "A trip (e.g. Goa, 3 nights) where people pay a booking amount to hold a seat, then any amount, any day, until a deadline before departure.",
+    where: "Admin → 📅 Events → ➕ New → choose 🏝️ Getaway → then open it → 🏝️ Trip setup", tab: "events",
+    flow: [["🏝️", "Create", "Choose Getaway"], ["🛏️", "Set up", "Rooms, extras, rules"], ["💳", "Booking amount", "Holds the seat"], ["🧾", "Pay in parts", "Any day, min ₹500"], ["⏰", "Deadline", "e.g. 7 days before"], ["🎫", "Trip Pass", "QR + room + PNR"]],
+    steps: [
+      "Create: 📅 Events → ➕ New → tap 🏝️ Getaway. Add the title, photos, and the DEPARTURE date as the event date. Leave the ticket price at 0.",
+      "Open the getaway → 🏝️ Trip setup → 💳 Money rules: booking amount per person (cover your non-refundable hotel/transport advance), minimum part payment, how many days before departure everything must be paid, minimum travellers, confirm-by date, minimum age and the refund rule.",
+      "🛏️ Room packages: e.g. 2-sharing ₹16,999 and 3-sharing ₹14,999, with seats. Add an early-bird price and last date: early bookers keep that price.",
+      "➕ Extras: flights with ⚡ 'Paid in full at booking' ticked (you buy tickets at today's fare); casino or scooter without it (added to the balance).",
+      "📝 Trip page: day-by-day plan, stay, travel, included / not included, packing list, terms, trip captain. Fill the 🧮 cost sheet to see your break-even.",
+      "Members open the getaway, tap 🧳 Book: choose room → extras → traveller details (name as on ID, age, food) → pay the booking amount. Then they pay any amount, any day, and can send a pay link to friends.",
+      "🧳 Travellers & payments: see who is behind (⚠️), tap 💬 Remind, record cash with 💵, add flight PNR and room numbers, print the manifest and rooming list, mark boarded on the day.",
+      "Tap ✅ Confirm trip once the minimum is reached and you've booked the hotel. After the deadline, 🔓 Release unpaid seats. If the trip can't happen, ✕ Cancel trip refunds everyone 100%.",
+    ],
+    tips: ["Don't call it EMI: it's 'pay in parts before you travel'.", "Most cancellations become seat transfers: the traveller edits the name to a friend's before the deadline and nothing is lost.", "Organisers can run getaways too. Glasswings keeps its cut (set by admins) and admins record organiser payouts, e.g. hotel advances."],
+  },
   // ----- short tips for the public / vendor / brand screens -----
   vendor: { icon: "🏪", title: "How booking a stall works", grad: "linear-gradient(120deg,#F97316,#EC4899)", one: "Apply → organiser approves → pay in the app → get your stall number and Stall Pass.", steps: ["Pick a stall type and fill in your business details.", "The organiser reviews it. You'll see \"Approved\" in My stalls.", "Tap Pay to confirm. Your Stall Pass shows your stall number and setup time."] },
   brand: { icon: "🤝", title: "How sponsoring works", grad: "linear-gradient(120deg,#B8860B,#F5C451)", one: "Choose a package → send your brand details → organiser approves → pay → your logo goes live.", steps: ["Pick a package and add your logo and contact.", "The organiser approves your brand.", "Pay in the app. Your logo appears on the event page (and on every ticket for Title sponsors)."] },
   client: { icon: "🎉", title: "How it works", grad: "linear-gradient(120deg,#008069,#8B5CF6)", one: "Tell us your event → verified organisers call you with quotes → book and pay safely in the app.", steps: ["Fill in the event type, date, city, guests and budget.", "A few matching organisers contact you with quotes. Your number is shared only with them.", "Pick one and pay the advance in the app. The money is held safely by Glasswings."] },
 };
-const GW_GUIDE_ORDER = ["start", "tickets", "food", "whatsapp", "door", "leads", "leadsettings", "pro", "profiles", "bookings", "stalls", "sponsors", "fees", "money"];
+const GW_GUIDE_ORDER = ["start", "getaway", "tickets", "food", "whatsapp", "door", "leads", "leadsettings", "pro", "profiles", "bookings", "stalls", "sponsors", "fees", "money"];
 const GW_GUIDE_FOR_TAB = { events: "start", private: "start", invite: "start", leads: "leads", stalls: "stalls", sponsors: "sponsors", checkin: "door", doorsales: "door", orgapps: "money", settle: "money", dash: "start", analytics: "start" };
 function gwOpenGuide(id) { try { window.dispatchEvent(new CustomEvent("gwopenguide", { detail: id || "start" })); } catch { } }
 
@@ -15688,7 +16490,7 @@ function AdminGuidePanel({ section, tabs = [], onGo }) {
         <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 15, marginBottom: 2 }}>🗺️ The big picture: how Glasswings earns from an event</div>
         <div style={{ fontSize: 12.5, color: "#55656B", marginBottom: 10 }}>Tap any box to jump to its guide.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
-          {[["tickets", "🎟️ Tickets", "Platform fee on every ticket", "#7C3AED"], ["fees", "💼 Big events", "Volume pricing keeps big organisers", "#0E5C54"], ["stalls", "🏪 Stalls", "18% of every stall booking", "#F97316"], ["sponsors", "🤝 Sponsors", "18% of every sponsorship", "#B8860B"], ["leads", "📋 Leads", "Credits for every unlock", "#008069"], ["pro", "⭐ Pro", "Paid Pro memberships", "#C98A00"], ["bookings", "💰 Bookings", "Commission on private events", "#059669"], ["whatsapp", "💬 WhatsApp", "Tickets delivered automatically", "#25D366"]].map(([id, t, s, c]) => (
+          {[["tickets", "🎟️ Tickets", "Platform fee on every ticket", "#7C3AED"], ["fees", "💼 Big events", "Volume pricing keeps big organisers", "#0E5C54"], ["stalls", "🏪 Stalls", "18% of every stall booking", "#F97316"], ["sponsors", "🤝 Sponsors", "18% of every sponsorship", "#B8860B"], ["leads", "📋 Leads", "Credits for every unlock", "#008069"], ["pro", "⭐ Pro", "Paid Pro memberships", "#C98A00"], ["bookings", "💰 Bookings", "Commission on private events", "#059669"], ["whatsapp", "💬 WhatsApp", "Tickets delivered automatically", "#25D366"], ["getaway", "🏝️ Getaways", "Trips paid in parts · your cut on each", "#0EA5E9"]].map(([id, t, s, c]) => (
             <button key={id} onClick={() => refs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ textAlign: "left", border: `1.5px solid ${c}44`, background: `${c}10`, borderRadius: 14, padding: "11px 12px", cursor: "pointer", fontFamily: "inherit" }}>
               <div style={{ fontWeight: 900, color: c, fontSize: 14 }}>{t}</div>
               <div style={{ fontSize: 11.5, color: "#334155", marginTop: 3, lineHeight: 1.35 }}>{s}</div>
@@ -15776,6 +16578,8 @@ const GW_TAB_GUIDE = {
   ev_invite: { icon: "💌", title: "Invites", grad: "linear-gradient(120deg,#B7791F,#EC4899)", one: "Send personal invites and complimentary tickets for this event.", flow: [["🧑", "Guest", "Name + WhatsApp"], ["💌", "Invite", "Personal link"], ["🎟️", "Ticket", "If issued"]], steps: ["Add the guest's name and number.", "Send the invite, or issue a ticket directly."] },
   ev_media: { icon: "🖼️", title: "Media & share", grad: "linear-gradient(120deg,#2563EB,#0EA5E9)", one: "Banner, photos and videos make people buy. Then share the event link everywhere.", flow: [["🖼️", "Banner", "Wide image"], ["🎬", "Videos", "Reels / teaser"], ["🔗", "Share link", "WhatsApp, Instagram"]], steps: ["Upload a bright banner and a few photos.", "Add a short video if you have one.", "Copy the share link and post it on WhatsApp and Instagram."] },
   ev_tickets: { ref: "tickets" },
+  ev_trip: { icon: "🏝️", title: "Trip setup", grad: "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)", one: "Everything about how people book and pay for this getaway, and what they see on the trip page.", flow: [["💳", "Money rules", "Booking amount, deadline"], ["🛏️", "Rooms", "2/3-sharing + early bird"], ["➕", "Extras", "Flight ⚡, casino"], ["📝", "Trip page", "Plan, stay, packing"], ["🧮", "Cost sheet", "Break-even"]], steps: ["Set the booking amount = your non-refundable cost per seat (hotel + transport advance).", "Set 'Pay in full … days before' (7 is safe for hotels) and the minimum travellers.", "Add room packages with seats; add an early-bird price + last date.", "Add flights as an extra with ⚡ Paid in full at booking.", "Write the day-by-day plan and the rest of the trip page, then tap 💾 Save."], more: "getaway" },
+  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "Filter ⚠️ Behind and tap 💬 Remind. The message has their pay link.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On the day, tap Mark boarded for each traveller."], more: "getaway" },
   ev_sales: { icon: "💰", title: "Sales & platform fee", grad: "linear-gradient(120deg,#059669,#0EA5E9)", one: "Every ticket sold (online and at the door) and the platform fee for this event.", flow: [["💳", "Online", "Razorpay"], ["💵", "Door", "Cash / UPI"], ["💼", "Platform fee", "Std / tiers / ₹ per ticket"], ["🏦", "Payable", "To organiser"]], steps: ["Check the 💼 Platform fee card (admins can switch to volume pricing for big events).", "Scroll down to see each sale.", "Settle the organiser from 🏢 Organisers → Payouts."], more: "fees" },
   ev_pnl: { icon: "💹", title: "Profit & loss", grad: "linear-gradient(120deg,#0E7A5F,#16A34A)", one: "Income from this event minus its costs, so you know if it made money.", flow: [["₹", "Income", "Tickets, stalls, sponsors"], ["🧾", "Costs", "Venue, DJ, decor…"], ["⚖️", "Profit", "Income − costs"]], steps: ["Ticket income is added automatically (online + door).", "Tap Add a line for every cost (venue, DJ, decor) with its amount.", "Check the net profit before planning the next event."] },
   ev_analytics: { icon: "📊", title: "Event analytics", grad: "linear-gradient(120deg,#4F46E5,#0EA5E9)", one: "Who bought, when they bought, and how many came.", flow: [["📈", "Sales by day", "When people buy"], ["🎟️", "By ticket type", "What sells"], ["✅", "Check-ins", "Turn-up rate"]], steps: ["See which days and which tickets sold best.", "Use it to time your next promotions."] },
@@ -19267,9 +20071,12 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
     ["guests", "🧑‍🤝‍🧑", "Guest list", "#D97706", "#FDF3E4"],
     ["terms", "📋", "Terms", "#E11D48", "#FDE9EF"],
   ];
-  const eventMSegs = (e) => gwIsAdminModeratedEvent(e) && canApprove
-    ? [BASE_MSEGS[0], ["requests","🙋","RSVP Requests","#7C3AED","#F3EEFE"], ...BASE_MSEGS.slice(1)]
-    : BASE_MSEGS;
+  const eventMSegs = (e) => {
+    if (gwIsGetaway(e)) return BASE_MSEGS.flatMap(sg => sg[0] === "tickets" ? [["trip", "🏝️", "Trip setup", "#0EA5E9", "#E0F2FE"], ["travellers", "🧳", "Travellers & payments", "#0E7490", "#E0F7FA"]] : sg[0] === "sales" ? [] : [sg]);
+    return gwIsAdminModeratedEvent(e) && canApprove
+      ? [BASE_MSEGS[0], ["requests","🙋","RSVP Requests","#7C3AED","#F3EEFE"], ...BASE_MSEGS.slice(1)]
+      : BASE_MSEGS;
+  };
   const EVCOLORS = [
     { bg: "#FFEAF1", bar: "#E11D48" },
     { bg: "#E7F1FF", bar: "#2563EB" },
@@ -19407,7 +20214,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ private_segment_ids: privateOnly ? draftPrivateSegmentIds : [], private_segment_id: privateOnly ? (draftPrivateSegmentIds[0] || null) : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: Number(f.price) || 0, booking_mode: f.bookingMode || "purchase", description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
+    await onCreate({ ...(f.kind === "getaway" && !privateOnly ? { event_kind: "getaway", ticket_price: 0 } : {}), private_segment_ids: privateOnly ? draftPrivateSegmentIds : [], private_segment_id: privateOnly ? (draftPrivateSegmentIds[0] || null) : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: Number(f.price) || 0, booking_mode: f.bookingMode || "purchase", description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
     reset(); setCreating(false); setStep(0);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -19439,6 +20246,15 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
             <input value={f.emoji} onChange={e => setF({ ...f, emoji: e.target.value })} maxLength={2} style={{ width: 56, textAlign: "center", fontSize: 22, border: `1px solid ${W.line}`, borderRadius: 10, padding: 8 }} />
             <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder={privateOnly ? "Private party title" : "Event title"} style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
           </div>
+          {!privateOnly && <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {[["event", "🎉", "Event", "Party, show, meet-up: one-day tickets"], ["getaway", "🏝️", "Getaway (trip)", "Travel + stay · book now, pay in parts"]].map(([k, ic, l, sub]) => {
+              const on = (f.kind || "event") === k;
+              return <button key={k} type="button" onClick={() => setF(x => ({ ...x, kind: k, emoji: k === "getaway" && (!x.emoji || x.emoji === "🎟️") ? "🏝️" : k === "event" && x.emoji === "🏝️" ? "🎟️" : x.emoji }))} style={{ flex: 1, textAlign: "left", border: `2px solid ${on ? (k === "getaway" ? "#0EA5E9" : W.teal) : W.line}`, background: on ? (k === "getaway" ? "#F0F9FF" : "#E7F6EF") : "#fff", borderRadius: 14, padding: "10px 12px", cursor: "pointer", fontFamily: "inherit" }}>
+                <div style={{ fontSize: 20 }}>{ic}</div><div style={{ fontWeight: 900, color: W.ink, fontSize: 14 }}>{l}</div><div style={{ fontSize: 11.5, color: W.soft, lineHeight: 1.3 }}>{sub}</div>
+              </button>;
+            })}
+          </div>}
+          {f.kind === "getaway" && !privateOnly && <div style={{ background: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: 12, padding: "9px 11px", fontSize: 12.5, color: "#0C4A6E", marginBottom: 12, lineHeight: 1.5 }}>🏝️ <b>Getaway:</b> fill in the basics, photos and the <b>departure date</b> like any event. After you create it, open it and use <b>🏝️ Trip setup</b> for rooms, prices, booking amount, flights/extras and the day-by-day plan.</div>}
           {privateOnly && (
             <div style={{ background: "linear-gradient(135deg,#21113F,#6D28D9)", color: "#fff", borderRadius: 15, padding: 14, marginBottom: 12, boxShadow: "0 8px 20px rgba(109,40,217,.18)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 9 }}><div style={{ width: 36, height: 36, borderRadius: 11, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center" }}><Lock size={18} /></div><div><div style={{ fontWeight: 900, fontSize: 14.5 }}>Who can see and buy this party?</div><div style={{ fontSize: 11.5, opacity: .82, marginTop: 2 }}>Select one or more segments. Only their members get access.</div></div></div>
@@ -19638,6 +20454,7 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
           </>)}
 
           {step === 4 && (<>
+          {f.kind === "getaway" && !privateOnly && <div style={{ background: GW_TRIP_GRAD, color: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 12, fontSize: 13, lineHeight: 1.5 }}><b>🏝️ Getaways don't use tickets.</b> Leave the price at 0 and tap Create. Then open the getaway → <b>🏝️ Trip setup</b> to add room packages, the booking amount, extras (flights, casino) and the trip page.</div>}
           <div style={{background:"linear-gradient(135deg,#EFF6FF,#F5F3FF)",border:"1px solid #C7D2FE",borderRadius:14,padding:12,marginBottom:12}}>
             <div style={{background:"#fff",border:"1px solid #E0E7FF",borderRadius:11,padding:"9px 10px",marginBottom:10,fontSize:11.8,color:"#475569",lineHeight:1.5}}>
               <b style={{color:"#312E81"}}>Choose how entry works for this event.</b><br/>
@@ -19777,6 +20594,8 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 </div>
                 <GwTabGuide id={"ev_" + mSeg} />
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {mSeg === "trip" && gwIsGetaway(e) && <TripSetupTab event={e} />}
+                  {mSeg === "travellers" && gwIsGetaway(e) && <TripBoardTab event={e} />}
                   {mSeg === "details" && (<>
                     <div style={{display:"inline-flex",alignItems:"center",gap:6,alignSelf:"flex-start",background:gwIsAdminModeratedEvent(e)?"#F5F3FF":"#ECFDF5",color:gwIsAdminModeratedEvent(e)?"#6D28D9":"#047857",border:`1px solid ${gwIsAdminModeratedEvent(e)?"#DDD6FE":"#A7F3D0"}`,borderRadius:999,padding:"6px 10px",fontSize:11.5,fontWeight:900}}>{gwIsAdminModeratedEvent(e)?"🛡️ RSVP → Admin approval → Ticket":"🛒 Public purchase tickets"}</div>
                     <EventAvailabilityControl event={e} onUpdate={onUpdate} />
