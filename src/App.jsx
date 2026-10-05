@@ -736,7 +736,7 @@ function AppRoot() {
   useEffect(() => {
     try { const sp = new URLSearchParams(window.location.search); const r = sp.get("ref"); if (r) localStorage.setItem("gw_ref", r.trim()); const gm = sp.get("game"); if (gm) localStorage.setItem("gw_open_game", gm.trim()); const spk = sp.get("spark"); if (spk) localStorage.setItem("gw_open_spark", spk.trim()); const ev = sp.get("event"); if (ev) localStorage.setItem("gw_event", ev.trim()); const reel = sp.get("reel"); if (reel) localStorage.setItem("gw_open_reel", reel.trim()); } catch {}
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
-    const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); });
+    const { data: sub } = supabase.auth.onAuthStateChange((e, s) => { setSession(s); if (e === "PASSWORD_RECOVERY") setRecovery(true); if (s && e === "SIGNED_IN") { try { const back = localStorage.getItem("gw_after_login"); if (back && back.includes("?trip=")) { localStorage.removeItem("gw_after_login"); if (window.location.href !== back) window.location.href = back; } } catch { } } });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -744,9 +744,9 @@ function AppRoot() {
   if (recovery) return <Shell><RecoverPassword onDone={() => setRecovery(false)} /></Shell>;
   let gtCode = null; try { gtCode = new URLSearchParams(window.location.search).get("gt"); } catch {}
   if (gtCode) return <Shell><GuestTicketPage code={gtCode} /></Shell>;
-  if (!session) return <PublicLanding />;
   let tripCode = null; try { tripCode = new URLSearchParams(window.location.search).get("trip"); } catch {}
-  if (tripCode) return <Shell><TripPayPage code={tripCode} /></Shell>;
+  if (tripCode) return <Shell><TripPayPage code={tripCode} loggedIn={!!session} /></Shell>;
+  if (!session) return <PublicLanding />;
   return <Shell><Main user={session.user} /></Shell>;
 }
 
@@ -15597,7 +15597,7 @@ function TripPass({ b }) {
 }
 
 // ---------- Friend's pay link: glass-wings.com/?trip=CODE ----------
-function TripPayPage({ code }) {
+function TripPayPage({ code, loggedIn = true }) {
   const [d, setD] = useState(undefined), [amt, setAmt] = useState("");
   const load = () => supabase.rpc("trip_by_code", { p_code: code }).then(({ data }) => setD(data || null));
   useEffect(() => { load(); }, [code]);
@@ -15616,8 +15616,13 @@ function TripPayPage({ code }) {
           </div>
           <div style={{ padding: 16 }}>
             {d.status === "pending" ? <div style={{ color: "#92400E", fontWeight: 800 }}>{d.booker} still has to pay the booking amount first. Ask them to complete it, then open this link again.</div>
-              : left <= 0 ? <div style={{ color: "#15803D", fontWeight: 900, fontSize: 16 }}>🎉 This trip is fully paid!</div>
+              : left <= 0 ? <div><div style={{ color: "#15803D", fontWeight: 900, fontSize: 16 }}>🎉 Fully paid. Here's your Trip Pass!</div>{d.pass && <TripPass b={{ code: d.code, event_title: d.event_title, event_date: d.event_date, package: d.package, travellers: d.pass.travellers, captain_name: d.pass.captain_name, captain_phone: d.pass.captain_phone }} />}</div>
                 : ["cancelled", "released"].includes(d.status) ? <div style={{ color: W.soft, fontWeight: 800 }}>This booking is closed.</div>
+                  : !loggedIn ? <div>
+                    <div style={{ fontWeight: 900, color: W.ink }}>Log in to pay your share</div>
+                    <div style={{ fontSize: 12.5, color: W.soft, margin: "3px 0 10px" }}>Payments are made from your Glasswings account, so they show up in the trip.</div>
+                    <button onClick={() => { try { localStorage.setItem("gw_after_login", window.location.href); } catch { } window.location.href = "/"; }} style={{ ...btn("#0EA5E9", "#fff"), width: "100%", justifyContent: "center", fontWeight: 900 }}>Log in / Sign up</button>
+                  </div>
                   : <>
                     <div style={{ fontWeight: 900, color: W.ink }}>Pay your share (any amount)</div>
                     <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 8px" }}>Due by {gwDateShort(d.deadline)} · minimum ₹{minPart}</div>
@@ -15816,7 +15821,11 @@ function TripBoardTab({ event }) {
   const load = () => {
     supabase.rpc("trip_board", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setD(data); } });
     supabase.from("trip_reminder_log").select("booking_id,sent_at,status").eq("event_id", event.id).order("sent_at", { ascending: false }).limit(500).then(({ data }) => { const m = {}; (data || []).forEach(x => { if (!m[x.booking_id]) m[x.booking_id] = x; }); setLastRem(m); });
-    supabase.rpc("trip_wa_campaign").then(({ data, error }) => setCamp(error ? "" : (data || "trip_payment_reminder")));
+    supabase.rpc("trip_wa_campaigns").then(async ({ data, error }) => {
+      if (!error && data) return setCamp(data);
+      const r = await supabase.rpc("trip_wa_campaign");
+      setCamp({ reminder: r.data || "trip_payment_reminder", paid: "trip_payment_received", pass: "trip_pass_ready", old: true });
+    });
   };
   useEffect(() => { load(); }, [event.id]);
   const sendRem = async ids => { setRemBusy(true); await gwSendTripReminders(event.id, ids); setRemBusy(false); load(); };
@@ -15842,7 +15851,14 @@ function TripBoardTab({ event }) {
     return b.booker_phone ? `https://wa.me/${waNum(b.booker_phone)}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
   };
   const rpcDo = async (fn, args, okMsg) => { const { data, error } = await supabase.rpc(fn, args); if (error || data?.ok === false) return window.gwConfirm(error?.message || data?.error || "Failed", () => {}); if (okMsg) window.gwConfirm(okMsg(data), () => {}); load(); };
-  const cash = async b => { const v = await window.gwPrompt(`Amount received from ${b.booker} (cash / UPI to you)?`, ""); const n = Number(String(v || "").replace(/\D/g, "")); if (n > 0) rpcDo("trip_mark_cash", { p_booking: b.id, p_amount: n, p_method: "upi", p_note: "Recorded by organiser" }); };
+  const cash = async b => {
+    const v = await window.gwPrompt(`Amount received from ${b.booker} (cash / UPI to you)?`, ""); const n = Number(String(v || "").replace(/\D/g, ""));
+    if (!(n > 0)) return;
+    const { data, error } = await supabase.rpc("trip_mark_cash", { p_booking: b.id, p_amount: n, p_method: "upi", p_note: "Recorded by organiser" });
+    if (error || data?.ok === false) return window.gwConfirm(error?.message || data?.error || "Failed", () => {});
+    try { const { data: ses } = await supabase.auth.getSession(); fetch("/api/whatsapp/trip-notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token, booking_id: b.id }) }); } catch { }
+    window.gwConfirm(`✓ ${gwINR(n)} recorded. ${b.booker} gets a WhatsApp receipt.`, () => {}); load();
+  };
   const printList = kind => {
     const trs = act.flatMap(b => (b.travellers || []).map(t => ({ ...t, code: b.code, pkg: b.package, room_pref: b.room_pref, status: b.status, left: Math.max(0, b.total - b.paid) })));
     const sorted = kind === "rooms" ? [...trs].sort((a, b) => String(a.room_no || "zz").localeCompare(String(b.room_no || "zz"), undefined, { numeric: true })) : trs;
@@ -15892,11 +15908,15 @@ function TripBoardTab({ event }) {
           <button disabled={remBusy || !act.some(b => b.behind > 0)} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to the ${act.filter(b => b.behind > 0).length} booking(s) that are behind schedule?`, () => sendRem(act.filter(b => b.behind > 0).map(b => b.id)))} style={{ ...btn("#F59E0B", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.behind > 0) ? .5 : 1 }}>⚠️ Remind those behind ({act.filter(b => b.behind > 0).length})</button>
           <button disabled={remBusy || !act.some(b => b.status === "booked")} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to everyone who still has a balance (${act.filter(b => b.status === "booked").length} booking(s))?`, () => sendRem(null))} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.status === "booked") ? .5 : 1 }}>{remBusy ? "Sending…" : `📣 Remind everyone with a balance (${act.filter(b => b.status === "booked").length})`}</button>
         </div>
-        {d.is_admin && camp !== null && <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
-          <span style={{ fontSize: 11.5, color: "#166534", fontWeight: 800 }}>AiSensy campaign:</span>
-          <input value={camp} onChange={e => setCamp(e.target.value)} style={{ ...gwLeadInp, flex: 1, padding: "6px 9px", fontSize: 12.5 }} />
-          <button onClick={async () => { const { data, error } = await supabase.rpc("set_trip_wa_campaign", { p_name: camp }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#fff", "#15803D"), border: "1px solid #BBF7D0", padding: "6px 10px", fontSize: 12 }}>Save</button>
-        </div>}
+        <div style={{ fontSize: 11.5, color: "#166534", marginTop: 8, lineHeight: 1.45 }}>🤖 Automatic: every payment sends a <b>WhatsApp receipt</b>, and a fully paid booking gets the <b>Trip Pass</b> on WhatsApp (booker + every traveller with a number).</div>
+        {d.is_admin && camp && <details style={{ marginTop: 6 }}>
+          <summary style={{ fontSize: 11.5, color: "#166534", fontWeight: 800, cursor: "pointer" }}>AiSensy campaign names (admins)</summary>
+          {[["reminder", "Payment reminder"], ["paid", "Payment received"], ["pass", "Trip Pass ready"]].map(([k, l]) => <div key={k} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+            <span style={{ fontSize: 11.5, color: "#166534", fontWeight: 800, width: 120 }}>{l}</span>
+            <input value={camp[k] || ""} onChange={e => setCamp(c => ({ ...c, [k]: e.target.value }))} style={{ ...gwLeadInp, flex: 1, padding: "6px 9px", fontSize: 12.5 }} />
+          </div>)}
+          <button onClick={async () => { const { data, error } = camp.old ? await supabase.rpc("set_trip_wa_campaign", { p_name: camp.reminder }) : await supabase.rpc("set_trip_wa_campaigns", { p_reminder: camp.reminder, p_paid: camp.paid, p_pass: camp.pass }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#fff", "#15803D"), border: "1px solid #BBF7D0", padding: "6px 10px", fontSize: 12, marginTop: 6 }}>Save names</button>
+        </details>}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
         <button onClick={() => printList("manifest")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 11px", fontSize: 12.5 }}>📄 Traveller manifest</button>
@@ -16399,7 +16419,7 @@ const GW_GUIDE = {
       "🧳 Travellers & payments: see who is behind (⚠️), tap 📣 Remind (WhatsApp via AiSensy), record cash with 💵, add flight PNR and room numbers, print the manifest and rooming list, mark boarded on the day.",
       "Tap ✅ Confirm trip once the minimum is reached and you've booked the hotel. After the deadline, 🔓 Release unpaid seats. If the trip can't happen, ✕ Cancel trip refunds everyone 100%.",
     ],
-    tips: ["Don't call it EMI: it's 'pay in parts before you travel'.", "Most cancellations become seat transfers: the traveller edits the name to a friend's before the deadline and nothing is lost.", "Organisers can run getaways too. Glasswings keeps its cut (set by admins) and admins record organiser payouts, e.g. hotel advances."],
+    tips: ["🤖 Automatic WhatsApps: every payment sends a receipt, and a fully paid booking gets the Trip Pass. Needs the AiSensy campaigns trip_payment_received and trip_pass_ready.", "Don't call it EMI: it's 'pay in parts before you travel'.", "Most cancellations become seat transfers: the traveller edits the name to a friend's before the deadline and nothing is lost.", "Organisers can run getaways too. Glasswings keeps its cut (set by admins) and admins record organiser payouts, e.g. hotel advances."],
   },
   // ----- short tips for the public / vendor / brand screens -----
   vendor: { icon: "🏪", title: "How booking a stall works", grad: "linear-gradient(120deg,#F97316,#EC4899)", one: "Apply → organiser approves → pay in the app → get your stall number and Stall Pass.", steps: ["Pick a stall type and fill in your business details.", "The organiser reviews it. You'll see \"Approved\" in My stalls.", "Tap Pay to confirm. Your Stall Pass shows your stall number and setup time."] },
