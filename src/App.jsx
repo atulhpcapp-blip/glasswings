@@ -15802,10 +15802,24 @@ function TripExtraRow({ x, isNew, onSave, onDel }) {
 }
 
 // ---------- Organiser: 🧳 Travellers & payments tab ----------
+async function gwSendTripReminders(eventId, bookingIds) {
+  const { data: ses } = await supabase.auth.getSession();
+  const r = await fetch("/api/whatsapp/trip-remind", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token, event_id: eventId, booking_ids: bookingIds || null }) });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok || out.error) return window.gwConfirm(out.error || "Couldn't send reminders.", () => {});
+  window.gwConfirm(out.total === 0 ? "Nobody to remind: everyone is fully paid. 🎉"
+    : `📣 WhatsApp reminders\n✓ Sent: ${out.sent}${out.failed ? `\n✕ Failed: ${out.failed}` : ""}${out.no_phone ? `\n📵 No number: ${out.no_phone}` : ""}${(out.errors || []).length ? `\n\nAiSensy says: ${out.errors.join(" | ")}\n\nCheck the campaign name matches AiSensy exactly and the campaign is Live.` : ""}`, () => {});
+}
 function TripBoardTab({ event }) {
   const [d, setD] = useState(null), [err, setErr] = useState(""), [filter, setFilter] = useState("all"), [openB, setOpenB] = useState(null), [q, setQ] = useState("");
-  const load = () => supabase.rpc("trip_board", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setD(data); } });
+  const [lastRem, setLastRem] = useState({}), [remBusy, setRemBusy] = useState(false), [camp, setCamp] = useState(null);
+  const load = () => {
+    supabase.rpc("trip_board", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setD(data); } });
+    supabase.from("trip_reminder_log").select("booking_id,sent_at,status").eq("event_id", event.id).order("sent_at", { ascending: false }).limit(500).then(({ data }) => { const m = {}; (data || []).forEach(x => { if (!m[x.booking_id]) m[x.booking_id] = x; }); setLastRem(m); });
+    supabase.rpc("trip_wa_campaign").then(({ data, error }) => setCamp(error ? "" : (data || "trip_payment_reminder")));
+  };
   useEffect(() => { load(); }, [event.id]);
+  const sendRem = async ids => { setRemBusy(true); await gwSendTripReminders(event.id, ids); setRemBusy(false); load(); };
   if (err) return <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 12, fontSize: 13, color: "#9A3412" }}>Run <b>getaways.sql</b> in Supabase first.<div style={{ fontSize: 11.5, opacity: .8 }}>{err}</div></div>;
   if (!d) return <Center>Loading…</Center>;
   const s = d.settings || {}, T = d.totals || {};
@@ -15871,6 +15885,19 @@ function TripBoardTab({ event }) {
         {d.is_admin && <button onClick={async () => { const v = await window.gwPrompt("Record a payout to the organiser (₹). For hotel/bus advances, note it.", ""); const n = Number(String(v || "").replace(/\D/g, "")); if (n > 0) { const note = await window.gwPrompt("Note (e.g. hotel advance / final settlement)", ""); rpcDo("trip_add_payout", { p_event: event.id, p_amount: n, p_note: note || "" }); } }} style={{ ...btn("#fff", "#0F172A"), padding: "5px 10px", fontSize: 12, marginTop: 6 }}>🏦 Record payout</button>}
       </div>
 
+      <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 14, padding: 12, marginBottom: 12 }}>
+        <div style={{ fontWeight: 950, color: "#15803D", fontSize: 14.5 }}>📣 WhatsApp payment reminders</div>
+        <div style={{ fontSize: 12, color: "#166534", margin: "2px 0 8px", lineHeight: 1.45 }}>Sent from the Glasswings WhatsApp number (AiSensy) with each person's balance, due date and a <b>Pay now</b> button. Tip: send once a week (e.g. every Sunday), plus 3 days before the deadline.</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button disabled={remBusy || !act.some(b => b.behind > 0)} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to the ${act.filter(b => b.behind > 0).length} booking(s) that are behind schedule?`, () => sendRem(act.filter(b => b.behind > 0).map(b => b.id)))} style={{ ...btn("#F59E0B", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.behind > 0) ? .5 : 1 }}>⚠️ Remind those behind ({act.filter(b => b.behind > 0).length})</button>
+          <button disabled={remBusy || !act.some(b => b.status === "booked")} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to everyone who still has a balance (${act.filter(b => b.status === "booked").length} booking(s))?`, () => sendRem(null))} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.status === "booked") ? .5 : 1 }}>{remBusy ? "Sending…" : `📣 Remind everyone with a balance (${act.filter(b => b.status === "booked").length})`}</button>
+        </div>
+        {d.is_admin && camp !== null && <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8 }}>
+          <span style={{ fontSize: 11.5, color: "#166534", fontWeight: 800 }}>AiSensy campaign:</span>
+          <input value={camp} onChange={e => setCamp(e.target.value)} style={{ ...gwLeadInp, flex: 1, padding: "6px 9px", fontSize: 12.5 }} />
+          <button onClick={async () => { const { data, error } = await supabase.rpc("set_trip_wa_campaign", { p_name: camp }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#fff", "#15803D"), border: "1px solid #BBF7D0", padding: "6px 10px", fontSize: 12 }}>Save</button>
+        </div>}
+      </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
         <button onClick={() => printList("manifest")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 11px", fontSize: 12.5 }}>📄 Traveller manifest</button>
         <button onClick={() => printList("rooms")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 11px", fontSize: 12.5 }}>🛏️ Rooming list</button>
@@ -15895,10 +15922,12 @@ function TripBoardTab({ event }) {
               </div>
               {["booked", "paid"].includes(b.status) && <div style={{ marginTop: 7 }}><GwTripProgress paid={Number(b.paid)} total={Number(b.total)} firstDue={Number(b.first_due)} /></div>}
               {b.behind > 0 && <div style={{ fontSize: 11.5, color: "#B45309", fontWeight: 800, marginTop: 3 }}>⚠️ Behind schedule by {gwINR(b.behind)}</div>}
+              {lastRem[b.id] && <div style={{ fontSize: 11, color: lastRem[b.id].status === "sent" ? "#15803D" : "#B91C1C", fontWeight: 700, marginTop: 2 }}>📣 Last reminder: {gwTimeAgo(lastRem[b.id].sent_at)}{lastRem[b.id].status !== "sent" ? ` (${lastRem[b.id].status === "no_phone" ? "no number" : "failed"})` : ""}</div>}
               {b.refund_status && b.refund_status !== "none" && <div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700, marginTop: 3 }}>Refund {gwINR(b.refund_amount)} · {b.refund_status === "credited" ? "returned as credits" : b.refund_status === "pending" ? "⏳ send to bank" : "✓ refunded"}</div>}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-              {b.status === "booked" && <a href={remind(b)} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", padding: "6px 10px", fontSize: 12 }}>💬 Remind</a>}
+              {b.status === "booked" && <button disabled={remBusy} onClick={() => sendRem([b.id])} style={{ ...btn("#16A34A", "#fff"), padding: "6px 10px", fontSize: 12 }}>📣 Send reminder</button>}
+              {b.status === "booked" && <a href={remind(b)} target="_blank" rel="noreferrer" title="Open WhatsApp on your phone with the message ready" style={{ ...btn("#E7F6EF", "#128C7E"), textDecoration: "none", padding: "6px 10px", fontSize: 12 }}>💬 From my WhatsApp</a>}
               {["booked", "pending"].includes(b.status) && <button onClick={() => cash(b)} style={{ ...btn("#EDE9FE", "#6D28D9"), padding: "6px 10px", fontSize: 12 }}>💵 Mark cash/UPI</button>}
               {b.refund_status === "pending" && <button onClick={() => window.gwConfirm(`Mark ${gwINR(b.refund_amount)} as sent to ${b.booker}'s bank?`, () => rpcDo("trip_mark_refunded", { p_booking: b.id }))} style={{ ...btn("#DCFCE7", "#15803D"), padding: "6px 10px", fontSize: 12 }}>✓ Refund sent</button>}
               <button onClick={() => setOpenB(isOpen ? null : b.id)} style={{ ...btn("#F1F5F9", W.ink), padding: "6px 10px", fontSize: 12 }}>{isOpen ? "Hide" : "Travellers"}</button>
@@ -16367,7 +16396,7 @@ const GW_GUIDE = {
       "➕ Extras: flights with ⚡ 'Paid in full at booking' ticked (you buy tickets at today's fare); casino or scooter without it (added to the balance).",
       "📝 Trip page: day-by-day plan, stay, travel, included / not included, packing list, terms, trip captain. Fill the 🧮 cost sheet to see your break-even.",
       "Members open the getaway, tap 🧳 Book: choose room → extras → traveller details (name as on ID, age, food) → pay the booking amount. Then they pay any amount, any day, and can send a pay link to friends.",
-      "🧳 Travellers & payments: see who is behind (⚠️), tap 💬 Remind, record cash with 💵, add flight PNR and room numbers, print the manifest and rooming list, mark boarded on the day.",
+      "🧳 Travellers & payments: see who is behind (⚠️), tap 📣 Remind (WhatsApp via AiSensy), record cash with 💵, add flight PNR and room numbers, print the manifest and rooming list, mark boarded on the day.",
       "Tap ✅ Confirm trip once the minimum is reached and you've booked the hotel. After the deadline, 🔓 Release unpaid seats. If the trip can't happen, ✕ Cancel trip refunds everyone 100%.",
     ],
     tips: ["Don't call it EMI: it's 'pay in parts before you travel'.", "Most cancellations become seat transfers: the traveller edits the name to a friend's before the deadline and nothing is lost.", "Organisers can run getaways too. Glasswings keeps its cut (set by admins) and admins record organiser payouts, e.g. hotel advances."],
@@ -16579,7 +16608,7 @@ const GW_TAB_GUIDE = {
   ev_media: { icon: "🖼️", title: "Media & share", grad: "linear-gradient(120deg,#2563EB,#0EA5E9)", one: "Banner, photos and videos make people buy. Then share the event link everywhere.", flow: [["🖼️", "Banner", "Wide image"], ["🎬", "Videos", "Reels / teaser"], ["🔗", "Share link", "WhatsApp, Instagram"]], steps: ["Upload a bright banner and a few photos.", "Add a short video if you have one.", "Copy the share link and post it on WhatsApp and Instagram."] },
   ev_tickets: { ref: "tickets" },
   ev_trip: { icon: "🏝️", title: "Trip setup", grad: "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)", one: "Everything about how people book and pay for this getaway, and what they see on the trip page.", flow: [["💳", "Money rules", "Booking amount, deadline"], ["🛏️", "Rooms", "2/3-sharing + early bird"], ["➕", "Extras", "Flight ⚡, casino"], ["📝", "Trip page", "Plan, stay, packing"], ["🧮", "Cost sheet", "Break-even"]], steps: ["Set the booking amount = your non-refundable cost per seat (hotel + transport advance).", "Set 'Pay in full … days before' (7 is safe for hotels) and the minimum travellers.", "Add room packages with seats; add an early-bird price + last date.", "Add flights as an extra with ⚡ Paid in full at booking.", "Write the day-by-day plan and the rest of the trip page, then tap 💾 Save."], more: "getaway" },
-  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "Filter ⚠️ Behind and tap 💬 Remind. The message has their pay link.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On the day, tap Mark boarded for each traveller."], more: "getaway" },
+  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "Tap ⚠️ Remind those behind (or 📣 Remind everyone) to send WhatsApp reminders from the Glasswings number with a Pay now button. 💬 From my WhatsApp opens the same message on your own phone.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On the day, tap Mark boarded for each traveller."], more: "getaway" },
   ev_sales: { icon: "💰", title: "Sales & platform fee", grad: "linear-gradient(120deg,#059669,#0EA5E9)", one: "Every ticket sold (online and at the door) and the platform fee for this event.", flow: [["💳", "Online", "Razorpay"], ["💵", "Door", "Cash / UPI"], ["💼", "Platform fee", "Std / tiers / ₹ per ticket"], ["🏦", "Payable", "To organiser"]], steps: ["Check the 💼 Platform fee card (admins can switch to volume pricing for big events).", "Scroll down to see each sale.", "Settle the organiser from 🏢 Organisers → Payouts."], more: "fees" },
   ev_pnl: { icon: "💹", title: "Profit & loss", grad: "linear-gradient(120deg,#0E7A5F,#16A34A)", one: "Income from this event minus its costs, so you know if it made money.", flow: [["₹", "Income", "Tickets, stalls, sponsors"], ["🧾", "Costs", "Venue, DJ, decor…"], ["⚖️", "Profit", "Income − costs"]], steps: ["Ticket income is added automatically (online + door).", "Tap Add a line for every cost (venue, DJ, decor) with its amount.", "Check the net profit before planning the next event."] },
   ev_analytics: { icon: "📊", title: "Event analytics", grad: "linear-gradient(120deg,#4F46E5,#0EA5E9)", one: "Who bought, when they bought, and how many came.", flow: [["📈", "Sales by day", "When people buy"], ["🎟️", "By ticket type", "What sells"], ["✅", "Check-ins", "Turn-up rate"]], steps: ["See which days and which tickets sold best.", "Use it to time your next promotions."] },
