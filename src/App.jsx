@@ -15297,6 +15297,194 @@ function GwTripProgress({ paid, total, firstDue, dark = false }) {
 }
 
 // ---------- Public trip box on the event page ----------
+// ---------- 📄 Colourful itinerary PDF (opens a print-ready page → "Save as PDF") ----------
+function gwTripItineraryPdf(event, t) {
+  const w = window.open("", "_blank");
+  if (!w) return window.gwConfirm ? window.gwConfirm("Please allow pop-ups for this site to download the itinerary.", () => {}) : alert("Please allow pop-ups to download the itinerary.");
+  const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const inr = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
+  const dShort = d => { if (!d) return ""; const x = new Date(String(d).length <= 10 ? d + "T00:00:00" : d); return isNaN(x) ? String(d) : x.toLocaleDateString("en-IN", { day: "numeric", month: "short" }); };
+  const dLong = d => { if (!d) return ""; const x = new Date(String(d).length <= 10 ? d + "T00:00:00" : d); return isNaN(x) ? String(d) : x.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }); };
+  const EMO = /^((?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:️|‍(?:\p{Extended_Pictographic})|\p{Emoji_Modifier})*️?)\s*/u;
+  const inline = s => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*(?!\s)(.+?)\*/g, "$1<i>$2</i>")
+    .replace(/(\b\d{1,2}(?::\d{2})?\s?(?:AM|PM|am|pm)\b)/g, '<span class="time">$1</span>');
+  const lines = txt => String(txt || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const item = raw => {
+    let s = raw.replace(/^[-*•]\s+/, "").replace(/^\d+[.)]\s+/, "");
+    const m = s.match(EMO); let icon = "";
+    if (m) { icon = m[1]; s = s.slice(m[0].length); }
+    return { icon, html: inline(s) };
+  };
+  const bullets = (txt, defIcon, cls = "") => lines(txt).filter(l => !/^#{1,3}\s/.test(l)).map(l => { const x = item(l); return `<div class="row ${cls}"><span class="ic">${x.icon || defIcon}</span><span>${x.html}</span></div>`; }).join("");
+  const PAL = [["#0EA5E9", "#E0F2FE"], ["#F97316", "#FFEDD5"], ["#8B5CF6", "#EDE9FE"], ["#10B981", "#D1FAE5"], ["#EC4899", "#FCE7F3"], ["#EAB308", "#FEF9C3"], ["#14B8A6", "#CCFBF1"]];
+
+  // day-by-day cards
+  const days = []; let cur = null;
+  lines(t.itinerary).forEach(l => {
+    const h = l.match(/^#{1,3}\s+(.*)$/);
+    if (h) { cur = { title: h[1].replace(/\*\*/g, ""), items: [] }; days.push(cur); return; }
+    if (!cur) { cur = { title: "The plan", items: [] }; days.push(cur); }
+    cur.items.push(item(l));
+  });
+  const dayHtml = days.map((d, i) => {
+    const [c, bg] = PAL[i % PAL.length];
+    const parts = d.title.split(/\s*[·|–—-]\s+/);
+    const badge = /^day\s*\d+/i.test(parts[0]) ? parts.shift() : `Day ${i + 1}`;
+    const sub = parts.join(" · ");
+    return `<section class="day" style="--c:${c};--bg:${bg}">
+      <div class="dayhead"><div class="daynum">${esc(badge.replace(/^day\s*/i, ""))}<small>DAY</small></div><div><div class="daytitle">${esc(sub || badge)}</div></div></div>
+      <div class="timeline">${d.items.map(x => `<div class="tl"><span class="dot">${x.icon || "•"}</span><span class="tx">${x.html}</span></div>`).join("")}</div>
+    </section>`;
+  }).join("");
+
+  const pk = t.packages || [];
+  const from = pk.length ? Math.min(...pk.map(p => Number(p.now_price || p.price))) : 0;
+  const early = pk.find(p => p.early_price && p.early_until && new Date(p.early_until + "T23:59:59") >= new Date());
+  const img = event.banner_type !== "video" && event.banner_url ? event.banner_url : (event.poster_url || event.vertical_banner_url || "");
+  const link = `${window.location.origin}/e/${event.id}`;
+  const qr = "https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=0&data=" + encodeURIComponent(link);
+  const nDays = days.filter(d => /^day/i.test(d.title)).length || days.length;
+  const stats = [
+    ["🗓️", nDays ? `${nDays} days${nDays > 1 ? ` · ${nDays - 1} nights` : ""}` : (event.event_date || dShort(t.start)), "Trip length"],
+    t.from_city ? ["🛫", t.from_city, "Starting from"] : null,
+    [event.emoji || "📍", event.venue || event.city || "", "Destination"],
+    t.min_age ? ["🔞", `${t.min_age}+`, "Age"] : null,
+    t.min_people ? ["👥", `${t.min_people}+`, "Travellers needed"] : null,
+  ].filter(x => x && x[1]);
+  const sec = (icon, title, color, body) => body ? `<section class="card" style="--c:${color}"><h2><span class="hic">${icon}</span>${title}</h2>${body}</section>` : "";
+
+  const pkgHtml = pk.length ? `<div class="pkgs">${pk.map((p, i) => {
+    const [c, bg] = PAL[(i + 2) % PAL.length]; const disc = Number(p.now_price) < Number(p.price);
+    return `<div class="pkg" style="--c:${c};--bg:${bg}"><div class="pkgicon">${"🧑".repeat(Math.min(4, Number(p.sharing) || 2))}</div>
+      <div class="pkgname">${esc(p.name)}</div><div class="pkgprice">${inr(p.now_price || p.price)}${disc ? `<s>${inr(p.price)}</s>` : ""}</div>
+      <div class="pkgsub">per person${disc && p.early_until ? ` · early-bird till ${dShort(p.early_until)}` : ""}</div>
+      ${p.description ? `<div class="pkgdesc">${inline(p.description)}</div>` : ""}
+      ${p.left != null ? `<div class="pkgleft">${p.left <= 0 ? "Sold out" : `${p.left} seat${p.left === 1 ? "" : "s"} left`}</div>` : ""}</div>`;
+  }).join("")}</div>` : "";
+  const exHtml = (t.extras || []).length ? `<div class="extras">${(t.extras || []).map(x => { const it = item(x.name || ""); return `<div class="extra"><span class="exic">${it.icon || "➕"}</span><div><b>${it.html}</b> <span class="exp">${inr(x.price)}/person</span>${x.pay_upfront ? `<span class="tag">paid at booking</span>` : `<span class="tag opt">optional</span>`}${x.description ? `<div class="mut">${inline(x.description)}</div>` : ""}</div></div>`; }).join("")}</div>` : "";
+  const incHtml = (t.inclusions || t.exclusions) ? `<div class="two">
+      ${t.inclusions ? `<div class="inc"><h3>✅ Included</h3>${lines(t.inclusions).map(l => `<div class="chk"><span>✓</span><span>${item(l).html}</span></div>`).join("")}</div>` : ""}
+      ${t.exclusions ? `<div class="exc"><h3>❌ Not included</h3>${lines(t.exclusions).map(l => `<div class="chk"><span>✕</span><span>${item(l).html}</span></div>`).join("")}</div>` : ""}
+    </div>` : "";
+  const packHtml = t.packing ? `<div class="chips">${lines(t.packing).map(l => { const x = item(l); return `<span class="chip">${x.icon || "🎒"} ${x.html}</span>`; }).join("")}</div>` : "";
+  const journey = `<div class="journey">
+      ${[["💳", "Book", `${inr(t.booking_amount)} / person`, "#0EA5E9"], ["🪙", "Pay in parts", `any amount · min ${inr(t.min_part)}`, "#8B5CF6"], ["🏁", "Finish by", dLong(t.deadline), "#F97316"], ["✈️", "Travel", dLong(t.start) || esc(event.event_date || ""), "#10B981"]]
+      .map(([i, a, b, c], k) => `<div class="step" style="--c:${c}"><div class="sic">${i}</div><div class="sa">${k + 1}. ${a}</div><div class="sb">${esc(b)}</div></div>${k < 3 ? '<div class="arrow">➜</div>' : ""}`).join("")}
+    </div>`;
+  const refund = (t.cancel_full_days != null) ? `<div class="refund">
+      <div class="seg g"><b>${t.cancel_full_days}+ days before</b><span>Everything above the booking amount back${t.refund_mode === "credits" ? " as credits" : ""}</span></div>
+      <div class="seg a"><b>${t.cancel_half_days}–${t.cancel_full_days} days</b><span>50% of that back</span></div>
+      <div class="seg r"><b>Under ${t.cancel_half_days} days</b><span>No refund · pass your seat to a friend instead</span></div>
+    </div><div class="mut" style="margin-top:6px">If the trip doesn't reach ${t.min_people || "the minimum"} travellers or we cancel it, everyone gets <b>100% back</b>.</div>` : "";
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(event.title)} · Itinerary</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;background:#EEF2F7;font-family:Inter,system-ui,sans-serif;color:#0F172A;font-size:13.5px;line-height:1.5}
+.page{max-width:820px;margin:0 auto;background:#fff}
+.bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:10px;background:#0F172A}
+.bar button{border:0;border-radius:999px;padding:11px 18px;font:800 14px Inter,sans-serif;cursor:pointer;background:linear-gradient(120deg,#F97316,#EC4899);color:#fff}
+.bar span{color:#CBD5E1;font-size:12px;align-self:center}
+.hero{position:relative;min-height:300px;color:#fff;padding:28px 28px 24px;display:flex;flex-direction:column;justify-content:flex-end;background:linear-gradient(135deg,#0369A1,#0EA5E9 45%,#F97316);overflow:hidden}
+.hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(2,6,23,.05) 0%,rgba(2,6,23,.35) 45%,rgba(2,6,23,.88) 100%)}
+.hero>*{position:relative;z-index:1}
+.kicker{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:4px 12px;font:800 11px Inter;letter-spacing:2px;margin-bottom:10px;width:max-content}
+.hero h1{font:900 34px/1.1 Poppins,sans-serif;margin:0 0 6px;text-shadow:0 2px 12px rgba(0,0,0,.35)}
+.hero .when{font-weight:700;font-size:15px;opacity:.95}
+.price{display:flex;align-items:baseline;gap:8px;margin-top:12px;flex-wrap:wrap}
+.price b{font:900 30px Poppins;color:#FDE68A}
+.eb{display:inline-block;margin-top:6px;background:#FDE68A;color:#78350F;border-radius:999px;padding:3px 11px;font-weight:800;font-size:12px;width:max-content}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;padding:16px 22px;background:linear-gradient(90deg,#F0F9FF,#FFF7ED)}
+.stat{background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 2px 8px rgba(15,23,42,.06)}
+.stat .i{font-size:22px}.stat .v{font:800 15px Poppins;color:#0F172A}.stat .l{font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.6px}
+.wrap{padding:8px 22px 22px}
+h2{font:800 19px Poppins;margin:0 0 12px;display:flex;align-items:center;gap:9px;color:var(--c,#0F172A)}
+.hic{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--c,#0EA5E9) 15%,#fff);font-size:18px}
+.card{margin:18px 0;padding:16px 16px 12px;border-radius:18px;border:1.5px solid color-mix(in srgb,var(--c,#0EA5E9) 25%,#fff);background:color-mix(in srgb,var(--c,#0EA5E9) 4%,#fff);break-inside:avoid}
+.title2{font:900 22px Poppins;margin:22px 0 6px;color:#0F172A}
+.title2 span{background:linear-gradient(120deg,#0EA5E9,#8B5CF6,#EC4899);-webkit-background-clip:text;background-clip:text;color:transparent}
+.day{margin:14px 0;border-radius:18px;background:var(--bg);border-left:7px solid var(--c);padding:14px 14px 10px;break-inside:avoid}
+.dayhead{display:flex;gap:12px;align-items:center;margin-bottom:8px}
+.daynum{flex-shrink:0;width:56px;height:56px;border-radius:16px;background:var(--c);color:#fff;font:900 24px/1 Poppins;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 6px 14px color-mix(in srgb,var(--c) 40%,transparent)}
+.daynum small{font:800 9px Inter;letter-spacing:2px;margin-top:3px;opacity:.9}
+.daytitle{font:800 17px/1.25 Poppins;color:#0F172A}
+.timeline{position:relative;margin-left:27px;border-left:2.5px dashed color-mix(in srgb,var(--c) 55%,#fff);padding-left:0}
+.tl{display:flex;gap:10px;align-items:flex-start;margin:0 0 8px -15px}
+.dot{flex-shrink:0;width:28px;height:28px;border-radius:999px;background:#fff;border:2px solid var(--c);display:grid;place-items:center;font-size:14px;line-height:1}
+.tx{padding-top:4px;color:#1E293B}
+.time{display:inline-block;background:var(--c,#0EA5E9);color:#fff;border-radius:6px;padding:0 6px;font-weight:800;font-size:12px;margin-right:2px}
+.row{display:flex;gap:9px;align-items:flex-start;margin:6px 0}.ic{flex-shrink:0;width:24px;text-align:center;font-size:16px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0;break-inside:avoid}
+.inc,.exc{border-radius:18px;padding:14px}
+.inc{background:#ECFDF5;border:1.5px solid #A7F3D0}.exc{background:#FEF2F2;border:1.5px solid #FECACA}
+.inc h3,.exc h3{font:800 16px Poppins;margin:0 0 8px}.inc h3{color:#047857}.exc h3{color:#B91C1C}
+.chk{display:flex;gap:8px;margin:5px 0}.chk span:first-child{flex-shrink:0;width:20px;height:20px;border-radius:999px;display:grid;place-items:center;font-weight:900;font-size:11px;color:#fff;margin-top:1px}
+.inc .chk span:first-child{background:#10B981}.exc .chk span:first-child{background:#EF4444}
+.pkgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.pkg{background:var(--bg);border:2px solid var(--c);border-radius:18px;padding:14px;text-align:center;break-inside:avoid}
+.pkgicon{font-size:22px;letter-spacing:-4px}.pkgname{font:800 16px Poppins;margin-top:4px}
+.pkgprice{font:900 26px Poppins;color:var(--c)}.pkgprice s{font:600 13px Inter;color:#94A3B8;margin-left:6px}
+.pkgsub,.mut{font-size:11.5px;color:#64748B}.pkgdesc{font-size:12px;margin-top:6px;color:#334155}
+.pkgleft{display:inline-block;margin-top:8px;background:#fff;border-radius:999px;padding:2px 10px;font-weight:800;font-size:11.5px;color:var(--c)}
+.extras{display:grid;gap:8px;margin-top:10px}
+.extra{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1.5px dashed #FDBA74;border-radius:14px;padding:10px 12px}
+.exic{font-size:22px}.exp{font-weight:800;color:#EA580C}
+.tag{display:inline-block;margin-left:6px;background:#FFEDD5;color:#9A3412;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:800}.tag.opt{background:#E0F2FE;color:#0369A1}
+.journey{display:flex;align-items:stretch;gap:4px;flex-wrap:wrap}
+.step{flex:1;min-width:120px;background:#fff;border-radius:16px;border:2px solid var(--c);padding:12px 10px;text-align:center}
+.sic{width:44px;height:44px;margin:0 auto 6px;border-radius:999px;background:var(--c);display:grid;place-items:center;font-size:22px}
+.sa{font:800 14px Poppins;color:var(--c)}.sb{font-size:12px;font-weight:600;color:#334155}
+.arrow{align-self:center;color:#94A3B8;font-size:20px;font-weight:900}
+.refund{display:flex;border-radius:14px;overflow:hidden;margin-top:12px;font-size:12px}
+.seg{flex:1;padding:10px;color:#fff}.seg b{display:block;font:800 13px Poppins}.seg.g{background:#10B981}.seg.a{background:#F59E0B}.seg.r{background:#EF4444}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:#fff;border:1.5px solid #C4B5FD;border-radius:999px;padding:6px 12px;font-weight:600;font-size:12.5px}
+.foot{display:flex;gap:16px;align-items:center;background:linear-gradient(120deg,#0F172A,#1E3A8A);color:#fff;padding:20px 22px;border-radius:20px;margin-top:20px;break-inside:avoid}
+.foot img{width:110px;height:110px;background:#fff;border-radius:12px;padding:6px}
+.foot h3{font:800 18px Poppins;margin:0 0 4px}.foot a{color:#FDE68A;font-weight:800;text-decoration:none}
+.brand{text-align:center;color:#94A3B8;font-size:11px;padding:14px 0 22px;letter-spacing:2px;font-weight:700}
+@media (max-width:560px){.hero{padding:22px 18px;min-height:260px}.hero h1{font-size:27px}.wrap{padding:6px 14px 18px}.stats{padding:12px 14px}.two{grid-template-columns:1fr}.arrow{display:none}.step{min-width:calc(50% - 4px)}.foot{flex-direction:column;text-align:center}}
+@media print{.bar{display:none}body{background:#fff}.page{max-width:none}@page{size:A4;margin:10mm}.hero{min-height:260px;border-radius:18px}}
+</style></head><body>
+<div class="bar"><button onclick="window.print()">⬇️ Save as PDF / Print</button><span>Tip: choose "Save as PDF" as the printer</span></div>
+<div class="page">
+  <header class="hero">${img ? `<img src="${esc(img)}" alt="" onerror="this.remove()">` : ""}
+    <div class="kicker">🏝️ GLASSWINGS GETAWAY</div>
+    <h1>${esc(event.title)}</h1>
+    <div class="when">📅 ${esc(event.event_date || dLong(t.start))}${event.venue || event.city ? ` &nbsp;·&nbsp; 📍 ${esc([event.venue, event.city].filter(Boolean).join(", "))}` : ""}</div>
+    ${from ? `<div class="price"><span>from</span><b>${inr(from)}</b><span>per person</span></div>` : ""}
+    ${early ? `<div class="eb">🐦 Early-bird price till ${dShort(early.early_until)}</div>` : ""}
+  </header>
+  ${stats.length ? `<div class="stats">${stats.map(([i, v, l]) => `<div class="stat"><div class="i">${i}</div><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`).join("")}</div>` : ""}
+  <div class="wrap">
+    ${dayHtml ? `<div class="title2">🗺️ <span>Day-by-day plan</span></div>${dayHtml}` : ""}
+    ${(t.stay_info || t.travel_info) ? `<div class="two" style="margin-top:4px">${sec("🏨", "Where you'll stay", "#8B5CF6", bullets(t.stay_info, "🛏️")).replace('class="card"', 'class="card" style="margin:0;--c:#8B5CF6"')}${sec("✈️", "Travel & pickup", "#0EA5E9", bullets(t.travel_info, "🚐")).replace('class="card"', 'class="card" style="margin:0;--c:#0EA5E9"')}</div>` : ""}
+    ${incHtml}
+    ${pkgHtml ? sec("🛏️", "Room packages", "#0369A1", pkgHtml) : ""}
+    ${exHtml ? sec("➕", "Optional extras", "#EA580C", exHtml) : ""}
+    ${sec("💳", "How payment works", "#7C3AED", journey + refund)}
+    ${packHtml ? sec("🎒", "What to pack", "#7C3AED", packHtml) : ""}
+    ${t.terms ? sec("📋", "Trip terms", "#475569", bullets(t.terms, "•")) : ""}
+    <div class="foot"><img src="${qr}" alt="QR"><div><h3>Book or pay your balance</h3>
+      <div>Scan the code or open <a href="${esc(link)}">${esc(link.replace(/^https?:\/\//, ""))}</a></div>
+      <div style="margin-top:6px;opacity:.9">Pay in parts, any day, until <b>${esc(dLong(t.deadline))}</b>.</div>
+      ${t.captain_name ? `<div style="margin-top:6px">🧭 Trip captain: <b>${esc(t.captain_name)}</b>${t.captain_phone ? ` · 📞 ${esc(t.captain_phone)}` : ""}</div>` : ""}</div></div>
+    <div class="brand">GLASSWINGS EVENTS · ${esc(new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }))}</div>
+  </div>
+</div>
+<script>
+(function(){var imgs=[].slice.call(document.images),left=imgs.length,done=false;function go(){if(done)return;done=true;setTimeout(function(){try{window.print()}catch(e){}},350)}
+if(!left)go();imgs.forEach(function(i){if(i.complete){if(--left<=0)go()}else{i.onload=i.onerror=function(){if(--left<=0)go()}}});setTimeout(go,4000);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){});})();
+</script>
+</body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
 function GetawayBox({ event, profile }) {
   useEffect(() => { gwPrepTripPay(); }, []);
   const [t, setT] = useState(null), [mine, setMine] = useState([]), [book, setBook] = useState(false), [open, setOpen] = useState({ itinerary: true });
@@ -15373,6 +15561,11 @@ function GetawayBox({ event, profile }) {
           </div>))}
       </div>}
 
+      <button type="button" onClick={() => gwTripItineraryPdf(event, t)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, border: 0, borderRadius: 16, padding: "12px 14px", margin: "12px 0 4px", cursor: "pointer", fontFamily: "inherit", textAlign: "left", color: "#fff", background: "linear-gradient(120deg,#7C3AED,#EC4899 55%,#F97316)", boxShadow: "0 8px 20px rgba(236,72,153,.25)" }}>
+        <span style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(255,255,255,.2)", display: "grid", placeItems: "center", fontSize: 22, flexShrink: 0 }}>📄</span>
+        <span style={{ flex: 1 }}><span style={{ display: "block", fontWeight: 950, fontSize: 15 }}>Download itinerary (PDF)</span><span style={{ display: "block", fontSize: 11.5, opacity: .92 }}>Colourful day-by-day plan, prices, inclusions & packing list to save or share</span></span>
+        <span style={{ fontSize: 18 }}>⬇️</span>
+      </button>
       <div style={{ marginTop: 8 }}>
         {sec("itinerary", "🗓️ Day-by-day plan", t.itinerary)}
         {sec("stay", "🏨 Where you'll stay", t.stay_info)}
@@ -16065,18 +16258,22 @@ function TripBoardingPanel({ rows, onChanged, onCash }) {
 }
 // ---------- Trip board: 🤖 automatic WhatsApp payment reminders ----------
 function TripAutoRemindCard({ eventId, isAdmin, onRan }) {
-  const [info, setInfo] = useState(null), [missing, setMissing] = useState(false), [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState(null), [missing, setMissing] = useState(false), [busy, setBusy] = useState(false), [saved, setSaved] = useState(""), [custom, setCustom] = useState("");
   const load = () => supabase.rpc("trip_auto_remind_info", { p_event: eventId }).then(({ data, error }) => { if (error) setMissing(true); else { setMissing(false); setInfo(data); } });
   useEffect(() => { load(); }, [eventId]);
   const day = d => d ? new Date(String(d).slice(0, 10) + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) : "";
   const when = t => t ? new Date(t).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "";
-  if (missing) return <div style={{ background: "#fff", border: "1px dashed #86EFAC", borderRadius: 12, padding: "9px 11px", fontSize: 12, color: "#166534", margin: "6px 0 10px" }}>🤖 Automatic weekly reminders: run <b>trip_auto_remind.sql</b> in Supabase to switch them on.</div>;
+  if (missing) return <div style={{ background: "#fff", border: "1px dashed #86EFAC", borderRadius: 12, padding: "9px 11px", fontSize: 12, color: "#166534", margin: "6px 0 10px" }}>🤖 Automatic reminders: run <b>trip_auto_remind.sql</b> in Supabase to switch them on.</div>;
   if (!info || !info.ok) return null;
-  const on = !!info.on;
-  const toggle = async () => {
-    const { data, error } = await supabase.rpc("set_trip_auto_remind", { p_event: eventId, p_on: !on });
-    if (error || !data?.ok) return window.gwConfirm(error?.message || data?.error || "Couldn't change it", () => {});
-    load();
+  const on = !!info.on, hasOpts = info.every !== undefined;
+  const every = Number(info.every || 7), before = Number(info.before ?? 3);
+  const save = async (o) => {
+    const next = { on, every, before, ...o };
+    const r = hasOpts
+      ? await supabase.rpc("set_trip_auto_remind_opts", { p_event: eventId, p_on: next.on, p_every: next.every, p_before: next.before })
+      : await supabase.rpc("set_trip_auto_remind", { p_event: eventId, p_on: next.on });
+    if (r.error || !r.data?.ok) return window.gwConfirm(r.error?.message || r.data?.error || "Couldn't save it", () => {});
+    setSaved("Saved ✓"); setTimeout(() => setSaved(""), 1800); load();
   };
   const runNow = async () => {
     setBusy(true);
@@ -16085,31 +16282,50 @@ function TripAutoRemindCard({ eventId, isAdmin, onRan }) {
       const r = await fetch("/api/whatsapp/trip-remind-auto", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token }) });
       const o = await r.json().catch(() => ({}));
       const total = (o.sent || 0) + (o.failed || 0) + (o.no_phone || 0);
-      window.gwConfirm(o.error ? `Couldn't run: ${o.error}` : total === 0 ? "Checked ✓ Nobody is due a reminder today (reminder days are Sundays, 3 days before the deadline and the deadline day, and nobody gets two in 20 hours)."
+      window.gwConfirm(o.error ? `Couldn't run: ${o.error}` : total === 0 ? `✅ Working. Nobody is due a reminder today.\n\nEach person gets one every ${every} day${every === 1 ? "" : "s"}${before ? `, plus ${before} day${before === 1 ? "" : "s"} before the deadline` : ""} and on the deadline day.${info.next ? `\nNext one: ${day(info.next)}.` : ""}`
         : `🤖 Automatic reminders (all trips)\n✓ Sent: ${o.sent || 0}${o.failed ? `\n✕ Failed: ${o.failed}` : ""}${o.no_phone ? `\n📵 No number: ${o.no_phone}` : ""}${(o.errors || []).length ? `\n\nAiSensy says: ${o.errors.join(" | ")}` : ""}`, () => {});
     } catch (e) { window.gwConfirm("Couldn't reach the app: " + (e.message || e), () => {}); }
     setBusy(false); load(); onRan && onRan();
   };
   const ranRecently = info.job_last_run && (Date.now() - new Date(info.job_last_run).getTime()) < 36 * 3600 * 1000;
+  const pill = (sel, label, fn) => <button type="button" onClick={fn} style={{ border: `1.5px solid ${sel ? "#16A34A" : "#D1FAE5"}`, background: sel ? "#16A34A" : "#fff", color: sel ? "#fff" : "#166534", borderRadius: 999, padding: "6px 11px", fontSize: 12.5, fontWeight: 850, cursor: "pointer", fontFamily: "inherit" }}>{label}</button>;
+  const chipSt = { fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px" };
+  const EVERY = [2, 3, 5, 7, 10, 14];
   return (
     <div style={{ background: "#fff", border: `1px solid ${on ? "#86EFAC" : "#E5E7EB"}`, borderRadius: 12, padding: "10px 11px", margin: "6px 0 10px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 900, fontSize: 13.5, color: on ? "#15803D" : "#475569" }}>🤖 Automatic reminders {on ? "ON" : "OFF"}</div>
-          <div style={{ fontSize: 11.5, color: "#166534", lineHeight: 1.45 }}>{on ? <>Sent by itself at about <b>10 AM</b>: every <b>Sunday</b>, <b>3 days before</b> the deadline and <b>on the deadline</b>{info.deadline ? ` (${day(info.deadline)})` : ""}, to everyone with a balance.</> : "Nobody gets automatic reminders for this trip. You can still use the buttons below."}</div>
+          <div style={{ fontWeight: 900, fontSize: 13.5, color: on ? "#15803D" : "#475569" }}>🤖 Automatic reminders {on ? "ON" : "OFF"} {saved && <span style={{ fontSize: 11.5, color: "#16A34A", marginLeft: 6 }}>{saved}</span>}</div>
+          <div style={{ fontSize: 11.5, color: "#166534", lineHeight: 1.45 }}>{on ? <>Sent by itself at about <b>10 AM</b> to everyone with a balance{hasOpts ? <>: every <b>{every} day{every === 1 ? "" : "s"}</b>{before ? <>, <b>{before} day{before === 1 ? "" : "s"} before</b> the deadline</> : null} and <b>on the deadline</b></> : null}{info.deadline ? ` (${day(info.deadline)})` : ""}.</> : "Nobody gets automatic reminders for this trip. You can still use the buttons below."}</div>
         </div>
-        <button onClick={toggle} aria-label="Switch automatic reminders" style={{ width: 50, height: 28, borderRadius: 99, border: 0, background: on ? "#16A34A" : "#CBD5E1", position: "relative", cursor: "pointer", flexShrink: 0 }}>
+        <button onClick={() => save({ on: !on })} aria-label="Switch automatic reminders" style={{ width: 50, height: 28, borderRadius: 99, border: 0, background: on ? "#16A34A" : "#CBD5E1", position: "relative", cursor: "pointer", flexShrink: 0 }}>
           <span style={{ position: "absolute", top: 3, left: on ? 25 : 3, width: 22, height: 22, borderRadius: 99, background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.25)", transition: "left .15s" }} />
         </button>
       </div>
+      {on && hasOpts && <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "9px 10px", marginTop: 9 }}>
+        <div style={{ fontSize: 12, fontWeight: 900, color: "#166534", marginBottom: 6 }}>🔁 Remind each person every…</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {EVERY.map(n => pill(every === n, `${n} days`, () => save({ every: n })))}
+          {!EVERY.includes(every) && pill(true, `${every} days`, () => {})}
+          <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+            <input value={custom} onChange={e => setCustom(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="Other" style={{ width: 62, border: "1.5px solid #D1FAE5", borderRadius: 999, padding: "6px 10px", fontSize: 16, outline: "none" }} />
+            {custom && <button type="button" onClick={() => { const n = Number(custom); if (n >= 1 && n <= 60) { save({ every: n }); setCustom(""); } else window.gwConfirm("Choose between 1 and 60 days.", () => {}); }} style={{ ...btn("#16A34A", "#fff"), padding: "6px 10px", fontSize: 12 }}>Set</button>}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 900, color: "#166534", margin: "10px 0 6px" }}>⏰ Extra reminder before the deadline</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {[0, 1, 2, 3, 5, 7].map(n => pill(before === n, n === 0 ? "None" : `${n} day${n === 1 ? "" : "s"} before`, () => save({ before: n })))}
+        </div>
+        <div style={{ fontSize: 11, color: "#166534", marginTop: 7, lineHeight: 1.4 }}>📅 Plus one on the deadline day. Counted per person from their last reminder (or the day they booked). Never twice in one day.</div>
+      </div>}
       {on && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-        {info.next && <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px", background: "#ECFDF5", color: "#166534" }}>📅 Next: {day(info.next)}</span>}
-        {!info.next && <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px", background: "#F1F5F9", color: "#475569" }}>No more reminder days before the deadline</span>}
-        {Number(info.auto_sent) > 0 && <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px", background: "#ECFDF5", color: "#166534" }}>✓ {info.auto_sent} sent so far</span>}
-        {Number(info.auto_failed) > 0 && <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px", background: "#FEF2F2", color: "#B91C1C" }}>✕ {info.auto_failed} failed</span>}
+        {info.next && <span style={{ ...chipSt, background: "#ECFDF5", color: "#166534" }}>📅 Next: {day(info.next)}</span>}
+        {!info.next && <span style={{ ...chipSt, background: "#F1F5F9", color: "#475569" }}>{Number(info.due_people) === 0 ? "Everyone has paid in full 🎉" : "No more reminder days before the deadline"}</span>}
+        {Number(info.auto_sent) > 0 && <span style={{ ...chipSt, background: "#ECFDF5", color: "#166534" }}>✓ {info.auto_sent} sent so far</span>}
+        {Number(info.auto_failed) > 0 && <span style={{ ...chipSt, background: "#FEF2F2", color: "#B91C1C" }}>✕ {info.auto_failed} failed</span>}
       </div>}
       {isAdmin && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: "1px dashed #BBF7D0" }}>
-        <span style={{ fontSize: 11, color: ranRecently ? "#166534" : "#B45309", flex: 1, minWidth: 160 }}>{info.job_last_run ? `${ranRecently ? "✅" : "⚠️"} Daily job last ran ${when(info.job_last_run)}` : "⏳ Daily job hasn't run yet. If this still shows after 10:30 AM tomorrow, the Supabase schedule isn't set up."}</span>
+        <span style={{ fontSize: 11, color: ranRecently ? "#166534" : "#B45309", flex: 1, minWidth: 160, lineHeight: 1.4 }}>{info.job_last_run ? `${ranRecently ? "✅" : "⚠️"} 10 AM schedule last ran ${when(info.job_last_run)}` : "⏳ The 10 AM schedule hasn't run yet. Check this line after 10:30 AM."}{info.last_check ? <><br />▶ Last manual check {when(info.last_check)}</> : null}</span>
         <button disabled={busy} onClick={runNow} style={{ ...btn("#fff", "#15803D"), border: "1px solid #BBF7D0", padding: "6px 10px", fontSize: 12, opacity: busy ? .6 : 1 }}>{busy ? "Checking…" : "▶ Check now"}</button>
       </div>}
     </div>
@@ -16851,7 +17067,7 @@ const GW_GUIDE = {
       "🧳 Travellers & payments: see who is behind (⚠️), tap 📣 Remind (WhatsApp via AiSensy), record cash with 💵, add flight PNR and room numbers, print the manifest and rooming list, mark boarded on the day.",
       "Tap ✅ Confirm trip once the minimum is reached and you've booked the hotel. After the deadline, 🔓 Release unpaid seats. If the trip can't happen, ✕ Cancel trip refunds everyone 100%.",
     ],
-    tips: ["🤖 Automatic WhatsApps: payment reminders every Sunday + 3 days before + on the deadline day, a receipt for every payment, and the Trip Pass when fully paid. Needs the AiSensy campaigns trip_payment_received and trip_pass_ready.", "Don't call it EMI: it's 'pay in parts before you travel'.", "Most cancellations become seat transfers: the traveller edits the name to a friend's before the deadline and nothing is lost.", "Organisers can run getaways too. Glasswings keeps its cut (set by admins) and admins record organiser payouts, e.g. hotel advances."],
+    tips: ["🤖 Automatic WhatsApps: payment reminders as often as you choose (e.g. every 7 days) + before + on the deadline day, a receipt for every payment, and the Trip Pass when fully paid. Needs the AiSensy campaigns trip_payment_received and trip_pass_ready.", "Don't call it EMI: it's 'pay in parts before you travel'.", "Most cancellations become seat transfers: the traveller edits the name to a friend's before the deadline and nothing is lost.", "Organisers can run getaways too. Glasswings keeps its cut (set by admins) and admins record organiser payouts, e.g. hotel advances."],
   },
   // ----- short tips for the public / vendor / brand screens -----
   vendor: { icon: "🏪", title: "How booking a stall works", grad: "linear-gradient(120deg,#F97316,#EC4899)", one: "Apply → organiser approves → pay in the app → get your stall number and Stall Pass.", steps: ["Pick a stall type and fill in your business details.", "The organiser reviews it. You'll see \"Approved\" in My stalls.", "Tap Pay to confirm. Your Stall Pass shows your stall number and setup time."] },
@@ -17061,7 +17277,7 @@ const GW_TAB_GUIDE = {
   ev_media: { icon: "🖼️", title: "Media & share", grad: "linear-gradient(120deg,#2563EB,#0EA5E9)", one: "Banner, photos and videos make people buy. Then share the event link everywhere.", flow: [["🖼️", "Banner", "Wide image"], ["🎬", "Videos", "Reels / teaser"], ["🔗", "Share link", "WhatsApp, Instagram"]], steps: ["Upload a bright banner and a few photos.", "Add a short video if you have one.", "Copy the share link and post it on WhatsApp and Instagram."] },
   ev_tickets: { ref: "tickets" },
   ev_trip: { icon: "🏝️", title: "Trip setup", grad: "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)", one: "Everything about how people book and pay for this getaway, and what they see on the trip page.", flow: [["💳", "Money rules", "Booking amount, deadline"], ["🛏️", "Rooms", "2/3-sharing + early bird"], ["➕", "Extras", "Flight ⚡, casino"], ["📝", "Trip page", "Plan, stay, packing"], ["🧮", "Cost sheet", "Break-even"]], steps: ["Set the booking amount = your non-refundable cost per seat (hotel + transport advance).", "Set 'Pay in full … days before' (7 is safe for hotels) and the minimum travellers.", "Add room packages with seats; add an early-bird price + last date.", "Add flights as an extra with ⚡ Paid in full at booking.", "Write the day-by-day plan and the rest of the trip page, then tap 💾 Save."], more: "getaway" },
-  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "🤖 Automatic reminders (switch at the top of 📣 WhatsApp payment reminders) go out by themselves at 10 AM every Sunday, 3 days before the deadline and on the deadline day. Nothing to tap.", "Need one right now? Tap ⚠️ Remind those behind (or 📣 Remind everyone) to send WhatsApp reminders from the Glasswings number with a Pay now button. 💬 From my WhatsApp opens the same message on your own phone.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On departure day the 🛫 Boarding day box appears at the top: tap 📷 Scan Trip Pass, check ID, tap ✅ Board all. The counter shows boarded / total, and ⏳ Not boarded lists who to call."], more: "getaway" },
+  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "🤖 Automatic reminders (switch at the top of 📣 WhatsApp payment reminders) go out by themselves at 10 AM. Choose how often (every 2, 3, 7… days) and an extra one before the deadline; one always goes on the deadline day. Nothing to tap.", "Need one right now? Tap ⚠️ Remind those behind (or 📣 Remind everyone) to send WhatsApp reminders from the Glasswings number with a Pay now button. 💬 From my WhatsApp opens the same message on your own phone.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On departure day the 🛫 Boarding day box appears at the top: tap 📷 Scan Trip Pass, check ID, tap ✅ Board all. The counter shows boarded / total, and ⏳ Not boarded lists who to call."], more: "getaway" },
   ev_sales: { icon: "💰", title: "Sales & platform fee", grad: "linear-gradient(120deg,#059669,#0EA5E9)", one: "Every ticket sold (online and at the door) and the platform fee for this event.", flow: [["💳", "Online", "Razorpay"], ["💵", "Door", "Cash / UPI"], ["💼", "Platform fee", "Std / tiers / ₹ per ticket"], ["🏦", "Payable", "To organiser"]], steps: ["Check the 💼 Platform fee card (admins can switch to volume pricing for big events).", "Scroll down to see each sale.", "Settle the organiser from 🏢 Organisers → Payouts."], more: "fees" },
   ev_pnl: { icon: "💹", title: "Profit & loss", grad: "linear-gradient(120deg,#0E7A5F,#16A34A)", one: "Income from this event minus its costs, so you know if it made money.", flow: [["₹", "Income", "Tickets, stalls, sponsors"], ["🧾", "Costs", "Venue, DJ, decor…"], ["⚖️", "Profit", "Income − costs"]], steps: ["Ticket income is added automatically (online + door).", "Tap Add a line for every cost (venue, DJ, decor) with its amount.", "Check the net profit before planning the next event."] },
   ev_analytics: { icon: "📊", title: "Event analytics", grad: "linear-gradient(120deg,#4F46E5,#0EA5E9)", one: "Who bought, when they bought, and how many came.", flow: [["📈", "Sales by day", "When people buy"], ["🎟️", "By ticket type", "What sells"], ["✅", "Check-ins", "Turn-up rate"]], steps: ["See which days and which tickets sold best.", "Use it to time your next promotions."] },
