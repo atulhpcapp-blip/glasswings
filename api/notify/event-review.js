@@ -20,6 +20,8 @@ const STATUS = {
   publish: ["🎉 Congratulations! Your event is LIVE on Glasswings", "is now live on Glasswings. Members can see it and book tickets right away.", "#16A34A"],
   changes: ["✏️ Small changes needed before we publish", "needs a few changes before we can publish it.", "#D97706"],
   unpublish: ["⏸️ Your event has been unpublished", "has been taken off the app for now.", "#DC2626"],
+  apply_edit: ["✅ Your changes are now live", "has been updated. Your latest changes were approved and members can see them now.", "#16A34A"],
+  discard: ["Your recent changes were not approved", "stays as it was. Your recent changes were not approved.", "#DC2626"],
 };
 
 async function sendEmail(to, subject, html, text) {
@@ -118,7 +120,7 @@ export default async function handler(req, res) {
     const liveCamp = action === "publish" ? info.live_campaign : null;
     const wa = !to ? "no_phone"
       : liveCamp ? await sendWhatsApp(liveCamp, to, c.first, [clean(c.first), clean(c.title), clean([c.event_date, c.place].filter(Boolean).join(" · ") || "-"), link.replace(/^https?:\/\//, "")])
-      : action === "publish" ? "not_setup"   // never send the "please make changes" template for a published event
+      : (action === "publish" || action === "apply_edit") ? "not_setup"   // never send the "please make changes" template for a published event
       : await sendWhatsApp(info.campaign, to, c.first, [clean(c.first), clean(c.title), clean(st[0]), clean(note || "-")]);
     try { await rpc("event_review_notify_log", { p_event: event_id, p_user: user.id, p_action: action || "", p_email: String(email).slice(0, 300), p_wa: String(wa).slice(0, 300) }); } catch { }
     return res.status(200).json({ ok: true, email, whatsapp: wa, contact: { name: c.name, first: c.first, phone: c.phone, email: c.email } });
