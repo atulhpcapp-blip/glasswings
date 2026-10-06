@@ -16050,9 +16050,10 @@ async function gwSendTripReminders(eventId, bookingIds) {
 }
 function TripBoardTab({ event }) {
   const [d, setD] = useState(null), [err, setErr] = useState(""), [filter, setFilter] = useState("all"), [openB, setOpenB] = useState(null), [q, setQ] = useState("");
-  const [lastRem, setLastRem] = useState({}), [remBusy, setRemBusy] = useState(false), [camp, setCamp] = useState(null), [boardOpen, setBoardOpen] = useState(false);
+  const [lastRem, setLastRem] = useState({}), [remBusy, setRemBusy] = useState(false), [camp, setCamp] = useState(null), [boardOpen, setBoardOpen] = useState(false), [waSt, setWaSt] = useState(null);
   const load = () => {
     supabase.rpc("trip_board", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setD(data); } });
+    supabase.rpc("trip_wa_status", { p_event: event.id }).then(({ data, error }) => setWaSt(error ? null : data));
     supabase.from("trip_reminder_log").select("booking_id,sent_at,status").eq("event_id", event.id).order("sent_at", { ascending: false }).limit(500).then(({ data }) => { const m = {}; (data || []).forEach(x => { if (!m[x.booking_id]) m[x.booking_id] = x; }); setLastRem(m); });
     supabase.rpc("trip_wa_campaigns").then(async ({ data, error }) => {
       if (!error && data) return setCamp(data);
@@ -16194,6 +16195,7 @@ function TripBoardTab({ event }) {
               {(b.travellers || []).map(t => <TripTravellerAdminRow key={t.id} t={t} onSaved={load} />)}
               {(b.payments || []).length > 0 && <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>Payments: {b.payments.map(p => `${gwINR(p.amount)} (${p.method === "razorpay" ? "online" : p.method}${p.paid_at ? ", " + new Date(p.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""})`).join(" · ")}</div>}
               {(b.extras || []).length > 0 && <div style={{ fontSize: 12, color: W.soft, marginTop: 4 }}>Extras: {b.extras.map(x => `${x.name} × ${x.qty}`).join(", ")}</div>}
+              {waSt && <TripWaLines b={b} st={waSt} onDone={load} />}
               {["pending", "booked", "paid"].includes(b.status) && <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 <button onClick={() => window.gwConfirm(`Cancel ${b.booker}'s booking using the trip's cancellation rule? Refund: ${gwINR(b.refund_now)}.`, () => rpcDo("trip_admin_cancel_booking", { p_booking: b.id, p_full: false }))} style={{ ...btn("#fff", "#B91C1C"), border: "1px solid #FECACA", padding: "6px 10px", fontSize: 12 }}>Cancel (rule)</button>
                 <button onClick={() => window.gwConfirm(`Cancel and refund EVERYTHING ${b.booker} paid (${gwINR(b.paid)})?`, () => rpcDo("trip_admin_cancel_booking", { p_booking: b.id, p_full: true }))} style={{ ...btn("#fff", "#B91C1C"), border: "1px solid #FECACA", padding: "6px 10px", fontSize: 12 }}>Cancel + full refund</button>
@@ -16211,6 +16213,36 @@ function TripBoardTab({ event }) {
           {w.phone && <a href={`https://wa.me/${waNum(w.phone)}?text=${encodeURIComponent(`Hi ${String(w.name || "").split(" ")[0]} 👋 A seat just opened on *${event.title}*! Book within 24 hours on Glasswings to grab it.`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", padding: "5px 9px", fontSize: 12 }}>💬 Offer seat</a>}
         </div>)}
       </div>}
+    </div>
+  );
+}
+// WhatsApp receipts / Trip Pass results for one booking, with resend
+function TripWaLines({ b, st, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const pays = (st.payments || []).filter(p => p.booking_id === b.id);
+  const pass = (st.passes || []).find(p => p.booking_id === b.id);
+  const lab = x => x === "sent" ? ["✓ sent", "#15803D"] : x === "failed" ? ["✕ failed", "#B91C1C"] : x === "no_phone" ? ["📵 no number", "#B45309"] : x === "sending" ? ["… sending", "#0369A1"] : ["⏳ not sent yet", W.soft];
+  const anyBad = pays.some(p => p.wa_status !== "sent") || (pass && pass.wa_status !== "sent");
+  const resend = async () => {
+    setBusy(true);
+    await supabase.rpc("trip_wa_reset", { p_booking: b.id });
+    const { data: ses } = await supabase.auth.getSession();
+    const r = await fetch("/api/whatsapp/trip-notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token, booking_id: b.id }) });
+    const o = await r.json().catch(() => ({}));
+    setBusy(false);
+    const res = o.results || [];
+    window.gwConfirm(!r.ok ? "Couldn't reach the WhatsApp sender (check that trip-notify.js and _trip-wa.js are in GitHub → api/whatsapp)."
+      : !res.length ? (o.skipped ? "WhatsApp isn't set up: AISENSY_API_KEY missing in Vercel." : "Nothing to send: everything was already sent.")
+      : res.map(x => `${x.type === "pass" ? "Trip Pass" : "Receipt"}: ${x.ok ? "✓ sent" : "✕ " + x.detail}`).join("\n"), () => {});
+    onDone && onDone();
+  };
+  if (!pays.length && !pass) return null;
+  return (
+    <div style={{ marginTop: 8, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "7px 9px", fontSize: 12 }}>
+      <div style={{ fontWeight: 900, color: "#166534", marginBottom: 3 }}>📲 WhatsApp</div>
+      {pays.map((p, i) => { const [t, c] = lab(p.wa_status); return <div key={i} style={{ color: W.ink }}>Receipt {gwINR(p.amount)}: <b style={{ color: c }}>{t}</b>{p.wa_status === "failed" && p.wa_detail ? <span style={{ color: "#B91C1C" }}> · {String(p.wa_detail).slice(0, 120)}</span> : null}</div>; })}
+      {pass && (() => { const [t, c] = lab(pass.wa_status); return <div style={{ color: W.ink }}>Trip Pass: <b style={{ color: c }}>{t}</b>{pass.wa_status === "failed" && pass.wa_detail ? <span style={{ color: "#B91C1C" }}> · {String(pass.wa_detail).slice(0, 120)}</span> : null}</div>; })()}
+      {anyBad && <button disabled={busy} onClick={resend} style={{ ...btn("#16A34A", "#fff"), padding: "5px 10px", fontSize: 12, marginTop: 5 }}>{busy ? "Sending…" : "↻ Resend WhatsApp"}</button>}
     </div>
   );
 }
