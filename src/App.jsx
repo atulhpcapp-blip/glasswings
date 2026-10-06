@@ -2302,6 +2302,14 @@ function AdminEventEntryRequests({ event }) {
   return <div style={{marginTop:4}}><div style={{background:"linear-gradient(135deg,#F5F3FF,#EFF6FF)",border:"1px solid #C4B5FD",borderRadius:14,padding:13,marginBottom:12}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}><div><div style={{fontWeight:950,color:"#6D28D9",fontSize:15}}>🙋 Entry Requests / RSVP</div><div style={{fontSize:12,color:"#65577A",marginTop:3}}>Approve = issue the ticket immediately and send it to the member.</div></div><button onClick={load} disabled={busy} style={{...btn("#fff","#6D28D9"),border:"1px solid #DDD6FE",padding:"7px 10px"}}>{busy?"…":"↻ Refresh"}</button></div></div>{err&&<div style={{background:"#FEF2F2",color:"#B42318",border:"1px solid #FECACA",borderRadius:10,padding:10,fontSize:12.5,marginBottom:10}}>{err}</div>}<div style={{fontSize:12.5,fontWeight:900,color:W.ink,marginBottom:7}}>Pending requests · {pending.length}</div>{!busy&&pending.length===0&&<div style={{fontSize:12.5,color:W.soft,padding:"10px 2px 14px"}}>No pending RSVP requests.</div>}{pending.map(card)}{decided.length>0&&<><div style={{fontSize:12.5,fontWeight:900,color:W.soft,margin:"15px 0 7px"}}>Recently decided</div>{decided.slice(0,20).map(card)}</>}</div>;
 }
 
+function GwSec({ title, children }) {
+  return (
+    <div style={{ marginTop: 28 }}>
+      <div style={{ fontWeight: 800, fontSize: 17.5, color: W.ink, marginBottom: 10 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
 function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBuy, onPick, profile, hasTicket, onViewTicket, onOpenChat, stats, typeSold, eventSold, initialCart, initialAddons, isPlanMember, onViewPlans, onOpenDM, mySegs = [], isStaff = false, segList = [], waGroup = "", rating, myRating, onRate, saved, onToggleSave }) {
   const eventPast = e.event_at && new Date(e.event_at).getTime() < Date.now();
   const waJoin = (e.whatsapp_url || waGroup || "").trim();
@@ -2451,12 +2459,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   const excl = e.exclusions || [];
   const gl = { any: ["Anyone", "#ECEFEE", W.soft], male: ["Men only", "#E8F2FB", "#1B6FB8"], female: ["Women only", "#FBE9F2", "#C0246E"] };
   const aud = gr => { const [l, bg, c] = gl[gr] || gl.any; return <span style={{ background: bg, color: c, fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 10, whiteSpace: "nowrap" }}>{l}</span>; };
-  const Sec = ({ title, children }) => (
-    <div style={{ marginTop: 28 }}>
-      <div style={{ fontWeight: 800, fontSize: 17.5, color: W.ink, marginBottom: 10 }}>{title}</div>
-      {children}
-    </div>
-  );
+  const Sec = GwSec;   // defined outside so sections aren't rebuilt (and forms closed) on every refresh
   const ticketList = gwIsGetaway(e) ? <GetawayBox event={e} profile={profile} /> : (
     <div>
       {hasTicket && (
@@ -15217,7 +15220,7 @@ async function gwPayTrip(bookingId, amount, onDone) {
     const { data: ses } = await supabase.auth.getSession();
     const token = ses?.session?.access_token;
     if (!token) return window.gwConfirm("Please log in to pay.", () => {});
-    const r = await fetch("/api/razorpay/trip-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, booking_id: bookingId, amount }) });
+    const r = await fetch("/api/razorpay/trip-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, ...(String(bookingId).startsWith("TR-") ? { booking_code: bookingId } : { booking_id: bookingId }), amount }) });
     const od = await r.json().catch(() => ({}));
     if (!r.ok || !od.order_id) return window.gwConfirm(od.error || "Could not start the payment.", () => {});
     const rzp = new window.Razorpay({
@@ -15365,15 +15368,17 @@ function TripWaitlist({ event, profile }) {
 }
 
 // ---------- Booking sheet (4 steps) ----------
+const GW_TRIP_DRAFTS = {};   // keeps a half-filled booking form if it gets closed by mistake
 function TripBookSheet({ event, trip, profile, onClose, onDone }) {
   const pk = (trip.packages || []).filter(p => p.left > 0);
-  const [step, setStep] = useState(0);
-  const [pid, setPid] = useState(pk[0]?.id || null);
-  const [people, setPeople] = useState(1);
-  const [room, setRoom] = useState("any");
-  const [ex, setEx] = useState(() => Object.fromEntries((trip.extras || []).map(x => [x.id, x.pay_upfront ? 1 : 0])));
+  const dr = GW_TRIP_DRAFTS[event.id] || {};
+  const [step, setStep] = useState(dr.step || 0);
+  const [pid, setPid] = useState(dr.pid && pk.some(p => p.id === dr.pid) ? dr.pid : (pk[0]?.id || null));
+  const [people, setPeople] = useState(dr.people || 1);
+  const [room, setRoom] = useState(dr.room || "any");
+  const [ex, setEx] = useState(() => dr.ex || Object.fromEntries((trip.extras || []).map(x => [x.id, x.pay_upfront ? 1 : 0])));
   const blank = i => ({ name: i === 0 ? (profile?.full_name || "") : "", age: "", gender: i === 0 ? (profile?.gender || "") : "", phone: "", emergency: "", food: i === 0 ? (profile?.food_pref || "") : "", from_city: trip.from_city || "" });
-  const [tr, setTr] = useState([blank(0)]);
+  const [tr, setTr] = useState(() => dr.tr && dr.tr.length ? dr.tr : [blank(0)]);
   const [agree, setAgree] = useState(false), [busy, setBusy] = useState(false), [err, setErr] = useState("");
   const topRef = useRef(null);
   const gwLeadInp = { ...GW_LEAD_INP_BASE, fontSize: 16 };   // 16px stops phones zooming in on tap
@@ -15384,21 +15389,23 @@ function TripBookSheet({ event, trip, profile, onClose, onDone }) {
   }, []);
   useEffect(() => { const sc = topRef.current?.parentElement; if (sc) sc.scrollTop = 0; setErr(""); }, [step]);
   const pkg = pk.find(p => p.id === pid);
+  useEffect(() => { GW_TRIP_DRAFTS[event.id] = { step, pid, people, room, ex, tr }; }, [step, pid, people, room, ex, tr]);
   useEffect(() => { setTr(old => Array.from({ length: people }, (_, i) => old[i] || blank(i))); setEx(o => Object.fromEntries(Object.entries(o).map(([k, v]) => { const x = (trip.extras || []).find(e => e.id === k); return [k, x?.pay_upfront && v > 0 ? people : Math.min(v, people)]; }))); }, [people]);
   const extrasSel = (trip.extras || []).map(x => ({ ...x, qty: ex[x.id] || 0 })).filter(x => x.qty > 0);
   const unit = Number(pkg?.now_price) || 0;
   const total = unit * people + extrasSel.reduce((s, x) => s + Number(x.price) * x.qty, 0);
   const upfront = extrasSel.filter(x => x.pay_upfront).reduce((s, x) => s + Number(x.price) * x.qty, 0);
-  const first = Math.min(total, Number(trip.booking_amount) * people + upfront);
+  const first0 = Math.min(total, Number(trip.booking_amount) * people + upfront);
+  const first = first0 > 0 ? first0 : total;
   const weekly = gwTripWeekly(total - first, trip.deadline);
   const setT = (i, k, v) => setTr(a => a.map((x, j) => j === i ? { ...x, [k]: v } : x));
   const minAge = Number(trip.min_age) || 18;
-  const trOk = tr.every(x => x.name.trim().length >= 3 && Number(x.age) >= minAge && x.gender && x.food && String(x.phone || "").replace(/\D/g, "").length >= 10);
+  const trOk = tr.every((x, i) => x.name.trim().length >= 3 && Number(x.age) >= minAge && x.gender && x.food && (i > 0 || String(x.phone || "").replace(/\D/g, "").length >= 10));
   const next = () => {
     setErr("");
     if (step === 0 && !pkg) return setErr("Please choose a package.");
     if (step === 0 && people > pkg.left) return setErr(`Only ${pkg.left} seat${pkg.left === 1 ? "" : "s"} left in ${pkg.name}.`);
-    if (step === 2 && !trOk) return setErr(`Fill every traveller: name as on ID, age (${minAge}+), gender, WhatsApp number and food.`);
+    if (step === 2 && !trOk) return setErr(`Please fill: name as on ID, age (${minAge}+), gender and food for every traveller, and your WhatsApp number.`);
     try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch { }
     setStep(s => s + 1);
   };
@@ -15407,6 +15414,7 @@ function TripBookSheet({ event, trip, profile, onClose, onDone }) {
     setBusy(true); setErr("");
     const { data, error } = await supabase.rpc("trip_book", { p_event: event.id, p_package: pid, p_people: people, p_extras: extrasSel.map(x => ({ id: x.id, qty: x.qty })), p_travellers: tr.map(x => ({ ...x, age: Number(x.age) })), p_room_pref: room, p_notes: null });
     if (error || !data?.ok) { setBusy(false); return setErr(error?.message || data?.error || "Couldn't create the booking."); }
+    delete GW_TRIP_DRAFTS[event.id];
     await gwPayTrip(data.booking_id, data.first_due, onDone);
     setBusy(false);
   };
@@ -15481,7 +15489,7 @@ function TripBookSheet({ event, trip, profile, onClose, onDone }) {
               <input value={x.age} onChange={e => setT(i, "age", e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={`Age (${minAge}+) *`} style={{ ...gwLeadInp, width: 110 }} />
               <select value={x.gender} onChange={e => setT(i, "gender", e.target.value)} style={{ ...gwLeadInp, flex: 1 }}><option value="">Gender *</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option></select>
             </div>
-            <input value={x.phone} onChange={e => setT(i, "phone", e.target.value)} inputMode="tel" placeholder="WhatsApp number *" style={{ ...gwLeadInp, marginBottom: 7 }} />
+            <input value={x.phone} onChange={e => setT(i, "phone", e.target.value)} inputMode="tel" placeholder={i === 0 ? "WhatsApp number *" : "WhatsApp number (so they get the Trip Pass)"} style={{ ...gwLeadInp, marginBottom: 7 }} />
             <div style={{ display: "flex", gap: 6, marginBottom: 7 }}>
               {[["veg", "🥗 Veg", "#16A34A"], ["nonveg", "🍗 Non-veg", "#B91C1C"]].map(([k, l, c]) => <button key={k} type="button" onClick={() => setT(i, "food", k)} style={{ flex: 1, border: `2px solid ${c}`, background: x.food === k ? c : "#fff", color: x.food === k ? "#fff" : c, borderRadius: 10, padding: "8px", fontWeight: 900, cursor: "pointer" }}>{l}</button>)}
             </div>
@@ -15551,6 +15559,7 @@ function MyTripCard({ b, onChange }) {
         <span style={{ fontSize: 11, fontWeight: 900, color: fg, background: bg, borderRadius: 99, padding: "4px 9px", whiteSpace: "nowrap" }}>{lab}</span>
       </div>
       <div style={{ marginTop: 10 }}><GwTripProgress paid={Number(b.paid)} total={Number(b.total)} firstDue={Number(b.first_due)} /></div>
+      {b.refund_status === "pending" && Number(b.refund_amount) > 0 && <div style={{ fontSize: 12, color: "#0369A1", fontWeight: 800, marginTop: 6 }}>💸 {gwINR(b.refund_amount)} extra was paid. The organiser will refund it to you.</div>}
 
       {b.status === "pending" && <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: 12.5, color: "#92400E", fontWeight: 700 }}>Your seat isn't held until the booking amount is paid.</div>
@@ -15563,7 +15572,7 @@ function MyTripCard({ b, onChange }) {
       {b.status === "booked" && <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: 12.5, color: dl != null && dl <= 3 ? "#B91C1C" : W.ink, fontWeight: 800 }}>⏰ Finish by {gwDateShort(b.deadline)}{dl != null ? ` · ${dl <= 0 ? "today!" : `${dl} day${dl === 1 ? "" : "s"} left`}` : ""}{weekly && dl > 7 ? ` · suggested ${gwINR(weekly)}/week` : ""}</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-          {[...new Set([minPart, weekly, left].filter(v => v > 0))].map(v => <button key={v} onClick={() => setAmt(String(v))} style={{ ...gwChip(Number(amt) === v), fontSize: 12 }}>{v === left ? `Pay all ${gwINR(v)}` : gwINR(v)}</button>)}
+          {[...new Set([minPart, weekly, left].filter(v => v > 0 && v >= minPart))].map(v => <button key={v} onClick={() => setAmt(String(v))} style={{ ...gwChip(Number(amt) === v), fontSize: 12 }}>{v === left ? `Pay all ${gwINR(v)}` : gwINR(v)}</button>)}
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <input value={amt} onChange={e => setAmt(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={`Any amount (min ₹${minPart})`} style={{ ...gwLeadInp, flex: 1, minWidth: 0 }} />
@@ -15649,7 +15658,8 @@ function TripPayPage({ code, loggedIn = true }) {
             <div style={{ marginTop: 12 }}><GwTripProgress paid={Number(d.paid)} total={Number(d.total)} firstDue={Number(d.first_due)} dark /></div>
           </div>
           <div style={{ padding: 16 }}>
-            {d.status === "pending" ? <div style={{ color: "#92400E", fontWeight: 800 }}>{d.booker} still has to pay the booking amount first. Ask them to complete it, then open this link again.</div>
+            {["cancelled", "released"].includes(d.status) ? <div style={{ color: W.soft, fontWeight: 800 }}>This booking is closed.</div>
+              : d.status === "pending" ? <div style={{ color: "#92400E", fontWeight: 800 }}>{d.booker} still has to pay the booking amount first. Ask them to complete it, then open this link again.</div>
               : left <= 0 ? <div><div style={{ color: "#15803D", fontWeight: 900, fontSize: 16 }}>🎉 Fully paid. Here's your Trip Pass!</div>{d.pass && <TripPass b={{ code: d.code, event_title: d.event_title, event_date: d.event_date, package: d.package, travellers: d.pass.travellers, captain_name: d.pass.captain_name, captain_phone: d.pass.captain_phone }} />}</div>
                 : ["cancelled", "released"].includes(d.status) ? <div style={{ color: W.soft, fontWeight: 800 }}>This booking is closed.</div>
                   : !loggedIn ? <div>
@@ -15665,7 +15675,7 @@ function TripPayPage({ code, loggedIn = true }) {
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input value={amt} onChange={e => setAmt(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="Amount ₹" style={{ ...gwLeadInp, flex: 1, minWidth: 0 }} />
-                      <button onClick={() => { const a = Math.round(Number(amt) || 0); if (a < minPart) return window.gwConfirm(`Minimum payment is ₹${minPart}.`, () => {}); gwPayTrip(d.id, Math.min(a, left), () => { setAmt(""); load(); }); }} style={{ ...btn("#0EA5E9", "#fff"), padding: "10px 18px", fontWeight: 900 }}>Pay</button>
+                      <button onClick={() => { const a = Math.round(Number(amt) || 0); if (a < minPart) return window.gwConfirm(`Minimum payment is ₹${minPart}.`, () => {}); gwPayTrip(d.code, Math.min(a, left), () => { setAmt(""); load(); }); }} style={{ ...btn("#0EA5E9", "#fff"), padding: "10px 18px", fontWeight: 900 }}>Pay</button>
                     </div>
                   </>}
           </div>
@@ -15700,7 +15710,7 @@ function TripSetupTab({ event }) {
     const row = { ...s };
     ["booking_amount", "min_people", "deadline_days", "min_part", "min_age", "cancel_full_days", "cancel_half_days", "cost_per_person", "fixed_cost", "commission_pct"].forEach(k => { if (row[k] !== undefined) row[k] = Number(row[k]) || 0; });
     row.confirm_by = row.confirm_by || null;
-    delete row.updated_at;
+    delete row.updated_at; delete row.status;   // status is changed only by Confirm / Cancel trip
     if (!admin) delete row.commission_pct;
     const { error } = await supabase.from("trip_settings").upsert(row);
     setBusy(false);
@@ -15917,9 +15927,16 @@ function TripBoardingPanel({ rows, onChanged, onCash }) {
 // ---------- Organiser: 🧳 Travellers & payments tab ----------
 async function gwSendTripReminders(eventId, bookingIds) {
   const { data: ses } = await supabase.auth.getSession();
-  const r = await fetch("/api/whatsapp/trip-remind", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token, event_id: eventId, booking_ids: bookingIds || null }) });
-  const out = await r.json().catch(() => ({}));
-  if (!r.ok || out.error) return window.gwConfirm(out.error || "Couldn't send reminders.", () => {});
+  const ids = bookingIds || [];
+  const chunks = []; for (let i = 0; i < ids.length; i += 12) chunks.push(ids.slice(i, i + 12));   // small batches so none time out
+  const out = { total: 0, sent: 0, failed: 0, no_phone: 0, errors: [] };
+  for (const ch of chunks) {
+    const r = await fetch("/api/whatsapp/trip-remind", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token, event_id: eventId, booking_ids: ch }) });
+    const o = await r.json().catch(() => ({}));
+    if (!r.ok || o.error) { out.errors.push(o.error || `Batch failed (${r.status})`); out.failed += ch.length; continue; }
+    out.total += o.total || 0; out.sent += o.sent || 0; out.failed += o.failed || 0; out.no_phone += o.no_phone || 0; out.errors.push(...(o.errors || []));
+  }
+  out.errors = out.errors.slice(0, 3);
   window.gwConfirm(out.total === 0 ? "Nobody to remind: everyone is fully paid. 🎉"
     : `📣 WhatsApp reminders\n✓ Sent: ${out.sent}${out.failed ? `\n✕ Failed: ${out.failed}` : ""}${out.no_phone ? `\n📵 No number: ${out.no_phone}` : ""}${(out.errors || []).length ? `\n\nAiSensy says: ${out.errors.join(" | ")}\n\nCheck the campaign name matches AiSensy exactly and the campaign is Live.` : ""}`, () => {});
 }
@@ -15947,7 +15964,8 @@ function TripBoardTab({ event }) {
   const comm = Math.round(net * (Number(s.commission_pct) || 0) / 100);
   const gwFee = T.gateway_pct != null ? Math.round(Number(T.online) * Number(T.gateway_pct) / 100) : 0;
   const paidOut = (d.payouts || []).reduce((a, p) => a + Number(p.amount), 0);
-  const payable = net - comm - gwFee - paidOut;
+  const offline = Number(T.offline) || 0;   // cash/UPI the organiser collected directly
+  const payable = net - offline - comm - gwFee - paidOut;
   const minP = Number(s.min_people) || 0;
   const margin = (act.length ? act.reduce((a, b) => a + Number(b.unit_price), 0) / act.length : 0) - Number(s.cost_per_person || 0);
   const be = margin > 0 ? Math.ceil(Number(s.fixed_cost || 0) / margin) : null;
@@ -16004,7 +16022,8 @@ function TripBoardTab({ event }) {
         <div style={{ fontSize: 10.5, letterSpacing: 2, fontWeight: 900, color: "#93C5FD" }}>💰 MONEY</div>
         Collected {gwINR(T.collected)}{Number(T.refunds) ? ` − refunds ${gwINR(T.refunds)}` : ""} = <b>{gwINR(net)}</b><br />
         Glasswings cut {s.commission_pct}% <b>{gwINR(comm)}</b>{gwFee ? ` · gateway ${gwINR(gwFee)}` : ""}{paidOut ? ` · already paid to organiser ${gwINR(paidOut)}` : ""}<br />
-        <span style={{ color: "#4ADE80", fontWeight: 900 }}>Organiser payable now: {gwINR(payable)}</span>
+        {offline > 0 && <>Cash/UPI already with organiser: −{gwINR(offline)}<br /></>}
+        <span style={{ color: payable >= 0 ? "#4ADE80" : "#FCA5A5", fontWeight: 900 }}>{payable >= 0 ? `Organiser payable now: ${gwINR(payable)}` : `Organiser owes Glasswings: ${gwINR(-payable)}`}</span>
         {be != null && <div style={{ color: "#FDE68A" }}>Break-even: {be} travellers{T.people >= be ? " ✓ reached" : ` · ${be - T.people} more needed`}</div>}
         {d.is_admin && <button onClick={async () => { const v = await window.gwPrompt("Record a payout to the organiser (₹). For hotel/bus advances, note it.", ""); const n = Number(String(v || "").replace(/\D/g, "")); if (n > 0) { const note = await window.gwPrompt("Note (e.g. hotel advance / final settlement)", ""); rpcDo("trip_add_payout", { p_event: event.id, p_amount: n, p_note: note || "" }); } }} style={{ ...btn("#fff", "#0F172A"), padding: "5px 10px", fontSize: 12, marginTop: 6 }}>🏦 Record payout</button>}
       </div>
@@ -16015,7 +16034,7 @@ function TripBoardTab({ event }) {
         <div style={{ fontSize: 12, color: "#166534", margin: "2px 0 8px", lineHeight: 1.45 }}>Sent from the Glasswings WhatsApp number (AiSensy) with each person's balance, due date and a <b>Pay now</b> button. Tip: send once a week (e.g. every Sunday), plus 3 days before the deadline.</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button disabled={remBusy || !act.some(b => b.behind > 0)} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to the ${act.filter(b => b.behind > 0).length} booking(s) that are behind schedule?`, () => sendRem(act.filter(b => b.behind > 0).map(b => b.id)))} style={{ ...btn("#F59E0B", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.behind > 0) ? .5 : 1 }}>⚠️ Remind those behind ({act.filter(b => b.behind > 0).length})</button>
-          <button disabled={remBusy || !act.some(b => b.status === "booked")} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to everyone who still has a balance (${act.filter(b => b.status === "booked").length} booking(s))?`, () => sendRem(null))} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.status === "booked") ? .5 : 1 }}>{remBusy ? "Sending…" : `📣 Remind everyone with a balance (${act.filter(b => b.status === "booked").length})`}</button>
+          <button disabled={remBusy || !act.some(b => b.status === "booked")} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to everyone who still has a balance (${act.filter(b => b.status === "booked").length} booking(s))?`, () => sendRem(act.filter(b => b.status === "booked").map(b => b.id)))} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.status === "booked") ? .5 : 1 }}>{remBusy ? "Sending…" : `📣 Remind everyone with a balance (${act.filter(b => b.status === "booked").length})`}</button>
         </div>
         <div style={{ fontSize: 11.5, color: "#166534", marginTop: 8, lineHeight: 1.45 }}>🤖 Automatic: every payment sends a <b>WhatsApp receipt</b>, and a fully paid booking gets the <b>Trip Pass</b> on WhatsApp (booker + every traveller with a number).</div>
         {d.is_admin && camp && <details style={{ marginTop: 6 }}>
@@ -17810,10 +17829,35 @@ function BannerMedia({ url, type, style }) {
   if (type === "video") return <video src={url} style={style} autoPlay loop muted playsInline />;
   return <img src={url} alt="" style={style} />;
 }
+// Bottom sheet. Closes only on a deliberate tap on the dark area: never because the phone
+// keyboard opened/closed and shifted the screen under the finger, and never while typing.
+let gwLastViewportChange = 0;
+if (typeof window !== "undefined") {
+  const mark = () => { gwLastViewportChange = Date.now(); };
+  try { window.addEventListener("resize", mark); window.visualViewport && window.visualViewport.addEventListener("resize", mark); window.addEventListener("focusin", mark); window.addEventListener("focusout", mark); } catch { }
+}
 function Sheet({ children, onClose }) {
+  const downOnBackdrop = useRef(false);
+  // follow the visible screen area, so the sheet sits just above the phone keyboard
+  const [vv, setVv] = useState(null);
+  useEffect(() => {
+    const v = window.visualViewport; if (!v) return;
+    const f = () => setVv(v.height < window.innerHeight - 80 ? { h: v.height, top: v.offsetTop } : null);
+    v.addEventListener("resize", f); v.addEventListener("scroll", f); f();
+    return () => { v.removeEventListener("resize", f); v.removeEventListener("scroll", f); };
+  }, []);
+  const onFieldFocus = e => { const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) setTimeout(() => { try { t.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { } }, 320); };
+  const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
+  const backdropDown = e => { downOnBackdrop.current = e.target === e.currentTarget && !typing() && Date.now() - gwLastViewportChange > 700; };
+  const backdropClick = e => {
+    const ok = downOnBackdrop.current && e.target === e.currentTarget && !typing() && Date.now() - gwLastViewportChange > 700;
+    downOnBackdrop.current = false;
+    if (typing()) { try { document.activeElement.blur(); } catch { } return; }   // first tap outside just hides the keyboard
+    if (ok && onClose) onClose();
+  };
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", width: "100%", maxWidth: 480, borderRadius: "18px 18px 0 0", padding: 18, maxHeight: "88vh", overflowY: "auto" }}>{children}</div>
+    <div onPointerDown={backdropDown} onClick={backdropClick} style={{ position: "fixed", left: 0, right: 0, top: vv ? vv.top : 0, height: vv ? vv.h : "100%", background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onPointerDown={e => { e.stopPropagation(); downOnBackdrop.current = false; }} onClick={e => e.stopPropagation()} onFocus={onFieldFocus} style={{ background: "#fff", width: "100%", maxWidth: 480, borderRadius: "18px 18px 0 0", padding: 18, maxHeight: vv ? Math.round(vv.h * 0.94) : "88vh", overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}>{children}</div>
     </div>
   );
 }
