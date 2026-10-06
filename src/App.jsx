@@ -15708,7 +15708,17 @@ function TripSetupTab({ event }) {
   const save = async () => {
     setBusy(true); setMsg("");
     const row = { ...s };
-    ["booking_amount", "min_people", "deadline_days", "min_part", "min_age", "cancel_full_days", "cancel_half_days", "cost_per_person", "fixed_cost", "commission_pct"].forEach(k => { if (row[k] !== undefined) row[k] = Number(row[k]) || 0; });
+    // empty box → safe default (never silently 0)
+    ["booking_amount", "min_people", "deadline_days", "min_part", "min_age", "cancel_full_days", "cancel_half_days", "cost_per_person", "fixed_cost", "commission_pct"].forEach(k => {
+      if (row[k] === undefined) return;
+      row[k] = (row[k] === "" || row[k] === null) ? (defaults[k] ?? 0) : (Number(row[k]) || 0);
+    });
+    const problems = [];
+    if (row.booking_amount <= 0) problems.push("Booking amount is ₹0, so people would have to pay the FULL price at once. Set it (e.g. 5000) so they can pay in parts.");
+    if (row.min_part < 100) problems.push("Minimum part payment should be at least ₹100 (e.g. 500).");
+    if (row.deadline_days < 1) problems.push("'Pay in full … days before' is 0: people could still be paying on the day you leave. Use 7.");
+    if (row.min_age < 18) problems.push("Minimum age should be 18 or more (21 for clubs/casino).");
+    if (problems.length) { setBusy(false); return window.gwConfirm("Please fix before saving:\n\n• " + problems.join("\n• "), () => {}); }
     row.confirm_by = row.confirm_by || null;
     delete row.updated_at; delete row.status;   // status is changed only by Confirm / Cancel trip
     if (!admin) delete row.commission_pct;
