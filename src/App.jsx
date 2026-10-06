@@ -16148,11 +16148,21 @@ function TripBoardTab({ event }) {
         <div style={{ fontSize: 11.5, color: "#166534", marginTop: 8, lineHeight: 1.45 }}>🤖 Automatic: every payment sends a <b>WhatsApp receipt</b>, and a fully paid booking gets the <b>Trip Pass</b> on WhatsApp (booker + every traveller with a number).</div>
         {d.is_admin && camp && <details style={{ marginTop: 6 }}>
           <summary style={{ fontSize: 11.5, color: "#166534", fontWeight: 800, cursor: "pointer" }}>AiSensy campaign names (admins)</summary>
-          {[["reminder", "Payment reminder"], ["paid", "Payment received"], ["pass", "Trip Pass ready"]].map(([k, l]) => <div key={k} style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
-            <span style={{ fontSize: 11.5, color: "#166534", fontWeight: 800, width: 120 }}>{l}</span>
-            <input value={camp[k] || ""} onChange={e => setCamp(c => ({ ...c, [k]: e.target.value }))} style={{ ...gwLeadInp, flex: 1, padding: "6px 9px", fontSize: 12.5 }} />
+          {[["reminder", "Payment reminder"], ["paid", "Payment received"], ["pass", "Trip Pass ready"]].map(([k, l]) => <div key={k} style={{ marginTop: 8 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 11.5, color: "#166534", fontWeight: 800, width: 120 }}>{l}</span>
+              <input value={camp[k] || ""} onChange={e => setCamp(c => ({ ...c, [k]: e.target.value }))} style={{ ...gwLeadInp, flex: 1, padding: "6px 9px", fontSize: 12.5 }} />
+            </div>
+            {camp["btn_" + k] !== undefined && <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11.5, color: "#166534", marginTop: 3, marginLeft: 126 }}>
+              <input type="checkbox" checked={!!camp["btn_" + k]} onChange={e => setCamp(c => ({ ...c, ["btn_" + k]: e.target.checked }))} /> Template has a "Visit website" button
+            </label>}
           </div>)}
-          <button onClick={async () => { const { data, error } = camp.old ? await supabase.rpc("set_trip_wa_campaign", { p_name: camp.reminder }) : await supabase.rpc("set_trip_wa_campaigns", { p_reminder: camp.reminder, p_paid: camp.paid, p_pass: camp.pass }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#fff", "#15803D"), border: "1px solid #BBF7D0", padding: "6px 10px", fontSize: 12, marginTop: 6 }}>Save names</button>
+          <div style={{ fontSize: 11, color: "#166534", marginTop: 6 }}>Tick the box only if that AiSensy template was approved WITH the button. If it doesn't match, AiSensy fails the message.</div>
+          <button onClick={async () => {
+            const { data, error } = camp.old ? await supabase.rpc("set_trip_wa_campaign", { p_name: camp.reminder }) : await supabase.rpc("set_trip_wa_campaigns", { p_reminder: camp.reminder, p_paid: camp.paid, p_pass: camp.pass });
+            let err2 = null; if (!error && camp.btn_paid !== undefined) { const r2 = await supabase.rpc("set_trip_wa_buttons", { p_reminder: !!camp.btn_reminder, p_paid: !!camp.btn_paid, p_pass: !!camp.btn_pass }); err2 = r2.error || (r2.data && !r2.data.ok ? { message: r2.data.error } : null); }
+            window.gwConfirm(error || err2 || !data?.ok ? (error?.message || err2?.message || data?.error) : "Saved ✓", () => {});
+          }} style={{ ...btn("#fff", "#15803D"), border: "1px solid #BBF7D0", padding: "6px 10px", fontSize: 12, marginTop: 6 }}>Save names</button>
         </details>}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
@@ -16225,7 +16235,8 @@ function TripWaLines({ b, st, onDone }) {
   const anyBad = pays.some(p => p.wa_status !== "sent") || (pass && pass.wa_status !== "sent");
   const resend = async () => {
     setBusy(true);
-    await supabase.rpc("trip_wa_reset", { p_booking: b.id });
+    let rr = await supabase.rpc("trip_wa_reset", { p_booking: b.id, p_all: true });
+    if (rr.error) rr = await supabase.rpc("trip_wa_reset", { p_booking: b.id });
     const { data: ses } = await supabase.auth.getSession();
     const r = await fetch("/api/whatsapp/trip-notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token, booking_id: b.id }) });
     const o = await r.json().catch(() => ({}));
@@ -16242,7 +16253,7 @@ function TripWaLines({ b, st, onDone }) {
       <div style={{ fontWeight: 900, color: "#166534", marginBottom: 3 }}>📲 WhatsApp</div>
       {pays.map((p, i) => { const [t, c] = lab(p.wa_status); return <div key={i} style={{ color: W.ink }}>Receipt {gwINR(p.amount)}: <b style={{ color: c }}>{t}</b>{p.wa_status === "failed" && p.wa_detail ? <span style={{ color: "#B91C1C" }}> · {String(p.wa_detail).slice(0, 120)}</span> : null}</div>; })}
       {pass && (() => { const [t, c] = lab(pass.wa_status); return <div style={{ color: W.ink }}>Trip Pass: <b style={{ color: c }}>{t}</b>{pass.wa_status === "failed" && pass.wa_detail ? <span style={{ color: "#B91C1C" }}> · {String(pass.wa_detail).slice(0, 120)}</span> : null}</div>; })()}
-      {anyBad && <button disabled={busy} onClick={resend} style={{ ...btn("#16A34A", "#fff"), padding: "5px 10px", fontSize: 12, marginTop: 5 }}>{busy ? "Sending…" : "↻ Resend WhatsApp"}</button>}
+      {(anyBad || true) && <button disabled={busy} onClick={() => window.gwConfirm("Send this booking's WhatsApp receipt(s)" + (pass ? " and Trip Pass" : "") + " again?", resend)} style={{ ...btn("#16A34A", "#fff"), padding: "5px 10px", fontSize: 12, marginTop: 5 }}>{busy ? "Sending…" : "↻ Resend WhatsApp"}</button>}
     </div>
   );
 }
