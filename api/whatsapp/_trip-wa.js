@@ -17,11 +17,12 @@ async function aisensy(payload) {
   const ok = r.ok && !(j && (j.success === false || j.success === "false" || j.status === "error" || j.errorMessage || j.error));
   return { ok, detail: ok ? "sent" : ((j && (j.errorMessage || j.message || j.error)) || text || `HTTP ${r.status}`) };
 }
-async function sendTemplate(campaign, to, name, params, code) {
-  const base = { apiKey: AISENSY_KEY, campaignName: campaign, destination: to, userName: clean(name), source: "glasswings-trip", templateParams: params,
-    buttons: [{ type: "button", sub_type: "url", index: 0, parameters: [{ type: "text", text: code }] }] };
-  const { buttons, ...noBtn } = base;
-  const attempts = [base, noBtn, { ...noBtn, templateParams: [...params, code] }, { ...base, templateParams: [...params, code] }];
+// hasButton = the AiSensy template was approved WITH the "Visit website" (dynamic URL) button.
+// AiSensy accepts a mismatch at first and fails it a moment later, so we must send exactly what the template has.
+async function sendTemplate(campaign, to, name, params, code, hasButton = false) {
+  const noBtn = { apiKey: AISENSY_KEY, campaignName: campaign, destination: to, userName: clean(name), source: "glasswings-trip", templateParams: params };
+  const withBtn = { ...noBtn, buttons: [{ type: "button", sub_type: "url", index: 0, parameters: [{ type: "text", text: code }] }] };
+  const attempts = hasButton ? [withBtn, { ...withBtn, templateParams: [...params, code] }] : [noBtn];
   let out = null;
   for (const a of attempts) { out = await aisensy(a); if (out.ok || !/param|button|variable|template/i.test(out.detail)) break; }
   return out;
@@ -32,6 +33,7 @@ export async function notifyTrip(bookingId) {
   if (!AISENSY_KEY || !bookingId) return { skipped: true };
   const p = await rpc("trip_notify_payload", { p_booking: bookingId });
   if (!p?.ok) return { skipped: true };
+  let flags = {}; try { flags = (await rpc("trip_wa_flags", {})) || {}; } catch { flags = {}; }
   const code = clean(p.code);
   const results = [];
   for (const pay of p.payments || []) {
@@ -39,7 +41,7 @@ export async function notifyTrip(bookingId) {
     const to = dest(pay.phone) || dest(p.booker_phone);
     const name = pay.phone ? pay.name : p.booker_name;
     if (!to) { await rpc("trip_notify_mark", { p_payment: pay.id, p_booking: null, p_status: "no_phone", p_detail: "No WhatsApp number" }); continue; }
-    const out = await sendTemplate(p.paid_campaign, to, name, [clean(name), inr(pay.amount), clean(p.title), inr(p.paid), inr(p.total), inr(p.left), clean(p.deadline)], code);
+    const out = await sendTemplate(p.paid_campaign, to, name, [clean(name), inr(pay.amount), clean(p.title), inr(p.paid), inr(p.total), inr(p.left), clean(p.deadline)], code, !!flags.paid);
     await rpc("trip_notify_mark", { p_payment: pay.id, p_booking: null, p_status: out.ok ? "sent" : "failed", p_detail: String(out.detail) });
     results.push({ type: "receipt", ok: out.ok, detail: out.detail });
   }
@@ -48,7 +50,7 @@ export async function notifyTrip(bookingId) {
     const seen = new Set(); let okAny = false, last = "no phone";
     for (const r of list) {
       const to = dest(r.phone); if (!to || seen.has(to)) continue; seen.add(to);
-      const out = await sendTemplate(p.pass_campaign, to, r.name, [clean(r.name), clean(p.title), clean(p.when), code], code);
+      const out = await sendTemplate(p.pass_campaign, to, r.name, [clean(r.name), clean(p.title), clean(p.when), code], code, !!flags.pass);
       okAny = okAny || out.ok; last = out.detail;
     }
     await rpc("trip_notify_mark", { p_payment: null, p_booking: bookingId, p_status: okAny ? "sent" : (seen.size ? "failed" : "no_phone"), p_detail: String(last) });
