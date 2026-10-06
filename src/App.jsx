@@ -767,12 +767,12 @@ function Shell({ children }) {
     </div>
   );
 }
-function DesktopSidebar({ tab, setTab, isAdmin, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events" }] : []), ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+function DesktopSidebar({ tab, setTab, isAdmin, isTeam = false, isSuper = false, reviewBadge = 0, width, meetBadge = 0 }) {
+  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isTeam ? [{ id: "review", icon: Check, label: "Review", badge: reviewBadge }] : []), ...(isSuper ? [{ id: "money", icon: IndianRupee, label: "Money" }] : []), ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events" }] : []), ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
-      {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: on ? W.teal : "transparent", color: on ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on ? 700 : 600, fontSize: 15 }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}{it.id === "meet" && meetBadge > 0 && <span style={{ marginLeft: "auto", background: "#EC4899", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{meetBadge}</span>}</button>; })}
+      {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: on ? W.teal : "transparent", color: on ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on ? 700 : 600, fontSize: 15 }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}{it.id === "meet" && meetBadge > 0 && <span style={{ marginLeft: "auto", background: "#EC4899", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{meetBadge}</span>}{it.badge > 0 && <span style={{ marginLeft: "auto", background: "#EA580C", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{it.badge}</span>}</button>; })}
       <button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: "transparent", color: "#FF8D7A", fontWeight: 700, fontSize: 15 }}><LogOut size={20} />Log out</button>
     </div>
   );
@@ -4014,6 +4014,14 @@ function Main({ user }) {
   const isOrganiserOwner = myRoles.includes("organiser");
   const organiserScopeId = organiserStaff?.organiser_id || user.id;
   const isStaff = isSuper || !!organiserStaff || myRoles.some(r => ["admin", "subadmin", "organiser", "promoter"].includes(r));
+  const isGwTeamMain = isSuper || myRoles.some(r => ["admin", "subadmin", "team", "staff"].includes(r));
+  const [reviewBadge, setReviewBadge] = useState(0);
+  useEffect(() => {
+    if (!isGwTeamMain) return;
+    const f = () => supabase.rpc("event_review_queue").then(({ data, error }) => { if (!error) setReviewBadge((data || []).filter(r => r.review_state === "submitted").length); });
+    f(); const iv = setInterval(f, 120000); window.addEventListener("gweventsreload", f);
+    return () => { clearInterval(iv); window.removeEventListener("gweventsreload", f); };
+  }, [isGwTeamMain]);
   const canReviewPhotoFlags = isSuper || !!organiserStaff || myRoles.some(r => ["admin","subadmin","team","staff"].includes(r));
   const loadPhotoReviewAlerts = useCallback(async () => {
     if (!canReviewPhotoFlags) { setPhotoReviewAlerts([]); return; }
@@ -4655,6 +4663,8 @@ function Main({ user }) {
         </div>
       </div>}
       {tab === "admin" && isStaff && <Admin isGwTeam={isSuper || [profile?.role, ...(profile?.roles || [])].some(r => ["admin", "subadmin", "team", "staff"].includes(r))} caps={caps} canUseDirectory={[profile?.role, ...(profile?.roles || [])].some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r))} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "review" && isGwTeamMain && <div><TopBar title="🛂 Review events" /><EventReviewQueue isAdmin={isAdmin} /></div>}
+      {tab === "money" && isSuper && <div><TopBar title="💰 Money" /><MoneyDashboard /></div>}
       {tab === "coupons" && isStaff && <div><TopBar title="🏷️ Coupons" /><CouponsAdmin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} /></div>}
       {tab === "door" && isStaff && <DoorCheckin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} ticketTypes={ticketTypes} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} onUpdateEvent={updateEvent} />}
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
@@ -4724,7 +4734,7 @@ function Main({ user }) {
           );
         })()}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
-          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} width={SW} meetBadge={meetBadge} />
+          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
             {twoPane ? (
               <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
@@ -4793,7 +4803,7 @@ function Main({ user }) {
         {screen}
       </div>
       {tab === "meet" && <ScrollTopFab />}
-      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} meetBadge={meetBadge} />
+      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} />
       <GwDialogHost />
       {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
@@ -25553,7 +25563,7 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
     </div>
   );
 }
-function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
+function Nav({ tab, setTab, isAdmin, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0 }) {
   const items = [
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
     { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
@@ -25563,6 +25573,8 @@ function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
     { id: "series", icon: Film, label: "Movies", c: "#E4572E" },
     { id: "games", icon: Gamepad2, label: "Games", c: "#2563EB" },
     { id: "gallery", icon: ImageIcon, label: "Gallery", c: "#0EA5A3" },
+    ...(isTeam ? [{ id: "review", icon: Check, label: "Review", c: "#EA580C", badge: reviewBadge }] : []),
+    ...(isSuper ? [{ id: "money", icon: IndianRupee, label: "Money", c: "#047857" }] : []),
     ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events", c: "#B7791F" }] : []),
     ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons", c: "#D97706" }] : []),
     ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Door", c: "#0F766E" }] : []),
@@ -25574,6 +25586,7 @@ function Nav({ tab, setTab, isAdmin, meetBadge = 0 }) {
       {items.map((it) => { const on = tab === it.id; const I = it.icon; return (
         <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: "0 0 58px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? "#fff" : W.soft, position: "relative" }}>
           {it.id === "meet" && meetBadge > 0 && <span style={{ position: "absolute", top: -2, right: "50%", transform: "translateX(16px)", background: "#EC4899", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 6px", minWidth: 16, zIndex: 2, border: "1.5px solid #fff" }}>{meetBadge}</span>}
+          {it.badge > 0 && <span style={{ position: "absolute", top: -2, right: "50%", transform: "translateX(16px)", background: "#EA580C", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 6px", minWidth: 16, zIndex: 2, border: "1.5px solid #fff" }}>{it.badge}</span>}
           <div style={{ width: 40, height: 30, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", background: on ? it.c : "transparent", boxShadow: on ? `0 3px 9px ${it.c}55` : "none", transition: "all .18s" }}>
             <I size={21} strokeWidth={on ? 2.5 : 2} color={on ? "#fff" : it.c} style={{ opacity: on ? 1 : .78 }} />
           </div>
