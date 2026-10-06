@@ -2356,7 +2356,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     const io = new IntersectionObserver(([en]) => setShowMini(!en.isIntersecting), { rootMargin: "-70px 0px 0px 0px" });
     io.observe(el); return () => io.disconnect();
   }, []);
-  const scrollToTickets = () => { const el = ticketRef.current; if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  const scrollToTickets = () => {
+    if (gwIsGetaway(e)) { try { window.dispatchEvent(new CustomEvent("gwtripbook", { detail: e.id })); } catch { } return; }
+    const el = ticketRef.current; if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const link = `${window.location.origin}/e/${e.id}`;
   const shareSuggested = `🎉 ${e.title}${e.event_date ? `\n📅 ${e.event_date}` : ""}${[e.venue, e.city].filter(Boolean).length ? `\n📍 ${[e.venue, e.city].filter(Boolean).join(", ")}` : ""}\n\nGrab your tickets 👉`;
   const shareCaption = (e.share_text != null && e.share_text !== "") ? e.share_text : shareSuggested;
@@ -2563,9 +2566,9 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           <button onClick={onBack} aria-label="Back" style={{ background: "transparent", border: "none", color: "#fff", cursor: "pointer", display: "flex", flexShrink: 0, padding: 0 }}><ArrowLeft size={20} /></button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: "#fff", fontWeight: 800, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.emoji} {e.title}</div>
-            <div style={{ color: "#9fe8d6", fontSize: 12, fontWeight: 700 }}>{minPrice === 0 ? "Free" : `From ₹${minPrice}`}{countdown ? ` · ${countdown.replace("⏳ ", "")}` : ""}</div>
+            <div style={{ color: "#9fe8d6", fontSize: 12, fontWeight: 700 }}>{gwIsGetaway(e) ? "🏝️ Trip · pay in parts" : minPrice === 0 ? "Free" : `From ₹${minPrice}`}{countdown ? ` · ${countdown.replace("⏳ ", "")}` : ""}</div>
           </div>
-          <button disabled={!hasTicket && manualClosed} onClick={hasTicket ? (onViewTicket || scrollToTickets) : scrollToTickets} style={{ ...btn(!hasTicket&&manualClosed?(availabilityStatus==="housefull"?"#111827":"#991B1B"):W.teal,!hasTicket&&manualClosed&&availabilityStatus==="housefull"?"#F6D365":"#fff"), padding: "9px 18px", fontSize: 14, flexShrink: 0, opacity:(!hasTicket&&manualClosed)?1:1, cursor:(!hasTicket&&manualClosed)?"not-allowed":"pointer" }}>{hasTicket ? "My tickets" : manualClosed ? availabilityLabel : "Book"}</button>
+          {gwIsGetaway(e) ? <button onClick={scrollToTickets} style={{ ...btn(GW_TRIP_GRAD, "#fff"), padding: "9px 16px", fontSize: 14, flexShrink: 0, fontWeight: 900 }}>🧳 Book</button> : <button disabled={!hasTicket && manualClosed} onClick={hasTicket ? (onViewTicket || scrollToTickets) : scrollToTickets} style={{ ...btn(!hasTicket&&manualClosed?(availabilityStatus==="housefull"?"#111827":"#991B1B"):W.teal,!hasTicket&&manualClosed&&availabilityStatus==="housefull"?"#F6D365":"#fff"), padding: "9px 18px", fontSize: 14, flexShrink: 0, opacity:(!hasTicket&&manualClosed)?1:1, cursor:(!hasTicket&&manualClosed)?"not-allowed":"pointer" }}>{hasTicket ? "My tickets" : manualClosed ? availabilityLabel : "Book"}</button>}
         </div>
       )}
       {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>⏳ UNPUBLISHED — members and the public can't see this event yet. Approve it from Admin → Events.</div>}
@@ -2618,7 +2621,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
               </div>
             )}
           </div>
-          {profile?.gender === "male" && !isPlanMember && (
+          {!gwIsGetaway(e) && profile?.gender === "male" && !isPlanMember && (
             <div onClick={() => onViewPlans && onViewPlans()} style={{ cursor: onViewPlans ? "pointer" : "default", margin: "2px 0 4px", borderRadius: 14, padding: "13px 15px", background: "linear-gradient(135deg,#0f3d34,#008069)", color: "#fff", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 6px 18px rgba(0,128,105,.22)" }}>
               <div style={{ fontSize: 26, flexShrink: 0 }}>💎</div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -2873,7 +2876,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
         {wide && (
           <div style={{ width: 330, flexShrink: 0, position: "sticky", top: 76 }}>
             <div style={{ border: "1px solid #E1EAE7", borderRadius: 18, padding: "8px 18px 18px", boxShadow: "0 18px 44px rgba(14,48,40,.10)", background: "linear-gradient(180deg,#FFFFFF 0%,#FCFEFD 100%)" }}>
-              {isPlanMember ? (
+              {gwIsGetaway(e) ? null : isPlanMember ? (
                 (Number(e.member_discount_pct) || 0) > 0 && (
                   <div style={{ background: "linear-gradient(95deg,#F3E8FF,#FCE7F3)", border: "1px solid #E9D5FF", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#6D28D9" }}>
                     💎 Member perk active: {e.member_discount_pct}% OFF applies to your tickets at checkout{Number(e.member_discount_pct) >= 100 ? " — FREE for you!" : ""}
@@ -12947,6 +12950,7 @@ const GW_LEAD_UNLOCK_STATUS = [
 const gwLeadType = k => GW_LEAD_TYPES.find(t => t[0] === k) || GW_LEAD_TYPES[5];
 const gwLeadBudget = k => (GW_LEAD_BUDGETS.find(b => b[0] === k) || [k, k])[1];
 const gwLeadDate = (d, flex) => d ? new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) + (flex ? " (flexible)" : "") : "Date not fixed";
+const GW_LEAD_INP_BASE = { width: "100%", border: `1.5px solid ${W.line}`, borderRadius: 11, padding: "11px 13px", fontSize: 14.5, outline: "none", boxSizing: "border-box", background: "#fff", color: W.ink };
 const gwLeadInp = { width: "100%", border: `1.5px solid ${W.line}`, borderRadius: 11, padding: "11px 13px", fontSize: 14.5, outline: "none", boxSizing: "border-box", background: "#fff", color: W.ink };
 const gwLeadLbl = { fontSize: 12, fontWeight: 800, color: W.soft, margin: "12px 0 6px", letterSpacing: .3 };
 const gwChip = on => ({ border: `1.5px solid ${on ? W.teal : W.line}`, background: on ? "#E7F6EF" : "#fff", color: on ? W.teal : W.ink, borderRadius: 999, padding: "7px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer" });
@@ -15251,13 +15255,19 @@ function GwTripProgress({ paid, total, firstDue, dark = false }) {
 
 // ---------- Public trip box on the event page ----------
 function GetawayBox({ event, profile }) {
-  const [t, setT] = useState(null), [mine, setMine] = useState([]), [book, setBook] = useState(false), [open, setOpen] = useState("itinerary");
+  const [t, setT] = useState(null), [mine, setMine] = useState([]), [book, setBook] = useState(false), [open, setOpen] = useState({ itinerary: true });
+  const askBook = () => { if (!profile?.id) return window.gwConfirm("Please log in to book this trip.", () => {}); setBook(true); };
+  useEffect(() => {
+    const h = ev => { if (!ev.detail || ev.detail === event.id) askBook(); };
+    window.addEventListener("gwtripbook", h);
+    return () => window.removeEventListener("gwtripbook", h);
+  }, [event.id, profile?.id]);
   const load = () => {
     supabase.rpc("trip_public", { p_event: event.id }).then(({ data }) => setT(data || { ready: false }));
     if (profile?.id) supabase.rpc("my_trip_bookings", { p_event: event.id }).then(({ data }) => setMine(data || []));
   };
   useEffect(() => { load(); }, [event.id, profile?.id]);
-  if (!t) return <div style={{ padding: 14, color: W.soft, fontSize: 13 }}>Loading trip…</div>;
+  if (!t) return <div style={{ minHeight: 360, borderRadius: 18, margin: "10px 0", background: "linear-gradient(120deg,#E0F2FE,#FEF3C7)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0369A1", fontWeight: 800, fontSize: 13.5 }}>🏝️ Loading trip…</div>;
   if (!t.ready) return <div style={{ padding: 14, color: W.soft, fontSize: 13.5 }}>🏝️ Trip packages are being set up. Check back soon!</div>;
   const pk = t.packages || [];
   const from = pk.length ? Math.min(...pk.map(p => Number(p.now_price))) : 0;
@@ -15269,8 +15279,8 @@ function GetawayBox({ event, profile }) {
   const pctGroup = t.min_people ? Math.min(100, Math.round(t.booked_people * 100 / t.min_people)) : 100;
   const sec = (k, title, body) => body && String(body).trim() ? (
     <div key={k} style={{ borderTop: `1px solid ${W.line}` }}>
-      <div onClick={() => setOpen(o => o === k ? "" : k)} style={{ display: "flex", alignItems: "center", padding: "12px 2px", cursor: "pointer", fontWeight: 850, color: W.ink, fontSize: 14.5 }}><span style={{ flex: 1 }}>{title}</span><span style={{ color: W.soft }}>{open === k ? "▴" : "▾"}</span></div>
-      {open === k && <div style={{ padding: "0 2px 12px" }}><GwRich text={body} /></div>}
+      <div role="button" onClick={ev => { ev.preventDefault(); ev.stopPropagation(); setOpen(o => ({ ...o, [k]: !o[k] })); }} style={{ display: "flex", alignItems: "center", padding: "12px 2px", cursor: "pointer", fontWeight: 850, color: W.ink, fontSize: 14.5, userSelect: "none", WebkitTapHighlightColor: "transparent" }}><span style={{ flex: 1 }}>{title}</span><span style={{ color: W.soft }}>{open[k] ? "▴" : "▾"}</span></div>
+      {open[k] && <div style={{ padding: "0 2px 12px" }}><GwRich text={body} /></div>}
     </div>) : null;
   const rulesText = `- Booking amount: **${gwINR(t.booking_amount)} per person** holds your seat (plus flights, if you book them with us).\n- Pay the rest **any amount, any day** (minimum ${gwINR(t.min_part)}) until **${gwDateShort(t.deadline)}**.\n- Cancel more than ${t.cancel_full_days} days before the trip: everything above the booking amount back${t.refund_mode === "credits" ? " as Glasswings credits" : ""}.\n- Cancel ${t.cancel_half_days}–${t.cancel_full_days} days before: 50% of that back. Closer than ${t.cancel_half_days} days: no refund.\n- Not fully paid by the deadline: the seat is released; money above the booking amount comes back${t.refund_mode === "credits" ? " as credits" : ""}.\n- Can't go? **Pass your seat to a friend** before the deadline. Nothing is lost.\n- If the trip doesn't reach ${t.min_people} travellers or we cancel it, you get **100% back**.\n- Travellers must be ${t.min_age}+ and carry a government photo ID.`;
   return (
@@ -15304,7 +15314,7 @@ function GetawayBox({ event, profile }) {
       {t.status === "cancelled" ? <div style={{ background: "#FEE2E2", color: "#B91C1C", borderRadius: 12, padding: 12, fontWeight: 800 }}>This trip was cancelled. Everyone's payments are being returned.</div>
         : closed ? <div style={{ background: "#F1F5F9", color: W.soft, borderRadius: 12, padding: 12, fontWeight: 800 }}>Bookings for this trip are closed.</div>
           : allFull ? <TripWaitlist event={event} profile={profile} />
-            : <button onClick={() => profile?.id ? setBook(true) : window.gwConfirm("Please log in to book this trip.", () => {})} style={{ ...btn(GW_TRIP_GRAD, "#fff"), width: "100%", justifyContent: "center", padding: 14, fontSize: 16, fontWeight: 950, borderRadius: 14, boxShadow: "0 8px 20px rgba(14,165,233,.3)" }}>🧳 {active.length ? "Book for more people" : `Book now · pay ${gwINR(t.booking_amount)} today`}</button>}
+            : <button type="button" onClick={askBook} style={{ ...btn(GW_TRIP_GRAD, "#fff"), width: "100%", justifyContent: "center", padding: 14, fontSize: 16, fontWeight: 950, borderRadius: 14, boxShadow: "0 8px 20px rgba(14,165,233,.3)" }}>🧳 {active.length ? "Book for more people" : `Book now · pay ${gwINR(t.booking_amount)} today`}</button>}
 
       {pk.length > 0 && <div style={{ display: "flex", gap: 8, overflowX: "auto", margin: "12px 0 4px", paddingBottom: 4 }}>
         {pk.map(p => (
@@ -15326,13 +15336,14 @@ function GetawayBox({ event, profile }) {
         {sec("rules", "💳 Payments, cancellation & refunds", rulesText)}
         {sec("terms", "📋 Trip terms", t.terms)}
       </div>
-      {book && <TripBookSheet event={event} trip={t} profile={profile} onClose={() => setBook(false)} onDone={() => { setBook(false); load(); }} />}
+      {book && t.ready && !closed && !allFull && <TripBookSheet event={event} trip={t} profile={profile} onClose={() => setBook(false)} onDone={() => { setBook(false); load(); }} />}
     </div>
   );
 }
 
 function TripWaitlist({ event, profile }) {
   const [n, setN] = useState(1), [ph, setPh] = useState(""), [done, setDone] = useState(false);
+  const gwLeadInp = { ...GW_LEAD_INP_BASE, fontSize: 16 };
   const join = async () => {
     if (!profile?.id) return window.gwConfirm("Please log in first.", () => {});
     const { data, error } = await supabase.rpc("trip_join_waitlist", { p_event: event.id, p_people: n, p_phone: ph });
@@ -15364,6 +15375,14 @@ function TripBookSheet({ event, trip, profile, onClose, onDone }) {
   const blank = i => ({ name: i === 0 ? (profile?.full_name || "") : "", age: "", gender: i === 0 ? (profile?.gender || "") : "", phone: "", emergency: "", food: i === 0 ? (profile?.food_pref || "") : "", from_city: trip.from_city || "" });
   const [tr, setTr] = useState([blank(0)]);
   const [agree, setAgree] = useState(false), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const topRef = useRef(null);
+  const gwLeadInp = { ...GW_LEAD_INP_BASE, fontSize: 16 };   // 16px stops phones zooming in on tap
+  useEffect(() => {   // freeze the page behind the sheet so it can't jump
+    const b = document.body, y = window.scrollY, prev = { o: b.style.overflow, p: b.style.position, t: b.style.top, w: b.style.width };
+    b.style.overflow = "hidden"; b.style.position = "fixed"; b.style.top = `-${y}px`; b.style.width = "100%";
+    return () => { b.style.overflow = prev.o; b.style.position = prev.p; b.style.top = prev.t; b.style.width = prev.w; window.scrollTo(0, y); };
+  }, []);
+  useEffect(() => { const sc = topRef.current?.parentElement; if (sc) sc.scrollTop = 0; setErr(""); }, [step]);
   const pkg = pk.find(p => p.id === pid);
   useEffect(() => { setTr(old => Array.from({ length: people }, (_, i) => old[i] || blank(i))); setEx(o => Object.fromEntries(Object.entries(o).map(([k, v]) => { const x = (trip.extras || []).find(e => e.id === k); return [k, x?.pay_upfront && v > 0 ? people : Math.min(v, people)]; }))); }, [people]);
   const extrasSel = (trip.extras || []).map(x => ({ ...x, qty: ex[x.id] || 0 })).filter(x => x.qty > 0);
@@ -15380,15 +15399,16 @@ function TripBookSheet({ event, trip, profile, onClose, onDone }) {
     if (step === 0 && !pkg) return setErr("Please choose a package.");
     if (step === 0 && people > pkg.left) return setErr(`Only ${pkg.left} seat${pkg.left === 1 ? "" : "s"} left in ${pkg.name}.`);
     if (step === 2 && !trOk) return setErr(`Fill every traveller: name as on ID, age (${minAge}+), gender, WhatsApp number and food.`);
+    try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch { }
     setStep(s => s + 1);
   };
   const submit = async () => {
     if (!agree) return setErr("Please accept the trip rules.");
     setBusy(true); setErr("");
     const { data, error } = await supabase.rpc("trip_book", { p_event: event.id, p_package: pid, p_people: people, p_extras: extrasSel.map(x => ({ id: x.id, qty: x.qty })), p_travellers: tr.map(x => ({ ...x, age: Number(x.age) })), p_room_pref: room, p_notes: null });
+    if (error || !data?.ok) { setBusy(false); return setErr(error?.message || data?.error || "Couldn't create the booking."); }
+    await gwPayTrip(data.booking_id, data.first_due, onDone);
     setBusy(false);
-    if (error || !data?.ok) return setErr(error?.message || data?.error || "Couldn't create the booking.");
-    gwPayTrip(data.booking_id, data.first_due, onDone);
   };
   const steps = ["Package", "Extras", "Travellers", "Pay"];
   const stepper = (v, set, max) => (
@@ -15398,7 +15418,8 @@ function TripBookSheet({ event, trip, profile, onClose, onDone }) {
       <button type="button" onClick={() => set(Math.min(max, v + 1))} style={{ width: 32, height: 32, borderRadius: 99, border: `1px solid ${W.line}`, background: "#fff", fontSize: 18, cursor: "pointer" }}>+</button>
     </div>);
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={() => { if (!busy) onClose(); }}>
+      <div ref={topRef} />
       <div style={{ margin: -18, marginBottom: 0, padding: "18px 18px 14px", background: GW_TRIP_GRAD, color: "#fff", borderRadius: "18px 18px 0 0" }}>
         <div style={{ display: "flex" }}><div style={{ flex: 1 }}><div style={{ fontSize: 11, letterSpacing: 2.5, fontWeight: 900 }}>🏝️ BOOK YOUR GETAWAY</div><div style={{ fontSize: 19, fontWeight: 950, marginTop: 3 }}>{event.title}</div></div><span onClick={onClose} style={{ cursor: "pointer", fontSize: 22 }}>✕</span></div>
         <div style={{ display: "flex", gap: 5, marginTop: 10 }}>{steps.map((s, i) => <div key={s} style={{ flex: 1, textAlign: "center" }}><div style={{ height: 5, borderRadius: 9, background: i <= step ? "#FDE68A" : "rgba(255,255,255,.3)" }} /><div style={{ fontSize: 10.5, fontWeight: 800, marginTop: 3, opacity: i === step ? 1 : .8 }}>{s}</div></div>)}</div>
@@ -15415,6 +15436,16 @@ function TripBookSheet({ event, trip, profile, onClose, onDone }) {
             </div>
             <div style={{ fontSize: 12, color: W.soft }}>{p.description || `${p.sharing} people share a room`} · {p.left} left{Number(p.now_price) < Number(p.price) ? ` · 🐦 early-bird (was ${gwINR(p.price)})` : ""}</div>
           </div>))}
+        {(String(trip.inclusions || "").trim() || String(trip.exclusions || "").trim()) && <div style={{ borderRadius: 14, border: `1px solid ${W.line}`, overflow: "hidden", marginTop: 4 }}>
+          {String(trip.inclusions || "").trim() && <div style={{ background: "#F0FDF4", padding: "10px 12px" }}>
+            <div style={{ fontWeight: 900, color: "#15803D", fontSize: 13, marginBottom: 2 }}>✅ What's included</div>
+            <GwRich text={trip.inclusions} size={12.5} accent="#16A34A" />
+          </div>}
+          {String(trip.exclusions || "").trim() && <div style={{ background: "#FEF2F2", padding: "10px 12px", borderTop: `1px solid ${W.line}` }}>
+            <div style={{ fontWeight: 900, color: "#B91C1C", fontSize: 13, marginBottom: 2 }}>❌ Not included</div>
+            <GwRich text={trip.exclusions} size={12.5} accent="#DC2626" />
+          </div>}
+        </div>}
         <div style={gwLeadLbl}>HOW MANY TRAVELLERS IN THIS BOOKING?</div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>{stepper(people, v => setPeople(Math.max(1, v)), Math.min(10, pkg?.left || 10))}<span style={{ fontSize: 12.5, color: W.soft }}>Book your friends together. Each friend can pay their share with your pay link.</span></div>
         <div style={gwLeadLbl}>ROOM PREFERENCE</div>
@@ -15490,7 +15521,9 @@ function TripBookSheet({ event, trip, profile, onClose, onDone }) {
 
 // ---------- Member's booking card (pay in parts, share link, transfer, cancel, trip pass) ----------
 function MyTripCard({ b, onChange }) {
-  const [amt, setAmt] = useState(""), [edit, setEdit] = useState(null), [showPass, setShowPass] = useState(false);
+  const [amt, setAmt] = useState(""), [edit, setEdit] = useState(null), [showPass, setShowPass] = useState(false), [paying, setPaying] = useState(false);
+  const gwLeadInp = { ...GW_LEAD_INP_BASE, fontSize: 16 };
+  const payNow = async (a, after) => { if (paying) return; setPaying(true); await gwPayTrip(b.id, a, after || onChange); setPaying(false); };
   const left = Math.max(0, Number(b.total) - Number(b.paid));
   const minPart = Math.min(Number(b.min_part) || 500, left);
   const weekly = gwTripWeekly(left, b.deadline);
@@ -15501,7 +15534,7 @@ function MyTripCard({ b, onChange }) {
   const pay = () => {
     const a = Math.round(Number(amt) || 0);
     if (a < minPart) return window.gwConfirm(`Minimum payment is ₹${minPart}.`, () => {});
-    gwPayTrip(b.id, Math.min(a, left), () => { setAmt(""); onChange && onChange(); });
+    payNow(Math.min(a, left), () => { setAmt(""); onChange && onChange(); });
   };
   const cancel = () => window.gwConfirm(`Cancel this booking?\n\nYou'll get ${gwINR(b.refund_now)} back${b.refund_mode === "bank" ? " to your bank" : " as Glasswings credits"} under the trip's cancellation rule. The booking amount${(b.extras || []).some(x => x.upfront) ? " and flights are" : " is"} not refundable.\n\nTip: you can pass your seat to a friend instead (✏️ Edit traveller), and nothing is lost.`, async () => {
     const { data, error } = await supabase.rpc("trip_cancel_my", { p_booking: b.id });
@@ -15522,7 +15555,7 @@ function MyTripCard({ b, onChange }) {
       {b.status === "pending" && <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: 12.5, color: "#92400E", fontWeight: 700 }}>Your seat isn't held until the booking amount is paid.</div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={() => gwPayTrip(b.id, Number(b.first_due) - Number(b.paid), onChange)} style={{ ...btn(GW_TRIP_GRAD, "#fff"), flex: 2, justifyContent: "center", fontWeight: 900 }}>Pay {gwINR(Number(b.first_due) - Number(b.paid))} to book</button>
+          <button type="button" disabled={paying} onClick={() => payNow(Number(b.first_due) - Number(b.paid))} style={{ ...btn(GW_TRIP_GRAD, "#fff"), flex: 2, justifyContent: "center", fontWeight: 900, opacity: paying ? .6 : 1 }}>{paying ? "Opening payment…" : `Pay ${gwINR(Number(b.first_due) - Number(b.paid))} to book`}</button>
           <button onClick={cancel} style={{ ...btn("#fff", W.soft), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Remove</button>
         </div>
       </div>}
@@ -15534,7 +15567,7 @@ function MyTripCard({ b, onChange }) {
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <input value={amt} onChange={e => setAmt(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder={`Any amount (min ₹${minPart})`} style={{ ...gwLeadInp, flex: 1, minWidth: 0 }} />
-          <button onClick={pay} style={{ ...btn("#0EA5E9", "#fff"), padding: "10px 16px", fontWeight: 900 }}>Pay</button>
+          <button type="button" disabled={paying} onClick={pay} style={{ ...btn("#0EA5E9", "#fff"), padding: "10px 16px", fontWeight: 900, opacity: paying ? .6 : 1, minWidth: 64, justifyContent: "center" }}>{paying ? "…" : "Pay"}</button>
         </div>
         {b.people > 1 && <a href={`https://wa.me/?text=${encodeURIComponent(share)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", width: "100%", justifyContent: "center", marginTop: 8, boxSizing: "border-box" }}>👯 Send pay link to your friends</a>}
       </div>}
@@ -15599,6 +15632,7 @@ function TripPass({ b }) {
 // ---------- Friend's pay link: glass-wings.com/?trip=CODE ----------
 function TripPayPage({ code, loggedIn = true }) {
   const [d, setD] = useState(undefined), [amt, setAmt] = useState("");
+  const gwLeadInp = { ...GW_LEAD_INP_BASE, fontSize: 16 };
   const load = () => supabase.rpc("trip_by_code", { p_code: code }).then(({ data }) => setD(data || null));
   useEffect(() => { load(); }, [code]);
   if (d === undefined) return <Center>Loading trip…</Center>;
@@ -15806,6 +15840,80 @@ function TripExtraRow({ x, isNew, onSave, onDel }) {
   );
 }
 
+// ---------- Boarding day: scan Trip Passes, head-count ----------
+function TripBoardingPanel({ rows, onChanged, onCash }) {
+  const [scan, setScan] = useState(false), [code, setCode] = useState(""), [hit, setHit] = useState(null), [busy, setBusy] = useState(false), [showMissing, setShowMissing] = useState(false);
+  const last = useRef({ c: "", t: 0 });
+  const act = rows.filter(b => ["booked", "paid"].includes(b.status));
+  const trs = act.flatMap(b => (b.travellers || []).map(t => ({ ...t, b })));
+  const boarded = trs.filter(t => t.boarded).length;
+  const missing = trs.filter(t => !t.boarded);
+  const find = raw => {
+    const c = String(raw || "").trim().toUpperCase().replace(/.*[?&]TRIP=/, "");
+    if (!c) return;
+    const now = Date.now();
+    if (last.current.c === c && now - last.current.t < 4000) return;
+    last.current = { c, t: now };
+    const b = rows.find(x => String(x.code).toUpperCase() === c);
+    try { navigator.vibrate && navigator.vibrate(b ? 80 : [60, 60, 60]); } catch { }
+    setHit(b ? { b } : { miss: c });
+  };
+  useEffect(() => { if (hit?.b) { const nb = rows.find(x => x.id === hit.b.id); if (nb) setHit({ b: nb }); } }, [rows]);
+  const setBoarded = async (list, v) => {
+    setBusy(true);
+    for (const t of list) await supabase.rpc("trip_set_traveller_admin", { p_traveller: t.id, p_ticket: null, p_room: null, p_boarded: v });
+    setBusy(false); onChanged && onChanged();
+  };
+  const b = hit?.b;
+  const closed = b && ["cancelled", "released"].includes(b.status);
+  const due = b ? Math.max(0, Number(b.total) - Number(b.paid)) : 0;
+  return (
+    <div style={{ borderRadius: 16, border: "1.5px solid #A5F3FC", background: "linear-gradient(135deg,#ECFEFF,#F0F9FF)", padding: 12, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 950, color: "#0E7490", fontSize: 15 }}>🛫 Boarding day</div>
+          <div style={{ fontSize: 12, color: "#155E75" }}>Scan each Trip Pass at the airport / bus. Everyone in that booking is shown.</div>
+        </div>
+        <div style={{ textAlign: "center", background: "#fff", borderRadius: 12, padding: "6px 10px", border: "1px solid #A5F3FC" }}>
+          <div style={{ fontSize: 22, fontWeight: 950, color: boarded === trs.length && trs.length ? "#15803D" : "#0E7490", lineHeight: 1 }}>{boarded}/{trs.length}</div>
+          <div style={{ fontSize: 10, fontWeight: 900, color: "#155E75" }}>BOARDED</div>
+        </div>
+      </div>
+      <div style={{ height: 8, borderRadius: 99, background: "#CFFAFE", marginTop: 8, overflow: "hidden" }}><div style={{ width: `${trs.length ? boarded * 100 / trs.length : 0}%`, height: "100%", background: "linear-gradient(90deg,#06B6D4,#16A34A)" }} /></div>
+      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+        <button onClick={() => setScan(v => !v)} style={{ ...btn(scan ? "#0F172A" : "#0891B2", "#fff"), flex: 1, justifyContent: "center", fontWeight: 900 }}>{scan ? "⏹ Stop camera" : "📷 Scan Trip Pass"}</button>
+        {missing.length > 0 && <button onClick={() => setShowMissing(v => !v)} style={{ ...btn("#fff", "#B45309"), border: "1px solid #FCD34D", fontSize: 12.5 }}>⏳ Not boarded ({missing.length})</button>}
+      </div>
+      {scan && <div style={{ marginTop: 10 }}><QrScanner onCode={find} /></div>}
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} onKeyDown={e => e.key === "Enter" && (find(code), setCode(""))} placeholder="…or type the code, e.g. TR-7K2M9Q" style={{ ...gwLeadInp, flex: 1, minWidth: 0, padding: "9px 11px" }} />
+        <button onClick={() => { last.current = { c: "", t: 0 }; find(code); setCode(""); }} style={{ ...btn("#0891B2", "#fff"), padding: "9px 14px" }}>Check</button>
+      </div>
+      {hit?.miss && <div style={{ marginTop: 10, background: "#FEE2E2", border: "2px solid #EF4444", borderRadius: 12, padding: 12, color: "#991B1B", fontWeight: 900 }}>✕ {hit.miss} is not a booking on this trip.</div>}
+      {b && <div style={{ marginTop: 10, background: "#fff", border: `2px solid ${closed ? "#EF4444" : due > 0 ? "#F59E0B" : "#16A34A"}`, borderRadius: 14, padding: 12 }}>
+        <div style={{ fontWeight: 950, fontSize: 16, color: closed ? "#991B1B" : due > 0 ? "#92400E" : "#15803D" }}>{closed ? "✕ Booking cancelled. Do not board." : due > 0 ? `⚠️ ${gwINR(due)} still unpaid` : "✅ Fully paid. OK to board"}</div>
+        <div style={{ fontSize: 12.5, color: W.soft, marginBottom: 6 }}>{b.booker} · {b.code} · {b.package}</div>
+        {!closed && due > 0 && <button onClick={() => onCash && onCash(b)} style={{ ...btn("#EDE9FE", "#6D28D9"), padding: "6px 11px", fontSize: 12.5, marginBottom: 6 }}>💵 Collect & mark paid</button>}
+        {(b.travellers || []).map(t => (
+          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${W.line}` }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 850, color: W.ink, fontSize: 14 }}>{t.name} <span style={{ color: W.soft, fontWeight: 600, fontSize: 12 }}>· {t.age || "?"} · {t.gender || ""}</span></div>
+              <div style={{ fontSize: 11.5, color: "#0369A1" }}>{[t.ticket_info && `✈️ ${t.ticket_info}`, t.room_no && `🛏️ Room ${t.room_no}`].filter(Boolean).join(" · ")}</div>
+            </div>
+            {!closed && <button disabled={busy} onClick={() => setBoarded([t], !t.boarded)} style={{ ...btn(t.boarded ? "#DCFCE7" : "#F1F5F9", t.boarded ? "#15803D" : W.ink), padding: "7px 11px", fontSize: 12.5, fontWeight: 900 }}>{t.boarded ? "✓ Boarded" : "Board"}</button>}
+          </div>))}
+        {!closed && (b.travellers || []).some(t => !t.boarded) && <button disabled={busy} onClick={() => setBoarded((b.travellers || []).filter(t => !t.boarded), true)} style={{ ...btn("#16A34A", "#fff"), width: "100%", justifyContent: "center", marginTop: 8, fontWeight: 950 }}>{busy ? "Saving…" : `✅ Board all ${(b.travellers || []).filter(t => !t.boarded).length}`}</button>}
+        <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>🪪 Check each person's photo ID matches the name.</div>
+      </div>}
+      {showMissing && missing.length > 0 && <div style={{ marginTop: 10, background: "#fff", borderRadius: 12, border: "1px solid #FCD34D", padding: "6px 10px" }}>
+        {missing.map(t => <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px dashed ${W.line}`, fontSize: 13 }}>
+          <span style={{ flex: 1 }}><b>{t.name}</b> <span style={{ color: W.soft }}>· {t.b.booker}</span></span>
+          {(t.phone || t.b.booker_phone) && <a href={`tel:${t.phone || t.b.booker_phone}`} style={{ ...btn("#E0F2FE", "#0369A1"), textDecoration: "none", padding: "5px 9px", fontSize: 12 }}>📞 Call</a>}
+        </div>)}
+      </div>}
+    </div>
+  );
+}
 // ---------- Organiser: 🧳 Travellers & payments tab ----------
 async function gwSendTripReminders(eventId, bookingIds) {
   const { data: ses } = await supabase.auth.getSession();
@@ -15817,7 +15925,7 @@ async function gwSendTripReminders(eventId, bookingIds) {
 }
 function TripBoardTab({ event }) {
   const [d, setD] = useState(null), [err, setErr] = useState(""), [filter, setFilter] = useState("all"), [openB, setOpenB] = useState(null), [q, setQ] = useState("");
-  const [lastRem, setLastRem] = useState({}), [remBusy, setRemBusy] = useState(false), [camp, setCamp] = useState(null);
+  const [lastRem, setLastRem] = useState({}), [remBusy, setRemBusy] = useState(false), [camp, setCamp] = useState(null), [boardOpen, setBoardOpen] = useState(false);
   const load = () => {
     supabase.rpc("trip_board", { p_event: event.id }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setD(data); } });
     supabase.from("trip_reminder_log").select("booking_id,sent_at,status").eq("event_id", event.id).order("sent_at", { ascending: false }).limit(500).then(({ data }) => { const m = {}; (data || []).forEach(x => { if (!m[x.booking_id]) m[x.booking_id] = x; }); setLastRem(m); });
@@ -15901,6 +16009,7 @@ function TripBoardTab({ event }) {
         {d.is_admin && <button onClick={async () => { const v = await window.gwPrompt("Record a payout to the organiser (₹). For hotel/bus advances, note it.", ""); const n = Number(String(v || "").replace(/\D/g, "")); if (n > 0) { const note = await window.gwPrompt("Note (e.g. hotel advance / final settlement)", ""); rpcDo("trip_add_payout", { p_event: event.id, p_amount: n, p_note: note || "" }); } }} style={{ ...btn("#fff", "#0F172A"), padding: "5px 10px", fontSize: 12, marginTop: 6 }}>🏦 Record payout</button>}
       </div>
 
+      {dl != null && gwDaysTo(d.start) != null && gwDaysTo(d.start) <= 2 && <TripBoardingPanel rows={rows} onChanged={load} onCash={cash} />}
       <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 14, padding: 12, marginBottom: 12 }}>
         <div style={{ fontWeight: 950, color: "#15803D", fontSize: 14.5 }}>📣 WhatsApp payment reminders</div>
         <div style={{ fontSize: 12, color: "#166534", margin: "2px 0 8px", lineHeight: 1.45 }}>Sent from the Glasswings WhatsApp number (AiSensy) with each person's balance, due date and a <b>Pay now</b> button. Tip: send once a week (e.g. every Sunday), plus 3 days before the deadline.</div>
@@ -15921,7 +16030,9 @@ function TripBoardTab({ event }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
         <button onClick={() => printList("manifest")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 11px", fontSize: 12.5 }}>📄 Traveller manifest</button>
         <button onClick={() => printList("rooms")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "7px 11px", fontSize: 12.5 }}>🛏️ Rooming list</button>
+        {!(gwDaysTo(d.start) != null && gwDaysTo(d.start) <= 2) && <button onClick={() => setBoardOpen(v => !v)} style={{ ...btn("#ECFEFF", "#0E7490"), border: "1px solid #A5F3FC", padding: "7px 11px", fontSize: 12.5 }}>🛫 Boarding scan</button>}
       </div>
+      {boardOpen && !(gwDaysTo(d.start) != null && gwDaysTo(d.start) <= 2) && <TripBoardingPanel rows={rows} onChanged={load} onCash={cash} />}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
         {[["all", `Active (${act.length})`], ["behind", `⚠️ Behind (${act.filter(b => b.behind > 0).length})`], ["paid", `✅ Fully paid (${rows.filter(b => b.status === "paid").length})`], ["refunds", `🏦 Refunds (${rows.filter(b => b.refund_status === "pending").length})`], ["closed", `Closed (${rows.filter(b => ["cancelled", "released"].includes(b.status)).length})`]].map(([k, l]) => <button key={k} onClick={() => setFilter(k)} style={{ ...gwChip(filter === k), fontSize: 12 }}>{l}</button>)}
       </div>
@@ -16628,7 +16739,7 @@ const GW_TAB_GUIDE = {
   ev_media: { icon: "🖼️", title: "Media & share", grad: "linear-gradient(120deg,#2563EB,#0EA5E9)", one: "Banner, photos and videos make people buy. Then share the event link everywhere.", flow: [["🖼️", "Banner", "Wide image"], ["🎬", "Videos", "Reels / teaser"], ["🔗", "Share link", "WhatsApp, Instagram"]], steps: ["Upload a bright banner and a few photos.", "Add a short video if you have one.", "Copy the share link and post it on WhatsApp and Instagram."] },
   ev_tickets: { ref: "tickets" },
   ev_trip: { icon: "🏝️", title: "Trip setup", grad: "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)", one: "Everything about how people book and pay for this getaway, and what they see on the trip page.", flow: [["💳", "Money rules", "Booking amount, deadline"], ["🛏️", "Rooms", "2/3-sharing + early bird"], ["➕", "Extras", "Flight ⚡, casino"], ["📝", "Trip page", "Plan, stay, packing"], ["🧮", "Cost sheet", "Break-even"]], steps: ["Set the booking amount = your non-refundable cost per seat (hotel + transport advance).", "Set 'Pay in full … days before' (7 is safe for hotels) and the minimum travellers.", "Add room packages with seats; add an early-bird price + last date.", "Add flights as an extra with ⚡ Paid in full at booking.", "Write the day-by-day plan and the rest of the trip page, then tap 💾 Save."], more: "getaway" },
-  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "Tap ⚠️ Remind those behind (or 📣 Remind everyone) to send WhatsApp reminders from the Glasswings number with a Pay now button. 💬 From my WhatsApp opens the same message on your own phone.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On the day, tap Mark boarded for each traveller."], more: "getaway" },
+  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "Tap ⚠️ Remind those behind (or 📣 Remind everyone) to send WhatsApp reminders from the Glasswings number with a Pay now button. 💬 From my WhatsApp opens the same message on your own phone.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On departure day the 🛫 Boarding day box appears at the top: tap 📷 Scan Trip Pass, check ID, tap ✅ Board all. The counter shows boarded / total, and ⏳ Not boarded lists who to call."], more: "getaway" },
   ev_sales: { icon: "💰", title: "Sales & platform fee", grad: "linear-gradient(120deg,#059669,#0EA5E9)", one: "Every ticket sold (online and at the door) and the platform fee for this event.", flow: [["💳", "Online", "Razorpay"], ["💵", "Door", "Cash / UPI"], ["💼", "Platform fee", "Std / tiers / ₹ per ticket"], ["🏦", "Payable", "To organiser"]], steps: ["Check the 💼 Platform fee card (admins can switch to volume pricing for big events).", "Scroll down to see each sale.", "Settle the organiser from 🏢 Organisers → Payouts."], more: "fees" },
   ev_pnl: { icon: "💹", title: "Profit & loss", grad: "linear-gradient(120deg,#0E7A5F,#16A34A)", one: "Income from this event minus its costs, so you know if it made money.", flow: [["₹", "Income", "Tickets, stalls, sponsors"], ["🧾", "Costs", "Venue, DJ, decor…"], ["⚖️", "Profit", "Income − costs"]], steps: ["Ticket income is added automatically (online + door).", "Tap Add a line for every cost (venue, DJ, decor) with its amount.", "Check the net profit before planning the next event."] },
   ev_analytics: { icon: "📊", title: "Event analytics", grad: "linear-gradient(120deg,#4F46E5,#0EA5E9)", one: "Who bought, when they bought, and how many came.", flow: [["📈", "Sales by day", "When people buy"], ["🎟️", "By ticket type", "What sells"], ["✅", "Check-ins", "Turn-up rate"]], steps: ["See which days and which tickets sold best.", "Use it to time your next promotions."] },
