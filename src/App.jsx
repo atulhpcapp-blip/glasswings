@@ -21038,7 +21038,7 @@ function EventReviewQueue({ isAdmin }) {
         </div>
         <div style={{ fontSize: 12.5, fontWeight: 900, color: "#166534", marginTop: 14 }}>2️⃣ 🎉 Congratulations, your event is LIVE</div>
         {liveCamp === null ? <div style={{ fontSize: 12, color: "#9A3412", marginTop: 6 }}>Run <b>event_live_notify.sql</b> in Supabase to switch this on.</div> : <>
-          <div style={{ fontSize: 12, color: "#166534", margin: "6px 0 8px", lineHeight: 1.5 }}>Campaign (e.g. <b>event_live</b>) with 4 variables: {"{{1}}"} name, {"{{2}}"} event, {"{{3}}"} date &amp; place, {"{{4}}"} event link. No button. Empty = uses campaign 1️⃣ instead.</div>
+          <div style={{ fontSize: 12, color: "#166534", margin: "6px 0 8px", lineHeight: 1.5 }}>Campaign (e.g. <b>event_live</b>) with 4 variables: {"{{1}}"} name, {"{{2}}"} event, {"{{3}}"} date &amp; place, {"{{4}}"} event link. No button. Until this is set, publishing sends only the email (no WhatsApp).</div>
           <div style={{ display: "flex", gap: 6 }}>
             <input value={liveCamp} onChange={x => setLiveCamp(x.target.value)} placeholder="event_live" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "8px 10px", fontSize: 16, color: "#111B21", WebkitTextFillColor: "#111B21", background: "#fff", caretColor: "#111B21" }} />
             <button onClick={async () => { const { data, error } = await supabase.rpc("set_event_live_campaign", { p_name: liveCamp }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5 }}>Save</button>
