@@ -3969,7 +3969,9 @@ function Main({ user }) {
       supabase.from("segment_members").select("segment_id").eq("user_id", user.id),
       supabase.rpc("my_organiser_staff_context"),
     ]);
-    setProfile(prof); setRooms(rm || []); setEvents(ev || []);
+    const profTeam = [prof?.role, ...((prof?.roles) || [])].some(r => ["superadmin", "admin", "subadmin", "team", "staff"].includes(r));
+    // organisers see their own changes that are waiting for approval (members still see the approved version)
+    setProfile(prof); setRooms(rm || []); setEvents((ev || []).map(e => (!profTeam && e.pending_patch && e.host_id && (e.host_id === user.id || e.host_id === (osc || [])[0]?.organiser_id)) ? { ...e, ...e.pending_patch, __pendingKeys: Object.keys(e.pending_patch) } : e));
     const sbLive = (sb || []).filter(x => !x.expires_at || new Date(x.expires_at).getTime() > Date.now());
     setSubs(sbLive.map(x => x.room_id)); setSubRows(sb || []); setTickets([...new Set((tk || []).map(x => x.event_id))]);
     const mt = {}; (tk || []).forEach(r => { if (!mt[r.event_id]) mt[r.event_id] = []; mt[r.event_id].push(r); }); setMyTickets(mt);
@@ -4018,7 +4020,7 @@ function Main({ user }) {
   const [reviewBadge, setReviewBadge] = useState(0);
   useEffect(() => {
     if (!isGwTeamMain) return;
-    const f = () => supabase.rpc("event_review_queue").then(({ data, error }) => { if (!error) setReviewBadge((data || []).filter(r => r.review_state === "submitted").length); });
+    const f = () => supabase.rpc("event_review_queue").then(({ data, error }) => { if (!error) setReviewBadge((data || []).filter(r => r.review_state === "submitted" || r.review_state === "edit_pending").length); });
     f(); const iv = setInterval(f, 120000); window.addEventListener("gweventsreload", f);
     return () => { clearInterval(iv); window.removeEventListener("gweventsreload", f); };
   }, [isGwTeamMain]);
@@ -4459,7 +4461,10 @@ function Main({ user }) {
     if (error) return setNotice(error.message);
     setNotice(`${gwIsPrivateEvent(e) ? "Private party" : "Event"} sent privately to ${target.length} invited member${target.length === 1 ? "" : "s"}.`);
   };
-  const updateEvent = async (id, p) => { const { error } = organiserStaff?.can_events ? await supabase.rpc("organiser_staff_update_event", { p_event: id, p_patch: p }) : await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e)); };
+  const updateEvent = async (id, p) => { const { error } = organiserStaff?.can_events ? await supabase.rpc("organiser_staff_update_event", { p_event: id, p_patch: p }) : await supabase.from("events").update(p).eq("id", id); if (error) return setNotice(error.message); setEvents(prev => prev.map(e => e.id === id ? { ...e, ...p } : e));
+    const ev0 = events.find(e => e.id === id);
+    if (ev0 && ev0.approved !== false && !isGwTeamMain && Object.keys(p || {}).some(k => GW_REVIEW_FIELDS.includes(k))) { setNotice("✏️ Your changes were sent to Glasswings for approval. Members still see the old version until the team approves them."); load(); }
+  };
   const duplicateEvent = async (e) => {
     const { id, created_at, ...rest } = e;
     rest.title = (e.title || "Event") + " (copy)";
@@ -20842,12 +20847,30 @@ function HelpBox({ title = "How this works", tips, children, defaultOpen = false
   );
 }
 // ---------- 🛂 Event review before publishing (organiser → Glasswings team) ----------
-const gwEventState = e => e?.approved !== false ? "live" : (e?.review_state === "submitted" ? "submitted" : e?.review_state === "changes" ? "changes" : "draft");
+const GW_REVIEW_FIELDS = ["title","emoji","description","event_date","event_at","end_at","date_mode","venue","city","venue_lat","venue_lng","location_type","online_url","banner_url","banner_type","poster_url","vertical_banner_url","portrait_banner_url","vertical_video_url","portrait_video_url","landscape_video_url","about_media","ticket_price","booking_mode","terms","exclusions","artists","faqs","schedule","food_dining","facilities","dress_code","category","tags","host_type","host_name","host_logo","entry_badge","member_discount_pct","credit_cap_pct"];
+const GW_FIELD_LABEL = { title: "Title", emoji: "Emoji", description: "Description", event_date: "Date text", event_at: "Date & time", end_at: "End time", date_mode: "Date type", venue: "Venue", city: "City", venue_lat: "Map pin", venue_lng: "Map pin", location_type: "Location type", online_url: "Online link", banner_url: "Banner", banner_type: "Banner type", poster_url: "Poster", vertical_banner_url: "Vertical banner", portrait_banner_url: "Portrait banner", vertical_video_url: "Vertical video", portrait_video_url: "Portrait video", landscape_video_url: "Landscape video", about_media: "About media", ticket_price: "Ticket price", booking_mode: "Booking type", terms: "Terms", exclusions: "Exclusions", artists: "Artists", faqs: "FAQs", schedule: "Schedule", food_dining: "Food & dining", facilities: "Facilities", dress_code: "Dress code", category: "Category", tags: "Tags", host_type: "Host type", host_name: "Host name", host_logo: "Host logo", entry_badge: "Entry badge", member_discount_pct: "Member discount", credit_cap_pct: "Credits cap" };
+const gwPendingKeys = e => e?.__pendingKeys || (e?.pending_patch ? Object.keys(e.pending_patch) : []);
+const gwEventState = e => e?.approved !== false
+  ? ((e?.review_state === "edit_pending" || e?.review_state === "edit_changes") && gwPendingKeys(e).length ? (e.review_state === "edit_changes" ? "editchanges" : "edit") : "live")
+  : (e?.review_state === "submitted" ? "submitted" : e?.review_state === "changes" ? "changes" : "draft");
+function GwDiffList({ diff }) {
+  const show = v => { if (v == null || v === "") return <i style={{ color: "#94A3B8" }}>empty</i>; const s = typeof v === "string" ? v : JSON.stringify(v); if (/^https?:\/\/.+\.(png|jpe?g|webp|gif)(\?|$)/i.test(s)) return <img src={s} alt="" style={{ height: 54, borderRadius: 6, verticalAlign: "middle" }} />; if (/^\d{4}-\d{2}-\d{2}T/.test(s)) { const d = new Date(s); if (!isNaN(d)) return d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); } return s.length > 160 ? s.slice(0, 160) + "…" : s; };
+  const seen = new Set(); const rows = (diff || []).filter(d => { const l = GW_FIELD_LABEL[d.field] || d.field; if (seen.has(l)) return false; seen.add(l); return true; });
+  return <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, marginTop: 8, overflow: "hidden" }}>
+    {rows.map(d => <div key={d.field} style={{ padding: "7px 10px", borderTop: "1px solid #F1F5F9", fontSize: 12.5, lineHeight: 1.45 }}>
+      <div style={{ fontWeight: 900, color: W.ink, marginBottom: 2 }}>{GW_FIELD_LABEL[d.field] || d.field}</div>
+      <div style={{ color: "#B91C1C", textDecoration: "line-through", wordBreak: "break-word" }}>{show(d.old)}</div>
+      <div style={{ color: "#15803D", fontWeight: 700, wordBreak: "break-word" }}>→ {show(d.new)}</div>
+    </div>)}
+  </div>;
+}
 const GW_EV_STATE = {
   live: ["● Live", "#008069", "#E7F6EF"],
   draft: ["📝 Draft · not visible", "#475569", "#F1F5F9"],
   submitted: ["⏳ Waiting for Glasswings review", "#B45309", "#FEF3C7"],
   changes: ["✏️ Changes needed", "#C2410C", "#FFEDD5"],
+  edit: ["● Live · ✏️ edits waiting for approval", "#B45309", "#FEF3C7"],
+  editchanges: ["● Live · ✏️ Glasswings asked about your edits", "#C2410C", "#FFEDD5"],
 };
 const GW_REVIEW_REASONS = ["Poster / banner is low quality or missing", "Add the venue (with Google Maps pin)", "Add ticket types and prices", "Description is too short", "Add terms & refund rules", "Date or time looks wrong", "Fix spelling in the title"];
 
@@ -20872,17 +20895,17 @@ async function gwNotifyOrganiser(eventId, action) {
   } catch (e) { return { error: e.message || "network" }; }
 }
 
-function EventReviewSheet({ e, mode, onClose, onDone }) {
-  // mode: publish | changes | unpublish
+function EventReviewSheet({ e, mode, isEdit = false, onClose, onDone }) {
+  // mode: publish | changes | unpublish | discard   (isEdit = changes to an event that is already live)
   const [note, setNote] = useState(""), [busy, setBusy] = useState(false), [res, setRes] = useState(null), [announce, setAnnounce] = useState(true);
-  const title = mode === "publish" ? "✅ Publish this event" : mode === "changes" ? "✏️ Ask the organiser for changes" : "⏸️ Unpublish this event";
+  const title = isEdit && mode === "publish" ? "✅ Approve the organiser's edits" : mode === "discard" ? "🗑️ Reject the organiser's edits" : isEdit && mode === "changes" ? "✏️ Ask about these edits" : mode === "publish" ? "✅ Publish this event" : mode === "changes" ? "✏️ Ask the organiser for changes" : "⏸️ Unpublish this event";
   const go = async () => {
     if (mode === "changes" && !note.trim()) return window.gwConfirm("Write what the organiser should change.", () => {});
     setBusy(true);
     const { data, error } = await supabase.rpc("event_review_set", { p_event: e.id, p_action: mode, p_note: note.trim() || null });
     if (error || !data?.ok) { setBusy(false); return window.gwConfirm(error?.message?.includes("event_review_set") ? "Run event_review.sql in Supabase first." : (error?.message || data?.error || "Couldn't save"), () => {}); }
-    if (mode === "publish" && announce) { try { window.dispatchEvent(new CustomEvent("gwannounceevent", { detail: e.id })); } catch { } }
-    const n = await gwNotifyOrganiser(e.id, mode);
+    if (mode === "publish" && announce && !isEdit) { try { window.dispatchEvent(new CustomEvent("gwannounceevent", { detail: e.id })); } catch { } }
+    const n = await gwNotifyOrganiser(e.id, isEdit && mode === "publish" ? "apply_edit" : mode);
     setBusy(false);
     setRes({ ...n, contact: n.contact || data.contact || {} });
     try { window.dispatchEvent(new Event("gweventsreload")); } catch { }
@@ -20890,7 +20913,9 @@ function EventReviewSheet({ e, mode, onClose, onDone }) {
   };
   const c = res?.contact || {};
   const statusTxt = s => !s ? "—" : s === "sent" ? "✅ Sent" : s === "not_setup" ? "⚙️ Not set up yet" : s === "no_phone" ? "📵 No number" : s === "no_email" ? "📭 No email" : "✕ " + String(s).replace(/^failed:\s*/, "").slice(0, 90);
-  const msg = mode === "publish" ? `🎉 Congratulations ${c.first || ""}! Your event "${e.title}" is now LIVE on Glasswings. Members can see it and book tickets.\n\nShare your link: ${window.location.origin}/e/${e.id}\n\nWatch your bookings in the app: Admin → Events → Sales. All the best for a full house! 🙌`
+  const msg = isEdit && mode === "publish" ? `Hi ${c.first || ""}, your latest changes to "${e.title}" have been approved and are now live on Glasswings ✅\n${window.location.origin}/e/${e.id}`
+    : mode === "discard" ? `Hi ${c.first || ""}, your recent changes to "${e.title}" were not approved, so the event stays as it was.${note.trim() ? `\nReason: ${note.trim()}` : ""}\n\nYou can edit it again in the app (Admin → Events).`
+    : mode === "publish" ? `🎉 Congratulations ${c.first || ""}! Your event "${e.title}" is now LIVE on Glasswings. Members can see it and book tickets.\n\nShare your link: ${window.location.origin}/e/${e.id}\n\nWatch your bookings in the app: Admin → Events → Sales. All the best for a full house! 🙌`
     : mode === "changes" ? `Hi ${c.first || ""}, thanks for submitting "${e.title}" on Glasswings. Before we publish, please change:\n${note.trim()}\n\nUpdate it in the app (Admin → Events → open the event) and tap "📤 Send for review" again. 🙏`
       : `Hi ${c.first || ""}, your event "${e.title}" has been unpublished on Glasswings for now.${note.trim() ? `\nReason: ${note.trim()}` : ""}`;
   const waNumber = String(c.phone || "").replace(/\D/g, "").replace(/^0+/, "");
@@ -20899,7 +20924,10 @@ function EventReviewSheet({ e, mode, onClose, onDone }) {
       <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}><div style={{ flex: 1, fontWeight: 950, fontSize: 17, color: W.ink }}>{title}</div><span onClick={onClose} style={{ cursor: "pointer", fontSize: 22, color: W.soft }}>✕</span></div>
       <div style={{ fontSize: 13, color: W.soft, marginBottom: 10 }}>{e.emoji || "🎟️"} <b style={{ color: W.ink }}>{e.title}</b>{e.event_date ? ` · ${e.event_date}` : ""}</div>
       {!res ? <>
-        {mode === "publish" ? <>
+        {mode === "publish" && isEdit ? <>
+          <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 12, padding: "10px 12px", fontSize: 13, color: "#065F46", lineHeight: 1.5 }}>The new details replace the old ones straight away. The organiser gets an email saying the edits are live.</div>
+          {e.pending_patch && <GwDiffList diff={Object.keys(e.pending_patch).map(k => ({ field: k, old: e[k], new: e.pending_patch[k] }))} />}
+        </> : mode === "publish" ? <>
           <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 12, padding: "10px 12px", fontSize: 13, color: "#065F46", lineHeight: 1.5 }}>Members will see it straight away and can book. The organiser gets an email{` `}and WhatsApp saying it's live.{e.series_id ? " All dates in this series are published together." : ""}</div>
           <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, color: W.ink, margin: "12px 0", fontWeight: 700 }}><input type="checkbox" checked={announce} onChange={x => setAnnounce(x.target.checked)} style={{ width: 18, height: 18, accentColor: W.teal }} /> 📣 Also announce it in the group chats</label>
         </> : <>
@@ -20909,9 +20937,9 @@ function EventReviewSheet({ e, mode, onClose, onDone }) {
           </div>
           <textarea value={note} onChange={x => setNote(x.target.value)} rows={5} placeholder="e.g. • Poster text is blurry, please upload a sharper one" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 12px", fontSize: 16, fontFamily: "inherit", outline: "none", resize: "vertical", color: "#111B21", WebkitTextFillColor: "#111B21", background: "#fff", caretColor: "#111B21" }} />
         </>}
-        <button disabled={busy} onClick={go} style={{ ...btn(mode === "publish" ? W.teal : mode === "changes" ? "#EA580C" : "#DC2626", "#fff"), width: "100%", justifyContent: "center", padding: 13, fontSize: 15, fontWeight: 900, marginTop: 10, opacity: busy ? .6 : 1 }}>{busy ? "Saving & notifying…" : mode === "publish" ? "✅ Publish now & tell the organiser" : mode === "changes" ? "✏️ Send to organiser" : "⏸️ Unpublish & tell the organiser"}</button>
+        <button disabled={busy} onClick={go} style={{ ...btn(mode === "publish" ? W.teal : mode === "changes" ? "#EA580C" : "#DC2626", "#fff"), width: "100%", justifyContent: "center", padding: 13, fontSize: 15, fontWeight: 900, marginTop: 10, opacity: busy ? .6 : 1 }}>{busy ? "Saving & notifying…" : mode === "publish" ? (isEdit ? "✅ Approve edits & tell the organiser" : "✅ Publish now & tell the organiser") : mode === "changes" ? "✏️ Send to organiser" : mode === "discard" ? "🗑️ Reject edits & tell the organiser" : "⏸️ Unpublish & tell the organiser"}</button>
       </> : <>
-        <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 12, padding: "10px 12px", fontSize: 13.5, color: "#166534", fontWeight: 800, marginBottom: 10 }}>{mode === "publish" ? "✅ Published" : mode === "changes" ? "✏️ Sent back to the organiser" : "⏸️ Unpublished"}</div>
+        <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 12, padding: "10px 12px", fontSize: 13.5, color: "#166534", fontWeight: 800, marginBottom: 10 }}>{mode === "publish" ? (isEdit ? "✅ Edits approved and live" : "✅ Published") : mode === "discard" ? "🗑️ Edits rejected. The event stays as it was." : mode === "changes" ? "✏️ Sent back to the organiser" : "⏸️ Unpublished"}</div>
         <div style={{ fontSize: 13, color: W.ink, lineHeight: 1.7 }}>
           <div>👤 <b>{c.name || "Organiser"}</b></div>
           <div>✉️ Email {c.email ? `(${c.email})` : ""}: <b>{statusTxt(res.email)}</b></div>
@@ -20972,9 +21000,19 @@ function EventReviewBar({ e, tts, canReview }) {
       {st === "changes" && e.review_note && <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: "9px 11px", marginTop: 8, fontSize: 12.5, color: "#9A3412", lineHeight: 1.5, whiteSpace: "pre-wrap" }}><b>✏️ Glasswings asked for these changes:</b>{"\n"}{e.review_note}{!canReview ? "\n\nFix them (tap Open), then send it for review again." : ""}</div>}
       {st === "draft" && !canReview && <div style={{ fontSize: 12, color: W.soft, marginTop: 6, lineHeight: 1.45 }}>Only you can see this. Finish the details, then send it to Glasswings for review.</div>}
       {st === "submitted" && !canReview && <div style={{ fontSize: 12, color: "#92400E", marginTop: 6, lineHeight: 1.45 }}>The Glasswings team is checking it. You'll get an email and WhatsApp when it's live.</div>}
+      {(st === "edit" || st === "editchanges") && !canReview && <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 12, padding: "9px 11px", marginTop: 8, fontSize: 12.5, color: "#92400E", lineHeight: 1.5 }}>
+        <b>✏️ Your edits are waiting for Glasswings approval.</b><br />Members still see the old version and can keep booking. Changed: <b>{[...new Set(gwPendingKeys(e).map(k => GW_FIELD_LABEL[k] || k))].join(", ")}</b>
+        {st === "editchanges" && e.review_note ? <div style={{ marginTop: 6, color: "#9A3412", whiteSpace: "pre-wrap" }}><b>Glasswings asked:</b> {e.review_note}{"\n"}Fix it (tap Open); saving sends it for approval again.</div> : null}
+      </div>}
+      {(st === "edit" || st === "editchanges") && canReview && e.pending_patch && <GwDiffList diff={Object.keys(e.pending_patch).map(k => ({ field: k, old: e[k], new: e.pending_patch[k] }))} />}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
         {!canReview && (st === "draft" || st === "changes") && <button onClick={() => setSheet("submit")} style={b(W.teal, "#fff")}>📤 {st === "changes" ? "Send for review again" : "Send for review"}</button>}
-        {canReview && st !== "live" && <>
+        {canReview && (st === "edit" || st === "editchanges") && <>
+          <button onClick={() => setSheet("publish")} style={b(W.teal, "#fff")}>✅ Approve edits</button>
+          <button onClick={() => setSheet("changes")} style={b("#FFF7ED", "#C2410C", { border: "1px solid #FED7AA" })}>✏️ Ask for changes</button>
+          <button onClick={() => setSheet("discard")} style={b("#fff", "#B91C1C", { border: "1px solid #FECACA" })}>🗑️ Reject edits</button>
+        </>}
+        {canReview && st !== "live" && st !== "edit" && st !== "editchanges" && <>
           <button onClick={() => window.open(`${window.location.origin}/e/${e.id}`, "_blank")} style={b("#fff", W.ink, { border: `1px solid ${W.line}` })}>👁️ Preview</button>
           <button onClick={() => setSheet("publish")} style={b(W.teal, "#fff")}>✅ Publish</button>
           <button onClick={() => setSheet("changes")} style={b("#FFF7ED", "#C2410C", { border: "1px solid #FED7AA" })}>✏️ Ask for changes</button>
@@ -20982,7 +21020,7 @@ function EventReviewBar({ e, tts, canReview }) {
         {canReview && st === "live" && <button onClick={() => setSheet("unpublish")} style={b("#fff", "#B45309", { border: "1px solid #F0D9A8" })}>⏸️ Unpublish</button>}
       </div>
       {sheet === "submit" && <EventSubmitSheet e={e} tts={tts} onClose={() => setSheet(null)} />}
-      {sheet && sheet !== "submit" && <EventReviewSheet e={e} mode={sheet} onClose={() => setSheet(null)} />}
+      {sheet && sheet !== "submit" && <EventReviewSheet e={e} mode={sheet} isEdit={st === "edit" || st === "editchanges"} onClose={() => setSheet(null)} />}
     </div>
   );
 }
@@ -20994,8 +21032,10 @@ function EventReviewQueue({ isAdmin }) {
   useEffect(() => { load(); supabase.rpc("event_review_campaign").then(({ data, error }) => setCamp(error ? null : (data || ""))); supabase.rpc("event_live_campaign").then(({ data, error }) => setLiveCamp(error ? null : (data || ""))); const h = () => load(); window.addEventListener("gweventsreload", h); return () => window.removeEventListener("gweventsreload", h); }, []);
   if (err) return <div style={{ padding: 14 }}><div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 14, fontSize: 13.5, color: "#9A3412" }}>Run <b>event_review.sql</b> in Supabase → SQL Editor first.<div style={{ fontSize: 11.5, opacity: .8 }}>{err}</div></div></div>;
   if (!rows) return <Center>Loading…</Center>;
-  const n = k => rows.filter(r => (r.review_state || "draft") === k).length;
-  const list = rows.filter(r => f === "all" || (r.review_state || "draft") === f);
+  const grp = r => (r.review_state === "submitted" || r.review_state === "edit_pending") ? "submitted" : (r.review_state === "changes" || r.review_state === "edit_changes") ? "changes" : "draft";
+  const n = k => rows.filter(r => grp(r) === k).length;
+  const list = rows.filter(r => f === "all" || grp(r) === f);
+  const asEvent = r => { const x = { ...r, approved: r.live === false ? false : r.approved }; if ((r.diff || []).length) { x.pending_patch = {}; r.diff.forEach(d => { x.pending_patch[d.field] = d.new; x[d.field] = d.old; }); } return x; };
   const chip = (k, l) => <button key={k} onClick={() => setF(k)} style={{ border: `1.5px solid ${f === k ? W.teal : W.line}`, background: f === k ? W.teal : "#fff", color: f === k ? "#fff" : W.ink, borderRadius: 999, padding: "7px 12px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{l}</button>;
   return (
     <div style={{ padding: 14, maxWidth: 820 }}>
@@ -21004,7 +21044,8 @@ function EventReviewQueue({ isAdmin }) {
       </div>
       {list.length === 0 && <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 22, textAlign: "center", color: W.soft, fontSize: 13.5 }}>{f === "submitted" ? "🎉 Nothing waiting for review." : "Nothing here."}</div>}
       {list.map(r => {
-        const st = r.review_state === "submitted" ? "submitted" : r.review_state === "changes" ? "changes" : "draft";
+        const st = r.review_state === "edit_pending" ? "edit" : r.review_state === "edit_changes" ? "editchanges" : r.review_state === "submitted" ? "submitted" : r.review_state === "changes" ? "changes" : "draft";
+        const isEd = st === "edit" || st === "editchanges";
         const [label, col, bg] = GW_EV_STATE[st];
         const img = r.poster_url || (r.banner_type !== "video" ? r.banner_url : null);
         return <div key={r.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${col}`, borderRadius: 14, padding: 12, marginBottom: 10 }}>
@@ -21020,11 +21061,13 @@ function EventReviewQueue({ isAdmin }) {
               </div>
             </div>
           </div>
-          {st === "changes" && r.review_note && <div style={{ fontSize: 12, color: "#9A3412", background: "#FFF7ED", borderRadius: 10, padding: "7px 10px", marginTop: 8, whiteSpace: "pre-wrap" }}>✏️ Asked: {r.review_note}</div>}
+          {(st === "changes" || st === "editchanges") && r.review_note && <div style={{ fontSize: 12, color: "#9A3412", background: "#FFF7ED", borderRadius: 10, padding: "7px 10px", marginTop: 8, whiteSpace: "pre-wrap" }}>✏️ Asked: {r.review_note}</div>}
+          {isEd && <><div style={{ fontSize: 12, color: "#92400E", fontWeight: 800, marginTop: 8 }}>This event is LIVE. The organiser changed these details (members still see the old ones):</div><GwDiffList diff={r.diff} /></>}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
             <button onClick={() => window.open(`${window.location.origin}/e/${r.id}`, "_blank")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "8px 12px", fontSize: 12.5 }}>👁️ Preview</button>
-            <button onClick={() => setAct({ e: r, mode: "publish" })} style={{ ...btn(W.teal, "#fff"), padding: "8px 12px", fontSize: 12.5, fontWeight: 850 }}>✅ Publish</button>
-            <button onClick={() => setAct({ e: r, mode: "changes" })} style={{ ...btn("#FFF7ED", "#C2410C"), border: "1px solid #FED7AA", padding: "8px 12px", fontSize: 12.5, fontWeight: 850 }}>✏️ Ask for changes</button>
+            <button onClick={() => setAct({ e: asEvent(r), mode: "publish", isEdit: isEd })} style={{ ...btn(W.teal, "#fff"), padding: "8px 12px", fontSize: 12.5, fontWeight: 850 }}>{isEd ? "✅ Approve edits" : "✅ Publish"}</button>
+            <button onClick={() => setAct({ e: asEvent(r), mode: "changes", isEdit: isEd })} style={{ ...btn("#FFF7ED", "#C2410C"), border: "1px solid #FED7AA", padding: "8px 12px", fontSize: 12.5, fontWeight: 850 }}>✏️ Ask for changes</button>
+            {isEd && <button onClick={() => setAct({ e: asEvent(r), mode: "discard", isEdit: true })} style={{ ...btn("#fff", "#B91C1C"), border: "1px solid #FECACA", padding: "8px 12px", fontSize: 12.5, fontWeight: 850 }}>🗑️ Reject edits</button>}
           </div>
         </div>;
       })}
@@ -21045,7 +21088,7 @@ function EventReviewQueue({ isAdmin }) {
           </div>
         </>}
       </details>}
-      {act && <EventReviewSheet e={act.e} mode={act.mode} onClose={() => { setAct(null); load(); }} />}
+      {act && <EventReviewSheet e={act.e} mode={act.mode} isEdit={!!act.isEdit} onClose={() => { setAct(null); load(); }} />}
     </div>
   );
 }
