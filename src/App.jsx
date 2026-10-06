@@ -1623,6 +1623,12 @@ function gwPreviewText(m) {
   if (t === "welcome") return "🌸 Joined the room";
   return (m.body || "").split("\n")[0] || "Message";
 }
+// a homepage slide is shown only while its event is on (if linked) and until its "show until" date
+function gwSlideLive(sl, events) {
+  if (sl.show_until) { const d = new Date(sl.show_until + "T23:59:59"); if (!isNaN(d) && Date.now() > d.getTime()) return false; }
+  if (sl.event_id) return (events || []).some(e2 => e2.id === sl.event_id && gwEventLive(e2));
+  return true;
+}
 function gwEventLive(e) {
   if (!e) return false;
   if (e.end_at) return Date.now() <= new Date(e.end_at).getTime();
@@ -3037,7 +3043,7 @@ function PublicLanding() {
     .filter(x => x.img)
     .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
     .map(evSlide);
-  const customSlides = custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
+  const customSlides = custom.filter(sl => gwSlideLive(sl, events)).map(sl => ({ url: sl.url, id: sl.event_id || undefined }));
   const autoSlides = events
     .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
     .filter(x => x.img && x.e.approved !== false && gwEventLive(x.e))
@@ -4877,7 +4883,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   };
   const evSlide = ({ e, img }) => ({ url: img, title: e.title, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
   const promoSlides = events.filter(e => Number(e.promo_pct) > 0 && e.approved !== false && gwEventLive(e)).map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img).sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct)).map(evSlide);
-  const customSlides = privateMode ? [] : custom.map(sl => ({ url: sl.url, id: sl.event_id || undefined })).filter(c => !c.id || events.some(e2 => e2.id === c.id && gwEventLive(e2)));
+  const customSlides = privateMode ? [] : custom.filter(sl => gwSlideLive(sl, events)).map(sl => ({ url: sl.url, id: sl.event_id || undefined }));
   const autoSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false && gwEventLive(x.e)).sort((a, b) => (a.e.event_at ? new Date(a.e.event_at).getTime() : 9e15) - (b.e.event_at ? new Date(b.e.event_at).getTime() : 9e15)).map(evSlide);
   const seen = new Set(promoSlides.map(ps => ps.id).filter(Boolean));
   const cust2 = customSlides.filter(c => !c.id || !seen.has(c.id)); cust2.forEach(c => { if (c.id) seen.add(c.id); });
@@ -4956,7 +4962,6 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
 
           {heroSlides.length>0 && <div style={{padding:"10px 16px 4px"}}><div style={{borderRadius:14,overflow:"hidden"}}><HeroSlider slides={heroSlides} wide={wide} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div></div>}
 
-          <PlanEventBanner profile={profile}/>
 
           <div style={{display:"flex",gap:9,padding:"12px 16px 8px",overflowX:"auto"}}>
             <button onClick={()=>setFsheet(true)} style={filterPill(fltCount(flt)>0)}>☰ Filters{fltCount(flt)>0?` (${fltCount(flt)})`:""}</button>
@@ -4973,6 +4978,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             {list.length===0 ? <div style={{padding:"28px 18px",color:"#777",textAlign:"center"}}>{savedOnly?"No saved events yet.":"No events match your search or filters."}</div>
             : <div style={{display:"flex",gap:14,overflowX:"auto",padding:"0 18px 8px",scrollSnapType:"x proximity"}}>{list.slice(0,10).map(bmsCard)}</div>}
           </section>
+          <PlanEventBanner profile={profile}/>
 
           {list.length>3 && <section style={{padding:"6px 0 28px",background:"#fafafa",borderTop:"1px solid #f1f1f1"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 18px 12px"}}>
@@ -10700,7 +10706,7 @@ function SliderManager() {
   const load = () => supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setRows(data || []));
   useEffect(() => {
     load();
-    supabase.from("events").select("id, title, emoji").order("created_at", { ascending: false }).limit(60).then(({ data }) => setEvs(data || []));
+    supabase.from("events").select("id, title, emoji, event_at, end_at").order("created_at", { ascending: false }).limit(60).then(({ data }) => setEvs(data || []));
     supabase.auth.getUser().then(({ data }) => {
       const id = data?.user?.id; if (!id) return;
       supabase.from("profiles").select("roles, role").eq("id", id).single().then(({ data: p }) => {
@@ -10725,7 +10731,7 @@ function SliderManager() {
   return (
     <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
       <div style={{ fontWeight: 700, color: W.ink }}>Homepage slider</div>
-      <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 10px" }}>These images rotate at the top of the events page. Link each one to an event so tapping it opens that event. If you add none, the latest event banners are shown automatically.</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 10px" }}>These images rotate at the top of the events page. Link each one to an event: it opens that event and disappears by itself once the event is over. For a slide with no event, set "Show until". If you add none, the latest event banners are shown automatically.</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {rows.map(r => (
           <div key={r.id} style={{ position: "relative", width: 130 }}>
@@ -10735,6 +10741,9 @@ function SliderManager() {
               <option value="">No link</option>
               {evs.map(ev => <option key={ev.id} value={ev.id}>{(ev.emoji || "🎟️") + " " + ev.title}</option>)}
             </select>
+            <div style={{ fontSize: 10.5, color: W.soft, fontWeight: 700, marginTop: 5 }}>Show until</div>
+            <input type="date" value={r.show_until || ""} onChange={async (e) => { const { error } = await supabase.from("slider_images").update({ show_until: e.target.value || null }).eq("id", r.id); if (error) alert(/show_until/.test(error.message) ? "Run slider_expiry.sql in Supabase first." : error.message); load(); }} style={{ width: "100%", padding: "5px 6px", borderRadius: 8, border: `1px solid ${W.line}`, fontSize: 11.5, color: W.ink, background: "#fff", boxSizing: "border-box" }} />
+            {(() => { const live = gwSlideLive(r, evs); return <div style={{ fontSize: 10.5, fontWeight: 800, marginTop: 4, color: live ? W.teal : "#B91C1C" }}>{live ? (r.event_id ? "● Showing · hides after the event" : r.show_until ? "● Showing" : "⚠️ Showing forever") : "⏹ Hidden (over)"}</div>; })()}
           </div>
         ))}
         <button onClick={() => fileRef.current?.click()} disabled={busy} style={{ width: 110, height: 64, borderRadius: 9, border: `1.5px dashed ${W.teal}`, background: "#fff", color: W.teal, fontWeight: 700, fontSize: 12.5, cursor: "pointer", opacity: busy ? .6 : 1 }}>{busy ? "Uploading…" : "+ Add image"}</button>
@@ -13009,14 +13018,14 @@ function PlanEventBanner({ profile }) {
   const [open, setOpen] = useState(false);
   if (!profile?.id) return null;
   return (
-    <div style={{ padding: "12px 16px 4px" }}>
-      <div onClick={() => setOpen(true)} style={{ cursor: "pointer", borderRadius: 16, padding: "15px 16px", color: "#fff", background: "linear-gradient(120deg,#0E5C54,#008069 55%,#D81B7A)", display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{ fontSize: 34, lineHeight: 1 }}>🎉</div>
+    <div style={{ padding: "4px 18px 18px" }}>
+      <div onClick={() => setOpen(true)} role="button" style={{ cursor: "pointer", borderRadius: 12, padding: "10px 12px", background: "linear-gradient(90deg,#FFF1F5,#F0FDF9)", border: "1px solid #F3E1EA", display: "flex", alignItems: "center", gap: 12, minHeight: 58, boxSizing: "border-box" }}>
+        <div style={{ width: 38, height: 38, borderRadius: 10, background: "#fff", display: "grid", placeItems: "center", fontSize: 20, flexShrink: 0, boxShadow: "0 1px 4px rgba(0,0,0,.06)" }}>🎉</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>Planning an event?</div>
-          <div style={{ fontSize: 12.5, opacity: .92, marginTop: 2 }}>Weddings, birthdays, corporate & community events. Get quotes from verified organisers. Free.</div>
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Planning an event?</div>
+          <div style={{ fontSize: 12, color: "#666", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Free quotes from verified organisers</div>
         </div>
-        <div style={{ background: "#fff", color: W.teal, fontWeight: 900, fontSize: 13, borderRadius: 10, padding: "9px 12px", whiteSpace: "nowrap" }}>Get quotes</div>
+        <div style={{ color: "#e53955", fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", flexShrink: 0 }}>Get quotes ›</div>
       </div>
       {open && <PlanEventSheet profile={profile} onClose={() => setOpen(false)} />}
     </div>
