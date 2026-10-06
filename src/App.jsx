@@ -20890,7 +20890,7 @@ function EventReviewSheet({ e, mode, onClose, onDone }) {
   };
   const c = res?.contact || {};
   const statusTxt = s => !s ? "—" : s === "sent" ? "✅ Sent" : s === "not_setup" ? "⚙️ Not set up yet" : s === "no_phone" ? "📵 No number" : s === "no_email" ? "📭 No email" : "✕ " + String(s).replace(/^failed:\s*/, "").slice(0, 90);
-  const msg = mode === "publish" ? `Hi ${c.first || ""}, good news! 🎉 Your event "${e.title}" is now LIVE on Glasswings: ${window.location.origin}/e/${e.id}`
+  const msg = mode === "publish" ? `🎉 Congratulations ${c.first || ""}! Your event "${e.title}" is now LIVE on Glasswings. Members can see it and book tickets.\n\nShare your link: ${window.location.origin}/e/${e.id}\n\nWatch your bookings in the app: Admin → Events → Sales. All the best for a full house! 🙌`
     : mode === "changes" ? `Hi ${c.first || ""}, thanks for submitting "${e.title}" on Glasswings. Before we publish, please change:\n${note.trim()}\n\nUpdate it in the app (Admin → Events → open the event) and tap "📤 Send for review" again. 🙏`
       : `Hi ${c.first || ""}, your event "${e.title}" has been unpublished on Glasswings for now.${note.trim() ? `\nReason: ${note.trim()}` : ""}`;
   const waNumber = String(c.phone || "").replace(/\D/g, "").replace(/^0+/, "");
@@ -20989,9 +20989,9 @@ function EventReviewBar({ e, tts, canReview }) {
 
 // Admin → 🛂 Review: everything waiting for the Glasswings team
 function EventReviewQueue({ isAdmin }) {
-  const [rows, setRows] = useState(null), [err, setErr] = useState(""), [f, setF] = useState("submitted"), [act, setAct] = useState(null), [camp, setCamp] = useState(null);
+  const [rows, setRows] = useState(null), [err, setErr] = useState(""), [f, setF] = useState("submitted"), [act, setAct] = useState(null), [camp, setCamp] = useState(null), [liveCamp, setLiveCamp] = useState(null);
   const load = () => supabase.rpc("event_review_queue").then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setRows(data || []); } });
-  useEffect(() => { load(); supabase.rpc("event_review_campaign").then(({ data, error }) => setCamp(error ? null : (data || ""))); const h = () => load(); window.addEventListener("gweventsreload", h); return () => window.removeEventListener("gweventsreload", h); }, []);
+  useEffect(() => { load(); supabase.rpc("event_review_campaign").then(({ data, error }) => setCamp(error ? null : (data || ""))); supabase.rpc("event_live_campaign").then(({ data, error }) => setLiveCamp(error ? null : (data || ""))); const h = () => load(); window.addEventListener("gweventsreload", h); return () => window.removeEventListener("gweventsreload", h); }, []);
   if (err) return <div style={{ padding: 14 }}><div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 14, fontSize: 13.5, color: "#9A3412" }}>Run <b>event_review.sql</b> in Supabase → SQL Editor first.<div style={{ fontSize: 11.5, opacity: .8 }}>{err}</div></div></div>;
   if (!rows) return <Center>Loading…</Center>;
   const n = k => rows.filter(r => (r.review_state || "draft") === k).length;
@@ -21029,12 +21029,21 @@ function EventReviewQueue({ isAdmin }) {
         </div>;
       })}
       {isAdmin && camp !== null && <details style={{ marginTop: 14, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 12, padding: "10px 12px" }}>
-        <summary style={{ fontSize: 12.5, fontWeight: 900, color: "#166534", cursor: "pointer" }}>📲 WhatsApp to organisers (AiSensy campaign)</summary>
+        <summary style={{ fontSize: 12.5, fontWeight: 900, color: "#166534", cursor: "pointer" }}>📲 WhatsApp to organisers (AiSensy campaigns)</summary>
+        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#166534", marginTop: 10 }}>1️⃣ Changes needed / unpublished</div>
         <div style={{ fontSize: 12, color: "#166534", margin: "8px 0", lineHeight: 1.5 }}>Make an AiSensy campaign (e.g. <b>event_review_update</b>) with 4 variables: {"{{1}}"} name, {"{{2}}"} event, {"{{3}}"} status, {"{{4}}"} what to change. No button. Leave empty to only use email + the "WhatsApp from my phone" button.</div>
         <div style={{ display: "flex", gap: 6 }}>
           <input value={camp} onChange={x => setCamp(x.target.value)} placeholder="event_review_update" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "8px 10px", fontSize: 16, color: "#111B21", WebkitTextFillColor: "#111B21", background: "#fff", caretColor: "#111B21" }} />
           <button onClick={async () => { const { data, error } = await supabase.rpc("set_event_review_campaign", { p_name: camp }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5 }}>Save</button>
         </div>
+        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#166534", marginTop: 14 }}>2️⃣ 🎉 Congratulations, your event is LIVE</div>
+        {liveCamp === null ? <div style={{ fontSize: 12, color: "#9A3412", marginTop: 6 }}>Run <b>event_live_notify.sql</b> in Supabase to switch this on.</div> : <>
+          <div style={{ fontSize: 12, color: "#166534", margin: "6px 0 8px", lineHeight: 1.5 }}>Campaign (e.g. <b>event_live</b>) with 4 variables: {"{{1}}"} name, {"{{2}}"} event, {"{{3}}"} date &amp; place, {"{{4}}"} event link. No button. Empty = uses campaign 1️⃣ instead.</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input value={liveCamp} onChange={x => setLiveCamp(x.target.value)} placeholder="event_live" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "8px 10px", fontSize: 16, color: "#111B21", WebkitTextFillColor: "#111B21", background: "#fff", caretColor: "#111B21" }} />
+            <button onClick={async () => { const { data, error } = await supabase.rpc("set_event_live_campaign", { p_name: liveCamp }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5 }}>Save</button>
+          </div>
+        </>}
       </details>}
       {act && <EventReviewSheet e={act.e} mode={act.mode} onClose={() => { setAct(null); load(); }} />}
     </div>
