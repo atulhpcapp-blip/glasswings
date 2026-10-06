@@ -29,16 +29,16 @@ export default async function handler(req, res) {
     const t = await rpc("trip_remind_targets", { p_event: event_id, p_user: user.id, p_ids: Array.isArray(booking_ids) && booking_ids.length ? booking_ids : null });
     if (!t?.ok) return res.status(403).json({ error: t?.error || "Not allowed" });
     const rows = (t.rows || []).slice(0, 150);
+    let hasBtn = false; try { hasBtn = !!((await rpc("trip_wa_flags", {})) || {}).reminder; } catch { hasBtn = false; }
     let sent = 0, failed = 0, noPhone = 0; const errors = [];
     for (const r of rows) {
       const digits = String(r.phone || "").replace(/\D/g, "").replace(/^0+/, "");
       if (digits.length < 10) { noPhone++; await rpc("trip_remind_log", { p_booking: r.booking_id, p_event: event_id, p_phone: r.phone || null, p_status: "no_phone", p_detail: "No WhatsApp number", p_user: user.id }); continue; }
       const destination = digits.length === 10 ? "+91" + digits : "+" + digits;
       const params = [clean(r.name), clean(r.title), inr(r.paid), inr(r.total), inr(r.left), clean(r.deadline)];
-      const base = { apiKey: AISENSY_KEY, campaignName: t.campaign, destination, userName: clean(r.name), source: "glasswings-trip-reminder", templateParams: params,
-        buttons: [{ type: "button", sub_type: "url", index: 0, parameters: [{ type: "text", text: r.code }] }] };
-      const { buttons, ...noBtn } = base;
-      const attempts = [base, noBtn, { ...noBtn, templateParams: [...params, r.code] }, { ...base, templateParams: [...params, r.code] }];
+      const noBtn = { apiKey: AISENSY_KEY, campaignName: t.campaign, destination, userName: clean(r.name), source: "glasswings-trip-reminder", templateParams: params };
+      const withBtn = { ...noBtn, buttons: [{ type: "button", sub_type: "url", index: 0, parameters: [{ type: "text", text: r.code }] }] };
+      const attempts = hasBtn ? [withBtn, { ...withBtn, templateParams: [...params, r.code] }] : [noBtn];
       let out = null;
       for (const a of attempts) { out = await aisensy(a); if (out.ok || !/param|button|variable|template/i.test(out.detail)) break; }
       if (out.ok) sent++; else { failed++; if (errors.length < 3) errors.push(`${r.name}: ${out.detail}`); }
