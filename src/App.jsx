@@ -15688,18 +15688,21 @@ function TripPayPage({ code, loggedIn = true }) {
 
 // ---------- Organiser: 🏝️ Trip setup tab ----------
 function TripSetupTab({ event }) {
+  const [saved, setSaved] = useState(""), [isNew, setIsNew] = useState(false);
   const [s, setS] = useState(null), [pk, setPk] = useState([]), [ex, setEx] = useState([]), [admin, setAdmin] = useState(false), [busy, setBusy] = useState(false), [msg, setMsg] = useState(""), [err, setErr] = useState("");
   const defaults = { booking_amount: 5000, min_people: 10, deadline_days: 7, min_part: 500, min_age: 18, refund_mode: "credits", cancel_full_days: 20, cancel_half_days: 8, women_room: true, cost_per_person: 0, fixed_cost: 0 };
   const load = async () => {
     const { data, error } = await supabase.rpc("trip_board", { p_event: event.id });
     if (error) return setErr(error.message);
     setAdmin(!!data?.is_admin);
-    setS({ ...defaults, ...Object.fromEntries(Object.entries(data?.settings || {}).filter(([, v]) => v !== null)), event_id: event.id });
+    const loaded = { ...defaults, ...Object.fromEntries(Object.entries(data?.settings || {}).filter(([, v]) => v !== null)), event_id: event.id };
+    setS(loaded); setSaved(JSON.stringify(loaded)); setIsNew(!data?.settings);
     setPk(data?.packages || []); setEx(data?.extras || []);
   };
   useEffect(() => { load(); }, [event.id]);
   if (err) return <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 12, fontSize: 13, color: "#9A3412" }}>🏝️ Getaways aren't set up yet. Run <b>getaways.sql</b> in Supabase → SQL Editor, then reopen this tab.<div style={{ fontSize: 11.5, marginTop: 4, opacity: .8 }}>{err}</div></div>;
   if (!s) return <Center>Loading…</Center>;
+  const dirty = isNew || JSON.stringify(s) !== saved;
   const num = (k, label, hint, w = 120) => (
     <label style={{ fontSize: 12, fontWeight: 800, color: W.soft, display: "block" }}>{label}<br />
       <input value={s[k] ?? ""} onChange={e => setS(x => ({ ...x, [k]: e.target.value.replace(/[^\d.]/g, "") }))} inputMode="numeric" style={{ ...gwLeadInp, width: w, marginTop: 4, padding: "9px 11px" }} />
@@ -15725,7 +15728,7 @@ function TripSetupTab({ event }) {
     const { error } = await supabase.from("trip_settings").upsert(row);
     setBusy(false);
     if (error) return window.gwConfirm(error.message, () => {});
-    setMsg("Saved ✓"); load();
+    setMsg("✓ All saved"); window.gwConfirm("✓ Trip settings saved.", () => {}); load();
   };
   const savePkg = async p => {
     const row = { event_id: event.id, name: (p.name || "").trim(), sharing: Number(p.sharing) || 2, price: Number(p.price) || 0, early_price: p.early_price === "" || p.early_price == null ? null : Number(p.early_price), early_until: p.early_until || null, seats: Number(p.seats) || 0, description: p.description || null, active: p.active !== false, sort: Number(p.sort) || 0 };
@@ -15742,7 +15745,8 @@ function TripSetupTab({ event }) {
     load();
   };
   const del = (tbl, id) => window.gwConfirm("Remove this? (If people already booked it, switch it off instead.)", async () => { const { error } = await supabase.from(tbl).delete().eq("id", id); if (error) window.gwConfirm(error.message, () => {}); load(); });
-  const box = (title, children, sub) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 14, marginBottom: 12 }}><div style={{ fontWeight: 950, color: W.ink, fontSize: 15 }}>{title}</div>{sub && <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{sub}</div>}<div style={{ marginTop: 10 }}>{children}</div></div>;
+  const saveBtn = <button type="button" disabled={busy} onClick={save} style={{ ...btn(dirty ? GW_TRIP_GRAD : "#E2E8F0", dirty ? "#fff" : W.soft), width: "100%", justifyContent: "center", padding: 12, fontWeight: 950, fontSize: 14.5, marginTop: 14 }}>{busy ? "Saving…" : dirty ? "💾 Save changes" : (msg || "✓ All saved")}</button>;
+  const box = (title, children, sub, withSave) => <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 14, marginBottom: 12 }}><div style={{ fontWeight: 950, color: W.ink, fontSize: 15 }}>{title}</div>{sub && <div style={{ fontSize: 12, color: W.soft, marginTop: 2 }}>{sub}</div>}<div style={{ marginTop: 10 }}>{children}</div>{withSave && saveBtn}</div>;
   const mn = Math.min(...pk.filter(p => p.active).map(p => Number(p.price)), Infinity);
   const perHead = Number(s.cost_per_person) || 0, fixed = Number(s.fixed_cost) || 0;
   const avg = isFinite(mn) ? mn : 0;
@@ -15768,7 +15772,7 @@ function TripSetupTab({ event }) {
         </div>
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 8, lineHeight: 1.5 }}>The booking amount and anything "paid in full" (like flights) are never refunded when a traveller cancels. If you cancel the trip, everyone gets 100% back.</div>
         <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 13.5, fontWeight: 700, color: W.ink }}><input type="checkbox" checked={s.women_room !== false} onChange={e => setS(x => ({ ...x, women_room: e.target.checked }))} /> Offer a women-only room option</label>
-      </>, "These decide how people book and pay.")}
+      </>, "These decide how people book and pay.", true)}
 
       {box("🛏️ Room packages", <>
         {pk.map((p, i) => <TripPkgRow key={p.id} p={p} onSave={savePkg} onDel={() => del("trip_packages", p.id)} />)}
@@ -15788,7 +15792,7 @@ function TripSetupTab({ event }) {
           <div style={{ flex: "1 1 160px" }}><div style={gwLeadLbl}>TRIP CAPTAIN</div><input value={s.captain_name || ""} onChange={e => setS(x => ({ ...x, captain_name: e.target.value }))} placeholder="Name" style={gwLeadInp} /></div>
           <div style={{ flex: "1 1 160px" }}><div style={gwLeadLbl}>CAPTAIN PHONE</div><input value={s.captain_phone || ""} onChange={e => setS(x => ({ ...x, captain_phone: e.target.value }))} inputMode="tel" placeholder="Shown on the Trip Pass" style={gwLeadInp} /></div>
         </div>
-      </>, "Shown on the event page. The event's date (Details tab) is the departure date.")}
+      </>, "Shown on the event page. The event's date (Details tab) is the departure date.", true)}
 
       {box("🧮 Cost sheet & break-even (only you see this)", <>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
@@ -15799,11 +15803,12 @@ function TripSetupTab({ event }) {
           Cheapest package {gwINR(avg)} − cost {gwINR(perHead)} = <b style={{ color: margin > 0 ? "#4ADE80" : "#FCA5A5" }}>{gwINR(margin)} per person</b><br />
           {be != null ? <>Break-even at <b style={{ color: "#FDE68A" }}>{be} travellers</b>{Number(s.min_people) < be ? <span style={{ color: "#FCA5A5" }}> · ⚠️ your minimum ({s.min_people}) is lower than break-even</span> : ""}</> : <span style={{ color: "#FCA5A5" }}>Price is below cost per person. Raise the price.</span>}
         </div>}
-      </>)}
+      </>, null, true)}
 
-      <div style={{ position: "sticky", bottom: 8, zIndex: 5 }}>
-        <button disabled={busy} onClick={save} style={{ ...btn(GW_TRIP_GRAD, "#fff"), width: "100%", justifyContent: "center", padding: 14, fontWeight: 950, fontSize: 15, boxShadow: "0 8px 20px rgba(14,165,233,.35)" }}>{busy ? "Saving…" : msg || "💾 Save trip settings"}</button>
-      </div>
+      {dirty && <div style={{ position: "sticky", bottom: "calc(96px + env(safe-area-inset-bottom))", zIndex: 45, marginTop: 8 }}>
+        <button type="button" disabled={busy} onClick={save} style={{ ...btn(GW_TRIP_GRAD, "#fff"), width: "100%", justifyContent: "center", padding: 14, fontWeight: 950, fontSize: 15, boxShadow: "0 8px 24px rgba(14,165,233,.45)" }}>{busy ? "Saving…" : "💾 You have unsaved changes: Save now"}</button>
+      </div>}
+      <div style={{ height: 110 }} />
     </div>
   );
 }
@@ -16860,7 +16865,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
       .gw-an-item.gw-an-guide{background:linear-gradient(90deg,#EDE9FE,#E0F2FE);color:#4C1D95;font-weight:850;border-color:#C4B5FD}.gw-an-item:hover{background:#f0f6f3}.gw-an-item.active{background:#dff3eb;color:#005b48;border-color:#b4ddce;box-shadow:inset 3px 0 #008069;font-weight:850}
       .gw-admin-layout :focus-visible,.gw-admin-drawer :focus-visible{outline:3px solid #e9a132;outline-offset:2px}
       .gw-admin-sidebar h3,.gw-admin-drawer h3{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#778c93;margin:22px 12px 9px}
-      .gw-admin-content{min-width:0;overflow-wrap:anywhere}.gw-admin-mobilebar{display:none}
+      .gw-admin-content{min-width:0;overflow-wrap:anywhere;padding-bottom:calc(110px + env(safe-area-inset-bottom))}.gw-admin-mobilebar{display:none}
       .gw-admin-collapsed{grid-template-columns:76px minmax(0,1fr)}.gw-admin-collapsed .gw-admin-sidebar .gw-an-label,.gw-admin-collapsed .gw-admin-sidebar header strong{display:none}.gw-admin-collapsed .gw-admin-sidebar h3{font-size:0;border-top:1px solid #e3ebeb;margin:16px 8px 8px}
       .gw-admin-drawer{position:fixed;inset:0 auto 0 0;margin:0;width:min(360px,90vw);height:100dvh;max-height:100dvh;max-width:90vw;border:0;padding:18px 14px calc(24px + env(safe-area-inset-bottom));background:#fff;color:#172b32;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box}
       .gw-admin-drawer::backdrop{background:rgba(7,29,32,.55)}.gw-admin-drawer header{display:flex;justify-content:space-between;align-items:center;color:#075d50;font-size:20px}.gw-admin-drawer header button{font-size:24px}.gw-admin-quick{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:12px}.gw-admin-quick .gw-an-item{background:#f0f6f3;font-size:12px;padding:9px 6px;gap:5px}
