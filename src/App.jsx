@@ -16168,6 +16168,7 @@ function TripBoardTab({ event }) {
         {d.is_admin && <button onClick={async () => { const v = await window.gwPrompt("Record a payout to the organiser (₹). For hotel/bus advances, note it.", ""); const n = Number(String(v || "").replace(/\D/g, "")); if (n > 0) { const note = await window.gwPrompt("Note (e.g. hotel advance / final settlement)", ""); rpcDo("trip_add_payout", { p_event: event.id, p_amount: n, p_note: note || "" }); } }} style={{ ...btn("#fff", "#0F172A"), padding: "5px 10px", fontSize: 12, marginTop: 6 }}>🏦 Record payout</button>}
       </div>
 
+      <TripPaySheet rows={rows} eventTitle={event.title} />
       {dl != null && gwDaysTo(d.start) != null && gwDaysTo(d.start) <= 2 && <TripBoardingPanel rows={rows} onChanged={load} onCash={cash} />}
       <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 14, padding: 12, marginBottom: 12 }}>
         <div style={{ fontWeight: 950, color: "#15803D", fontSize: 14.5 }}>📣 WhatsApp payment reminders</div>
@@ -16254,6 +16255,70 @@ function TripBoardTab({ event }) {
           {w.phone && <a href={`https://wa.me/${waNum(w.phone)}?text=${encodeURIComponent(`Hi ${String(w.name || "").split(" ")[0]} 👋 A seat just opened on *${event.title}*! Book within 24 hours on Glasswings to grab it.`)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", padding: "5px 9px", fontSize: 12 }}>💬 Offer seat</a>}
         </div>)}
       </div>}
+    </div>
+  );
+}
+// Organiser: one row per booking — who paid how much, balance
+function TripPaySheet({ rows, eventTitle }) {
+  const [sort, setSort] = useState("balance"), [open, setOpen] = useState(null), [show, setShow] = useState("active");
+  const list0 = rows.filter(b => show === "all" ? true : ["booked", "paid"].includes(b.status));
+  const bal = b => ["booked", "paid"].includes(b.status) ? Math.max(0, Number(b.total) - Number(b.paid)) : 0;
+  const list = [...list0].sort((a, b) => sort === "balance" ? bal(b) - bal(a) : sort === "paid" ? Number(b.paid) - Number(a.paid) : String(a.booker).localeCompare(String(b.booker)));
+  const T = list.reduce((t, b) => ({ people: t.people + (["booked", "paid"].includes(b.status) ? b.people : 0), total: t.total + (["booked", "paid"].includes(b.status) ? Number(b.total) : 0), paid: t.paid + Number(b.paid), bal: t.bal + bal(b) }), { people: 0, total: 0, paid: 0, bal: 0 });
+  const stLab = b => b.status === "paid" ? ["Paid ✓", "#15803D"] : b.status === "booked" ? (b.behind > 0 ? ["Behind", "#B45309"] : ["Paying", "#0369A1"]) : b.status === "pending" ? ["Not booked", "#94A3B8"] : [b.status === "released" ? "Released" : "Cancelled", "#B91C1C"];
+  const csv = () => {
+    const head = ["Booked by", "Phone", "Code", "Package", "People", "Travellers", "Total", "Paid", "Balance", "Status", "Payments"];
+    const lines = list.map(b => [b.booker, b.booker_phone || "", b.code, b.package || "", b.people, (b.travellers || []).map(t => t.name).join(" / "), b.total, b.paid, bal(b), stLab(b)[0],
+      (b.payments || []).map(p => `${p.paid_at ? new Date(p.paid_at).toLocaleDateString("en-IN") : ""} ${p.method === "razorpay" ? "online" : p.method} ${p.amount}`).join(" | ")]);
+    lines.push(["TOTAL", "", "", "", T.people, "", T.total, T.paid, T.bal, "", ""]);
+    const txt = [head, ...lines].map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + txt], { type: "text/csv" }));
+    a.download = `${String(eventTitle || "trip").replace(/[^a-z0-9]+/gi, "-")}-payments.csv`; a.click();
+  };
+  const th = { padding: "7px 6px", fontSize: 11, fontWeight: 900, color: W.soft, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${W.line}` };
+  const td = { padding: "8px 6px", fontSize: 12.5, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${W.line}` };
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 12, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, fontWeight: 950, color: W.ink, fontSize: 15, minWidth: 150 }}>📊 Who paid how much</div>
+        <button onClick={csv} style={{ ...btn("#E0F2FE", "#0369A1"), padding: "6px 10px", fontSize: 12 }}>⬇️ Excel (CSV)</button>
+      </div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", margin: "8px 0" }}>
+        {[["balance", "Biggest balance"], ["paid", "Most paid"], ["name", "Name A–Z"]].map(([k, l]) => <button key={k} onClick={() => setSort(k)} style={{ ...gwChip(sort === k), fontSize: 11.5, padding: "5px 10px" }}>{l}</button>)}
+        <button onClick={() => setShow(v => v === "all" ? "active" : "all")} style={{ ...gwChip(show === "all"), fontSize: 11.5, padding: "5px 10px" }}>{show === "all" ? "Showing all" : "Show cancelled too"}</button>
+      </div>
+      <div>
+        <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
+          <colgroup><col style={{ width: "46%" }} /><col style={{ width: "27%" }} /><col style={{ width: "27%" }} /></colgroup>
+          <thead><tr>
+            <th style={{ ...th, textAlign: "left" }}>Booked by · total</th><th style={th}>Paid</th><th style={th}>Balance</th>
+          </tr></thead>
+          <tbody>
+            {list.map(b => { const [sl, sc] = stLab(b); const isO = open === b.id; return (
+              <React.Fragment key={b.id}>
+                <tr onClick={() => setOpen(isO ? null : b.id)} style={{ cursor: "pointer", background: isO ? "#F0F9FF" : "transparent" }}>
+                  <td style={{ ...td, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis" }}><b style={{ color: W.ink }}>{b.booker}</b><div style={{ fontSize: 10.5, color: W.soft, overflow: "hidden", textOverflow: "ellipsis" }}>👥{b.people} · of {gwINR(b.total)}</div></td>
+                  <td style={{ ...td, color: "#15803D", fontWeight: 800 }}>{gwINR(b.paid)}</td>
+                  <td style={{ ...td, fontWeight: 900 }}><span style={{ color: bal(b) > 0 ? "#B45309" : "#15803D" }}>{bal(b) > 0 ? gwINR(bal(b)) : "—"}</span><div style={{ fontSize: 10, color: sc, fontWeight: 900 }}>{sl}</div></td>
+                </tr>
+                {isO && <tr><td colSpan={3} style={{ padding: "6px 8px 10px", background: "#F0F9FF", borderBottom: `1px solid ${W.line}` }}>
+                  <div style={{ fontSize: 12, color: W.ink, marginBottom: 4 }}>👥 {(b.travellers || []).map(t => t.name).join(", ")}{b.booker_phone ? <> · 📞 <a href={`tel:${b.booker_phone}`}>{b.booker_phone}</a></> : null}</div>
+                  {(b.payments || []).length ? (b.payments || []).map((p, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "2px 0", color: W.soft }}>
+                    <span>{p.paid_at ? new Date(p.paid_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : ""} · {p.method === "razorpay" ? "Online" : p.method === "upi" ? "UPI to organiser" : p.method === "cash" ? "Cash" : p.method}{p.kind === "booking" ? " · booking amount" : ""}</span>
+                    <b style={{ color: "#15803D" }}>{gwINR(p.amount)}</b></div>) : <div style={{ fontSize: 12, color: W.soft }}>No payments yet.</div>}
+                  {Number(b.refund_amount) > 0 && <div style={{ fontSize: 12, color: "#0369A1", fontWeight: 800, marginTop: 3 }}>Refund {gwINR(b.refund_amount)} · {b.refund_status}</div>}
+                </td></tr>}
+              </React.Fragment>); })}
+          </tbody>
+          <tfoot><tr style={{ background: "#0F172A" }}>
+            <td style={{ ...td, textAlign: "left", color: "#fff", fontWeight: 900, borderBottom: 0 }}>TOTAL<div style={{ fontSize: 10.5, color: "#CBD5E1", fontWeight: 700 }}>👥{T.people} · of {gwINR(T.total)}</div></td>
+            <td style={{ ...td, color: "#4ADE80", fontWeight: 900, borderBottom: 0 }}>{gwINR(T.paid)}</td>
+            <td style={{ ...td, color: "#FCD34D", fontWeight: 900, borderBottom: 0 }}>{gwINR(T.bal)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+      {!list.length && <div style={{ fontSize: 12.5, color: W.soft, padding: 8 }}>No bookings yet.</div>}
+      <div style={{ fontSize: 11, color: W.soft, marginTop: 6 }}>Tap a row to see each payment (date, online / cash) and the travellers.</div>
     </div>
   );
 }
