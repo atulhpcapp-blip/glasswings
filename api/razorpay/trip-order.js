@@ -1,4 +1,4 @@
-// POST /api/razorpay/trip-order   body: { access_token, booking_id, amount }
+// POST /api/razorpay/trip-order   body: { access_token, booking_id | booking_code, amount }
 // Starts a Razorpay payment for a getaway booking: the booking amount (first payment)
 // or any part payment. The amount is always checked by the database.
 import { body, getUser, rpc, rzpCreateOrder, missingEnv, RZP_KEY_ID } from "./_booking-lib.js";
@@ -8,7 +8,9 @@ export default async function handler(req, res) {
   const miss = missingEnv();
   if (miss.length) return res.status(500).json({ error: `Server is missing: ${miss.join(", ")}` });
   try {
-    const { access_token, booking_id, amount } = body(req);
+    const { access_token, amount, booking_code } = body(req);
+    let { booking_id } = body(req);
+    if (!booking_id && booking_code) booking_id = await rpc("trip_id_by_code", { p_code: String(booking_code) });
     if (!booking_id) return res.status(400).json({ error: "Missing booking" });
     const user = await getUser(access_token);
     if (!user) return res.status(401).json({ error: "Please log in again" });
