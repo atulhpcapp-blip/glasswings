@@ -15302,46 +15302,104 @@ function GwTripProgress({ paid, total, firstDue, dark = false }) {
 }
 
 // ---------- Public trip box on the event page ----------
-// ---------- 📄 Colourful itinerary PDF (opens a print-ready page → "Save as PDF") ----------
+// ---------- 📄 Simple, colourful itinerary PDF (opens a print-ready page → "Save as PDF") ----------
+// Reads the trip's "Day-by-day plan" text and turns it into: a one-page "trip at a glance" table,
+// then one clear card per day with a TIME | WHAT schedule. Works with #, ## and ### headings.
+function gwItinParse(text) {
+  const EMO = /^((?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:️|‍(?:\p{Extended_Pictographic})|\p{Emoji_Modifier})*️?)\s*/u;
+  const TIME = /^((?:\d{1,2}(?::\d{2})?\s*(?:AM|PM)?\s*[–—-]\s*)?\d{1,2}(?::\d{2})?\s*(?:AM|PM)|early morning|morning|afternoon|evening|late night|night|midnight|noon)\b\s*(?:[·:|–—-]\s*)?(.*)$/i;
+  const cleanStars = s => String(s || "").replace(/\*\*(.+?)\*\*/g, "\u0001$1\u0002").replace(/\*\*/g, "").replace(/\u0001/g, "**").replace(/\u0002/g, "**");
+  const splitIcon = s => { const m = s.match(EMO); return m ? { icon: m[1], rest: s.slice(m[0].length) } : { icon: "", rest: s }; };
+  const parseLine = raw => {
+    let s = cleanStars(raw).trim(); let bullet = false;
+    if (/^[-*•]\s+/.test(s)) { bullet = true; s = s.replace(/^[-*•]\s+/, ""); }
+    s = s.replace(/^\d+[.)]\s+/, "");
+    let { icon, rest } = splitIcon(s);
+    const plain = rest.replace(/\*\*/g, "");
+    const t = plain.match(TIME);
+    if (t && (/\d/.test(t[1]) || /[·:|–—-]/.test(plain.slice(t[1].length, t[1].length + 3)))) {
+      const what = t[2] || "";
+      return { bullet, icon, time: t[1].replace(/\s+/g, " ").replace(/\b(am|pm)\b/gi, x => x.toUpperCase()).replace(/^\w/, c => c.toUpperCase()), text: what || t[1] };
+    }
+    return { bullet, icon, time: "", text: rest };
+  };
+  const lines = String(text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const isDay = h => /^\W*day\s*\d+\b/i.test(h.replace(/\*\*/g, "")) && !/highlight/i.test(h);
+  const heads = lines.map(l => l.match(/^(#{1,6})\s+(.*?)\s*#*$/)).filter(Boolean);
+  const dayLevels = heads.filter(m => isDay(m[2])).map(m => m[1].length);
+  const dayLevel = dayLevels.length ? Math.min(...dayLevels) : null;
+  const cards = []; let cur = null, prevSep = false, wantHighlight = false;
+  const ensure = () => { if (!cur) { cur = { type: dayLevel ? "info" : "plan", title: dayLevel ? "" : "The plan", rows: [] }; cards.push(cur); } };
+  for (const l of lines) {
+    if (/^([-*_])\1{2,}$/.test(l.replace(/\s/g, "")) || /^[-*•]\s*-{3,}$/.test(l)) { prevSep = true; continue; }
+    const hm = l.match(/^(#{1,6})\s+(.*?)\s*#*$/);
+    if (hm) {
+      const level = hm[1].length, txt = cleanStars(hm[2]).replace(/\*\*/g, "").trim();
+      const { icon, rest } = splitIcon(txt);
+      if (dayLevel && isDay(txt)) {
+        const m = rest.match(/^\W*day\s*(\d+)\b\s*[·:|–—-]?\s*(.*)$/i) || [];
+        cur = { type: "day", num: m[1] || String(cards.filter(c => c.type === "day").length + 1), date: (m[2] || "").trim(), icon, tagline: "", rows: [], highlight: "" };
+        cards.push(cur); wantHighlight = false;
+      } else if (/highlight/i.test(txt)) {
+        ensure(); wantHighlight = true;
+      } else {
+        const p = parseLine(txt);
+        const topInfo = !dayLevel ? false : (level <= dayLevel || (prevSep && !p.time && (!cur || cur.type === "day")));
+        if (topInfo && !p.time) { cur = { type: "info", title: rest, icon, rows: [] }; cards.push(cur); }
+        else {
+          ensure();
+          if (cur.type === "day" && !cur.tagline && !cur.rows.length && !p.time) cur.tagline = rest;
+          else if (p.time) cur.rows.push({ time: p.time, icon: p.icon, text: p.text, strong: true, details: [] });
+          else cur.rows.push({ sub: rest, icon });
+        }
+      }
+      prevSep = false; continue;
+    }
+    prevSep = false;
+    ensure();
+    const p = parseLine(l);
+    if (wantHighlight) { cur.highlight = (cur.highlight ? cur.highlight + " " : "") + p.text.replace(/\*\*/g, ""); wantHighlight = false; continue; }
+    const last = cur.rows[cur.rows.length - 1];
+    if (p.bullet && !p.time && last && !last.sub) last.details.push((p.icon ? p.icon + " " : "") + p.text);
+    else cur.rows.push({ time: p.time, icon: p.icon, text: p.text, details: [] });
+  }
+  return cards.filter(c => c.type === "day" || c.rows.length || c.title);
+}
+
 function gwTripItineraryPdf(event, t) {
   const w = window.open("", "_blank");
   if (!w) return window.gwConfirm ? window.gwConfirm("Please allow pop-ups for this site to download the itinerary.", () => {}) : alert("Please allow pop-ups to download the itinerary.");
+  try { w.document.write("<p style='font-family:sans-serif;padding:30px;text-align:center'>Preparing your itinerary…</p>"); } catch { }
   const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const inr = n => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
   const dShort = d => { if (!d) return ""; const x = new Date(String(d).length <= 10 ? d + "T00:00:00" : d); return isNaN(x) ? String(d) : x.toLocaleDateString("en-IN", { day: "numeric", month: "short" }); };
   const dLong = d => { if (!d) return ""; const x = new Date(String(d).length <= 10 ? d + "T00:00:00" : d); return isNaN(x) ? String(d) : x.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }); };
+  const inline = s => esc(String(s || "")).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*\*/g, "").replace(/(^|[^*])\*(?!\s)(.+?)\*/g, "$1<i>$2</i>");
   const EMO = /^((?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:️|‍(?:\p{Extended_Pictographic})|\p{Emoji_Modifier})*️?)\s*/u;
-  const inline = s => esc(s)
-    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*(?!\s)(.+?)\*/g, "$1<i>$2</i>")
-    .replace(/(\b\d{1,2}(?::\d{2})?\s?(?:AM|PM|am|pm)\b)/g, '<span class="time">$1</span>');
-  const lines = txt => String(txt || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const item = raw => {
-    let s = raw.replace(/^[-*•]\s+/, "").replace(/^\d+[.)]\s+/, "");
-    const m = s.match(EMO); let icon = "";
-    if (m) { icon = m[1]; s = s.slice(m[0].length); }
-    return { icon, html: inline(s) };
-  };
-  const bullets = (txt, defIcon, cls = "") => lines(txt).filter(l => !/^#{1,3}\s/.test(l)).map(l => { const x = item(l); return `<div class="row ${cls}"><span class="ic">${x.icon || defIcon}</span><span>${x.html}</span></div>`; }).join("");
-  const PAL = [["#0EA5E9", "#E0F2FE"], ["#F97316", "#FFEDD5"], ["#8B5CF6", "#EDE9FE"], ["#10B981", "#D1FAE5"], ["#EC4899", "#FCE7F3"], ["#EAB308", "#FEF9C3"], ["#14B8A6", "#CCFBF1"]];
+  const lines = txt => String(txt || "").split(/\r?\n/).map(l => l.trim()).filter(l => l && !/^[-*•]?\s*-{3,}$/.test(l) && !/^\*{3,}$/.test(l));
+  const item = raw => { let s = raw.replace(/^#{1,6}\s+/, "").replace(/^[-*•]\s+/, ""); const m = s.match(EMO); return m ? { icon: m[1], html: inline(s.slice(m[0].length)) } : { icon: "", html: inline(s) }; };
+  // simple block for Stay / Travel / Terms: headings become bold lines, everything else a ticked row
+  const block = (txt, def) => lines(txt).map(l => { const x = item(l); return /^#{1,6}\s/.test(l) ? `<div class="bh">${x.icon} ${x.html}</div>` : `<div class="row"><span class="ic">${x.icon || def}</span><span>${x.html}</span></div>`; }).join("");
+  const PAL = [["#0284C7", "#F0F9FF"], ["#EA580C", "#FFF7ED"], ["#7C3AED", "#F5F3FF"], ["#059669", "#ECFDF5"], ["#DB2777", "#FDF2F8"], ["#CA8A04", "#FEFCE8"]];
 
-  // day-by-day cards
-  const days = []; let cur = null;
-  lines(t.itinerary).forEach(l => {
-    const h = l.match(/^#{1,3}\s+(.*)$/);
-    if (h) { cur = { title: h[1].replace(/\*\*/g, ""), items: [] }; days.push(cur); return; }
-    if (!cur) { cur = { title: "The plan", items: [] }; days.push(cur); }
-    cur.items.push(item(l));
-  });
-  const dayHtml = days.map((d, i) => {
-    const [c, bg] = PAL[i % PAL.length];
-    const parts = d.title.split(/\s*[·|–—-]\s+/);
-    const badge = /^day\s*\d+/i.test(parts[0]) ? parts.shift() : `Day ${i + 1}`;
-    const sub = parts.join(" · ");
-    return `<section class="day" style="--c:${c};--bg:${bg}">
-      <div class="dayhead"><div class="daynum">${esc(badge.replace(/^day\s*/i, ""))}<small>DAY</small></div><div><div class="daytitle">${esc(sub || badge)}</div></div></div>
-      <div class="timeline">${d.items.map(x => `<div class="tl"><span class="dot">${x.icon || "•"}</span><span class="tx">${x.html}</span></div>`).join("")}</div>
+  const cards = gwItinParse(t.itinerary);
+  const days = cards.filter(c => c.type === "day");
+  let di = 0;
+  const cardHtml = cards.map(c => {
+    if (c.type !== "day") {
+      return `<section class="info"><div class="infot">${esc(c.icon || "📌")} ${inline(c.title || "Good to know")}</div>${c.rows.map(r => r.sub ? `<div class="bh">${esc(r.icon || "")} ${inline(r.sub)}</div>` : `<div class="row"><span class="ic">${r.icon || "•"}</span><span>${r.time ? `<b>${esc(r.time)}</b> · ` : ""}${inline(r.text)}${r.details.map(d => `<div class="det">${inline(d)}</div>`).join("")}</span></div>`).join("")}</section>`;
+    }
+    const [c1, bg] = PAL[di++ % PAL.length];
+    const rows = c.rows.map(r => r.sub
+      ? `<tr class="subrow"><td colspan="2" style="color:${c1}">${esc(r.icon || "")} ${inline(r.sub)}</td></tr>`
+      : `<tr><td class="tm">${r.time ? `<span class="tchip" style="background:${c1}">${esc(r.time)}</span>` : ""}</td><td class="what"><span class="wi">${r.icon || "•"}</span><span class="wt ${r.strong || r.time ? "b" : ""}">${inline(r.text)}</span>${r.details.length ? `<div class="dets">${r.details.map(d => `<div class="det">${inline(d)}</div>`).join("")}</div>` : ""}</td></tr>`).join("");
+    return `<section class="day" style="border-color:${c1};background:${bg}">
+      <div class="dayhead" style="background:${c1}"><div class="dn">DAY<b>${esc(c.num)}</b></div><div class="dt"><div class="dd">${esc(c.icon || "")} ${inline(c.date)}</div>${c.tagline ? `<div class="tg">${inline(c.tagline)}</div>` : ""}</div></div>
+      ${rows ? `<table class="sched"><thead><tr><th>Time</th><th>What happens</th></tr></thead><tbody>${rows}</tbody></table>` : ""}
+      ${c.highlight ? `<div class="hl" style="border-color:${c1}">⭐ <b>Highlight of the day:</b> ${inline(c.highlight)}</div>` : ""}
     </section>`;
   }).join("");
+  const glance = days.length > 1 ? `<section class="glance"><h2>🗓️ Your trip at a glance</h2><table><tbody>${days.map((d, i) => `<tr><td class="gd" style="background:${PAL[i % PAL.length][0]}">Day ${esc(d.num)}</td><td class="gdate">${inline(d.date)}</td><td>${inline(d.tagline || d.highlight || (d.rows.find(r => r.text) || {}).text || "")}</td></tr>`).join("")}</tbody></table></section>` : "";
 
   const pk = t.packages || [];
   const from = pk.length ? Math.min(...pk.map(p => Number(p.now_price || p.price))) : 0;
@@ -15349,131 +15407,109 @@ function gwTripItineraryPdf(event, t) {
   const img = event.banner_type !== "video" && event.banner_url ? event.banner_url : (event.poster_url || event.vertical_banner_url || "");
   const link = `${window.location.origin}/e/${event.id}`;
   const qr = "https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=0&data=" + encodeURIComponent(link);
-  const nDays = days.filter(d => /^day/i.test(d.title)).length || days.length;
-  const stats = [
-    ["🗓️", nDays ? `${nDays} days${nDays > 1 ? ` · ${nDays - 1} nights` : ""}` : (event.event_date || dShort(t.start)), "Trip length"],
+  const facts = [
+    ["🗓️", days.length ? `${days.length} days · ${Math.max(0, days.length - 1)} nights` : (event.event_date || ""), "Trip length"],
+    ["📅", event.event_date || dLong(t.start), "Dates"],
     t.from_city ? ["🛫", t.from_city, "Starting from"] : null,
-    [event.emoji || "📍", event.venue || event.city || "", "Destination"],
-    t.min_age ? ["🔞", `${t.min_age}+`, "Age"] : null,
-    t.min_people ? ["👥", `${t.min_people}+`, "Travellers needed"] : null,
+    [event.emoji || "📍", [event.venue, event.city].filter(Boolean).join(", "), "Where"],
+    t.min_age ? ["🔞", `${t.min_age}+ only`, "Age"] : null,
   ].filter(x => x && x[1]);
-  const sec = (icon, title, color, body) => body ? `<section class="card" style="--c:${color}"><h2><span class="hic">${icon}</span>${title}</h2>${body}</section>` : "";
-
-  const pkgHtml = pk.length ? `<div class="pkgs">${pk.map((p, i) => {
-    const [c, bg] = PAL[(i + 2) % PAL.length]; const disc = Number(p.now_price) < Number(p.price);
-    return `<div class="pkg" style="--c:${c};--bg:${bg}"><div class="pkgicon">${"🧑".repeat(Math.min(4, Number(p.sharing) || 2))}</div>
-      <div class="pkgname">${esc(p.name)}</div><div class="pkgprice">${inr(p.now_price || p.price)}${disc ? `<s>${inr(p.price)}</s>` : ""}</div>
-      <div class="pkgsub">per person${disc && p.early_until ? ` · early-bird till ${dShort(p.early_until)}` : ""}</div>
-      ${p.description ? `<div class="pkgdesc">${inline(p.description)}</div>` : ""}
-      ${p.left != null ? `<div class="pkgleft">${p.left <= 0 ? "Sold out" : `${p.left} seat${p.left === 1 ? "" : "s"} left`}</div>` : ""}</div>`;
-  }).join("")}</div>` : "";
-  const exHtml = (t.extras || []).length ? `<div class="extras">${(t.extras || []).map(x => { const it = item(x.name || ""); return `<div class="extra"><span class="exic">${it.icon || "➕"}</span><div><b>${it.html}</b> <span class="exp">${inr(x.price)}/person</span>${x.pay_upfront ? `<span class="tag">paid at booking</span>` : `<span class="tag opt">optional</span>`}${x.description ? `<div class="mut">${inline(x.description)}</div>` : ""}</div></div>`; }).join("")}</div>` : "";
+  const sec = (icon, title, color, body) => body ? `<section class="card" style="border-color:${color}"><h2 style="color:${color}">${icon} ${title}</h2>${body}</section>` : "";
+  const pkgHtml = pk.length ? `<table class="simple"><thead><tr><th>Room type</th><th>Price per person</th><th>Seats</th></tr></thead><tbody>${pk.map(p => { const disc = Number(p.now_price) < Number(p.price); return `<tr><td><b>${esc(p.name)}</b>${p.description ? `<div class="mut">${inline(p.description)}</div>` : ""}</td><td><b class="price">${inr(p.now_price || p.price)}</b>${disc ? ` <s class="mut">${inr(p.price)}</s><div class="mut">early-bird till ${dShort(p.early_until)}</div>` : ""}</td><td>${p.left == null ? "" : p.left <= 0 ? "Sold out" : `${p.left} left`}</td></tr>`; }).join("")}</tbody></table>` : "";
+  const exHtml = (t.extras || []).length ? `<table class="simple"><thead><tr><th>Extra</th><th>Price per person</th><th>When you pay</th></tr></thead><tbody>${(t.extras || []).map(x => `<tr><td><b>${inline(x.name)}</b>${x.description ? `<div class="mut">${inline(x.description)}</div>` : ""}</td><td><b class="price">${inr(x.price)}</b></td><td>${x.pay_upfront ? "Full amount when you book" : "Optional, with your trip payments"}</td></tr>`).join("")}</tbody></table>` : "";
   const incHtml = (t.inclusions || t.exclusions) ? `<div class="two">
-      ${t.inclusions ? `<div class="inc"><h3>✅ Included</h3>${lines(t.inclusions).map(l => `<div class="chk"><span>✓</span><span>${item(l).html}</span></div>`).join("")}</div>` : ""}
-      ${t.exclusions ? `<div class="exc"><h3>❌ Not included</h3>${lines(t.exclusions).map(l => `<div class="chk"><span>✕</span><span>${item(l).html}</span></div>`).join("")}</div>` : ""}
+      ${t.inclusions ? `<div class="inc"><h3>✅ Price includes</h3>${lines(t.inclusions).map(l => `<div class="chk"><span class="y">✓</span><span>${item(l).html}</span></div>`).join("")}</div>` : ""}
+      ${t.exclusions ? `<div class="exc"><h3>❌ Price does NOT include</h3>${lines(t.exclusions).map(l => `<div class="chk"><span class="n">✕</span><span>${item(l).html}</span></div>`).join("")}</div>` : ""}
     </div>` : "";
-  const packHtml = t.packing ? `<div class="chips">${lines(t.packing).map(l => { const x = item(l); return `<span class="chip">${x.icon || "🎒"} ${x.html}</span>`; }).join("")}</div>` : "";
-  const journey = `<div class="journey">
-      ${[["💳", "Book", `${inr(t.booking_amount)} / person`, "#0EA5E9"], ["🪙", "Pay in parts", `any amount · min ${inr(t.min_part)}`, "#8B5CF6"], ["🏁", "Finish by", dLong(t.deadline), "#F97316"], ["✈️", "Travel", dLong(t.start) || esc(event.event_date || ""), "#10B981"]]
-      .map(([i, a, b, c], k) => `<div class="step" style="--c:${c}"><div class="sic">${i}</div><div class="sa">${k + 1}. ${a}</div><div class="sb">${esc(b)}</div></div>${k < 3 ? '<div class="arrow">➜</div>' : ""}`).join("")}
-    </div>`;
-  const refund = (t.cancel_full_days != null) ? `<div class="refund">
-      <div class="seg g"><b>${t.cancel_full_days}+ days before</b><span>Everything above the booking amount back${t.refund_mode === "credits" ? " as credits" : ""}</span></div>
-      <div class="seg a"><b>${t.cancel_half_days}–${t.cancel_full_days} days</b><span>50% of that back</span></div>
-      <div class="seg r"><b>Under ${t.cancel_half_days} days</b><span>No refund · pass your seat to a friend instead</span></div>
-    </div><div class="mut" style="margin-top:6px">If the trip doesn't reach ${t.min_people || "the minimum"} travellers or we cancel it, everyone gets <b>100% back</b>.</div>` : "";
+  const steps = [["1", "💳", "Book your seat", `Pay ${inr(t.booking_amount)} per person`], ["2", "🪙", "Pay the rest slowly", `Any amount, any day (at least ${inr(t.min_part)} each time)`], ["3", "🏁", "Finish paying by", dLong(t.deadline)], ["4", "✈️", "Travel!", dLong(t.start) || esc(event.event_date || "")]];
+  const payHtml = `<div class="steps">${steps.map(([n, i, a, b]) => `<div class="step"><div class="sn">${n}</div><div><div class="sa">${i} ${a}</div><div class="sb">${esc(b)}</div></div></div>`).join("")}</div>
+    ${t.cancel_full_days != null ? `<table class="simple" style="margin-top:12px"><thead><tr><th>If you cancel…</th><th>You get back</th></tr></thead><tbody>
+      <tr><td>🟢 More than ${t.cancel_full_days} days before the trip</td><td>Everything you paid <b>except the booking amount</b>${t.refund_mode === "credits" ? " (as Glasswings credits)" : ""}</td></tr>
+      <tr><td>🟡 ${t.cancel_half_days} to ${t.cancel_full_days} days before</td><td>Half (50%) of that amount</td></tr>
+      <tr><td>🔴 Less than ${t.cancel_half_days} days before</td><td>Nothing back, but you can <b>give your seat to a friend</b></td></tr>
+      <tr><td>🛡️ Trip doesn't reach ${t.min_people || "enough"} people, or we cancel it</td><td><b>100% back</b></td></tr></tbody></table>` : ""}`;
+  const packHtml = t.packing ? `<div class="chips">${lines(t.packing).map(l => { const x = item(l); return `<span class="chip">${x.icon || "✔️"} ${x.html}</span>`; }).join("")}</div>` : "";
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(event.title)} · Itinerary</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-body{margin:0;background:#EEF2F7;font-family:Inter,system-ui,sans-serif;color:#0F172A;font-size:13.5px;line-height:1.5}
-.page{max-width:820px;margin:0 auto;background:#fff}
-.bar{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:10px;background:#0F172A}
-.bar button{border:0;border-radius:999px;padding:11px 18px;font:800 14px Inter,sans-serif;cursor:pointer;background:linear-gradient(120deg,#F97316,#EC4899);color:#fff}
-.bar span{color:#CBD5E1;font-size:12px;align-self:center}
-.hero{position:relative;min-height:300px;color:#fff;padding:28px 28px 24px;display:flex;flex-direction:column;justify-content:flex-end;background:linear-gradient(135deg,#0369A1,#0EA5E9 45%,#F97316);overflow:hidden}
-.hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(2,6,23,.05) 0%,rgba(2,6,23,.35) 45%,rgba(2,6,23,.88) 100%)}
-.hero>*{position:relative;z-index:1}
-.kicker{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:999px;padding:4px 12px;font:800 11px Inter;letter-spacing:2px;margin-bottom:10px;width:max-content}
-.hero h1{font:900 34px/1.1 Poppins,sans-serif;margin:0 0 6px;text-shadow:0 2px 12px rgba(0,0,0,.35)}
-.hero .when{font-weight:700;font-size:15px;opacity:.95}
-.price{display:flex;align-items:baseline;gap:8px;margin-top:12px;flex-wrap:wrap}
-.price b{font:900 30px Poppins;color:#FDE68A}
-.eb{display:inline-block;margin-top:6px;background:#FDE68A;color:#78350F;border-radius:999px;padding:3px 11px;font-weight:800;font-size:12px;width:max-content}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;padding:16px 22px;background:linear-gradient(90deg,#F0F9FF,#FFF7ED)}
-.stat{background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 2px 8px rgba(15,23,42,.06)}
-.stat .i{font-size:22px}.stat .v{font:800 15px Poppins;color:#0F172A}.stat .l{font-size:11px;color:#64748B;font-weight:600;text-transform:uppercase;letter-spacing:.6px}
-.wrap{padding:8px 22px 22px}
-h2{font:800 19px Poppins;margin:0 0 12px;display:flex;align-items:center;gap:9px;color:var(--c,#0F172A)}
-.hic{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:10px;background:color-mix(in srgb,var(--c,#0EA5E9) 15%,#fff);font-size:18px}
-.card{margin:18px 0;padding:16px 16px 12px;border-radius:18px;border:1.5px solid color-mix(in srgb,var(--c,#0EA5E9) 25%,#fff);background:color-mix(in srgb,var(--c,#0EA5E9) 4%,#fff);break-inside:avoid}
-.title2{font:900 22px Poppins;margin:22px 0 6px;color:#0F172A}
-.title2 span{background:linear-gradient(120deg,#0EA5E9,#8B5CF6,#EC4899);-webkit-background-clip:text;background-clip:text;color:transparent}
-.day{margin:14px 0;border-radius:18px;background:var(--bg);border-left:7px solid var(--c);padding:14px 14px 10px;break-inside:avoid}
-.dayhead{display:flex;gap:12px;align-items:center;margin-bottom:8px}
-.daynum{flex-shrink:0;width:56px;height:56px;border-radius:16px;background:var(--c);color:#fff;font:900 24px/1 Poppins;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 6px 14px color-mix(in srgb,var(--c) 40%,transparent)}
-.daynum small{font:800 9px Inter;letter-spacing:2px;margin-top:3px;opacity:.9}
-.daytitle{font:800 17px/1.25 Poppins;color:#0F172A}
-.timeline{position:relative;margin-left:27px;border-left:2.5px dashed color-mix(in srgb,var(--c) 55%,#fff);padding-left:0}
-.tl{display:flex;gap:10px;align-items:flex-start;margin:0 0 8px -15px}
-.dot{flex-shrink:0;width:28px;height:28px;border-radius:999px;background:#fff;border:2px solid var(--c);display:grid;place-items:center;font-size:14px;line-height:1}
-.tx{padding-top:4px;color:#1E293B}
-.time{display:inline-block;background:var(--c,#0EA5E9);color:#fff;border-radius:6px;padding:0 6px;font-weight:800;font-size:12px;margin-right:2px}
-.row{display:flex;gap:9px;align-items:flex-start;margin:6px 0}.ic{flex-shrink:0;width:24px;text-align:center;font-size:16px}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0;break-inside:avoid}
-.inc,.exc{border-radius:18px;padding:14px}
-.inc{background:#ECFDF5;border:1.5px solid #A7F3D0}.exc{background:#FEF2F2;border:1.5px solid #FECACA}
-.inc h3,.exc h3{font:800 16px Poppins;margin:0 0 8px}.inc h3{color:#047857}.exc h3{color:#B91C1C}
-.chk{display:flex;gap:8px;margin:5px 0}.chk span:first-child{flex-shrink:0;width:20px;height:20px;border-radius:999px;display:grid;place-items:center;font-weight:900;font-size:11px;color:#fff;margin-top:1px}
-.inc .chk span:first-child{background:#10B981}.exc .chk span:first-child{background:#EF4444}
-.pkgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
-.pkg{background:var(--bg);border:2px solid var(--c);border-radius:18px;padding:14px;text-align:center;break-inside:avoid}
-.pkgicon{font-size:22px;letter-spacing:-4px}.pkgname{font:800 16px Poppins;margin-top:4px}
-.pkgprice{font:900 26px Poppins;color:var(--c)}.pkgprice s{font:600 13px Inter;color:#94A3B8;margin-left:6px}
-.pkgsub,.mut{font-size:11.5px;color:#64748B}.pkgdesc{font-size:12px;margin-top:6px;color:#334155}
-.pkgleft{display:inline-block;margin-top:8px;background:#fff;border-radius:999px;padding:2px 10px;font-weight:800;font-size:11.5px;color:var(--c)}
-.extras{display:grid;gap:8px;margin-top:10px}
-.extra{display:flex;gap:10px;align-items:flex-start;background:#fff;border:1.5px dashed #FDBA74;border-radius:14px;padding:10px 12px}
-.exic{font-size:22px}.exp{font-weight:800;color:#EA580C}
-.tag{display:inline-block;margin-left:6px;background:#FFEDD5;color:#9A3412;border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:800}.tag.opt{background:#E0F2FE;color:#0369A1}
-.journey{display:flex;align-items:stretch;gap:4px;flex-wrap:wrap}
-.step{flex:1;min-width:120px;background:#fff;border-radius:16px;border:2px solid var(--c);padding:12px 10px;text-align:center}
-.sic{width:44px;height:44px;margin:0 auto 6px;border-radius:999px;background:var(--c);display:grid;place-items:center;font-size:22px}
-.sa{font:800 14px Poppins;color:var(--c)}.sb{font-size:12px;font-weight:600;color:#334155}
-.arrow{align-self:center;color:#94A3B8;font-size:20px;font-weight:900}
-.refund{display:flex;border-radius:14px;overflow:hidden;margin-top:12px;font-size:12px}
-.seg{flex:1;padding:10px;color:#fff}.seg b{display:block;font:800 13px Poppins}.seg.g{background:#10B981}.seg.a{background:#F59E0B}.seg.r{background:#EF4444}
-.chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{background:#fff;border:1.5px solid #C4B5FD;border-radius:999px;padding:6px 12px;font-weight:600;font-size:12.5px}
-.foot{display:flex;gap:16px;align-items:center;background:linear-gradient(120deg,#0F172A,#1E3A8A);color:#fff;padding:20px 22px;border-radius:20px;margin-top:20px;break-inside:avoid}
-.foot img{width:110px;height:110px;background:#fff;border-radius:12px;padding:6px}
-.foot h3{font:800 18px Poppins;margin:0 0 4px}.foot a{color:#FDE68A;font-weight:800;text-decoration:none}
-.brand{text-align:center;color:#94A3B8;font-size:11px;padding:14px 0 22px;letter-spacing:2px;font-weight:700}
-@media (max-width:560px){.hero{padding:22px 18px;min-height:260px}.hero h1{font-size:27px}.wrap{padding:6px 14px 18px}.stats{padding:12px 14px}.two{grid-template-columns:1fr}.arrow{display:none}.step{min-width:calc(50% - 4px)}.foot{flex-direction:column;text-align:center}}
-@media print{.bar{display:none}body{background:#fff}.page{max-width:none}@page{size:A4;margin:10mm}.hero{min-height:260px;border-radius:18px}}
+body{margin:0;background:#EEF2F7;font-family:Inter,system-ui,sans-serif;color:#0F172A;font-size:14px;line-height:1.5}
+.page{max-width:800px;margin:0 auto;background:#fff;padding-bottom:10px}
+.bar{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap;padding:10px;background:#0F172A}
+.bar button{border:0;border-radius:999px;padding:12px 20px;font:800 15px Inter,sans-serif;cursor:pointer;background:#F97316;color:#fff}
+.bar span{color:#CBD5E1;font-size:12.5px}
+.hero{position:relative;color:#fff;padding:26px 24px 22px;background:#0369A1;overflow:hidden}
+.hero .bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.45}
+.hero>*{position:relative}
+.kicker{font:800 12px Inter;letter-spacing:2px;opacity:.95}
+.hero h1{font:800 30px/1.15 Poppins,sans-serif;margin:6px 0 8px;text-shadow:0 2px 10px rgba(0,0,0,.4)}
+.price{font-size:15px;font-weight:600}.price b{font:800 26px Poppins;color:#FDE68A}
+.eb{display:inline-block;margin-top:6px;background:#FDE68A;color:#78350F;border-radius:999px;padding:3px 11px;font-weight:800;font-size:12.5px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;padding:14px 18px;background:#F8FAFC;border-bottom:1px solid #E2E8F0}
+.fact{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:8px 10px}.fact .l{font-size:11px;color:#64748B;font-weight:700;text-transform:uppercase}.fact .v{font-weight:700;font-size:14px}
+.wrap{padding:6px 18px 18px}
+h2{font:800 19px Poppins,sans-serif;margin:0 0 10px}
+.glance{margin:16px 0}.glance table{width:100%;border-collapse:separate;border-spacing:0 6px}
+.glance td{padding:9px 10px;background:#F8FAFC;font-size:14px;vertical-align:top}.glance td:first-child{border-radius:10px 0 0 10px}.glance td:last-child{border-radius:0 10px 10px 0}
+.gd{color:#fff;font-weight:800;white-space:nowrap;width:1%}.gdate{font-weight:700;white-space:nowrap;width:1%}
+.day{border:2px solid;border-radius:16px;margin:16px 0;overflow:hidden}
+.dayhead{display:flex;gap:12px;align-items:center;color:#fff;padding:12px 14px}
+.dn{background:rgba(255,255,255,.22);border-radius:12px;padding:6px 10px;text-align:center;font:800 11px Inter;letter-spacing:1.5px;line-height:1}
+.dn b{display:block;font:800 26px Poppins;letter-spacing:0;margin-top:2px}
+.dd{font:800 18px Poppins}.tg{font-size:14px;font-weight:600;opacity:.95}
+.sched{width:100%;border-collapse:collapse;background:#fff}
+.sched th{text-align:left;font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.8px;padding:8px 12px;border-bottom:1px solid #E2E8F0}
+.sched td{padding:8px 12px;border-bottom:1px solid #F1F5F9;vertical-align:top}
+.sched tr{break-inside:avoid;page-break-inside:avoid}
+.tm{width:118px;white-space:nowrap}.tchip{display:inline-block;color:#fff;border-radius:6px;padding:2px 7px;font-weight:800;font-size:12.5px}
+.what{display:block}.wi{display:inline-block;width:24px;font-size:16px}.wt.b{font-weight:700}
+.dets{margin:2px 0 0 24px}.det{color:#475569;font-size:13px}
+.det:before{content:"– "}
+.subrow td{font-weight:800;font-size:14.5px;padding-top:12px;background:#FAFAFA}
+.hl{margin:0;padding:10px 14px;background:#fff;border-top:2px dashed;font-size:14px}
+.info{border:1.5px solid #CBD5E1;border-radius:16px;margin:16px 0;padding:12px 14px;background:#F8FAFC}
+.infot{font:800 17px Poppins;margin-bottom:6px}
+.bh{font-weight:800;margin:10px 0 4px}
+.row{display:flex;gap:8px;align-items:flex-start;margin:5px 0}.ic{flex-shrink:0;width:22px;text-align:center}
+.card{border:2px solid;border-radius:16px;margin:16px 0;padding:14px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+.inc,.exc{border-radius:16px;padding:12px 14px}.inc{background:#ECFDF5;border:2px solid #6EE7B7}.exc{background:#FEF2F2;border:2px solid #FCA5A5}
+.inc h3,.exc h3{font:800 16px Poppins;margin:0 0 6px}.inc h3{color:#047857}.exc h3{color:#B91C1C}
+.chk{display:flex;gap:8px;margin:5px 0}.chk .y,.chk .n{flex-shrink:0;width:20px;height:20px;border-radius:99px;display:grid;place-items:center;color:#fff;font-weight:900;font-size:11px;margin-top:1px}.y{background:#10B981}.n{background:#EF4444}
+.simple{width:100%;border-collapse:collapse;font-size:14px}.simple th{background:#F1F5F9;text-align:left;padding:8px 10px;font-size:12px;color:#334155}.simple td{padding:9px 10px;border-bottom:1px solid #E2E8F0;vertical-align:top}
+.price{color:#0369A1;font-size:16px}.mut{color:#64748B;font-size:12.5px}
+.steps{display:grid;gap:8px}.step{display:flex;gap:12px;align-items:center;background:#F5F3FF;border-radius:12px;padding:10px 12px}
+.sn{width:34px;height:34px;flex-shrink:0;border-radius:99px;background:#7C3AED;color:#fff;display:grid;place-items:center;font:800 16px Poppins}
+.sa{font-weight:800;font-size:15px}.sb{color:#334155}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chip{background:#fff;border:1.5px solid #C4B5FD;border-radius:999px;padding:6px 12px;font-size:13.5px}
+.foot{display:flex;gap:16px;align-items:center;background:#0F172A;color:#fff;padding:18px;border-radius:16px;margin-top:18px;break-inside:avoid}
+.foot img{width:104px;height:104px;background:#fff;border-radius:10px;padding:6px}.foot h3{font:800 17px Poppins;margin:0 0 4px}.foot a{color:#FDE68A;font-weight:800;text-decoration:none}
+.brand{text-align:center;color:#94A3B8;font-size:11px;padding:12px 0;letter-spacing:2px;font-weight:700}
+@media (max-width:560px){.hero h1{font-size:25px}.wrap{padding:4px 12px 14px}.facts{padding:12px}.two{grid-template-columns:1fr}.tm{width:92px}.sched td{padding:8px}.foot{flex-direction:column;text-align:center}}
+@media print{.bar{display:none}body{background:#fff}.page{max-width:none}@page{size:A4;margin:10mm}h2,.dayhead,.infot{break-after:avoid;page-break-after:avoid}}
 </style></head><body>
-<div class="bar"><button onclick="window.print()">⬇️ Save as PDF / Print</button><span>Tip: choose "Save as PDF" as the printer</span></div>
+<div class="bar"><button onclick="window.print()">⬇️ Save as PDF</button><span>In the print screen, choose <b>"Save as PDF"</b></span></div>
 <div class="page">
-  <header class="hero">${img ? `<img src="${esc(img)}" alt="" onerror="this.remove()">` : ""}
-    <div class="kicker">🏝️ GLASSWINGS GETAWAY</div>
+  <header class="hero">${img ? `<img class="bg" src="${esc(img)}" alt="" onerror="this.remove()">` : ""}
+    <div class="kicker">🏝️ GLASSWINGS GETAWAY · ITINERARY</div>
     <h1>${esc(event.title)}</h1>
-    <div class="when">📅 ${esc(event.event_date || dLong(t.start))}${event.venue || event.city ? ` &nbsp;·&nbsp; 📍 ${esc([event.venue, event.city].filter(Boolean).join(", "))}` : ""}</div>
-    ${from ? `<div class="price"><span>from</span><b>${inr(from)}</b><span>per person</span></div>` : ""}
+    ${from ? `<div class="price">from <b>${inr(from)}</b> per person</div>` : ""}
     ${early ? `<div class="eb">🐦 Early-bird price till ${dShort(early.early_until)}</div>` : ""}
   </header>
-  ${stats.length ? `<div class="stats">${stats.map(([i, v, l]) => `<div class="stat"><div class="i">${i}</div><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`).join("")}</div>` : ""}
+  ${facts.length ? `<div class="facts">${facts.map(([i, v, l]) => `<div class="fact"><div class="l">${i} ${l}</div><div class="v">${esc(v)}</div></div>`).join("")}</div>` : ""}
   <div class="wrap">
-    ${dayHtml ? `<div class="title2">🗺️ <span>Day-by-day plan</span></div>${dayHtml}` : ""}
-    ${(t.stay_info || t.travel_info) ? `<div class="two" style="margin-top:4px">${sec("🏨", "Where you'll stay", "#8B5CF6", bullets(t.stay_info, "🛏️")).replace('class="card"', 'class="card" style="margin:0;--c:#8B5CF6"')}${sec("✈️", "Travel & pickup", "#0EA5E9", bullets(t.travel_info, "🚐")).replace('class="card"', 'class="card" style="margin:0;--c:#0EA5E9"')}</div>` : ""}
+    ${glance}
+    ${cardHtml ? `<h2 style="margin-top:18px">🗺️ Day-by-day plan</h2>${cardHtml}` : ""}
+    ${sec("🏨", "Where you'll stay", "#7C3AED", block(t.stay_info, "🛏️"))}
+    ${sec("✈️", "Travel & pickup", "#0284C7", block(t.travel_info, "🚐"))}
     ${incHtml}
-    ${pkgHtml ? sec("🛏️", "Room packages", "#0369A1", pkgHtml) : ""}
+    ${pkgHtml ? sec("🛏️", "Room types & prices", "#0369A1", pkgHtml) : ""}
     ${exHtml ? sec("➕", "Optional extras", "#EA580C", exHtml) : ""}
-    ${sec("💳", "How payment works", "#7C3AED", journey + refund)}
+    ${sec("💳", "How to pay (in parts)", "#7C3AED", payHtml)}
     ${packHtml ? sec("🎒", "What to pack", "#7C3AED", packHtml) : ""}
-    ${t.terms ? sec("📋", "Trip terms", "#475569", bullets(t.terms, "•")) : ""}
+    ${t.terms ? sec("📋", "Trip rules", "#475569", block(t.terms, "•")) : ""}
     <div class="foot"><img src="${qr}" alt="QR"><div><h3>Book or pay your balance</h3>
       <div>Scan the code or open <a href="${esc(link)}">${esc(link.replace(/^https?:\/\//, ""))}</a></div>
       <div style="margin-top:6px;opacity:.9">Pay in parts, any day, until <b>${esc(dLong(t.deadline))}</b>.</div>
@@ -15482,12 +15518,18 @@ h2{font:800 19px Poppins;margin:0 0 12px;display:flex;align-items:center;gap:9px
   </div>
 </div>
 <script>
-(function(){var imgs=[].slice.call(document.images),left=imgs.length,done=false;function go(){if(done)return;done=true;setTimeout(function(){try{window.print()}catch(e){}},350)}
-if(!left)go();imgs.forEach(function(i){if(i.complete){if(--left<=0)go()}else{i.onload=i.onerror=function(){if(--left<=0)go()}}});setTimeout(go,4000);
-if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){});})();
+(function(){var imgs=[].slice.call(document.images),left=imgs.length,done=false;function go(){if(done)return;done=true;var f=function(){setTimeout(function(){try{window.print()}catch(e){}},500)};if(document.fonts&&document.fonts.ready){document.fonts.ready.then(f,f)}else f()}
+if(!left)go();imgs.forEach(function(i){if(i.complete){if(--left<=0)go()}else{i.onload=i.onerror=function(){if(--left<=0)go()}}});setTimeout(go,4000);})();
 </script>
 </body></html>`;
-  w.document.open(); w.document.write(html); w.document.close();
+  // A real page (not a blank pop-up) prints reliably on Android & iPhone
+  try {
+    const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    w.location.href = url;
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch { } }, 120000);
+  } catch {
+    w.document.open(); w.document.write(html); w.document.close();
+  }
 }
 
 function GetawayBox({ event, profile }) {
@@ -17343,8 +17385,8 @@ const GW_ADMIN_GROUPS = [
   ['Start here', ['guide']],
   ['Overview', ['dash','analytics']],
   ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
-  ['Events', ['events','private','stalls','sponsors','leads','door','directory','rooms']],
-  ['Money', ['accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
+  ['Events', ['review','events','private','stalls','sponsors','leads','door','directory','rooms']],
+  ['Money', ['money','accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
   ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
 const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',review:'🛂',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
@@ -17363,7 +17405,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
   const groups = () => GW_ADMIN_GROUPS.map(([title, ids]) => {
     const visible = ids.flatMap(id => tabs.filter(t=>t[0]===id));
     return visible.length ? <section key={title}><h3>{title}</h3>{visible.map(item)}</section> : null;
-  });
+  }).concat((() => { const known = new Set(GW_ADMIN_GROUPS.flatMap(g => g[1]).concat(['checkin','doorsales','invite'])); const extra = tabs.filter(t => !known.has(t[0])); return extra.length ? [<section key="more"><h3>More</h3>{extra.map(item)}</section>] : []; })());
   return <div className={'gw-admin-layout'+(collapsed?' gw-admin-collapsed':'')}>
     <style>{`
       .gw-admin-layout{display:grid;grid-template-columns:240px minmax(0,1fr);align-items:start;background:#f4f7f8;min-width:0}
@@ -17383,7 +17425,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
     `}</style>
     <aside className="gw-admin-sidebar"><header><strong>ADMIN WORKSPACE</strong><button type="button" aria-label={collapsed?'Expand admin sidebar':'Collapse admin sidebar'} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>{collapsed?'»':'«'}</button></header><nav aria-label="Admin navigation">{groups()}</nav></aside>
     <div className="gw-admin-content"><div className="gw-admin-mobilebar"><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>dialog.current?.showModal()}>☰ Admin Menu</button><strong style={{flex:1}}>{label(selected)}</strong>{selected!=='guide'&&<button type="button" onClick={()=>choose('guide')} style={{background:'linear-gradient(120deg,#4C1D95,#8B5CF6)',color:'#fff'}}>📘 Guide</button>}</div>{children}</div>
-    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['guide','dash','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
+    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['guide','review','dash','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
   </div>;
 }
 
