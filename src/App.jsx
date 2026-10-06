@@ -1770,7 +1770,11 @@ async function exportGuestListPdf(ev) {
     w.document.close();
   } catch (e) { alert(e.message || "Could not build the guest list."); }
 }
-function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved, onToggleSave, rating }) {
+function PosterCard({ e, price: price0, popular, going, onOpen, date, unpublished, saved, onToggleSave, rating }) {
+  const isTrip = gwIsGetaway(e);
+  const [, setTripTick] = useState(0);
+  useEffect(() => { if (!isTrip) return; gwLoadTripFrom(); const h = () => setTripTick(x => x + 1); window.addEventListener("gwtripfrom", h); return () => window.removeEventListener("gwtripfrom", h); }, [isTrip]);
+  const price = isTrip ? gwTripPriceLabel(e) : price0;
   return (
     <div className="gw-poster-card" id={"ev-" + e.id} onClick={() => onOpen(e.id)} style={{ cursor: "pointer", minWidth: 0, width: "100%", maxWidth: "100%" }}>
       <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "3/4", background: "linear-gradient(135deg,#008069,#04B08F)", boxShadow: "0 3px 12px rgba(0,0,0,.10)" }}>
@@ -1779,8 +1783,8 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved
             {e.host_type === "partner" ? "🤝 PARTNER" : "☕ GET-TOGETHER"}
           </span>
         )}
-        {e.vertical_video_url
-          ? <video src={e.vertical_video_url} autoPlay loop muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        {(e.vertical_video_url || e.portrait_video_url || (e.banner_url && e.banner_type === "video"))
+          ? <video src={e.vertical_video_url || e.portrait_video_url || e.banner_url} poster={e.vertical_banner_url || e.poster_url || undefined} autoPlay loop muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : (e.vertical_banner_url || e.poster_url || (e.banner_url && e.banner_type !== "video"))
           ? <img src={e.vertical_banner_url || e.poster_url || e.banner_url} alt={e.title} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
           : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52 }}>{e.emoji || "🎟️"}</div>}
@@ -1795,7 +1799,7 @@ function PosterCard({ e, price, popular, going, onOpen, date, unpublished, saved
       <div style={{ padding: "8px 2px 0" }}>
         <div style={{ fontWeight: 700, fontSize: 13.5, color: W.ink, lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.title}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 3 }}>
-          <span style={{ fontSize: 12.5, color: gwIsGetaway(e) ? "#0369A1" : W.teal, fontWeight: 800 }}>{gwIsGetaway(e) ? "🧳 Trip · pay in parts" : price}</span>
+          <span style={{ fontSize: 12.5, color: gwIsGetaway(e) ? "#0369A1" : W.teal, fontWeight: 800 }}>{price}</span>
           {rating && rating.cnt > 0 && <span style={{ fontSize: 11.5, color: "#B45309", fontWeight: 800 }}>⭐ {rating.avg}<span style={{ color: W.soft, fontWeight: 600 }}> ({rating.cnt})</span></span>}
         </div>
         {(e.entry_badge || (e.dress_code || "").trim()) && <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
@@ -3055,6 +3059,7 @@ function PublicLanding() {
   const getMin = e => e.ticket_price || 0;
   const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin)), sortBy, getMin);
   const priceFrom = (e) => {
+    if (gwIsGetaway(e)) return gwTripPriceLabel(e);
     const ts = types[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
     const m = Math.min(...prices);
@@ -4861,7 +4866,10 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
   const getMin = e => { const ts = ticketTypes[e.id] || []; const prices = ts.length ? ts.map(t => genderNet(t, null, profile)) : [e.ticket_price || 0]; return Math.min(...prices); };
   const list = sortEvents(events.filter(e => gwEventLive(e) && eventMatches(e, flt, getMin) && (hostFlt === "all" || (e.host_type || "glasswings") === hostFlt) && inQuick(e) && matchQ(e) && (!savedOnly || savedIds.has(e.id))), sortBy, getMin);
+  const [, setTripFromTick] = useState(0);
+  useEffect(() => { if (!events.some(gwIsGetaway)) return; gwLoadTripFrom(); const h = () => setTripFromTick(x => x + 1); window.addEventListener("gwtripfrom", h); return () => window.removeEventListener("gwtripfrom", h); }, [events]);
   const priceFrom = (e) => {
+    if (gwIsGetaway(e)) return gwTripPriceLabel(e);
     const ts = ticketTypes[e.id] || [];
     const prices = ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0];
     const m = Math.min(...prices);
@@ -4892,16 +4900,19 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const bmsCard = (e) => (
     <div key={e.id} onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ flex:"0 0 46%", minWidth:150, maxWidth:220, cursor:"pointer" }}>
       <div style={{ position:"relative", aspectRatio:"2/3", borderRadius:12, overflow:"hidden", background:"#e9ecef", boxShadow:"0 2px 8px rgba(0,0,0,.08)" }}>
-        {(e.vertical_banner_url || e.poster_url || (e.banner_url && e.banner_type !== "video"))
+        {(e.vertical_video_url || e.portrait_video_url || (e.banner_url && e.banner_type === "video"))
+          ? <video src={e.vertical_video_url || e.portrait_video_url || e.banner_url} poster={e.vertical_banner_url || e.poster_url || undefined} autoPlay loop muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+          : (e.vertical_banner_url || e.poster_url || (e.banner_url && e.banner_type !== "video"))
           ? <img src={e.vertical_banner_url || e.poster_url || e.banner_url} alt={e.title} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
           : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:50,background:"linear-gradient(135deg,#008069,#04B08F)"}}>{e.emoji || "🎟️"}</div>}
+        {gwIsGetaway(e) && <span style={{position:"absolute",left:8,bottom:8,background:GW_TRIP_GRAD,color:"#fff",fontSize:10,fontWeight:900,padding:"4px 8px",borderRadius:8,boxShadow:"0 3px 10px rgba(0,0,0,.25)"}}>🏝️ GETAWAY</span>}
         {popSet.has(e.id) && <span style={{position:"absolute",top:8,left:8,background:"#e53955",color:"#fff",fontSize:10,fontWeight:900,padding:"4px 8px",borderRadius:5}}>POPULAR</span>}
         {gwEventClosed(e) && <div style={{position:"absolute",left:0,right:0,bottom:0,background:"rgba(185,28,28,.94)",color:"#fff",padding:"7px",fontSize:11,fontWeight:900,textAlign:"center"}}>{gwEventAvailability(e)==="housefull"?"HOUSEFULL":"SOLD OUT"}</div>}
         {onToggleSave && <button onClick={ev=>{ev.stopPropagation();onToggleSave(e.id)}} style={{position:"absolute",right:7,top:7,width:30,height:30,border:0,borderRadius:"50%",background:"rgba(0,0,0,.42)",fontSize:14}}>{savedIds.has(e.id)?"❤️":"🤍"}</button>}
       </div>
       <div style={{fontSize:15,fontWeight:750,color:"#222",lineHeight:1.25,marginTop:8,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{e.title}</div>
       <div style={{fontSize:12.5,color:"#555",marginTop:4}}>{e.event_date || e.city || ""}</div>
-      <div style={{fontSize:12.5,color:W.teal,fontWeight:800,marginTop:3}}>{priceFrom(e)}</div>
+      <div style={{fontSize:12.5,color:gwIsGetaway(e)?"#0369A1":W.teal,fontWeight:800,marginTop:3}}>{priceFrom(e)}</div>
     </div>
   );
 
@@ -15228,6 +15239,17 @@ const GW_TRIP_BSTATUS = {
 };
 const GW_TRIP_GRAD = "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)";
 const gwIsGetaway = e => String(e?.event_kind || "") === "getaway";
+// "from ₹X" for getaway cards (they have no ticket price, so they must never say "Free")
+let gwTripFromMap = null, gwTripFromLoading = null;
+function gwLoadTripFrom() {
+  if (gwTripFromMap || gwTripFromLoading) return gwTripFromLoading;
+  gwTripFromLoading = supabase.rpc("trip_card_prices").then(({ data }) => { gwTripFromMap = data || {}; try { window.dispatchEvent(new Event("gwtripfrom")); } catch { } }, () => { gwTripFromMap = {}; });
+  return gwTripFromLoading;
+}
+function gwTripPriceLabel(e) {
+  const v = gwTripFromMap && Number(gwTripFromMap[e?.id]);
+  return v > 0 ? `🏝️ From ₹${v.toLocaleString("en-IN")}` : "🏝️ Trip · pay in parts";
+}
 const gwDateShort = d => { if (!d) return ""; const x = new Date(String(d).length <= 10 ? d + "T00:00:00" : d); return isNaN(x) ? String(d) : x.toLocaleDateString("en-IN", { day: "numeric", month: "short" }); };
 const gwDaysTo = d => { if (!d) return null; const x = new Date(String(d).length <= 10 ? d + "T00:00:00" : d); const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((x - t) / 86400000); };
 // suggested weekly amount to finish by the deadline
@@ -21595,7 +21617,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
               <Avatar room={{ emoji: e.emoji }} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 800, fontSize: 16, color: W.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</div>
-                <div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(() => { const tt = (ticketTypes && ticketTypes[e.id]) || []; if (tt.length) { const min = Math.min(...tt.map(t => t.price || 0)); return min === 0 ? "Free" : `From ₹${min}`; } return (e.ticket_price || 0) === 0 ? "Free" : `₹${e.ticket_price}/ticket`; })()}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div>
+                <div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(() => { if (gwIsGetaway(e)) return "🏝️ Getaway · pay in parts"; const tt = (ticketTypes && ticketTypes[e.id]) || []; if (tt.length) { const min = Math.min(...tt.map(t => t.price || 0)); return min === 0 ? "Free" : `From ₹${min}`; } return (e.ticket_price || 0) === 0 ? "Free" : `₹${e.ticket_price}/ticket`; })()}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div>
                 {e.host_id && hosts[e.host_id] && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700, marginTop: 2 }}>👤 {hosts[e.host_id].name}{topRole(hosts[e.host_id].roles) ? ` · ${roleLabel[topRole(hosts[e.host_id].roles)]}` : ""}</div>}
                 {privateSegIds.length > 0 && <div style={{ marginTop: 4, display: "flex", gap: 5, flexWrap: "wrap" }}>{invitedSegs.length ? invitedSegs.map(s => <span key={s.segment_id} style={{ background: "#F3E8FF", color: "#6D28D9", border: "1px solid #E4D5FB", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>🔒 {s.name}</span>) : <span style={{ background: "#F3E8FF", color: "#6D28D9", border: "1px solid #E4D5FB", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>🔒 {privateSegIds.length} private segment{privateSegIds.length === 1 ? "" : "s"}</span>}</div>}
                 <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>{e.promo_pct != null && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>📣 Promo {e.promo_pct}%</span>}</div>
