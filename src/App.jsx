@@ -16063,6 +16063,59 @@ function TripBoardingPanel({ rows, onChanged, onCash }) {
     </div>
   );
 }
+// ---------- Trip board: 🤖 automatic WhatsApp payment reminders ----------
+function TripAutoRemindCard({ eventId, isAdmin, onRan }) {
+  const [info, setInfo] = useState(null), [missing, setMissing] = useState(false), [busy, setBusy] = useState(false);
+  const load = () => supabase.rpc("trip_auto_remind_info", { p_event: eventId }).then(({ data, error }) => { if (error) setMissing(true); else { setMissing(false); setInfo(data); } });
+  useEffect(() => { load(); }, [eventId]);
+  const day = d => d ? new Date(String(d).slice(0, 10) + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) : "";
+  const when = t => t ? new Date(t).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "";
+  if (missing) return <div style={{ background: "#fff", border: "1px dashed #86EFAC", borderRadius: 12, padding: "9px 11px", fontSize: 12, color: "#166534", margin: "6px 0 10px" }}>🤖 Automatic weekly reminders: run <b>trip_auto_remind.sql</b> in Supabase to switch them on.</div>;
+  if (!info || !info.ok) return null;
+  const on = !!info.on;
+  const toggle = async () => {
+    const { data, error } = await supabase.rpc("set_trip_auto_remind", { p_event: eventId, p_on: !on });
+    if (error || !data?.ok) return window.gwConfirm(error?.message || data?.error || "Couldn't change it", () => {});
+    load();
+  };
+  const runNow = async () => {
+    setBusy(true);
+    try {
+      const { data: ses } = await supabase.auth.getSession();
+      const r = await fetch("/api/whatsapp/trip-remind-auto", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token }) });
+      const o = await r.json().catch(() => ({}));
+      const total = (o.sent || 0) + (o.failed || 0) + (o.no_phone || 0);
+      window.gwConfirm(o.error ? `Couldn't run: ${o.error}` : total === 0 ? "Checked ✓ Nobody is due a reminder today (reminder days are Sundays, 3 days before the deadline and the deadline day, and nobody gets two in 20 hours)."
+        : `🤖 Automatic reminders (all trips)\n✓ Sent: ${o.sent || 0}${o.failed ? `\n✕ Failed: ${o.failed}` : ""}${o.no_phone ? `\n📵 No number: ${o.no_phone}` : ""}${(o.errors || []).length ? `\n\nAiSensy says: ${o.errors.join(" | ")}` : ""}`, () => {});
+    } catch (e) { window.gwConfirm("Couldn't reach the app: " + (e.message || e), () => {}); }
+    setBusy(false); load(); onRan && onRan();
+  };
+  const ranRecently = info.job_last_run && (Date.now() - new Date(info.job_last_run).getTime()) < 36 * 3600 * 1000;
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${on ? "#86EFAC" : "#E5E7EB"}`, borderRadius: 12, padding: "10px 11px", margin: "6px 0 10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 900, fontSize: 13.5, color: on ? "#15803D" : "#475569" }}>🤖 Automatic reminders {on ? "ON" : "OFF"}</div>
+          <div style={{ fontSize: 11.5, color: "#166534", lineHeight: 1.45 }}>{on ? <>Sent by itself at about <b>10 AM</b>: every <b>Sunday</b>, <b>3 days before</b> the deadline and <b>on the deadline</b>{info.deadline ? ` (${day(info.deadline)})` : ""}, to everyone with a balance.</> : "Nobody gets automatic reminders for this trip. You can still use the buttons below."}</div>
+        </div>
+        <button onClick={toggle} aria-label="Switch automatic reminders" style={{ width: 50, height: 28, borderRadius: 99, border: 0, background: on ? "#16A34A" : "#CBD5E1", position: "relative", cursor: "pointer", flexShrink: 0 }}>
+          <span style={{ position: "absolute", top: 3, left: on ? 25 : 3, width: 22, height: 22, borderRadius: 99, background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.25)", transition: "left .15s" }} />
+        </button>
+      </div>
+      {on && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+        {info.next && <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px", background: "#ECFDF5", color: "#166534" }}>📅 Next: {day(info.next)}</span>}
+        {!info.next && <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px", background: "#F1F5F9", color: "#475569" }}>No more reminder days before the deadline</span>}
+        {Number(info.auto_sent) > 0 && <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px", background: "#ECFDF5", color: "#166534" }}>✓ {info.auto_sent} sent so far</span>}
+        {Number(info.auto_failed) > 0 && <span style={{ fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 9px", background: "#FEF2F2", color: "#B91C1C" }}>✕ {info.auto_failed} failed</span>}
+      </div>}
+      {isAdmin && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: "1px dashed #BBF7D0" }}>
+        <span style={{ fontSize: 11, color: ranRecently ? "#166534" : "#B45309", flex: 1, minWidth: 160 }}>{info.job_last_run ? `${ranRecently ? "✅" : "⚠️"} Daily job last ran ${when(info.job_last_run)}` : "⏳ Daily job hasn't run yet. If this still shows after 10:30 AM tomorrow, the Supabase schedule isn't set up."}</span>
+        <button disabled={busy} onClick={runNow} style={{ ...btn("#fff", "#15803D"), border: "1px solid #BBF7D0", padding: "6px 10px", fontSize: 12, opacity: busy ? .6 : 1 }}>{busy ? "Checking…" : "▶ Check now"}</button>
+      </div>}
+    </div>
+  );
+}
+
 // ---------- Organiser: 🧳 Travellers & payments tab ----------
 async function gwSendTripReminders(eventId, bookingIds) {
   const { data: ses } = await supabase.auth.getSession();
@@ -16172,7 +16225,9 @@ function TripBoardTab({ event }) {
       {dl != null && gwDaysTo(d.start) != null && gwDaysTo(d.start) <= 2 && <TripBoardingPanel rows={rows} onChanged={load} onCash={cash} />}
       <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 14, padding: 12, marginBottom: 12 }}>
         <div style={{ fontWeight: 950, color: "#15803D", fontSize: 14.5 }}>📣 WhatsApp payment reminders</div>
-        <div style={{ fontSize: 12, color: "#166534", margin: "2px 0 8px", lineHeight: 1.45 }}>Sent from the Glasswings WhatsApp number (AiSensy) with each person's balance, due date and a <b>Pay now</b> button. Tip: send once a week (e.g. every Sunday), plus 3 days before the deadline.</div>
+        <div style={{ fontSize: 12, color: "#166534", margin: "2px 0 8px", lineHeight: 1.45 }}>Sent from the Glasswings WhatsApp number (AiSensy) with each person's balance, due date and a <b>Pay now</b> button.</div>
+        <TripAutoRemindCard eventId={event.id} isAdmin={!!d.is_admin} onRan={load} />
+        <div style={{ fontSize: 11.5, fontWeight: 800, color: "#166534", margin: "2px 0 6px" }}>Or send one now:</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button disabled={remBusy || !act.some(b => b.behind > 0)} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to the ${act.filter(b => b.behind > 0).length} booking(s) that are behind schedule?`, () => sendRem(act.filter(b => b.behind > 0).map(b => b.id)))} style={{ ...btn("#F59E0B", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.behind > 0) ? .5 : 1 }}>⚠️ Remind those behind ({act.filter(b => b.behind > 0).length})</button>
           <button disabled={remBusy || !act.some(b => b.status === "booked")} onClick={() => window.gwConfirm(`Send a WhatsApp reminder to everyone who still has a balance (${act.filter(b => b.status === "booked").length} booking(s))?`, () => sendRem(act.filter(b => b.status === "booked").map(b => b.id)))} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5, opacity: remBusy || !act.some(b => b.status === "booked") ? .5 : 1 }}>{remBusy ? "Sending…" : `📣 Remind everyone with a balance (${act.filter(b => b.status === "booked").length})`}</button>
@@ -16796,7 +16851,7 @@ const GW_GUIDE = {
       "🧳 Travellers & payments: see who is behind (⚠️), tap 📣 Remind (WhatsApp via AiSensy), record cash with 💵, add flight PNR and room numbers, print the manifest and rooming list, mark boarded on the day.",
       "Tap ✅ Confirm trip once the minimum is reached and you've booked the hotel. After the deadline, 🔓 Release unpaid seats. If the trip can't happen, ✕ Cancel trip refunds everyone 100%.",
     ],
-    tips: ["🤖 Automatic WhatsApps: every payment sends a receipt, and a fully paid booking gets the Trip Pass. Needs the AiSensy campaigns trip_payment_received and trip_pass_ready.", "Don't call it EMI: it's 'pay in parts before you travel'.", "Most cancellations become seat transfers: the traveller edits the name to a friend's before the deadline and nothing is lost.", "Organisers can run getaways too. Glasswings keeps its cut (set by admins) and admins record organiser payouts, e.g. hotel advances."],
+    tips: ["🤖 Automatic WhatsApps: payment reminders every Sunday + 3 days before + on the deadline day, a receipt for every payment, and the Trip Pass when fully paid. Needs the AiSensy campaigns trip_payment_received and trip_pass_ready.", "Don't call it EMI: it's 'pay in parts before you travel'.", "Most cancellations become seat transfers: the traveller edits the name to a friend's before the deadline and nothing is lost.", "Organisers can run getaways too. Glasswings keeps its cut (set by admins) and admins record organiser payouts, e.g. hotel advances."],
   },
   // ----- short tips for the public / vendor / brand screens -----
   vendor: { icon: "🏪", title: "How booking a stall works", grad: "linear-gradient(120deg,#F97316,#EC4899)", one: "Apply → organiser approves → pay in the app → get your stall number and Stall Pass.", steps: ["Pick a stall type and fill in your business details.", "The organiser reviews it. You'll see \"Approved\" in My stalls.", "Tap Pay to confirm. Your Stall Pass shows your stall number and setup time."] },
@@ -16988,6 +17043,7 @@ const GW_TAB_GUIDE = {
   connect: { icon: "🔗", title: "Connections", grad: "linear-gradient(120deg,#0EA5E9,#8B5CF6)", one: "Manually connect two members so they can chat (e.g. after an event introduction).", flow: [["🧑", "Member A", "Search"], ["🔗", "Connect", "Approve"], ["🧑", "Member B", "Can now chat"]], steps: ["Search the two members and connect them.", "The connection appears under Approved connections. Tap Revoke to undo it."] },
   subs: { icon: "💎", title: "Subscription plans", grad: "linear-gradient(120deg,#7C3AED,#C026D3)", one: "Membership plans members pay for to get cheaper or free tickets.", flow: [["💎", "Plan", "Name + perks"], ["₹", "Prices", "Monthly / yearly"], ["🔁", "Auto-renew", "Razorpay billing"], ["🧑", "Enroll", "Add a member by hand"]], steps: ["Set each plan's prices. Leave a box empty if you don't offer that duration.", "Turn auto-renew billing on if you want automatic monthly charges.", "Use Enroll a member for people who paid you outside the app."] },
   subscribers: { icon: "💎", title: "Subscribers", grad: "linear-gradient(120deg,#C026D3,#7C3AED)", one: "Everyone on a paid plan: who is active, expiring soon or expired.", flow: [["✅", "Active", "Paying now"], ["⏳", "Expiring", "Renew soon"], ["❌", "Expired", "Win them back"], ["📲", "Nudge", "WhatsApp / in-app"]], steps: ["Switch views to see active, expiring and expired members.", "Use WhatsApp nudge or In-app reminder to get renewals."] },
+  money: { icon: "💰", title: "Money: everything Glasswings earns", grad: "linear-gradient(120deg,#04231d,#008069 55%,#0EA5E9)", one: "One screen for all income: tickets, getaways, stalls, sponsors, bookings, subscriptions and credits, month by month.", flow: [["📅", "Pick period", "1, 3, 6 or 12 months"], ["💰", "Share", "What Glasswings keeps"], ["📊", "Months", "Tap a bar"], ["💧", "Streams", "Where it came from"]], steps: ["Big number = Glasswings' share. Below it = all money that came in.", "Own events count 100%. Organiser events count only the Glasswings fee.", "Net = share − expenses. Add costs in 📊 Accounts → Expenses.", "Tap a month bar to see only that month; tap a stream to see how it's counted.", "⬇️ Download gives an Excel-ready file."] },
   accounts: { icon: "📊", title: "Accounts: income & expenses", grad: "linear-gradient(120deg,#0F766E,#2563EB)", one: "All Glasswings money in one place: where income comes from and what you spent.", flow: [["₹", "Income", "Where money came from"], ["🧾", "Expenses", "By category"], ["💰", "Net", "Income − expenses"], ["📄", "PDF", "Print / share"]], steps: ["Pick a period (or All time).", "See income by source and expenses by category.", "Add costs in each event's 💹 P&L tab so they show here.", "Tap 📄 PDF for a printable statement."] },
   subcoupons: { icon: "🏷️", title: "Subscription coupons", grad: "linear-gradient(120deg,#F59E0B,#EC4899)", one: "Discount codes for membership plans.", flow: [["🏷️", "Create code", "e.g. DIWALI20"], ["%", "Discount", "% or ₹"], ["🔒", "Limits", "One use per member"]], steps: ["Type a code and the discount.", "Choose limits (one use per member, expiry).", "Tap Create coupon and share the code."] },
   coupons: { icon: "🏷️", title: "Ticket coupons", grad: "linear-gradient(120deg,#EC4899,#F97316)", one: "Discount codes for one event's tickets.", flow: [["📅", "Pick event", "Upcoming"], ["🏷️", "Code + discount", "% or ₹"], ["🔒", "Limits", "Min order, expiry, uses"], ["📣", "Share", "Buyers enter at checkout"]], steps: ["Choose the upcoming event.", "Enter the code and discount. Add min order, expiry and use limit if needed.", "Share the code. Buyers type it at checkout."] },
@@ -17005,7 +17061,7 @@ const GW_TAB_GUIDE = {
   ev_media: { icon: "🖼️", title: "Media & share", grad: "linear-gradient(120deg,#2563EB,#0EA5E9)", one: "Banner, photos and videos make people buy. Then share the event link everywhere.", flow: [["🖼️", "Banner", "Wide image"], ["🎬", "Videos", "Reels / teaser"], ["🔗", "Share link", "WhatsApp, Instagram"]], steps: ["Upload a bright banner and a few photos.", "Add a short video if you have one.", "Copy the share link and post it on WhatsApp and Instagram."] },
   ev_tickets: { ref: "tickets" },
   ev_trip: { icon: "🏝️", title: "Trip setup", grad: "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)", one: "Everything about how people book and pay for this getaway, and what they see on the trip page.", flow: [["💳", "Money rules", "Booking amount, deadline"], ["🛏️", "Rooms", "2/3-sharing + early bird"], ["➕", "Extras", "Flight ⚡, casino"], ["📝", "Trip page", "Plan, stay, packing"], ["🧮", "Cost sheet", "Break-even"]], steps: ["Set the booking amount = your non-refundable cost per seat (hotel + transport advance).", "Set 'Pay in full … days before' (7 is safe for hotels) and the minimum travellers.", "Add room packages with seats; add an early-bird price + last date.", "Add flights as an extra with ⚡ Paid in full at booking.", "Write the day-by-day plan and the rest of the trip page, then tap 💾 Save."], more: "getaway" },
-  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "Tap ⚠️ Remind those behind (or 📣 Remind everyone) to send WhatsApp reminders from the Glasswings number with a Pay now button. 💬 From my WhatsApp opens the same message on your own phone.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On departure day the 🛫 Boarding day box appears at the top: tap 📷 Scan Trip Pass, check ID, tap ✅ Board all. The counter shows boarded / total, and ⏳ Not boarded lists who to call."], more: "getaway" },
+  ev_travellers: { icon: "🧳", title: "Travellers & payments", grad: "linear-gradient(120deg,#0E7490,#16A34A)", one: "Who booked, who paid how much, who is behind, and every list you need for the hotel and the trip day.", flow: [["📊", "Progress", "Paid vs left"], ["⚠️", "Behind", "Remind on WhatsApp"], ["💵", "Cash", "Record UPI/cash"], ["✈️", "PNR & rooms", "Per traveller"], ["📄", "Lists", "Manifest + rooming"]], steps: ["Check the top: travellers booked vs the minimum, and the deadline.", "🤖 Automatic reminders (switch at the top of 📣 WhatsApp payment reminders) go out by themselves at 10 AM every Sunday, 3 days before the deadline and on the deadline day. Nothing to tap.", "Need one right now? Tap ⚠️ Remind those behind (or 📣 Remind everyone) to send WhatsApp reminders from the Glasswings number with a Pay now button. 💬 From my WhatsApp opens the same message on your own phone.", "Open a booking → Travellers to add the flight PNR / room number. They appear on the Trip Pass.", "Print the 📄 manifest for the airline/bus and the 🛏️ rooming list for the hotel.", "On departure day the 🛫 Boarding day box appears at the top: tap 📷 Scan Trip Pass, check ID, tap ✅ Board all. The counter shows boarded / total, and ⏳ Not boarded lists who to call."], more: "getaway" },
   ev_sales: { icon: "💰", title: "Sales & platform fee", grad: "linear-gradient(120deg,#059669,#0EA5E9)", one: "Every ticket sold (online and at the door) and the platform fee for this event.", flow: [["💳", "Online", "Razorpay"], ["💵", "Door", "Cash / UPI"], ["💼", "Platform fee", "Std / tiers / ₹ per ticket"], ["🏦", "Payable", "To organiser"]], steps: ["Check the 💼 Platform fee card (admins can switch to volume pricing for big events).", "Scroll down to see each sale.", "Settle the organiser from 🏢 Organisers → Payouts."], more: "fees" },
   ev_pnl: { icon: "💹", title: "Profit & loss", grad: "linear-gradient(120deg,#0E7A5F,#16A34A)", one: "Income from this event minus its costs, so you know if it made money.", flow: [["₹", "Income", "Tickets, stalls, sponsors"], ["🧾", "Costs", "Venue, DJ, decor…"], ["⚖️", "Profit", "Income − costs"]], steps: ["Ticket income is added automatically (online + door).", "Tap Add a line for every cost (venue, DJ, decor) with its amount.", "Check the net profit before planning the next event."] },
   ev_analytics: { icon: "📊", title: "Event analytics", grad: "linear-gradient(120deg,#4F46E5,#0EA5E9)", one: "Who bought, when they bought, and how many came.", flow: [["📈", "Sales by day", "When people buy"], ["🎟️", "By ticket type", "What sells"], ["✅", "Check-ins", "Turn-up rate"]], steps: ["See which days and which tickets sold best.", "Use it to time your next promotions."] },
@@ -17069,7 +17125,7 @@ const GW_ADMIN_GROUPS = [
   ['Money', ['accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
   ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
-const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
 function AdminNavigation({ tabs, selected, onSelect, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const dialog = useRef(null), trigger = useRef(null);
@@ -17552,6 +17608,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
+    ...(isSuper ? [["money", "💰 Money"]] : []),
     ...(isSuper ? [["accounts", "📊 Accounts"]] : []),
     ...(isSuper ? [["subcoupons", "🏷️ Sub coupons"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
@@ -17593,6 +17650,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
         : seg === "directory" && canUseDirectory ? <SupplierDirectory />
         : seg === "reports" ? <ReportsAdmin />
         : seg === "subcoupons" ? <PlanCouponsAdmin />
+        : seg === "money" ? <MoneyDashboard />
         : seg === "accounts" ? <AccountsAdmin />
         : seg === "subscribers" ? <SubscribersAdmin />
         : seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
@@ -21747,6 +21805,185 @@ function PlanCouponsAdmin() {
     </div>
   );
 }
+// ---------- Superadmin: 💰 Money dashboard (every income stream, month by month) ----------
+const GW_MONEY_STREAMS = {
+  tickets_online: { icon: "🎟️", label: "Tickets · online", color: "#0EA5E9", how: "Razorpay ticket sales. Own events: all of it is Glasswings'. Organiser events: only the platform fee (+ promotion %)." },
+  tickets_door: { icon: "💵", label: "Tickets · door", color: "#38BDF8", how: "Cash / UPI sold at the gate. Same share rule as online tickets." },
+  getaways: { icon: "🏝️", label: "Getaways", color: "#14B8A6", how: "Every trip part-payment. Own trips: all of it (put hotel & travel costs in Expenses). Organiser trips: the Glasswings cut %." },
+  getaway_refunds: { icon: "↩️", label: "Getaway refunds", color: "#F87171", how: "Money given back on cancelled trip bookings (credits or bank). Taken away from the total." },
+  stalls: { icon: "🏪", label: "Stalls", color: "#F59E0B", how: "Paid stall bookings. Own events: all of it. Organiser events: the stall commission %." },
+  sponsors: { icon: "🤝", label: "Sponsors", color: "#A855F7", how: "Paid sponsorships. Own events: all of it. Organiser events: the sponsor commission %." },
+  bookings: { icon: "📋", label: "Event bookings", color: "#6366F1", how: "Clients paying organisers through the app (leads → quotes → bookings). Glasswings keeps the commission %." },
+  subscriptions: { icon: "💎", label: "Subscriptions", color: "#EC4899", how: "Membership plans and rooms. 100 % Glasswings." },
+  credit_packs: { icon: "🪙", label: "Credit packs", color: "#EAB308", how: "Credits bought with money. Organisers spend these on leads and Pro (shown below in credits, so it isn't counted twice)." },
+  other_online: { icon: "📦", label: "Other online", color: "#94A3B8", how: "Any other Razorpay payment type." },
+  leads: { icon: "🔓", label: "Lead unlocks", color: "#0F766E", how: "Credits organisers spent to unlock client leads (refunded unlocks not counted)." },
+  pro: { icon: "⭐", label: "Organiser Pro", color: "#B45309", how: "Credits organisers spent on Pro. Free admin grants not counted." },
+};
+const gwMonthName = (ym, long) => { const [y, m] = String(ym).split("-").map(Number); return new Date(y, m - 1, 1).toLocaleDateString("en-IN", long ? { month: "long", year: "numeric" } : { month: "short" }); };
+const gwYm = d => { const x = new Date(d); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0"); };
+
+function MoneyDashboard() {
+  const [rows, setRows] = useState(null), [err, setErr] = useState(""), [exp, setExp] = useState([]);
+  const [span, setSpan] = useState(6), [pick, setPick] = useState(null), [openS, setOpenS] = useState(null);
+  useEffect(() => {
+    supabase.rpc("admin_money_dashboard", { p_months: 12 }).then(({ data, error }) => { if (error) setErr(error.message); else setRows(data || []); });
+    supabase.rpc("list_expenses", { p_limit: 2000 }).then(({ data }) => setExp(data || []));
+  }, []);
+  const rup = n => (Number(n) < 0 ? "−₹" : "₹") + Math.abs(Math.round(Number(n) || 0)).toLocaleString("en-IN");
+  const short = n => { const a = Math.abs(Number(n) || 0); return a >= 100000 ? "₹" + (a / 100000).toFixed(a >= 1000000 ? 0 : 1) + "L" : a >= 1000 ? "₹" + Math.round(a / 1000) + "k" : "₹" + Math.round(a); };
+
+  if (err) return <div style={{ padding: 14 }}><div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 14, fontSize: 13.5, color: "#9A3412", lineHeight: 1.5 }}>Run <b>money_dashboard.sql</b> in Supabase → SQL Editor first, then reopen this tab.<div style={{ fontSize: 11.5, opacity: .8, marginTop: 4 }}>{err}</div></div></div>;
+  if (!rows) return <Center>Loading money…</Center>;
+
+  // months in the chosen window (oldest → newest)
+  const now = new Date();
+  const months = []; for (let i = span - 1; i >= 0; i--) months.push(gwYm(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+  const inSpan = r => months.includes(r.ym);
+  const sel = pick && months.includes(pick) ? pick : null;
+  const view = rows.filter(r => sel ? r.ym === sel : inSpan(r));
+  const inr = view.filter(r => r.unit === "inr"), cr = view.filter(r => r.unit === "credits");
+  const sum = (a, k) => a.reduce((s, r) => s + Number(r[k] || 0), 0);
+  const gross = sum(inr, "gross"), share = sum(inr, "share");
+  const expIn = exp.filter(x => x.spent_on && (sel ? gwYm(x.spent_on) === sel : months.includes(gwYm(x.spent_on))));
+  const spent = expIn.reduce((s, x) => s + Number(x.amount || 0), 0);
+  const net = share - spent;
+
+  // per month for the chart
+  const per = months.map(m => {
+    const r = rows.filter(x => x.ym === m && x.unit === "inr");
+    const e = exp.filter(x => x.spent_on && gwYm(x.spent_on) === m).reduce((s, x) => s + Number(x.amount || 0), 0);
+    return { m, gross: sum(r, "gross"), share: sum(r, "share"), spent: e };
+  });
+  const top = Math.max(1, ...per.map(p => Math.max(p.gross, p.spent)));
+
+  // per stream
+  const byS = {}; inr.forEach(r => { const k = r.stream; byS[k] = byS[k] || { k, gross: 0, share: 0, n: 0 }; byS[k].gross += Number(r.gross); byS[k].share += Number(r.share); byS[k].n += Number(r.n); });
+  const streams = Object.values(byS).sort((a, b) => b.share - a.share);
+  const maxShare = Math.max(1, ...streams.map(s => Math.abs(s.share)));
+  const byC = {}; cr.forEach(r => { byC[r.stream] = byC[r.stream] || { k: r.stream, credits: 0, n: 0 }; byC[r.stream].credits += Number(r.gross); byC[r.stream].n += Number(r.n); });
+  const credits = Object.values(byC);
+
+  // best month (by share) for a one-line insight
+  const best = per.reduce((b, p) => p.share > (b?.share || 0) ? p : b, null);
+  const prev = per.length >= 2 ? per[per.length - 2] : null, cur = per[per.length - 1];
+  const change = prev && prev.share > 0 ? Math.round((cur.share - prev.share) * 100 / prev.share) : null;
+
+  const exportCsv = () => {
+    const head = ["Month", "Stream", "Payments", "Money in (₹ or credits)", "Glasswings share", "Unit"];
+    const lines = rows.filter(inSpan).sort((a, b) => a.ym.localeCompare(b.ym) || a.stream.localeCompare(b.stream))
+      .map(r => [gwMonthName(r.ym, true), (GW_MONEY_STREAMS[r.stream]?.label || r.stream), r.n, Math.round(r.gross), Math.round(r.share), r.unit === "inr" ? "₹" : "credits"]);
+    per.forEach(p => { if (p.spent) lines.push([gwMonthName(p.m, true), "Expenses", "", "", -Math.round(p.spent), "₹"]); });
+    const csv = "﻿" + [head, ...lines].map(l => l.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = `glasswings-money-${months[0]}-to-${months[months.length - 1]}.csv`; a.click();
+  };
+
+  const chip = (on, label, fn) => <button onClick={fn} style={{ border: `1px solid ${on ? W.teal : W.line}`, background: on ? W.teal : "#fff", color: on ? "#fff" : W.ink, borderRadius: 999, padding: "7px 12px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{label}</button>;
+  const card = { background: "#fff", border: `1px solid ${W.line}`, borderRadius: 16, padding: 14, marginBottom: 12 };
+
+  return (
+    <div style={{ padding: 14, maxWidth: 860 }}>
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 12, paddingBottom: 2 }}>
+        {chip(span === 1, "This month", () => { setSpan(1); setPick(null); })}
+        {chip(span === 3, "3 months", () => { setSpan(3); setPick(null); })}
+        {chip(span === 6, "6 months", () => { setSpan(6); setPick(null); })}
+        {chip(span === 12, "12 months", () => { setSpan(12); setPick(null); })}
+      </div>
+
+      {/* hero */}
+      <div style={{ background: "linear-gradient(135deg,#04231d,#008069 60%,#04B08F)", color: "#fff", borderRadius: 20, padding: "16px 16px 14px", marginBottom: 12, boxShadow: "0 12px 28px rgba(0,128,105,.25)" }}>
+        <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, opacity: .85 }}>{sel ? gwMonthName(sel, true).toUpperCase() : span === 1 ? "THIS MONTH" : `LAST ${span} MONTHS`} · GLASSWINGS SHARE</div>
+        <div style={{ fontSize: 34, fontWeight: 950, lineHeight: 1.1, margin: "4px 0 2px" }}>{rup(share)}</div>
+        <div style={{ fontSize: 12.5, opacity: .9 }}>out of <b>{rup(gross)}</b> that came in through the app</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+          <div style={{ background: "rgba(255,255,255,.12)", borderRadius: 12, padding: "9px 11px" }}>
+            <div style={{ fontSize: 11, opacity: .85, fontWeight: 700 }}>⬇️ Expenses</div>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>{rup(spent)}</div>
+          </div>
+          <div style={{ background: net >= 0 ? "rgba(255,255,255,.22)" : "rgba(239,68,68,.35)", borderRadius: 12, padding: "9px 11px" }}>
+            <div style={{ fontSize: 11, opacity: .85, fontWeight: 700 }}>💰 Net (share − expenses)</div>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>{rup(net)}</div>
+          </div>
+        </div>
+        {!sel && span > 1 && change != null && <div style={{ fontSize: 12, marginTop: 10, opacity: .95 }}>{change >= 0 ? "📈" : "📉"} This month so far is <b>{Math.abs(change)}% {change >= 0 ? "up" : "down"}</b> on last month{best && best.share > 0 ? <> · best month: <b>{gwMonthName(best.m, true)}</b></> : null}</div>}
+      </div>
+
+      {/* month chart */}
+      {span > 1 && <div style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: 14, color: W.ink }}>📅 Month by month</div>
+          {sel && <button onClick={() => setPick(null)} style={{ ...btn("#ECFDF5", W.teal), padding: "5px 10px", fontSize: 12 }}>Show all {span} months</button>}
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: span > 6 ? 4 : 8, height: 150, padding: "0 2px" }}>
+          {per.map(p => {
+            const on = sel === p.m;
+            return <button key={p.m} onClick={() => setPick(on ? null : p.m)} style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", border: 0, background: on ? "#F0FDF4" : "transparent", borderRadius: 8, padding: "2px 0", cursor: "pointer", fontFamily: "inherit" }}>
+              <div style={{ fontSize: 9.5, fontWeight: 800, color: W.teal, marginBottom: 2, whiteSpace: "nowrap" }}>{p.share ? short(p.share) : ""}</div>
+              <div style={{ width: "100%", maxWidth: 34, display: "flex", gap: 2, alignItems: "flex-end", height: 110 }}>
+                <div title="Money in" style={{ flex: 1, height: `${Math.max(p.gross ? 3 : 0, p.gross * 100 / top)}%`, background: "#BAE6FD", borderRadius: "5px 5px 0 0", position: "relative" }}>
+                  <div title="Glasswings share" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: `${p.gross > 0 ? Math.max(0, Math.min(100, p.share * 100 / p.gross)) : 0}%`, background: W.teal, borderRadius: p.share >= p.gross ? "5px 5px 0 0" : 0 }} />
+                </div>
+                {p.spent > 0 && <div title="Expenses" style={{ width: "34%", height: `${Math.max(3, p.spent * 100 / top)}%`, background: "#FCA5A5", borderRadius: "4px 4px 0 0" }} />}
+              </div>
+              <div style={{ fontSize: 10.5, fontWeight: on ? 900 : 700, color: on ? W.teal : W.soft, marginTop: 4 }}>{gwMonthName(p.m)}</div>
+            </button>;
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: W.soft, marginTop: 8 }}>
+          <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: "#BAE6FD", marginRight: 4 }} />Money in</span>
+          <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: W.teal, marginRight: 4 }} />Glasswings share</span>
+          <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: "#FCA5A5", marginRight: 4 }} />Expenses</span>
+          <span>· Tap a month to see just that month</span>
+        </div>
+      </div>}
+
+      {/* streams */}
+      <div style={card}>
+        <div style={{ fontWeight: 900, fontSize: 14, color: W.ink, marginBottom: 2 }}>💧 Where the money came from</div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 10 }}>Big number = Glasswings share · small = total money in. Tap a row to see how it's counted.</div>
+        {streams.length === 0 && <div style={{ fontSize: 13, color: W.soft, padding: "8px 0" }}>No money in this period yet.</div>}
+        {streams.map(s => {
+          const m = GW_MONEY_STREAMS[s.k] || { icon: "•", label: s.k, color: "#94A3B8", how: "" };
+          const pct = share > 0 ? Math.round(s.share * 100 / share) : 0;
+          return <div key={s.k} onClick={() => setOpenS(openS === s.k ? null : s.k)} style={{ padding: "9px 0", borderTop: `1px solid ${W.line}`, cursor: "pointer" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: m.color + "22", display: "grid", placeItems: "center", fontSize: 17, flexShrink: 0 }}>{m.icon}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 13.5, color: W.ink }}>{m.label}</div>
+                <div style={{ fontSize: 11.5, color: W.soft }}>{s.n} payment{s.n === 1 ? "" : "s"} · in {rup(s.gross)}{s.share > 0 && pct > 0 ? ` · ${pct}% of share` : ""}</div>
+              </div>
+              <div style={{ fontWeight: 900, fontSize: 15.5, color: s.share < 0 ? "#DC2626" : W.teal, whiteSpace: "nowrap" }}>{rup(s.share)}</div>
+            </div>
+            <div style={{ height: 6, background: "#F1F5F9", borderRadius: 99, marginTop: 7, marginLeft: 44, overflow: "hidden" }}>
+              <div style={{ width: `${Math.abs(s.share) * 100 / maxShare}%`, height: "100%", background: s.share < 0 ? "#F87171" : m.color, borderRadius: 99 }} />
+            </div>
+            {openS === s.k && <div style={{ fontSize: 12, color: "#334155", background: "#F8FAFC", borderRadius: 10, padding: "8px 10px", margin: "8px 0 0 44px", lineHeight: 1.45 }}>{m.how}</div>}
+          </div>;
+        })}
+      </div>
+
+      {/* credits */}
+      {credits.length > 0 && <div style={card}>
+        <div style={{ fontWeight: 900, fontSize: 14, color: W.ink, marginBottom: 2 }}>🪙 Paid with credits</div>
+        <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 8, lineHeight: 1.45 }}>Organisers pay for these with credits they already bought, so the money is in <b>Credit packs</b> above. Shown here so you can see what sells.</div>
+        {credits.map(c => { const m = GW_MONEY_STREAMS[c.k] || { icon: "•", label: c.k }; return <div key={c.k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: `1px solid ${W.line}` }}>
+          <span style={{ fontSize: 18 }}>{m.icon}</span>
+          <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 13.5, color: W.ink }}>{m.label}</div><div style={{ fontSize: 11.5, color: W.soft }}>{c.n} time{c.n === 1 ? "" : "s"}</div></div>
+          <div style={{ fontWeight: 900, color: "#B45309" }}>{Math.round(c.credits).toLocaleString("en-IN")} credits</div>
+        </div>; })}
+      </div>}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <button onClick={exportCsv} style={{ ...btn("#fff", W.teal), border: `1px solid ${W.teal}`, padding: "9px 14px", fontSize: 13, fontWeight: 800 }}>⬇️ Download (Excel / CSV)</button>
+      </div>
+      <div style={{ fontSize: 11.5, color: W.soft, lineHeight: 1.5, marginBottom: 90 }}>
+        <b>Own events</b> (hosted by an admin) count 100% as Glasswings money. Put their costs in <b>📊 Accounts → Expenses</b> so Net is right. <b>Organiser events</b> count only the Glasswings fee. Payments are counted in the month they were paid (India time).
+      </div>
+    </div>
+  );
+}
+
+
 function AccountsAdmin() {
   const [ov, setOv] = useState(null);
   const [bySource, setBySource] = useState([]);
