@@ -2364,6 +2364,13 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     const io = new IntersectionObserver(([en]) => setShowMini(!en.isIntersecting), { rootMargin: "-70px 0px 0px 0px" });
     io.observe(el); return () => io.disconnect();
   }, []);
+  const [tripMine, setTripMine] = useState(0);
+  useEffect(() => {
+    const h = ev => { if (ev.detail?.id === e.id) setTripMine(ev.detail.n || 0); };
+    window.addEventListener("gwtripminecount", h);
+    return () => window.removeEventListener("gwtripminecount", h);
+  }, [e.id]);
+  const openMyTrip = () => { try { window.dispatchEvent(new CustomEvent("gwtripmine", { detail: e.id })); } catch { } };
   const scrollToTickets = () => {
     if (gwIsGetaway(e)) { try { window.dispatchEvent(new CustomEvent("gwtripbook", { detail: e.id })); } catch { } return; }
     const el = ticketRef.current; if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2571,7 +2578,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
             <div style={{ color: "#fff", fontWeight: 800, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{e.emoji} {e.title}</div>
             <div style={{ color: "#9fe8d6", fontSize: 12, fontWeight: 700 }}>{gwIsGetaway(e) ? "🏝️ Trip · pay in parts" : minPrice === 0 ? "Free" : `From ₹${minPrice}`}{countdown ? ` · ${countdown.replace("⏳ ", "")}` : ""}</div>
           </div>
-          {gwIsGetaway(e) ? <button onClick={scrollToTickets} style={{ ...btn(GW_TRIP_GRAD, "#fff"), padding: "9px 16px", fontSize: 14, flexShrink: 0, fontWeight: 900 }}>🧳 Book</button> : <button disabled={!hasTicket && manualClosed} onClick={hasTicket ? (onViewTicket || scrollToTickets) : scrollToTickets} style={{ ...btn(!hasTicket&&manualClosed?(availabilityStatus==="housefull"?"#111827":"#991B1B"):W.teal,!hasTicket&&manualClosed&&availabilityStatus==="housefull"?"#F6D365":"#fff"), padding: "9px 18px", fontSize: 14, flexShrink: 0, opacity:(!hasTicket&&manualClosed)?1:1, cursor:(!hasTicket&&manualClosed)?"not-allowed":"pointer" }}>{hasTicket ? "My tickets" : manualClosed ? availabilityLabel : "Book"}</button>}
+          {gwIsGetaway(e) ? <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {tripMine > 0 && <button onClick={openMyTrip} style={{ ...btn("#fff", "#0369A1"), padding: "9px 12px", fontSize: 13.5, fontWeight: 900 }}>🧳 My trip</button>}
+            <button onClick={scrollToTickets} style={{ ...btn(GW_TRIP_GRAD, "#fff"), padding: "9px 14px", fontSize: 14, fontWeight: 900 }}>{tripMine > 0 ? "+ Book" : "🧳 Book"}</button>
+          </div> : <button disabled={!hasTicket && manualClosed} onClick={hasTicket ? (onViewTicket || scrollToTickets) : scrollToTickets} style={{ ...btn(!hasTicket&&manualClosed?(availabilityStatus==="housefull"?"#111827":"#991B1B"):W.teal,!hasTicket&&manualClosed&&availabilityStatus==="housefull"?"#F6D365":"#fff"), padding: "9px 18px", fontSize: 14, flexShrink: 0, opacity:(!hasTicket&&manualClosed)?1:1, cursor:(!hasTicket&&manualClosed)?"not-allowed":"pointer" }}>{hasTicket ? "My tickets" : manualClosed ? availabilityLabel : "Book"}</button>}
         </div>
       )}
       {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>⏳ UNPUBLISHED — members and the public can't see this event yet. Approve it from Admin → Events.</div>}
@@ -2910,8 +2920,10 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
       {gwIsGetaway(e) && !wide && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 40, background: "#fff", borderTop: `1px solid ${W.line}`, boxShadow: "0 -8px 28px rgba(14,48,40,.13)", padding: "11px 16px calc(11px + env(safe-area-inset-bottom))" }}>
           <div style={{ maxWidth: 1080, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
-            <div style={{ minWidth: 0 }}><div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>🏝️ Getaway</div><div style={{ fontSize: 16, fontWeight: 900, color: W.ink }}>Book now, pay in parts</div></div>
-            <button onClick={scrollToTickets} style={{ ...btn(GW_TRIP_GRAD, "#fff"), padding: "13px 22px", fontSize: 15, borderRadius: 12, fontWeight: 900 }}>🧳 Book trip</button>
+            {tripMine > 0
+              ? <button onClick={openMyTrip} style={{ ...btn("#E0F2FE", "#0369A1"), padding: "13px 14px", fontSize: 14.5, borderRadius: 12, fontWeight: 900, flex: 1, justifyContent: "center", border: "1.5px solid #7DD3FC" }}>🧳 My trip · pay / history</button>
+              : <div style={{ minWidth: 0 }}><div style={{ fontSize: 11.5, color: W.soft, fontWeight: 700 }}>🏝️ Getaway</div><div style={{ fontSize: 16, fontWeight: 900, color: W.ink }}>Book now, pay in parts</div></div>}
+            <button onClick={scrollToTickets} style={{ ...btn(GW_TRIP_GRAD, "#fff"), padding: "13px 18px", fontSize: 15, borderRadius: 12, fontWeight: 900, flexShrink: 0 }}>{tripMine > 0 ? "+ Book more" : "🧳 Book trip"}</button>
           </div>
         </div>
       )}
@@ -15260,11 +15272,15 @@ function GwTripProgress({ paid, total, firstDue, dark = false }) {
 function GetawayBox({ event, profile }) {
   const [t, setT] = useState(null), [mine, setMine] = useState([]), [book, setBook] = useState(false), [open, setOpen] = useState({ itinerary: true });
   const askBook = () => { if (!profile?.id) return window.gwConfirm("Please log in to book this trip.", () => {}); setBook(true); };
+  const [mineOpen, setMineOpen] = useState(false);
   useEffect(() => {
     const h = ev => { if (!ev.detail || ev.detail === event.id) askBook(); };
-    window.addEventListener("gwtripbook", h);
-    return () => window.removeEventListener("gwtripbook", h);
+    const m = ev => { if (!ev.detail || ev.detail === event.id) setMineOpen(true); };
+    window.addEventListener("gwtripbook", h); window.addEventListener("gwtripmine", m);
+    return () => { window.removeEventListener("gwtripbook", h); window.removeEventListener("gwtripmine", m); };
   }, [event.id, profile?.id]);
+  const activeMine = (mine || []).filter(b => ["pending", "booked", "paid"].includes(b.status));
+  useEffect(() => { try { window.dispatchEvent(new CustomEvent("gwtripminecount", { detail: { id: event.id, n: activeMine.length } })); } catch { } }, [activeMine.length, event.id]);
   const load = () => {
     supabase.rpc("trip_public", { p_event: event.id }).then(({ data }) => setT(data || { ready: false }));
     if (profile?.id) supabase.rpc("my_trip_bookings", { p_event: event.id }).then(({ data }) => setMine(data || []));
@@ -15339,6 +15355,11 @@ function GetawayBox({ event, profile }) {
         {sec("rules", "💳 Payments, cancellation & refunds", rulesText)}
         {sec("terms", "📋 Trip terms", t.terms)}
       </div>
+      {mineOpen && <Sheet onClose={() => setMineOpen(false)}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}><div style={{ flex: 1, fontWeight: 950, fontSize: 18, color: W.ink }}>🧳 My trip</div><span onClick={() => setMineOpen(false)} style={{ cursor: "pointer", fontSize: 22, color: W.soft }}>✕</span></div>
+        {activeMine.length ? activeMine.map(b => <MyTripCard key={b.id} b={b} onChange={load} />) : <div style={{ color: W.soft, fontSize: 13.5 }}>You haven't booked this trip yet.</div>}
+        <div style={{ fontSize: 12, color: W.soft, marginTop: 6 }}>All your trips are also in <b>Profile → 🧳 My trips</b>.</div>
+      </Sheet>}
       {book && t.ready && !closed && !allFull && <TripBookSheet event={event} trip={t} profile={profile} onClose={() => setBook(false)} onDone={() => { setBook(false); load(); }} />}
     </div>
   );
@@ -15584,14 +15605,14 @@ function MyTripCard({ b, onChange }) {
       {b.status === "paid" && <button onClick={() => setShowPass(v => !v)} style={{ ...btn("linear-gradient(90deg,#15803D,#0EA5E9)", "#fff"), width: "100%", justifyContent: "center", marginTop: 10, fontWeight: 900 }}>🎫 {showPass ? "Hide" : "Show"} Trip Pass</button>}
       {b.status === "paid" && showPass && <TripPass b={b} />}
 
+      <TripPaymentHistory b={b} />
       <details style={{ marginTop: 10 }}>
-        <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, color: W.teal }}>Travellers, payments & options</summary>
+        <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 800, color: W.teal }}>Travellers & options</summary>
         {(b.travellers || []).map(t => (
           <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${W.line}`, fontSize: 13 }}>
             <div style={{ flex: 1, minWidth: 0 }}><b>{t.name}</b> <span style={{ color: W.soft }}>· {t.age} · {t.food === "veg" ? "🥗" : t.food === "nonveg" ? "🍗" : ""}{t.room_no ? ` · Room ${t.room_no}` : ""}</span>{t.ticket_info && <div style={{ fontSize: 11.5, color: "#0369A1", fontWeight: 700 }}>✈️ {t.ticket_info}</div>}</div>
             {["pending", "booked", "paid"].includes(b.status) && dl != null && dl >= 0 && <button onClick={() => setEdit({ ...t })} style={{ ...btn("#F1F5F9", W.ink), padding: "5px 9px", fontSize: 11.5 }}>✏️ Edit</button>}
           </div>))}
-        {(b.payments || []).length > 0 && <div style={{ borderTop: `1px solid ${W.line}`, paddingTop: 6, marginTop: 4 }}>{b.payments.map((p, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: W.soft, padding: "2px 0" }}><span>{p.paid_at ? new Date(p.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : ""} · {p.method === "razorpay" ? "Online" : p.method}</span><b style={{ color: W.ink }}>{gwINR(p.amount)}</b></div>)}</div>}
         {["booked", "paid"].includes(b.status) && <button onClick={cancel} style={{ ...btn("#fff", "#B91C1C"), border: "1px solid #FECACA", marginTop: 8, padding: "6px 12px", fontSize: 12 }}>Cancel booking</button>}
       </details>
 
@@ -15612,6 +15633,78 @@ function MyTripCard({ b, onChange }) {
           setEdit(null); onChange && onChange();
         }} style={{ ...btn("#0EA5E9", "#fff"), width: "100%", justifyContent: "center", marginTop: 10, fontWeight: 900 }}>Save</button>
       </Sheet>}
+    </div>
+  );
+}
+
+function TripPaymentHistory({ b, open: openInit = false }) {
+  const [open, setOpen] = useState(openInit);
+  const pays = b.payments || [];
+  let run = 0;
+  const rows = pays.map(p => { run += Number(p.amount) || 0; return { ...p, after: run }; });
+  return (
+    <div style={{ marginTop: 10, border: `1px solid ${W.line}`, borderRadius: 12, overflow: "hidden" }}>
+      <div role="button" onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", padding: "9px 12px", background: "#F8FAFC", cursor: "pointer", userSelect: "none" }}>
+        <span style={{ flex: 1, fontWeight: 900, fontSize: 13.5, color: W.ink }}>🧾 Payment history ({pays.length})</span>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: "#0369A1" }}>{open ? "Hide ▴" : "Show ▾"}</span>
+      </div>
+      {open && <div style={{ padding: "4px 12px 10px" }}>
+        {!rows.length && <div style={{ fontSize: 12.5, color: W.soft, padding: "6px 0" }}>No payments yet.</div>}
+        {rows.map((p, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i < rows.length - 1 ? `1px dashed ${W.line}` : "none" }}>
+            <div style={{ width: 30, height: 30, borderRadius: 99, background: "#DCFCE7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>✓</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 900, color: W.ink, fontSize: 14 }}>{gwINR(p.amount)} <span style={{ fontSize: 11.5, fontWeight: 700, color: W.soft }}>· {p.kind === "booking" ? "Booking amount" : "Part payment"}</span></div>
+              <div style={{ fontSize: 11.5, color: W.soft }}>{p.paid_at ? new Date(p.paid_at).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""} · {p.method === "razorpay" ? "Online (Razorpay)" : p.method === "upi" ? "UPI to organiser" : p.method === "cash" ? "Cash to organiser" : p.method}</div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 11, color: W.soft, fontWeight: 700 }}>paid so far<br /><b style={{ color: "#0369A1", fontSize: 12.5 }}>{gwINR(p.after)}</b></div>
+          </div>))}
+        <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${W.line}`, marginTop: 4, paddingTop: 8, fontSize: 13, fontWeight: 900 }}>
+          <span style={{ color: W.ink }}>Total {gwINR(b.total)}</span>
+          <span style={{ color: Number(b.total) - Number(b.paid) > 0 ? "#B45309" : "#15803D" }}>{Number(b.total) - Number(b.paid) > 0 ? `Balance ${gwINR(Number(b.total) - Number(b.paid))}` : "Fully paid ✓"}</span>
+        </div>
+        {Number(b.refund_amount) > 0 && <div style={{ fontSize: 12, color: "#0369A1", fontWeight: 800, marginTop: 4 }}>Refund {gwINR(b.refund_amount)} · {b.refund_status === "credited" ? "returned as Glasswings credits" : b.refund_status === "refunded" ? "sent to your bank" : "being processed"}</div>}
+      </div>}
+    </div>
+  );
+}
+
+// Profile → 🧳 My trips (all getaway bookings, pay, pass, history)
+function MyTripsSection() {
+  const [list, setList] = useState(null), [openId, setOpenId] = useState(null);
+  const load = () => supabase.rpc("my_trip_bookings", { p_event: null }).then(({ data, error }) => {
+    const l = error ? [] : (data || []); setList(l);
+    setOpenId(o => o || (l.find(b => ["pending", "booked"].includes(b.status)) || {}).id || null);   // open the one that still needs paying
+  });
+  useEffect(() => { load(); }, []);
+  if (!list || !list.length) return null;
+  return (
+    <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 14, marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div style={{ flex: 1, fontWeight: 950, color: W.ink, fontSize: 16 }}>🧳 My trips</div>
+        <button onClick={load} style={{ ...btn("#EBEEF0", W.ink), padding: "4px 10px", fontSize: 12 }}>↻</button>
+      </div>
+      {list.map(b => {
+        const [lab, fg, bg] = GW_TRIP_BSTATUS[b.status] || GW_TRIP_BSTATUS.booked;
+        const isOpen = openId === b.id;
+        return (
+          <div key={b.id} style={{ borderTop: `1px solid ${W.line}`, padding: "10px 0" }}>
+            <div role="button" onClick={() => setOpenId(isOpen ? null : b.id)} style={{ cursor: "pointer", userSelect: "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, color: W.ink, fontSize: 14.5 }}>🏝️ {b.event_title}</div>
+                  <div style={{ fontSize: 12, color: W.soft }}>{b.event_date} · {b.people} {b.people === 1 ? "traveller" : "travellers"} · {b.code}</div>
+                </div>
+                <span style={{ fontSize: 10.5, fontWeight: 900, color: fg, background: bg, borderRadius: 99, padding: "3px 8px", whiteSpace: "nowrap" }}>{lab}</span>
+              </div>
+              {["pending", "booked", "paid"].includes(b.status) && <div style={{ marginTop: 7 }}><GwTripProgress paid={Number(b.paid)} total={Number(b.total)} firstDue={Number(b.first_due)} /></div>}
+              {!isOpen && ["pending", "booked"].includes(b.status) ? <div style={{ ...btn("#0EA5E9", "#fff"), justifyContent: "center", marginTop: 8, fontWeight: 900 }}>💳 Pay next part · {gwINR(Math.max(0, Number(b.total) - Number(b.paid)))} left</div>
+                : <div style={{ fontSize: 12.5, fontWeight: 800, color: "#0369A1", marginTop: 4 }}>{isOpen ? "Hide ▴" : b.status === "paid" ? "Open: Trip Pass & payment history ▾" : "Open: payment history ▾"}</div>}
+            </div>
+            {isOpen && <div style={{ marginTop: 8 }}>{["pending", "booked", "paid"].includes(b.status) ? <MyTripCard b={b} onChange={load} /> : <TripPaymentHistory b={b} open />}</div>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -23321,6 +23414,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
             </div>
           );
         })()}
+        <MyTripsSection />
         <WalletCard userId={user.id} />
         {paidSubs.length > 0 && (
           <div style={{ background: "#fff", borderRadius: 16, border: `1px solid ${W.line}`, padding: 16, marginTop: 16 }}>
