@@ -2587,7 +2587,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           </div> : <button disabled={!hasTicket && manualClosed} onClick={hasTicket ? (onViewTicket || scrollToTickets) : scrollToTickets} style={{ ...btn(!hasTicket&&manualClosed?(availabilityStatus==="housefull"?"#111827":"#991B1B"):W.teal,!hasTicket&&manualClosed&&availabilityStatus==="housefull"?"#F6D365":"#fff"), padding: "9px 18px", fontSize: 14, flexShrink: 0, opacity:(!hasTicket&&manualClosed)?1:1, cursor:(!hasTicket&&manualClosed)?"not-allowed":"pointer" }}>{hasTicket ? "My tickets" : manualClosed ? availabilityLabel : "Book"}</button>}
         </div>
       )}
-      {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>⏳ UNPUBLISHED — members and the public can't see this event yet. Approve it from Admin → Events.</div>}
+      {e.approved === false && <div style={{ background: "#28302E", color: "#fff", fontSize: 12, fontWeight: 700, textAlign: "center", padding: "9px 14px", letterSpacing: .5 }}>{e.review_state === "submitted" ? "⏳ WAITING FOR GLASSWINGS REVIEW — members can't see this yet." : e.review_state === "changes" ? "✏️ CHANGES NEEDED — fix them in Admin → Events, then send for review again." : "📝 DRAFT — members and the public can't see this yet."}</div>}
       {manualClosed && <div style={{background:availabilityStatus==="housefull"?"linear-gradient(95deg,#050505,#1A1A1A,#050505)":"linear-gradient(95deg,#991B1B,#DC2626,#991B1B)",color:availabilityStatus==="housefull"?"#F6D365":"#fff",fontSize:14,fontWeight:1000,textAlign:"center",padding:"11px 14px",letterSpacing:1.1,borderBottom:availabilityStatus==="housefull"?"1px solid #D4AF37":"none"}}>{availabilityStatus==="housefull"?"⚫ HOUSEFULL — WE ARE AT FULL CAPACITY · FOR TICKETS CONTACT GW SUPPORT":"🔴 SOLD OUT — THANK YOU FOR THE AMAZING RESPONSE · FOR TICKETS CONTACT GW SUPPORT"}</div>}
       {e.landscape_video_url ? (
         <div style={{ background: "#0b1f1c" }}><video src={e.landscape_video_url} autoPlay loop playsInline controls ref={el => { if (el) { el.muted = false; el.volume = 1; const p = el.play(); if (p && p.catch) p.catch(() => {}); } }} style={{ width: "100%", height: wide ? 420 : 235, objectFit: "cover", display: "block" }} /></div>
@@ -3998,6 +3998,12 @@ function Main({ user }) {
     setReady(true);
   }, [user.id]);
   useEffect(() => { load(); }, [load]);
+  const broadcastEventRef = useRef(null);
+  useEffect(() => {
+    const h = async ev => { try { const { data } = await supabase.from("events").select("*").eq("id", ev.detail).single(); if (data && broadcastEventRef.current) await broadcastEventRef.current(data); } catch { } };
+    window.addEventListener("gwannounceevent", h);
+    return () => window.removeEventListener("gwannounceevent", h);
+  }, []);
 
   const myRoles = (profile?.roles && profile.roles.length) ? profile.roles : (profile?.role && profile.role !== "member" ? [profile.role] : []);
   const isSuper = myRoles.includes("superadmin");
@@ -4404,13 +4410,11 @@ function Main({ user }) {
       if (rows.length) await supabase.from("event_addons").insert(rows);
     }
     const line = [list[0].label, [d.venue, d.city].filter(Boolean).join(", ")].filter(Boolean).join(" · ");
-    if (gwIsPrivateEvent(d)) {
-      await sendEventDM({ ...d, id: firstId, event_date: list[0].label });
-    } else {
-      await announceToRooms(`${d.emoji || "🎟️"} ${d.title}${list.length > 1 ? ` (${list.length} dates)` : ""}${line ? "\n" + line : ""}`, "event", { media_url: d.banner_url || null, file_name: d.banner_type || "image", event_ref: firstId });
-    }
+    // New events start as an unpublished draft. Members hear about it only when the Glasswings team publishes it.
+    void line;
     await load();
-    if (!(isAdmin || (profile?.roles || []).includes("admin"))) setNotice("Event submitted ✅ — it will appear publicly once an admin reviews and approves it.");
+    const team = isSuper || [profile?.role, ...(profile?.roles || [])].some(r => ["admin", "subadmin", "team", "staff"].includes(r));
+    setNotice(team ? "📝 Saved as a draft (not visible to members). When it's ready, tap ✅ Publish on the event." : "📝 Saved as a draft. Only you can see it. Finish the details, then tap 📤 Send for review. Glasswings will check and publish it.");
   };
   const broadcast = async (text) => {
     const t = (text || "").trim(); if (!t) return;
@@ -4423,6 +4427,7 @@ function Main({ user }) {
     await announceToRooms(`${e.emoji || "🎟️"} ${e.title}${line ? "\n" + line : ""}`, "event", { media_url: e.landscape_video_url || e.banner_url || null, file_name: e.landscape_video_url ? "video" : (e.banner_type || "image"), event_ref: e.id });
     setNotice("Event sent to all group chats.");
   };
+  broadcastEventRef.current = broadcastEvent;
   const sendDM = async (ids, text) => {
     const t = (text || "").trim(); if (!t || !ids.length) return;
     const rows = ids.map(id => ({ group_type: "dm", group_id: id, sender_id: user.id, body: t }));
@@ -4649,7 +4654,7 @@ function Main({ user }) {
           />
         </div>
       </div>}
-      {tab === "admin" && isStaff && <Admin caps={caps} canUseDirectory={[profile?.role, ...(profile?.roles || [])].some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r))} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
+      {tab === "admin" && isStaff && <Admin isGwTeam={isSuper || [profile?.role, ...(profile?.roles || [])].some(r => ["admin", "subadmin", "team", "staff"].includes(r))} caps={caps} canUseDirectory={[profile?.role, ...(profile?.roles || [])].some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r))} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "coupons" && isStaff && <div><TopBar title="🏷️ Coupons" /><CouponsAdmin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} /></div>}
       {tab === "door" && isStaff && <DoorCheckin events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} ticketTypes={ticketTypes} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} onUpdateEvent={updateEvent} />}
       {tab === "series" && <ShortsFeed user={user} profile={profile} isStaff={isStaff} startPayment={startPayment} only="series" />}
@@ -17259,6 +17264,7 @@ const GW_TAB_GUIDE = {
   connect: { icon: "🔗", title: "Connections", grad: "linear-gradient(120deg,#0EA5E9,#8B5CF6)", one: "Manually connect two members so they can chat (e.g. after an event introduction).", flow: [["🧑", "Member A", "Search"], ["🔗", "Connect", "Approve"], ["🧑", "Member B", "Can now chat"]], steps: ["Search the two members and connect them.", "The connection appears under Approved connections. Tap Revoke to undo it."] },
   subs: { icon: "💎", title: "Subscription plans", grad: "linear-gradient(120deg,#7C3AED,#C026D3)", one: "Membership plans members pay for to get cheaper or free tickets.", flow: [["💎", "Plan", "Name + perks"], ["₹", "Prices", "Monthly / yearly"], ["🔁", "Auto-renew", "Razorpay billing"], ["🧑", "Enroll", "Add a member by hand"]], steps: ["Set each plan's prices. Leave a box empty if you don't offer that duration.", "Turn auto-renew billing on if you want automatic monthly charges.", "Use Enroll a member for people who paid you outside the app."] },
   subscribers: { icon: "💎", title: "Subscribers", grad: "linear-gradient(120deg,#C026D3,#7C3AED)", one: "Everyone on a paid plan: who is active, expiring soon or expired.", flow: [["✅", "Active", "Paying now"], ["⏳", "Expiring", "Renew soon"], ["❌", "Expired", "Win them back"], ["📲", "Nudge", "WhatsApp / in-app"]], steps: ["Switch views to see active, expiring and expired members.", "Use WhatsApp nudge or In-app reminder to get renewals."] },
+  review: { icon: "🛂", title: "Review: check events before they go live", grad: "linear-gradient(120deg,#B45309,#EA580C 55%,#008069)", one: "Every new event starts as an unpublished draft. Organisers send it for review; the Glasswings team checks it and publishes it, or asks for changes.", flow: [["📝", "Draft", "Organiser creates"], ["📤", "Sent", "Send for review"], ["👁️", "Check", "Preview the page"], ["✅", "Publish", "or ✏️ ask changes"], ["📲", "Organiser told", "Email + WhatsApp"]], steps: ["Open ⏳ Waiting. Tap 👁️ Preview to see the event page exactly as members will.", "All good? Tap ✅ Publish. Tick 📣 Announce to post it in the group chats.", "Something to fix? Tap ✏️ Ask for changes, tap the reasons (or type your own) and send.", "The organiser gets an email (and WhatsApp if the AiSensy campaign is set). You can also tap 📲 WhatsApp from my phone.", "When they fix it and send it again, it comes back to ⏳ Waiting.", "Live event with a problem? Admin → Events → ⏸️ Unpublish."] },
   money: { icon: "💰", title: "Money: everything Glasswings earns", grad: "linear-gradient(120deg,#04231d,#008069 55%,#0EA5E9)", one: "One screen for all income: tickets, getaways, stalls, sponsors, bookings, subscriptions and credits, month by month.", flow: [["📅", "Pick period", "1, 3, 6 or 12 months"], ["💰", "Share", "What Glasswings keeps"], ["📊", "Months", "Tap a bar"], ["💧", "Streams", "Where it came from"]], steps: ["Big number = Glasswings' share. Below it = all money that came in.", "Own events count 100%. Organiser events count only the Glasswings fee.", "Net = share − expenses. Add costs in 📊 Accounts → Expenses.", "Tap a month bar to see only that month; tap a stream to see how it's counted.", "⬇️ Download gives an Excel-ready file."] },
   accounts: { icon: "📊", title: "Accounts: income & expenses", grad: "linear-gradient(120deg,#0F766E,#2563EB)", one: "All Glasswings money in one place: where income comes from and what you spent.", flow: [["₹", "Income", "Where money came from"], ["🧾", "Expenses", "By category"], ["💰", "Net", "Income − expenses"], ["📄", "PDF", "Print / share"]], steps: ["Pick a period (or All time).", "See income by source and expenses by category.", "Add costs in each event's 💹 P&L tab so they show here.", "Tap 📄 PDF for a printable statement."] },
   subcoupons: { icon: "🏷️", title: "Subscription coupons", grad: "linear-gradient(120deg,#F59E0B,#EC4899)", one: "Discount codes for membership plans.", flow: [["🏷️", "Create code", "e.g. DIWALI20"], ["%", "Discount", "% or ₹"], ["🔒", "Limits", "One use per member"]], steps: ["Type a code and the discount.", "Choose limits (one use per member, expiry).", "Tap Create coupon and share the code."] },
@@ -17341,7 +17347,7 @@ const GW_ADMIN_GROUPS = [
   ['Money', ['accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
   ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
-const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',review:'🛂',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
 function AdminNavigation({ tabs, selected, onSelect, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const dialog = useRef(null), trigger = useRef(null);
@@ -17779,7 +17785,8 @@ function AdminQuickIssueTicket({ events = [], ticketTypes = {}, canIssue = false
   );
 }
 
-function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
+function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSetRoles, rooms, events, categories, cities, ticketTypes, counts, onCreateRoom, onUpdateRoom, onDeleteRoom, onCreateEvent, onUpdateEvent, onDeleteEvent, onDuplicateEvent, onAddOption, onDelOption, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcast, onBroadcastEvent, onSendDM, onSendEventDM, onGrantRoom, onRemoveRoom, onOpenThread, onSetOptionImage , myEventsOnly, meId, canApprove, dims, optsAll, onReload, organiserStaff, canManageOrganiserStaff }) {
+  useEffect(() => { const h = () => { onReload && onReload(); }; window.addEventListener("gweventsreload", h); return () => window.removeEventListener("gweventsreload", h); }, [onReload]);
   const leadAdmin = isSuper || canApprove;
   const [leadBadge, setLeadBadge] = useState(0);
   useEffect(() => {
@@ -17809,6 +17816,7 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
     ...(canUseDirectory ? [["directory", "☎️ Directory"]] : []),
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
+    ...(isGwTeam ? [["review", "🛂 Review"]] : []),
     ...(caps.host ? [["events", "Events"], ["invite", "💌 INVITE"]] : []),
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...((leadAdmin || canManageOrganiserStaff) ? [["leads", leadTabLabel]] : []),
@@ -17888,8 +17896,9 @@ function Admin({ canUseDirectory, caps, isSuper, myCity, perms, onSavePerm, onSe
         : seg === "orgstaff" ? <OrganiserStaffPanel />
         : seg === "orgmembers" ? <OrganiserMembersPanel />
         : seg === "invite" ? <AdminInviteHub events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} />
-        : seg === "events" ? <AdminEvents memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => !gwIsPrivateEvent(ev))} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
-          : seg === "private" ? <AdminEvents privateOnly memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => gwIsPrivateEvent(ev))} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+        : seg === "review" ? <EventReviewQueue isAdmin={isSuper || canApprove} />
+        : seg === "events" ? <AdminEvents canReview={isGwTeam} memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => !gwIsPrivateEvent(ev))} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
+          : seg === "private" ? <AdminEvents canReview={isGwTeam} privateOnly memberScope={myEventsOnly ? "organiser" : "all"} onDuplicate={onDuplicateEvent} canApprove={canApprove} isSuper={isSuper} dims={dims} optsAll={optsAll} events={(myEventsOnly ? events.filter(ev => ev.host_id === meId) : events).filter(ev => gwIsPrivateEvent(ev))} categories={categories} cities={cities} ticketTypes={ticketTypes} rooms={rooms} lockCity={!isSuper ? myCity : null} perksList={perksList} onAddPerk={onAddPerk} onDelPerk={onDelPerk} addonsMap={addonsMap} onAddAddon={onAddAddon} onDelAddon={onDelAddon} onCreate={onCreateEvent} onUpdate={onUpdateEvent} onDelete={onDeleteEvent} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onAddTicketType={onAddTicketType} onDelTicketType={onDelTicketType} onUpdateTicketType={onUpdateTicketType} onBroadcastEvent={onBroadcastEvent} onSendEventDM={onSendEventDM} />
           : seg === "broadcast" ? <AdminBroadcast events={events} onBroadcast={onBroadcast} onBroadcastEvent={onBroadcastEvent} onSendDM={onSendDM} onSendEventDM={onSendEventDM} />
             : seg === "inbox" ? <AdminInbox onOpenThread={onOpenThread} />
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
@@ -20780,7 +20789,207 @@ function HelpBox({ title = "How this works", tips, children, defaultOpen = false
     </div>
   );
 }
-function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, isSuper, dims, optsAll, memberScope = "all", privateOnly = false }) {
+// ---------- 🛂 Event review before publishing (organiser → Glasswings team) ----------
+const gwEventState = e => e?.approved !== false ? "live" : (e?.review_state === "submitted" ? "submitted" : e?.review_state === "changes" ? "changes" : "draft");
+const GW_EV_STATE = {
+  live: ["● Live", "#008069", "#E7F6EF"],
+  draft: ["📝 Draft · not visible", "#475569", "#F1F5F9"],
+  submitted: ["⏳ Waiting for Glasswings review", "#B45309", "#FEF3C7"],
+  changes: ["✏️ Changes needed", "#C2410C", "#FFEDD5"],
+};
+const GW_REVIEW_REASONS = ["Poster / banner is low quality or missing", "Add the venue (with Google Maps pin)", "Add ticket types and prices", "Description is too short", "Add terms & refund rules", "Date or time looks wrong", "Fix spelling in the title"];
+
+function gwEventChecklist(e, tts) {
+  const kind = e.event_kind === "getaway";
+  return [
+    ["Title", !!(e.title || "").trim() && !/\(copy\)$/.test(e.title || "")],
+    ["Date & time", !!e.event_at || e.date_mode === "tbd"],
+    ["Venue or online link", !!((e.venue || "").trim() || (e.online_url || "").trim())],
+    ["Poster or banner", !!(e.poster_url || e.banner_url || e.vertical_banner_url)],
+    ["Description (2+ lines)", (e.description || "").trim().length >= 60],
+    [kind ? "Trip setup (rooms & prices)" : "Ticket prices", kind ? true : ((tts || []).length > 0 || Number(e.ticket_price) > 0 || e.booking_mode === "rsvp")],
+    ["Terms / rules", !!(e.terms || "").trim() || kind],
+  ];
+}
+
+async function gwNotifyOrganiser(eventId, action) {
+  try {
+    const { data: ses } = await supabase.auth.getSession();
+    const r = await fetch("/api/notify/event-review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: ses?.session?.access_token, event_id: eventId, action }) });
+    return await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  } catch (e) { return { error: e.message || "network" }; }
+}
+
+function EventReviewSheet({ e, mode, onClose, onDone }) {
+  // mode: publish | changes | unpublish
+  const [note, setNote] = useState(""), [busy, setBusy] = useState(false), [res, setRes] = useState(null), [announce, setAnnounce] = useState(true);
+  const title = mode === "publish" ? "✅ Publish this event" : mode === "changes" ? "✏️ Ask the organiser for changes" : "⏸️ Unpublish this event";
+  const go = async () => {
+    if (mode === "changes" && !note.trim()) return window.gwConfirm("Write what the organiser should change.", () => {});
+    setBusy(true);
+    const { data, error } = await supabase.rpc("event_review_set", { p_event: e.id, p_action: mode, p_note: note.trim() || null });
+    if (error || !data?.ok) { setBusy(false); return window.gwConfirm(error?.message?.includes("event_review_set") ? "Run event_review.sql in Supabase first." : (error?.message || data?.error || "Couldn't save"), () => {}); }
+    if (mode === "publish" && announce) { try { window.dispatchEvent(new CustomEvent("gwannounceevent", { detail: e.id })); } catch { } }
+    const n = await gwNotifyOrganiser(e.id, mode);
+    setBusy(false);
+    setRes({ ...n, contact: n.contact || data.contact || {} });
+    try { window.dispatchEvent(new Event("gweventsreload")); } catch { }
+    onDone && onDone();
+  };
+  const c = res?.contact || {};
+  const statusTxt = s => !s ? "—" : s === "sent" ? "✅ Sent" : s === "not_setup" ? "⚙️ Not set up yet" : s === "no_phone" ? "📵 No number" : s === "no_email" ? "📭 No email" : "✕ " + String(s).replace(/^failed:\s*/, "").slice(0, 90);
+  const msg = mode === "publish" ? `Hi ${c.first || ""}, good news! 🎉 Your event "${e.title}" is now LIVE on Glasswings: ${window.location.origin}/e/${e.id}`
+    : mode === "changes" ? `Hi ${c.first || ""}, thanks for submitting "${e.title}" on Glasswings. Before we publish, please change:\n${note.trim()}\n\nUpdate it in the app (Admin → Events → open the event) and tap "📤 Send for review" again. 🙏`
+      : `Hi ${c.first || ""}, your event "${e.title}" has been unpublished on Glasswings for now.${note.trim() ? `\nReason: ${note.trim()}` : ""}`;
+  const waNumber = String(c.phone || "").replace(/\D/g, "").replace(/^0+/, "");
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}><div style={{ flex: 1, fontWeight: 950, fontSize: 17, color: W.ink }}>{title}</div><span onClick={onClose} style={{ cursor: "pointer", fontSize: 22, color: W.soft }}>✕</span></div>
+      <div style={{ fontSize: 13, color: W.soft, marginBottom: 10 }}>{e.emoji || "🎟️"} <b style={{ color: W.ink }}>{e.title}</b>{e.event_date ? ` · ${e.event_date}` : ""}</div>
+      {!res ? <>
+        {mode === "publish" ? <>
+          <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 12, padding: "10px 12px", fontSize: 13, color: "#065F46", lineHeight: 1.5 }}>Members will see it straight away and can book. The organiser gets an email{` `}and WhatsApp saying it's live.{e.series_id ? " All dates in this series are published together." : ""}</div>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, color: W.ink, margin: "12px 0", fontWeight: 700 }}><input type="checkbox" checked={announce} onChange={x => setAnnounce(x.target.checked)} style={{ width: 18, height: 18, accentColor: W.teal }} /> 📣 Also announce it in the group chats</label>
+        </> : <>
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: W.ink, marginBottom: 6 }}>{mode === "changes" ? "What should they change? (tap to add)" : "Reason (optional, sent to the organiser)"}</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+            {GW_REVIEW_REASONS.map(r => <button key={r} type="button" onClick={() => setNote(n => n.includes(r) ? n : (n.trim() ? n.trim() + "\n" : "") + "• " + r)} style={{ border: `1px solid ${W.line}`, background: note.includes(r) ? "#FFEDD5" : "#fff", color: "#9A3412", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{r}</button>)}
+          </div>
+          <textarea value={note} onChange={x => setNote(x.target.value)} rows={5} placeholder="e.g. • Poster text is blurry, please upload a sharper one" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 12px", fontSize: 16, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
+        </>}
+        <button disabled={busy} onClick={go} style={{ ...btn(mode === "publish" ? W.teal : mode === "changes" ? "#EA580C" : "#DC2626", "#fff"), width: "100%", justifyContent: "center", padding: 13, fontSize: 15, fontWeight: 900, marginTop: 10, opacity: busy ? .6 : 1 }}>{busy ? "Saving & notifying…" : mode === "publish" ? "✅ Publish now & tell the organiser" : mode === "changes" ? "✏️ Send to organiser" : "⏸️ Unpublish & tell the organiser"}</button>
+      </> : <>
+        <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 12, padding: "10px 12px", fontSize: 13.5, color: "#166534", fontWeight: 800, marginBottom: 10 }}>{mode === "publish" ? "✅ Published" : mode === "changes" ? "✏️ Sent back to the organiser" : "⏸️ Unpublished"}</div>
+        <div style={{ fontSize: 13, color: W.ink, lineHeight: 1.7 }}>
+          <div>👤 <b>{c.name || "Organiser"}</b></div>
+          <div>✉️ Email {c.email ? `(${c.email})` : ""}: <b>{statusTxt(res.email)}</b></div>
+          <div>📲 WhatsApp {c.phone ? `(${c.phone})` : ""}: <b>{statusTxt(res.whatsapp)}</b></div>
+          {res.error && <div style={{ color: "#B91C1C" }}>⚠️ {res.error}</div>}
+        </div>
+        <div style={{ fontSize: 12, color: W.soft, margin: "10px 0 6px" }}>Send it yourself too (or if it didn't go):</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {waNumber.length >= 10 && <a href={`https://wa.me/${waNumber.length === 10 ? "91" + waNumber : waNumber}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noreferrer" style={{ ...btn("#25D366", "#fff"), textDecoration: "none", padding: "9px 13px", fontSize: 13 }}>📲 WhatsApp from my phone</a>}
+          {c.email && <a href={`mailto:${c.email}?subject=${encodeURIComponent((mode === "publish" ? "Your event is live: " : mode === "changes" ? "Changes needed: " : "Unpublished: ") + e.title)}&body=${encodeURIComponent(msg + "\n\nTeam Glasswings")}`} style={{ ...btn("#fff", "#1D4ED8"), border: "1px solid #BFDBFE", textDecoration: "none", padding: "9px 13px", fontSize: 13 }}>✉️ Email from my app</a>}
+        </div>
+        <button onClick={onClose} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 14 }}>Done</button>
+      </>}
+    </Sheet>
+  );
+}
+
+function EventSubmitSheet({ e, tts, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const list = gwEventChecklist(e, tts), missing = list.filter(x => !x[1]).length;
+  const send = async () => {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("event_submit_review", { p_event: e.id });
+    setBusy(false);
+    if (error || !data?.ok) return window.gwConfirm(error?.message || data?.error || "Couldn't send", () => {});
+    try { window.dispatchEvent(new Event("gweventsreload")); } catch { }
+    onClose();
+    window.gwConfirm("📤 Sent for review!\n\nThe Glasswings team will check it, usually within 24 hours. You'll get an email and WhatsApp when it's live, or if anything needs changing.", () => {});
+  };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}><div style={{ flex: 1, fontWeight: 950, fontSize: 17, color: W.ink }}>📤 Send for review</div><span onClick={onClose} style={{ cursor: "pointer", fontSize: 22, color: W.soft }}>✕</span></div>
+      <div style={{ fontSize: 13, color: W.soft, marginBottom: 10, lineHeight: 1.45 }}>Before an event goes live, the Glasswings team checks it, just like BookMyShow. A complete event gets approved faster.</div>
+      <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: "6px 12px", marginBottom: 10 }}>
+        {list.map(([l, ok]) => <div key={l} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
+          <span style={{ width: 24, height: 24, borderRadius: 99, display: "grid", placeItems: "center", background: ok ? "#DCFCE7" : "#FEF3C7", color: ok ? "#15803D" : "#B45309", fontWeight: 900, fontSize: 13 }}>{ok ? "✓" : "!"}</span>
+          <span style={{ flex: 1, fontSize: 13.5, color: W.ink, fontWeight: 700 }}>{l}</span>
+          <span style={{ fontSize: 11.5, color: ok ? "#15803D" : "#B45309", fontWeight: 800 }}>{ok ? "Done" : "Missing"}</span>
+        </div>)}
+      </div>
+      {missing > 0 && <div style={{ fontSize: 12.5, color: "#92400E", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "8px 10px", marginBottom: 10 }}>⚠️ {missing} thing{missing === 1 ? "" : "s"} missing. You can still send it, but the team may ask you to add {missing === 1 ? "it" : "them"}.</div>}
+      <button disabled={busy} onClick={send} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", padding: 13, fontSize: 15, fontWeight: 900, opacity: busy ? .6 : 1 }}>{busy ? "Sending…" : "📤 Send to Glasswings for review"}</button>
+    </Sheet>
+  );
+}
+
+// the status strip shown on each event in Admin → Events
+function EventReviewBar({ e, tts, canReview }) {
+  const [sheet, setSheet] = useState(null);
+  const st = gwEventState(e), [label, col, bg] = GW_EV_STATE[st];
+  const b = (bgc, fg, extra) => ({ ...btn(bgc, fg), padding: "8px 12px", fontSize: 12.5, fontWeight: 850, ...extra });
+  return (
+    <div style={{ marginTop: 10 }} onClick={x => x.stopPropagation()}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ background: bg, color: col, fontSize: 11.5, fontWeight: 900, padding: "4px 10px", borderRadius: 999 }}>{label}</span>
+        {st === "submitted" && e.submitted_at && <span style={{ fontSize: 11, color: W.soft }}>sent {gwTimeAgo(e.submitted_at)}</span>}
+      </div>
+      {st === "changes" && e.review_note && <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: "9px 11px", marginTop: 8, fontSize: 12.5, color: "#9A3412", lineHeight: 1.5, whiteSpace: "pre-wrap" }}><b>✏️ Glasswings asked for these changes:</b>{"\n"}{e.review_note}{!canReview ? "\n\nFix them (tap Open), then send it for review again." : ""}</div>}
+      {st === "draft" && !canReview && <div style={{ fontSize: 12, color: W.soft, marginTop: 6, lineHeight: 1.45 }}>Only you can see this. Finish the details, then send it to Glasswings for review.</div>}
+      {st === "submitted" && !canReview && <div style={{ fontSize: 12, color: "#92400E", marginTop: 6, lineHeight: 1.45 }}>The Glasswings team is checking it. You'll get an email and WhatsApp when it's live.</div>}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+        {!canReview && (st === "draft" || st === "changes") && <button onClick={() => setSheet("submit")} style={b(W.teal, "#fff")}>📤 {st === "changes" ? "Send for review again" : "Send for review"}</button>}
+        {canReview && st !== "live" && <>
+          <button onClick={() => window.open(`${window.location.origin}/e/${e.id}`, "_blank")} style={b("#fff", W.ink, { border: `1px solid ${W.line}` })}>👁️ Preview</button>
+          <button onClick={() => setSheet("publish")} style={b(W.teal, "#fff")}>✅ Publish</button>
+          <button onClick={() => setSheet("changes")} style={b("#FFF7ED", "#C2410C", { border: "1px solid #FED7AA" })}>✏️ Ask for changes</button>
+        </>}
+        {canReview && st === "live" && <button onClick={() => setSheet("unpublish")} style={b("#fff", "#B45309", { border: "1px solid #F0D9A8" })}>⏸️ Unpublish</button>}
+      </div>
+      {sheet === "submit" && <EventSubmitSheet e={e} tts={tts} onClose={() => setSheet(null)} />}
+      {sheet && sheet !== "submit" && <EventReviewSheet e={e} mode={sheet} onClose={() => setSheet(null)} />}
+    </div>
+  );
+}
+
+// Admin → 🛂 Review: everything waiting for the Glasswings team
+function EventReviewQueue({ isAdmin }) {
+  const [rows, setRows] = useState(null), [err, setErr] = useState(""), [f, setF] = useState("submitted"), [act, setAct] = useState(null), [camp, setCamp] = useState(null);
+  const load = () => supabase.rpc("event_review_queue").then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setRows(data || []); } });
+  useEffect(() => { load(); supabase.rpc("event_review_campaign").then(({ data, error }) => setCamp(error ? null : (data || ""))); const h = () => load(); window.addEventListener("gweventsreload", h); return () => window.removeEventListener("gweventsreload", h); }, []);
+  if (err) return <div style={{ padding: 14 }}><div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 14, fontSize: 13.5, color: "#9A3412" }}>Run <b>event_review.sql</b> in Supabase → SQL Editor first.<div style={{ fontSize: 11.5, opacity: .8 }}>{err}</div></div></div>;
+  if (!rows) return <Center>Loading…</Center>;
+  const n = k => rows.filter(r => (r.review_state || "draft") === k).length;
+  const list = rows.filter(r => f === "all" || (r.review_state || "draft") === f);
+  const chip = (k, l) => <button key={k} onClick={() => setF(k)} style={{ border: `1.5px solid ${f === k ? W.teal : W.line}`, background: f === k ? W.teal : "#fff", color: f === k ? "#fff" : W.ink, borderRadius: 999, padding: "7px 12px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{l}</button>;
+  return (
+    <div style={{ padding: 14, maxWidth: 820 }}>
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 12, paddingBottom: 2 }}>
+        {chip("submitted", `⏳ Waiting (${n("submitted")})`)}{chip("changes", `✏️ Changes asked (${n("changes")})`)}{chip("draft", `📝 Drafts (${n("draft")})`)}{chip("all", `All (${rows.length})`)}
+      </div>
+      {list.length === 0 && <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 22, textAlign: "center", color: W.soft, fontSize: 13.5 }}>{f === "submitted" ? "🎉 Nothing waiting for review." : "Nothing here."}</div>}
+      {list.map(r => {
+        const st = r.review_state === "submitted" ? "submitted" : r.review_state === "changes" ? "changes" : "draft";
+        const [label, col, bg] = GW_EV_STATE[st];
+        const img = r.poster_url || (r.banner_type !== "video" ? r.banner_url : null);
+        return <div key={r.id} style={{ background: "#fff", border: `1px solid ${W.line}`, borderLeft: `5px solid ${col}`, borderRadius: 14, padding: 12, marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ width: 62, height: 82, borderRadius: 10, overflow: "hidden", background: "#F1F5F9", flexShrink: 0, display: "grid", placeItems: "center", fontSize: 26 }}>{img ? <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (r.emoji || "🎟️")}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 900, fontSize: 15, color: W.ink }}>{r.emoji || ""} {r.title}{r.event_kind === "getaway" ? " · 🏝️ Getaway" : ""}</div>
+              <div style={{ fontSize: 12.5, color: W.soft }}>{r.event_date || "Date not set"}{r.city ? ` · ${r.city}` : ""}{Number(r.series_count) > 1 ? ` · ${r.series_count} dates` : ""}</div>
+              <div style={{ fontSize: 12, color: "#6D28D9", fontWeight: 800, marginTop: 2 }}>👤 {r.host_name}{r.host_phone ? ` · ${r.host_phone}` : ""}</div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 5, flexWrap: "wrap" }}>
+                <span style={{ background: bg, color: col, fontSize: 11, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>{label}</span>
+                {r.submitted_at && <span style={{ fontSize: 11, color: W.soft }}>sent {gwTimeAgo(r.submitted_at)}</span>}
+              </div>
+            </div>
+          </div>
+          {st === "changes" && r.review_note && <div style={{ fontSize: 12, color: "#9A3412", background: "#FFF7ED", borderRadius: 10, padding: "7px 10px", marginTop: 8, whiteSpace: "pre-wrap" }}>✏️ Asked: {r.review_note}</div>}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+            <button onClick={() => window.open(`${window.location.origin}/e/${r.id}`, "_blank")} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "8px 12px", fontSize: 12.5 }}>👁️ Preview</button>
+            <button onClick={() => setAct({ e: r, mode: "publish" })} style={{ ...btn(W.teal, "#fff"), padding: "8px 12px", fontSize: 12.5, fontWeight: 850 }}>✅ Publish</button>
+            <button onClick={() => setAct({ e: r, mode: "changes" })} style={{ ...btn("#FFF7ED", "#C2410C"), border: "1px solid #FED7AA", padding: "8px 12px", fontSize: 12.5, fontWeight: 850 }}>✏️ Ask for changes</button>
+          </div>
+        </div>;
+      })}
+      {isAdmin && camp !== null && <details style={{ marginTop: 14, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 12, padding: "10px 12px" }}>
+        <summary style={{ fontSize: 12.5, fontWeight: 900, color: "#166534", cursor: "pointer" }}>📲 WhatsApp to organisers (AiSensy campaign)</summary>
+        <div style={{ fontSize: 12, color: "#166534", margin: "8px 0", lineHeight: 1.5 }}>Make an AiSensy campaign (e.g. <b>event_review_update</b>) with 4 variables: {"{{1}}"} name, {"{{2}}"} event, {"{{3}}"} status, {"{{4}}"} what to change. No button. Leave empty to only use email + the "WhatsApp from my phone" button.</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input value={camp} onChange={x => setCamp(x.target.value)} placeholder="event_review_update" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "8px 10px", fontSize: 16 }} />
+          <button onClick={async () => { const { data, error } = await supabase.rpc("set_event_review_campaign", { p_name: camp }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5 }}>Save</button>
+        </div>
+      </details>}
+      {act && <EventReviewSheet e={act.e} mode={act.mode} onClose={() => { setAct(null); load(); }} />}
+    </div>
+  );
+}
+
+function AdminEvents({ canReview = false, events, categories, cities, ticketTypes, rooms, onDuplicate, lockCity, perksList, onAddPerk, onDelPerk, addonsMap, onAddAddon, onDelAddon, onCreate, onUpdate, onDelete, onAddOption, onDelOption, onAddTicketType, onDelTicketType, onUpdateTicketType, onBroadcastEvent, onSendEventDM, onSetOptionImage, canApprove, isSuper, dims, optsAll, memberScope = "all", privateOnly = false }) {
   const [creating, setCreating] = useState(false), [manage, setManage] = useState(null);
   const [view, setView] = useState("upcoming");
   const [mSeg, setMSeg] = useState("details");
@@ -21285,19 +21494,11 @@ function AdminEvents({ events, categories, cities, ticketTypes, rooms, onDuplica
                 <div style={{ fontSize: 13, color: W.soft, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(() => { const tt = (ticketTypes && ticketTypes[e.id]) || []; if (tt.length) { const min = Math.min(...tt.map(t => t.price || 0)); return min === 0 ? "Free" : `From ₹${min}`; } return (e.ticket_price || 0) === 0 ? "Free" : `₹${e.ticket_price}/ticket`; })()}{e.category ? ` · ${e.category}` : ""}{e.city ? ` · ${e.city}` : ""}</div>
                 {e.host_id && hosts[e.host_id] && <div style={{ fontSize: 11.5, color: "#6D28D9", fontWeight: 700, marginTop: 2 }}>👤 {hosts[e.host_id].name}{topRole(hosts[e.host_id].roles) ? ` · ${roleLabel[topRole(hosts[e.host_id].roles)]}` : ""}</div>}
                 {privateSegIds.length > 0 && <div style={{ marginTop: 4, display: "flex", gap: 5, flexWrap: "wrap" }}>{invitedSegs.length ? invitedSegs.map(s => <span key={s.segment_id} style={{ background: "#F3E8FF", color: "#6D28D9", border: "1px solid #E4D5FB", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>🔒 {s.name}</span>) : <span style={{ background: "#F3E8FF", color: "#6D28D9", border: "1px solid #E4D5FB", fontSize: 10.5, fontWeight: 900, padding: "3px 9px", borderRadius: 999 }}>🔒 {privateSegIds.length} private segment{privateSegIds.length === 1 ? "" : "s"}</span>}</div>}
-                <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>{e.promo_pct != null && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>📣 Promo {e.promo_pct}%</span>}{e.approved
-                  ? <span style={{ background: "#E7F6EF", color: W.teal, fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>● Live</span>
-                  : <span style={{ background: "#FDF6EC", color: "#B45309", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>⏳ Pending approval{canApprove ? "" : " — visible only to you"}</span>}</div>
+                <div style={{ marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>{e.promo_pct != null && <span style={{ background: "#EFEAFB", color: "#7C3AED", fontSize: 10.5, fontWeight: 800, padding: "2px 9px", borderRadius: 10 }}>📣 Promo {e.promo_pct}%</span>}</div>
               </div>
               <button onClick={(ev) => { ev.stopPropagation(); setMSeg("details"); setManage(manage === e.id ? null : e.id); }} style={{ ...btn("#fff", manage === e.id ? W.teal : ec.bar), border: `1px solid ${ec.bar}55`, padding: "8px 12px", flexShrink: 0, fontWeight: 800, fontSize: 12.5, gap: 6 }}>{manage === e.id ? <>Close <X size={15} /></> : <>Open <Settings size={15} /></>}</button>
             </div>
-            {canApprove && (
-              <div style={{ marginTop: 10 }}>
-                {e.approved
-                  ? <button onClick={() => window.confirm("Unpublish this event? It will disappear from the app until re-approved.") && onUpdate(e.id, { approved: false })} style={{ ...btn("#fff", "#B45309"), border: "1px solid #F0D9A8", padding: "7px 13px", fontSize: 12.5 }}>Unpublish</button>
-                  : <button onClick={() => onUpdate(e.id, { approved: true })} style={{ ...btn(W.teal, "#fff"), padding: "8px 16px", fontSize: 13 }}>✓ Approve &amp; publish</button>}
-              </div>
-            )}
+                        <EventReviewBar e={e} tts={ticketTypes && ticketTypes[e.id]} canReview={canReview} />
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
               <button onClick={(ev) => { ev.stopPropagation(); setManage(e.id); setMSeg("invite"); }} title="Send a personal invitation to a guest or Glasswings member" style={{ ...btn("#B7791F", "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5, fontWeight: 850 }}><span style={{fontSize:14}}>💌</span>Invite</button>
               <button onClick={() => setMembersFor(e)} title="Who's coming — list, contact, withdraw" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Members</button>
