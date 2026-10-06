@@ -1633,6 +1633,15 @@ function gwEventLive(e) {
   if (!e) return false;
   if (e.end_at) return Date.now() <= new Date(e.end_at).getTime();
   if (e.event_at) return Date.now() <= new Date(e.event_at).getTime() + 6 * 3600000;
+  // no exact date saved: read the date text (e.g. "Sat, 3 Oct · 9pm" or "3 October") and hide it once that day is over
+  const m = String(e.event_date || "").match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:,?\s+(\d{4}))?/i);
+  if (m) {
+    const mon = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(m[2].toLowerCase().slice(0, 3));
+    const now = new Date();
+    const d = new Date(m[3] ? Number(m[3]) : now.getFullYear(), mon, Number(m[1]), 23, 59, 59);
+    const daysAgo = (now - d) / 86400000;
+    if (m[3] ? daysAgo > 0.25 : (daysAgo > 0.25 && daysAgo < 200)) return false;
+  }
   return true; // date-TBD events stay listed until dated
 }
 function gwPrivateSegmentIds(e) {
@@ -4852,6 +4861,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const [q, setQ] = useState("");
   const [dateQuick, setDateQuick] = useState("all");
   const [savedOnly, setSavedOnly] = useState(false);
+  const [seeAll, setSeeAll] = useState(null);
   const [wide, setWide] = useState(typeof window !== "undefined" && window.innerWidth >= 900);
   useEffect(() => { const f = () => setWide(window.innerWidth >= 900); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
   const ql = q.trim().toLowerCase();
@@ -4948,11 +4958,11 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             </div>
           </div>
 
-          <div style={{display:"flex",overflowX:"auto",gap:24,padding:"10px 18px 16px",borderBottom:"1px solid #f0f0f0"}}>
-            <div onClick={()=>setFlt(f=>({...f,category:[]}))} style={{flex:"0 0 62px",textAlign:"center",cursor:"pointer"}}>
-              <div style={{fontSize:31,lineHeight:1}}>✨</div><div style={{fontSize:12.5,fontWeight:700,marginTop:7,color:flt.category.length===0?"#e53955":"#222"}}>All</div>
+          <div style={{display:"flex",overflowX:"auto",gap:0,padding:"10px 8px 16px",borderBottom:"1px solid #f0f0f0",scrollbarWidth:"none"}}>
+            <div onClick={()=>setFlt(f=>({...f,category:[]}))} style={{flex:"0 0 22%",minWidth:72,maxWidth:110,textAlign:"center",cursor:"pointer"}}>
+              <div style={{width:42,height:42,margin:"0 auto",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,background:"linear-gradient(135deg,#FFF1F5,#FEF3C7)"}}>✨</div><div style={{fontSize:12.5,fontWeight:700,marginTop:7,color:flt.category.length===0?"#e53955":"#222"}}>All</div>
             </div>
-            {catTiles.map(c=><div key={c.id||c.name} onClick={()=>setFlt(f=>({...f,category:[c.name]}))} style={{flex:"0 0 62px",textAlign:"center",cursor:"pointer"}}>
+            {catTiles.map(c=><div key={c.id||c.name} onClick={()=>setFlt(f=>({...f,category:[c.name]}))} style={{flex:"0 0 22%",minWidth:72,maxWidth:110,textAlign:"center",cursor:"pointer",padding:"0 4px",boxSizing:"border-box"}}>
               <div style={{width:42,height:42,margin:"0 auto",borderRadius:12,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,background:"#fff"}}>
                 {c.image_url?<img src={c.image_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10}}/>:categoryIcon(c.name)}
               </div>
@@ -4963,6 +4973,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
           {heroSlides.length>0 && <div style={{padding:"10px 16px 4px"}}><div style={{borderRadius:14,overflow:"hidden"}}><HeroSlider slides={heroSlides} wide={wide} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div></div>}
 
 
+          <PlanEventBanner profile={profile}/>
           <div style={{display:"flex",gap:9,padding:"12px 16px 8px",overflowX:"auto"}}>
             <button onClick={()=>setFsheet(true)} style={filterPill(fltCount(flt)>0)}>☰ Filters{fltCount(flt)>0?` (${fltCount(flt)})`:""}</button>
             <button onClick={()=>setSsheet(true)} style={filterPill(sortBy!=="relevance")}>↕ Sort By</button>
@@ -4970,20 +4981,29 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             {[["today","Today"],["weekend","This Weekend"],["month","This Month"]].map(([k,l])=><button key={k} onClick={()=>setDateQuick(dateQuick===k?"all":k)} style={filterPill(dateQuick===k)}>{l}</button>)}
           </div>
 
+          {seeAll && <div style={{position:"fixed",inset:0,zIndex:70,background:"#fff",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+            <div style={{position:"sticky",top:0,zIndex:2,background:"#fff",display:"flex",alignItems:"center",gap:10,padding:"14px 14px 12px",borderBottom:"1px solid #f0f0f0"}}>
+              <button onClick={()=>setSeeAll(null)} aria-label="Back" style={{border:0,background:"#f3f4f6",borderRadius:999,width:38,height:38,fontSize:18,cursor:"pointer"}}>←</button>
+              <div style={{fontWeight:900,fontSize:19,color:"#222",flex:1}}>{seeAll}</div>
+              <div style={{fontSize:13,color:"#777",fontWeight:700}}>{list.length} event{list.length===1?"":"s"}</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"18px 14px",padding:"16px 16px 120px"}}>
+              {(seeAll==="Popular Near You"?[...list.slice(3),...list.slice(0,3)]:list).map(e=><div key={e.id} style={{minWidth:0}}>{bmsCard(e)}</div>)}
+            </div>
+          </div>}
           <section style={{padding:"18px 0 24px"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 18px 12px"}}>
               <h2 style={{margin:0,fontSize:23,fontWeight:900,color:"#222",letterSpacing:-.4}}>Recommended Events</h2>
-              <span style={{color:"#e53955",fontSize:14,fontWeight:750}}>See All ›</span>
+              <span role="button" onClick={()=>setSeeAll("Recommended Events")} style={{color:"#e53955",fontSize:14,fontWeight:750,cursor:"pointer"}}>See All ›</span>
             </div>
             {list.length===0 ? <div style={{padding:"28px 18px",color:"#777",textAlign:"center"}}>{savedOnly?"No saved events yet.":"No events match your search or filters."}</div>
             : <div style={{display:"flex",gap:14,overflowX:"auto",padding:"0 18px 8px",scrollSnapType:"x proximity"}}>{list.slice(0,10).map(bmsCard)}</div>}
           </section>
-          <PlanEventBanner profile={profile}/>
 
           {list.length>3 && <section style={{padding:"6px 0 28px",background:"#fafafa",borderTop:"1px solid #f1f1f1"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 18px 12px"}}>
               <h2 style={{margin:0,fontSize:22,fontWeight:900,color:"#222"}}>Popular Near You</h2>
-              <span style={{color:"#e53955",fontSize:14,fontWeight:750}}>See All ›</span>
+              <span role="button" onClick={()=>setSeeAll("Popular Near You")} style={{color:"#e53955",fontSize:14,fontWeight:750,cursor:"pointer"}}>See All ›</span>
             </div>
             <div style={{display:"flex",gap:14,overflowX:"auto",padding:"0 18px 8px"}}>{list.slice(3,13).map(bmsCard)}</div>
           </section>}
@@ -13018,14 +13038,15 @@ function PlanEventBanner({ profile }) {
   const [open, setOpen] = useState(false);
   if (!profile?.id) return null;
   return (
-    <div style={{ padding: "4px 18px 18px" }}>
-      <div onClick={() => setOpen(true)} role="button" style={{ cursor: "pointer", borderRadius: 12, padding: "10px 12px", background: "linear-gradient(90deg,#FFF1F5,#F0FDF9)", border: "1px solid #F3E1EA", display: "flex", alignItems: "center", gap: 12, minHeight: 58, boxSizing: "border-box" }}>
-        <div style={{ width: 38, height: 38, borderRadius: 10, background: "#fff", display: "grid", placeItems: "center", fontSize: 20, flexShrink: 0, boxShadow: "0 1px 4px rgba(0,0,0,.06)" }}>🎉</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 14, color: "#222", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Planning an event?</div>
-          <div style={{ fontSize: 12, color: "#666", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Free quotes from verified organisers</div>
+    <div style={{ padding: "14px 18px 16px" }}>
+      <div onClick={() => setOpen(true)} role="button" style={{ position: "relative", cursor: "pointer", borderRadius: 14, overflow: "hidden", aspectRatio: "5 / 1", minHeight: 64, background: "linear-gradient(100deg,#1E1B4B 0%,#6D28D9 38%,#DB2777 72%,#F59E0B 100%)", display: "flex", alignItems: "center", padding: "0 3.5%", gap: "3%", boxSizing: "border-box", boxShadow: "0 3px 12px rgba(109,40,217,.18)" }}>
+        <div aria-hidden style={{ position: "absolute", inset: 0, opacity: .22, fontSize: 22, lineHeight: 1.6, whiteSpace: "nowrap", overflow: "hidden", pointerEvents: "none", letterSpacing: 10 }}>🎈 🎂 💍 🎊 🎤 🎈 🎂 💍 🎊 🎤 🎈 🎂<br />💍 🎊 🎤 🎈 🎂 💍 🎊 🎤 🎈 🎂 💍 🎊</div>
+        <div style={{ position: "relative", fontSize: "clamp(22px,7vw,34px)", lineHeight: 1, flexShrink: 0 }}>🎉</div>
+        <div style={{ position: "relative", flex: 1, minWidth: 0, color: "#fff" }}>
+          <div style={{ fontWeight: 900, fontSize: "clamp(13px,3.9vw,18px)", lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Planning an event?</div>
+          <div style={{ fontSize: "clamp(10.5px,2.9vw,13px)", opacity: .92, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Free quotes from verified organisers</div>
         </div>
-        <div style={{ color: "#e53955", fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", flexShrink: 0 }}>Get quotes ›</div>
+        <div style={{ position: "relative", background: "#E53955", color: "#fff", fontWeight: 800, fontSize: "clamp(11.5px,3.2vw,14px)", borderRadius: 8, padding: "7px 12px", whiteSpace: "nowrap", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,.2)" }}>Get quotes</div>
       </div>
       {open && <PlanEventSheet profile={profile} onClose={() => setOpen(false)} />}
     </div>
