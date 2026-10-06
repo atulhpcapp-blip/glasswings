@@ -16355,7 +16355,7 @@ function TripAutoRemindCard({ eventId, isAdmin, onRan }) {
           {EVERY.map(n => pill(every === n, `${n} days`, () => save({ every: n })))}
           {!EVERY.includes(every) && pill(true, `${every} days`, () => {})}
           <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-            <input value={custom} onChange={e => setCustom(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="Other" style={{ width: 62, border: "1.5px solid #D1FAE5", borderRadius: 999, padding: "6px 10px", fontSize: 16, outline: "none" }} />
+            <input value={custom} onChange={e => setCustom(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="Other" style={{ width: 62, border: "1.5px solid #D1FAE5", borderRadius: 999, padding: "6px 10px", fontSize: 16, outline: "none", color: "#111B21", WebkitTextFillColor: "#111B21", background: "#fff", caretColor: "#111B21" }} />
             {custom && <button type="button" onClick={() => { const n = Number(custom); if (n >= 1 && n <= 60) { save({ every: n }); setCustom(""); } else window.gwConfirm("Choose between 1 and 60 days.", () => {}); }} style={{ ...btn("#16A34A", "#fff"), padding: "6px 10px", fontSize: 12 }}>Set</button>}
           </span>
         </div>
@@ -20897,7 +20897,7 @@ function EventReviewSheet({ e, mode, onClose, onDone }) {
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
             {GW_REVIEW_REASONS.map(r => <button key={r} type="button" onClick={() => setNote(n => n.includes(r) ? n : (n.trim() ? n.trim() + "\n" : "") + "• " + r)} style={{ border: `1px solid ${W.line}`, background: note.includes(r) ? "#FFEDD5" : "#fff", color: "#9A3412", borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{r}</button>)}
           </div>
-          <textarea value={note} onChange={x => setNote(x.target.value)} rows={5} placeholder="e.g. • Poster text is blurry, please upload a sharper one" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 12px", fontSize: 16, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
+          <textarea value={note} onChange={x => setNote(x.target.value)} rows={5} placeholder="e.g. • Poster text is blurry, please upload a sharper one" style={{ width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 12, padding: "10px 12px", fontSize: 16, fontFamily: "inherit", outline: "none", resize: "vertical", color: "#111B21", WebkitTextFillColor: "#111B21", background: "#fff", caretColor: "#111B21" }} />
         </>}
         <button disabled={busy} onClick={go} style={{ ...btn(mode === "publish" ? W.teal : mode === "changes" ? "#EA580C" : "#DC2626", "#fff"), width: "100%", justifyContent: "center", padding: 13, fontSize: 15, fontWeight: 900, marginTop: 10, opacity: busy ? .6 : 1 }}>{busy ? "Saving & notifying…" : mode === "publish" ? "✅ Publish now & tell the organiser" : mode === "changes" ? "✏️ Send to organiser" : "⏸️ Unpublish & tell the organiser"}</button>
       </> : <>
@@ -21022,7 +21022,7 @@ function EventReviewQueue({ isAdmin }) {
         <summary style={{ fontSize: 12.5, fontWeight: 900, color: "#166534", cursor: "pointer" }}>📲 WhatsApp to organisers (AiSensy campaign)</summary>
         <div style={{ fontSize: 12, color: "#166534", margin: "8px 0", lineHeight: 1.5 }}>Make an AiSensy campaign (e.g. <b>event_review_update</b>) with 4 variables: {"{{1}}"} name, {"{{2}}"} event, {"{{3}}"} status, {"{{4}}"} what to change. No button. Leave empty to only use email + the "WhatsApp from my phone" button.</div>
         <div style={{ display: "flex", gap: 6 }}>
-          <input value={camp} onChange={x => setCamp(x.target.value)} placeholder="event_review_update" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "8px 10px", fontSize: 16 }} />
+          <input value={camp} onChange={x => setCamp(x.target.value)} placeholder="event_review_update" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "8px 10px", fontSize: 16, color: "#111B21", WebkitTextFillColor: "#111B21", background: "#fff", caretColor: "#111B21" }} />
           <button onClick={async () => { const { data, error } = await supabase.rpc("set_event_review_campaign", { p_name: camp }); window.gwConfirm(error || !data?.ok ? (error?.message || data?.error) : "Saved ✓", () => {}); }} style={{ ...btn("#16A34A", "#fff"), padding: "8px 12px", fontSize: 12.5 }}>Save</button>
         </div>
       </details>}
