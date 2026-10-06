@@ -97,14 +97,17 @@ function ticketStatus(t, e, stats, typeSold, profile) {
   return { ok: true, label: hasCap ? `${Math.max(0, Math.floor((cap - sold) / admits))} left` : "", reason: null, note };
 }
 function loadImg(src) { return new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; }); }
+let gwRzpLoading = null;
 function loadRazorpay() {
-  return new Promise((resolve) => {
-    if (typeof window !== "undefined" && window.Razorpay) return resolve(true);
+  if (typeof window !== "undefined" && window.Razorpay) return Promise.resolve(true);
+  if (gwRzpLoading) return gwRzpLoading;
+  gwRzpLoading = new Promise((resolve) => {
     const s = document.createElement("script");
-    s.src = "https://checkout.razorpay.com/v1/checkout.js";
-    s.onload = () => resolve(true); s.onerror = () => resolve(false);
+    s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true;
+    s.onload = () => resolve(true); s.onerror = () => { gwRzpLoading = null; resolve(false); };
     document.body.appendChild(s);
   });
+  return gwRzpLoading;
 }
 function loadHls() {
   return new Promise((resolve) => {
@@ -15225,31 +15228,56 @@ function gwTripBehind(b) {
   return Math.max(0, Math.round(expected - b.paid));
 }
 
+// Get the payment window ready before the tap: download Razorpay and wake our payment server.
+let gwTripWarmAt = 0;
+function gwPrepTripPay() {
+  loadRazorpay();
+  if (Date.now() - gwTripWarmAt < 4 * 60000) return;
+  gwTripWarmAt = Date.now();
+  try { fetch("/api/razorpay/trip-order", { method: "GET" }).catch(() => { }); fetch("/api/razorpay/trip-verify", { method: "GET" }).catch(() => { }); } catch { }
+}
+function gwPayOverlay(text) {
+  let el = document.getElementById("gw-pay-overlay");
+  if (!text) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement("div"); el.id = "gw-pay-overlay";
+    el.style.cssText = "position:fixed;inset:0;z-index:3000;background:rgba(8,18,24,.6);display:flex;align-items:center;justify-content:center;font-family:inherit";
+    el.innerHTML = '<style>@keyframes gwpspin{to{transform:rotate(360deg)}}</style><div style="background:#fff;border-radius:18px;padding:22px 26px;text-align:center;min-width:220px;box-shadow:0 20px 50px rgba(0,0,0,.3)"><div style="width:38px;height:38px;border:4px solid #E0F2FE;border-top-color:#0EA5E9;border-radius:50%;margin:0 auto 12px;animation:gwpspin .8s linear infinite"></div><div id="gw-pay-overlay-t" style="font-weight:800;color:#0F172A;font-size:15px"></div><div style="font-size:12px;color:#64748B;margin-top:4px">🔒 Secure payment by Razorpay</div></div>';
+    document.body.appendChild(el);
+  }
+  const t = el.querySelector("#gw-pay-overlay-t"); if (t) t.textContent = text;
+}
 async function gwPayTrip(bookingId, amount, onDone) {
+  gwPayOverlay("Opening secure payment…");
   try {
     const ready = await loadRazorpay();
-    if (!ready) return window.gwConfirm("Couldn't open the payment window. Check your connection and try again.", () => {});
+    if (!ready) { gwPayOverlay(null); return window.gwConfirm("Couldn't open the payment window. Check your connection and try again.", () => {}); }
     const { data: ses } = await supabase.auth.getSession();
     const token = ses?.session?.access_token;
-    if (!token) return window.gwConfirm("Please log in to pay.", () => {});
+    if (!token) { gwPayOverlay(null); return window.gwConfirm("Please log in to pay.", () => {}); }
     const r = await fetch("/api/razorpay/trip-order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: token, ...(String(bookingId).startsWith("TR-") ? { booking_code: bookingId } : { booking_id: bookingId }), amount }) });
     const od = await r.json().catch(() => ({}));
-    if (!r.ok || !od.order_id) return window.gwConfirm(od.error || "Could not start the payment.", () => {});
+    if (!r.ok || !od.order_id) { gwPayOverlay(null); return window.gwConfirm(od.error || "Could not start the payment.", () => {}); }
     const rzp = new window.Razorpay({
       key: od.key_id, amount: od.amount, currency: od.currency, order_id: od.order_id,
       name: "Glasswings", description: rzpDesc(od.description || "Trip payment"), theme: { color: "#0EA5E9" },
+      modal: { ondismiss: () => gwPayOverlay(null) },
       handler: async (resp) => {
+        gwPayOverlay("Confirming your payment…");
         try {
           const v = await fetch("/api/razorpay/trip-verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...resp, access_token: token }) });
           const vd = await v.json().catch(() => ({}));
+          gwPayOverlay(null);
           window.gwConfirm(v.ok && vd.ok ? `🎉 Payment of ₹${Math.round(od.amount / 100).toLocaleString("en-IN")} received! Your trip progress is updated.` : (vd.error || "Payment couldn't be confirmed.") + "\n\nIf money was deducted, it will update automatically within a few minutes. Payment ID: " + (resp.razorpay_payment_id || ""), () => {});
         } catch { window.gwConfirm("Payment couldn't be confirmed yet. If money was deducted, it will update automatically within a few minutes. Payment ID: " + (resp.razorpay_payment_id || ""), () => {}); }
+        gwPayOverlay(null);
         onDone && onDone();
       },
     });
-    rzp.on("payment.failed", () => window.gwConfirm("Payment failed or was cancelled. Nothing was charged.", () => {}));
+    rzp.on("payment.failed", () => { gwPayOverlay(null); window.gwConfirm("Payment failed or was cancelled. Nothing was charged.", () => {}); });
+    gwPayOverlay(null);
     rzp.open();
-  } catch { window.gwConfirm("Could not start the payment. Please try again.", () => {}); }
+  } catch { gwPayOverlay(null); window.gwConfirm("Could not start the payment. Please try again.", () => {}); }
 }
 
 function GwTripProgress({ paid, total, firstDue, dark = false }) {
@@ -15270,6 +15298,7 @@ function GwTripProgress({ paid, total, firstDue, dark = false }) {
 
 // ---------- Public trip box on the event page ----------
 function GetawayBox({ event, profile }) {
+  useEffect(() => { gwPrepTripPay(); }, []);
   const [t, setT] = useState(null), [mine, setMine] = useState([]), [book, setBook] = useState(false), [open, setOpen] = useState({ itinerary: true });
   const askBook = () => { if (!profile?.id) return window.gwConfirm("Please log in to book this trip.", () => {}); setBook(true); };
   const [mineOpen, setMineOpen] = useState(false);
@@ -15671,6 +15700,7 @@ function TripPaymentHistory({ b, open: openInit = false }) {
 
 // Profile → 🧳 My trips (all getaway bookings, pay, pass, history)
 function MyTripsSection() {
+  useEffect(() => { gwPrepTripPay(); }, []);
   const [list, setList] = useState(null), [openId, setOpenId] = useState(null);
   const load = () => supabase.rpc("my_trip_bookings", { p_event: null }).then(({ data, error }) => {
     const l = error ? [] : (data || []); setList(l);
@@ -15733,6 +15763,7 @@ function TripPass({ b }) {
 
 // ---------- Friend's pay link: glass-wings.com/?trip=CODE ----------
 function TripPayPage({ code, loggedIn = true }) {
+  useEffect(() => { gwPrepTripPay(); }, []);
   const [d, setD] = useState(undefined), [amt, setAmt] = useState("");
   const gwLeadInp = { ...GW_LEAD_INP_BASE, fontSize: 16 };
   const load = () => supabase.rpc("trip_by_code", { p_code: code }).then(({ data }) => setD(data || null));
@@ -15768,7 +15799,7 @@ function TripPayPage({ code, loggedIn = true }) {
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input value={amt} onChange={e => setAmt(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="Amount ₹" style={{ ...gwLeadInp, flex: 1, minWidth: 0 }} />
-                      <button onClick={() => { const a = Math.round(Number(amt) || 0); if (a < minPart) return window.gwConfirm(`Minimum payment is ₹${minPart}.`, () => {}); gwPayTrip(d.code, Math.min(a, left), () => { setAmt(""); load(); }); }} style={{ ...btn("#0EA5E9", "#fff"), padding: "10px 18px", fontWeight: 900 }}>Pay</button>
+                      <button onClick={() => { const a = Math.round(Number(amt) || 0); if (a < minPart) return window.gwConfirm(`Minimum payment is ₹${minPart}.`, () => {}); gwPayTrip(d.code, Math.min(a, left), () => { setAmt(""); load(); }); }} style={{ ...btn("#0EA5E9", "#fff"), padding: "10px 18px", fontWeight: 900 }}>Pay ₹{Number(amt) > 0 ? Math.min(Number(amt), left).toLocaleString("en-IN") : ""}</button>
                     </div>
                   </>}
           </div>
