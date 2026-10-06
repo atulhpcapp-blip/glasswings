@@ -5,6 +5,8 @@
 //    Sender: EMAIL_FROM (or MAIL_FROM / RESEND_FROM / SMTP_FROM), else "Glasswings <noreply@glass-wings.com>".
 //  • WhatsApp: AiSensy campaign saved in the app (e.g. "event_review_update"), template variables:
 //      {{1}} organiser first name  {{2}} event title  {{3}} status line  {{4}} what to change (or "-")
+//  • When an event is PUBLISHED and a "live" campaign is saved (e.g. "event_live"), that one is used instead:
+//      {{1}} organiser first name  {{2}} event title  {{3}} date & place  {{4}} event link
 import { body, getUser, rpc, SB_URL, SB_SERVICE } from "../razorpay/_booking-lib.js";
 
 const env = (...n) => { for (const k of n) if (process.env[k]) return process.env[k]; return ""; };
@@ -15,7 +17,7 @@ const esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g,
 const dest = p => { const d = String(p || "").replace(/\D/g, "").replace(/^0+/, ""); return d.length < 10 ? null : d.length === 10 ? "+91" + d : "+" + d; };
 
 const STATUS = {
-  publish: ["✅ Your event is now LIVE on Glasswings", "is now live on Glasswings. Members can see it and book.", "#16A34A"],
+  publish: ["🎉 Congratulations! Your event is LIVE on Glasswings", "is now live on Glasswings. Members can see it and book tickets right away.", "#16A34A"],
   changes: ["✏️ Small changes needed before we publish", "needs a few changes before we can publish it.", "#D97706"],
   unpublish: ["⏸️ Your event has been unpublished", "has been taken off the app for now.", "#DC2626"],
 };
@@ -82,9 +84,41 @@ export default async function handler(req, res) {
         ${action === "publish" ? `<p><a href="${link}" style="display:inline-block;background:#008069;color:#fff;text-decoration:none;padding:11px 18px;border-radius:999px;font-weight:bold">See it live</a></p>` : ""}
         <p style="color:#666">Team Glasswings</p>
       </div></div>`;
-    const email = c.email ? await sendEmail(c.email, subject, html, text) : "no_email";
+    let mailHtml = html, mailText = text, mailSubject = subject;
+    if (action === "publish") {
+      const when = [c.event_date, c.place].filter(Boolean).join(" · ");
+      mailSubject = `🎉 Congratulations! "${c.title}" is now LIVE on Glasswings`;
+      mailText = `Hi ${c.first},\n\nCongratulations! 🎉 Your event "${c.title}" has been reviewed by the Glasswings team and is now LIVE.\n${when ? when + "\n" : ""}\nMembers can now see it and book tickets.\n\nYour event link: ${link}\n\nWhat to do next:\n1. Share the link on WhatsApp, Instagram and your groups.\n2. Watch your bookings in the Glasswings app: Admin → Events → your event → Sales.\n3. On the day, use ✅ Check-in to scan tickets at the door.\n\nNeed help? Just reply to this email.\n\nAll the best for a full house!\nTeam Glasswings`;
+      mailHtml = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #eee;border-radius:16px;overflow:hidden">
+        <div style="background:linear-gradient(135deg,#047857,#10B981);color:#fff;padding:24px 22px;text-align:center">
+          <div style="font-size:40px">🎉</div>
+          <div style="font-size:22px;font-weight:bold;margin-top:4px">Congratulations, ${esc(c.first)}!</div>
+          <div style="font-size:15px;opacity:.95;margin-top:4px">Your event is now LIVE on Glasswings</div>
+        </div>
+        ${c.image ? `<img src="${esc(c.image)}" alt="" style="width:100%;max-height:340px;object-fit:cover;display:block">` : ""}
+        <div style="padding:20px 22px;color:#111;font-size:15px;line-height:1.6">
+          <div style="font-size:19px;font-weight:bold">${esc(c.title)}</div>
+          ${when ? `<div style="color:#555;margin-top:2px">📅 ${esc(when)}</div>` : ""}
+          <p>Our team has checked your event and it is now visible to all Glasswings members. They can book tickets right away. ✅</p>
+          <p style="text-align:center;margin:20px 0"><a href="${link}" style="display:inline-block;background:#008069;color:#fff;text-decoration:none;padding:13px 24px;border-radius:999px;font-weight:bold;font-size:16px">👀 See your live event</a></p>
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:12px 14px">
+            <b>What to do next</b>
+            <ol style="margin:8px 0 0 18px;padding:0">
+              <li>📲 <b>Share your link</b> on WhatsApp, Instagram and your groups:<br><a href="${link}" style="color:#008069">${esc(link)}</a></li>
+              <li>💰 <b>Watch your bookings</b> in the app: Admin → Events → your event → Sales.</li>
+              <li>✅ <b>On the day</b>, use Check-in to scan tickets at the door.</li>
+            </ol>
+          </div>
+          <p style="color:#555">Need help? Just reply to this email.</p>
+          <p>All the best for a full house! 🙌<br><b>Team Glasswings</b></p>
+        </div></div>`;
+    }
+    const email = c.email ? await sendEmail(c.email, mailSubject, mailHtml, mailText) : "no_email";
     const to = dest(c.phone);
-    const wa = to ? await sendWhatsApp(info.campaign, to, c.first, [clean(c.first), clean(c.title), clean(st[0]), clean(note || "-")]) : "no_phone";
+    const liveCamp = action === "publish" ? info.live_campaign : null;
+    const wa = !to ? "no_phone"
+      : liveCamp ? await sendWhatsApp(liveCamp, to, c.first, [clean(c.first), clean(c.title), clean([c.event_date, c.place].filter(Boolean).join(" · ") || "-"), link.replace(/^https?:\/\//, "")])
+      : await sendWhatsApp(info.campaign, to, c.first, [clean(c.first), clean(c.title), clean(st[0]), clean(note || "-")]);
     try { await rpc("event_review_notify_log", { p_event: event_id, p_user: user.id, p_action: action || "", p_email: String(email).slice(0, 300), p_wa: String(wa).slice(0, 300) }); } catch { }
     return res.status(200).json({ ok: true, email, whatsapp: wa, contact: { name: c.name, first: c.first, phone: c.phone, email: c.email } });
   } catch (e) {
