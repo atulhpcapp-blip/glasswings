@@ -4932,15 +4932,105 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     </div>
   );
 
+  // ---------- BookMyShow-style home ----------
+  useEffect(() => {
+    try { if (!document.getElementById("gw-bebas")) { const l = document.createElement("link"); l.id = "gw-bebas"; l.rel = "stylesheet"; l.href = "https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap"; document.head.appendChild(l); } } catch { }
+  }, []);
+  const BMS_RED = "#F84464";
+  const BEBAS = "'Bebas Neue', Impact, 'Arial Narrow', sans-serif";
+  const dayOf = (e, add) => { if (!e.event_at) return false; const d = new Date(e.event_at); const t = new Date(); t.setHours(0, 0, 0, 0); t.setDate(t.getDate() + add); const n = new Date(t); n.setDate(n.getDate() + 1); return d >= t && d < n; };
+  const isWeekend = e => { if (!e.event_at) return false; const d = new Date(e.event_at); const t = new Date(); t.setHours(0, 0, 0, 0); const sat = new Date(t); sat.setDate(sat.getDate() + ((6 - sat.getDay() + 7) % 7)); const mon = new Date(sat); mon.setDate(mon.getDate() + 2); return d >= sat && d < mon; };
+  const getItems = key => {
+    if (!key) return [];
+    if (key === "rec") return list;
+    if (key === "pop") return [...list].sort((a, b) => ((stats?.[b.id]?.male || 0) + (stats?.[b.id]?.female || 0)) - ((stats?.[a.id]?.male || 0) + (stats?.[a.id]?.female || 0)));
+    if (key === "today") return list.filter(e => dayOf(e, 0));
+    if (key === "tomorrow") return list.filter(e => dayOf(e, 1));
+    if (key === "weekend") return list.filter(isWeekend);
+    if (key === "trips") return list.filter(gwIsGetaway);
+    if (key.startsWith("cat:")) { const c = key.slice(4); return list.filter(e => e.category === c); }
+    return list;
+  };
+  const shortDate = e => {
+    if (e.event_at) { const d = new Date(e.event_at); if (!isNaN(d)) return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) + (e.date_mode === "recurring" ? " onwards" : ""); }
+    return e.event_date || "";
+  };
+  const lowPrice = e => { if (gwIsGetaway(e)) return gwTripPriceLabel(e).replace("🏝️ ", ""); const ts = ticketTypes[e.id] || []; const m = Math.min(...(ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0])); return m === 0 ? "Free entry" : `₹${m.toLocaleString("en-IN")} onwards`; };
+  const poster = (e, grid) => (
+    <div key={e.id} onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ flex: grid ? undefined : "0 0 41%", minWidth: grid ? 0 : 140, maxWidth: grid ? undefined : 210, cursor: "pointer", scrollSnapAlign: "start" }}>
+      <div style={{ position: "relative", aspectRatio: "2/3", borderRadius: 12, overflow: "hidden", background: "#eceef1" }}>
+        {(e.vertical_video_url || e.portrait_video_url || (e.banner_url && e.banner_type === "video"))
+          ? <video src={e.vertical_video_url || e.portrait_video_url || e.banner_url} poster={e.vertical_banner_url || e.poster_url || undefined} autoPlay loop muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          : (e.vertical_banner_url || e.poster_url || (e.banner_url && e.banner_type !== "video"))
+          ? <img src={e.vertical_banner_url || e.poster_url || e.banner_url} alt={e.title} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52, background: "linear-gradient(160deg,#1f2937,#4b5563)" }}>{e.emoji || "🎟️"}</div>}
+        {Number(e.promo_pct) > 0 && <span style={{ position: "absolute", top: 0, right: 0, background: BMS_RED, color: "#fff", fontSize: 11, fontWeight: 600, letterSpacing: .6, padding: "4px 9px", borderBottomLeftRadius: 8 }}>PROMOTED</span>}
+        {!(Number(e.promo_pct) > 0) && popSet.has(e.id) && <span style={{ position: "absolute", top: 0, right: 0, background: "#111", color: "#fff", fontSize: 11, fontWeight: 600, letterSpacing: .6, padding: "4px 9px", borderBottomLeftRadius: 8 }}>🔥 POPULAR</span>}
+        {gwIsGetaway(e) && <span style={{ position: "absolute", left: 8, bottom: 8, background: GW_TRIP_GRAD, color: "#fff", fontSize: 10, fontWeight: 800, padding: "4px 8px", borderRadius: 6 }}>🏝️ GETAWAY</span>}
+        {gwEventClosed(e) && <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "rgba(185,28,28,.94)", color: "#fff", padding: "7px", fontSize: 11, fontWeight: 800, textAlign: "center" }}>{gwEventAvailability(e) === "housefull" ? "HOUSEFULL" : "SOLD OUT"}</div>}
+        {onToggleSave && <button onClick={ev => { ev.stopPropagation(); onToggleSave(e.id); }} aria-label="Save" style={{ position: "absolute", left: 7, top: 7, width: 30, height: 30, border: 0, borderRadius: "50%", background: "rgba(0,0,0,.38)", fontSize: 13, cursor: "pointer" }}>{savedIds.has(e.id) ? "❤️" : "🤍"}</button>}
+      </div>
+      <div style={{ fontSize: 13, color: "#333", marginTop: 8 }}>{shortDate(e)}</div>
+      <div style={{ fontSize: 16, color: "#222", lineHeight: 1.25, marginTop: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.title}</div>
+      <div style={{ fontSize: 13.5, color: "#666", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{[e.venue, e.city].filter(Boolean).join(": ") || e.category || ""}</div>
+      <div style={{ fontSize: 13.5, color: "#666", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lowPrice(e)}</div>
+    </div>
+  );
+  const head = (title, sub, key) => (
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "0 18px 14px", gap: 10 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 21, fontWeight: 600, color: "#222", letterSpacing: -.2 }}>{title}</div>
+        {sub && <div style={{ fontSize: 15, color: "#666", marginTop: 3 }}>{sub}</div>}
+      </div>
+      {key && <span role="button" onClick={() => setSeeAll({ title, key })} style={{ color: BMS_RED, fontSize: 15, cursor: "pointer", whiteSpace: "nowrap", paddingTop: 3 }}>See All ›</span>}
+    </div>
+  );
+  const row = items => <div style={{ display: "flex", gap: 14, overflowX: "auto", padding: "0 18px 4px", scrollSnapType: "x mandatory", scrollPaddingLeft: 18, scrollbarWidth: "none" }}>{items.slice(0, 12).map(e => poster(e))}</div>;
+  const TILE_GRADS = [["#F7B39B", "#D98C7A"], ["#7CA7E8", "#8E7BD6"], ["#E7A6C9", "#B98BD9"], ["#F38A8A", "#F06D8B"], ["#5FC6D8", "#3C8DB8"], ["#9BC8F2", "#6FA4E6"], ["#B9D97A", "#7DB04A"], ["#F4B36B", "#E8894C"]];
+  const tile = (label, count, grad, img, emoji, onClick, w = 168, h = 112, key) => (
+    <div key={key || label} onClick={onClick} role="button" style={{ position: "relative", flex: w === "auto" ? undefined : `0 0 ${w}px`, width: w === "auto" ? "100%" : undefined, height: h, borderRadius: 14, overflow: "hidden", cursor: "pointer", background: `linear-gradient(135deg,${grad[0]},${grad[1]})` }}>
+      {img ? <img src={img} alt="" loading="lazy" style={{ position: "absolute", right: 0, top: 0, height: "100%", width: "58%", objectFit: "cover", WebkitMaskImage: "linear-gradient(to right,transparent,#000 45%)", maskImage: "linear-gradient(to right,transparent,#000 45%)" }} />
+        : <div style={{ position: "absolute", right: 8, top: 8, fontSize: Math.round(h * .3), lineHeight: 1, opacity: .9 }}>{emoji}</div>}
+      <div style={{ position: "absolute", left: 14, bottom: 12, right: img ? "38%" : 12, color: "#fff" }}>
+        <div style={{ fontFamily: BEBAS, fontSize: Math.round(Math.min(h * .21, ((w === "auto" ? 150 : w) * .62) / (Math.max(...String(label).split(/\s+/).map(s => s.length), 3) * .52))), lineHeight: 1, letterSpacing: .4, textTransform: "uppercase", textShadow: "0 1px 6px rgba(0,0,0,.15)", wordBreak: "keep-all", overflowWrap: "normal", fontStretch: "condensed" }}>{label}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 4, opacity: .95 }}>{count} Event{count === 1 ? "" : "s"}</div>
+      </div>
+    </div>
+  );
+  const catCounts = catTiles.map(c => ({ ...c, n: list.filter(e => e.category === c.name).length })).filter(c => c.n > 0).sort((a, b) => b.n - a.n);
+  const nToday = getItems("today").length, nTomorrow = getItems("tomorrow").length, nWeekend = getItems("weekend").length, trips = getItems("trips");
+  const seeAllItems = seeAll && seeAll.key !== "allcats" ? getItems(seeAll.key) : [];
+
+  // sticky chips bar after scrolling past the category row (BookMyShow style)
+  const homeRef = useRef(null), catRowRef = useRef(null);
+  const [stick, setStick] = useState(null);
+  useEffect(() => {
+    if (privateMode) return;
+    const f = () => { const r = catRowRef.current?.getBoundingClientRect(); const h = homeRef.current?.getBoundingClientRect(); if (!r || !h) return; setStick(r.bottom < 0 ? { left: h.left, width: h.width } : null); };
+    window.addEventListener("scroll", f, { passive: true }); window.addEventListener("resize", f); f();
+    return () => { window.removeEventListener("scroll", f); window.removeEventListener("resize", f); };
+  }, [privateMode]);
+  const pickCat = name => { setFlt(f => ({ ...f, category: name ? [name] : [] })); };
+
   return (
-    <div style={{background:"#fff",minHeight:"100vh"}}>
+    <div ref={homeRef} style={{background:"#fff",minHeight:"100vh"}}>
       {!privateMode ? (
         <>
-          <div style={{padding:"18px 18px 8px",background:"#fff"}}>
+          {stick && <div style={{position:"fixed",top:0,left:stick.left,width:stick.width,zIndex:45,background:"rgba(255,255,255,.96)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)",boxShadow:"0 2px 10px rgba(0,0,0,.06)",padding:"10px 0 10px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 18px 8px"}}>
+              <div style={{fontSize:18,fontWeight:700,color:"#222"}}>It All Starts Here!</div>
+              <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",color:BMS_RED,fontSize:14,fontWeight:600,cursor:"pointer",padding:0}}>{currentCity} ›</button>
+            </div>
+            <div style={{display:"flex",gap:10,overflowX:"auto",padding:"0 18px",scrollbarWidth:"none"}}>
+              {[{name:""},...catTiles].map(c=><button key={c.name||"all"} onClick={()=>pickCat(c.name)} style={{flexShrink:0,border:`1px solid ${(c.name?flt.category[0]===c.name:flt.category.length===0)?BMS_RED:"#cfd2d6"}`,color:(c.name?flt.category[0]===c.name:flt.category.length===0)?BMS_RED:"#222",background:"#fff",borderRadius:999,padding:"8px 18px",fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>{c.name||"All"}</button>)}
+            </div>
+          </div>}
+
+          <div style={{padding:"18px 18px 6px",background:"#fff"}}>
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
               <div>
-                <div style={{fontSize:28,fontWeight:950,color:"#202124",letterSpacing:-.7,lineHeight:1.05}}>It All Starts Here!</div>
-                <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",padding:"7px 0 0",color:"#e53955",fontSize:15,fontWeight:800,cursor:"pointer"}}>{currentCity} ›</button>
+                <div style={{fontSize:28,fontWeight:700,color:"#222",letterSpacing:-.5,lineHeight:1.05}}>It All Starts Here!</div>
+                <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",padding:"7px 0 0",color:BMS_RED,fontSize:15,fontWeight:600,cursor:"pointer"}}>{currentCity} ›</button>
               </div>
               <button onClick={()=>onProfile && onProfile()} aria-label="Profile" style={{width:48,height:48,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666",padding:0,overflow:"hidden",cursor:"pointer"}}>
                 {profile?.avatar_url
@@ -4950,63 +5040,100 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             </div>
           </div>
 
-          <div style={{padding:"8px 16px 10px"}}>
+          <div style={{padding:"8px 16px 4px"}}>
             <div style={{position:"relative"}}>
-              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:16}}>🔍</span>
-              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search events, venues, artists…" style={{width:"100%",padding:"12px 38px 12px 42px",border:"1px solid #e1e3e6",borderRadius:10,background:"#f7f7f8",fontSize:14.5,fontWeight:600,outline:"none"}}/>
+              <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:15,opacity:.7}}>🔍</span>
+              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search events, venues, artists…" style={{width:"100%",boxSizing:"border-box",padding:"11px 38px 11px 40px",border:"1px solid #e5e7eb",borderRadius:10,background:"#f5f5f6",fontSize:15,outline:"none",color:"#222"}}/>
               {q && <span onClick={()=>setQ("")} style={{position:"absolute",right:13,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#777"}}>✕</span>}
             </div>
           </div>
 
-          <div style={{display:"flex",overflowX:"auto",gap:0,padding:"10px 8px 16px",borderBottom:"1px solid #f0f0f0",scrollbarWidth:"none"}}>
-            <div onClick={()=>setFlt(f=>({...f,category:[]}))} style={{flex:"0 0 22%",minWidth:72,maxWidth:110,textAlign:"center",cursor:"pointer"}}>
-              <div style={{width:42,height:42,margin:"0 auto",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,background:"linear-gradient(135deg,#FFF1F5,#FEF3C7)"}}>✨</div><div style={{fontSize:12.5,fontWeight:700,marginTop:7,color:flt.category.length===0?"#e53955":"#222"}}>All</div>
-            </div>
-            {catTiles.map(c=><div key={c.id||c.name} onClick={()=>setFlt(f=>({...f,category:[c.name]}))} style={{flex:"0 0 22%",minWidth:72,maxWidth:110,textAlign:"center",cursor:"pointer",padding:"0 4px",boxSizing:"border-box"}}>
-              <div style={{width:42,height:42,margin:"0 auto",borderRadius:12,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,background:"#fff"}}>
-                {c.image_url?<img src={c.image_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10}}/>:categoryIcon(c.name)}
+          <div ref={catRowRef} style={{display:"flex",overflowX:"auto",padding:"14px 6px 14px",scrollbarWidth:"none"}}>
+            {[{name:""},...catTiles].map(c=>{ const on = c.name ? flt.category[0]===c.name : flt.category.length===0; return <div key={c.name||"all"} onClick={()=>pickCat(c.name)} style={{flex:"0 0 21%",minWidth:76,maxWidth:110,textAlign:"center",cursor:"pointer",padding:"0 4px",boxSizing:"border-box"}}>
+              <div style={{width:46,height:46,margin:"0 auto",borderRadius:12,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>
+                {!c.name ? "✨" : c.image_url ? <img src={c.image_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:12}}/> : categoryIcon(c.name)}
               </div>
-              <div style={{fontSize:12.5,fontWeight:700,marginTop:7,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:flt.category[0]===c.name?"#e53955":"#222"}}>{c.name}</div>
-            </div>)}
+              <div style={{fontSize:14,marginTop:8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:on?BMS_RED:"#333",fontWeight:on?600:400}}>{c.name||"All"}</div>
+            </div>; })}
           </div>
 
-          {heroSlides.length>0 && <div style={{padding:"10px 16px 4px"}}><div style={{borderRadius:14,overflow:"hidden"}}><HeroSlider slides={heroSlides} wide={wide} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div></div>}
-
-
+          {heroSlides.length>0 && <div style={{padding:"4px 18px 0"}}><div style={{borderRadius:14,overflow:"hidden"}}><HeroSlider slides={heroSlides} wide={wide} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div></div>}
           <PlanEventBanner profile={profile}/>
-          <div style={{display:"flex",gap:9,padding:"12px 16px 8px",overflowX:"auto"}}>
-            <button onClick={()=>setFsheet(true)} style={filterPill(fltCount(flt)>0)}>☰ Filters{fltCount(flt)>0?` (${fltCount(flt)})`:""}</button>
-            <button onClick={()=>setSsheet(true)} style={filterPill(sortBy!=="relevance")}>↕ Sort By</button>
-            {onToggleSave&&<button onClick={()=>setSavedOnly(v=>!v)} style={filterPill(savedOnly)}>{savedOnly?"❤️ Saved":"♡ Saved"}</button>}
-            {[["today","Today"],["weekend","This Weekend"],["month","This Month"]].map(([k,l])=><button key={k} onClick={()=>setDateQuick(dateQuick===k?"all":k)} style={filterPill(dateQuick===k)}>{l}</button>)}
-          </div>
 
-          {seeAll && <div style={{position:"fixed",inset:0,zIndex:70,background:"#fff",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
-            <div style={{position:"sticky",top:0,zIndex:2,background:"#fff",display:"flex",alignItems:"center",gap:10,padding:"14px 14px 12px",borderBottom:"1px solid #f0f0f0"}}>
-              <button onClick={()=>setSeeAll(null)} aria-label="Back" style={{border:0,background:"#f3f4f6",borderRadius:999,width:38,height:38,fontSize:18,cursor:"pointer"}}>←</button>
-              <div style={{fontWeight:900,fontSize:19,color:"#222",flex:1}}>{seeAll}</div>
-              <div style={{fontSize:13,color:"#777",fontWeight:700}}>{list.length} event{list.length===1?"":"s"}</div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"18px 14px",padding:"16px 16px 120px"}}>
-              {(seeAll==="Popular Near You"?[...list.slice(3),...list.slice(0,3)]:list).map(e=><div key={e.id} style={{minWidth:0}}>{bmsCard(e)}</div>)}
-            </div>
+          {(q || flt.category.length > 0 || fltCount(flt) > 0) && <div style={{display:"flex",gap:8,alignItems:"center",padding:"4px 18px 10px",flexWrap:"wrap"}}>
+            <span style={{fontSize:13.5,color:"#666"}}>Showing {list.length} event{list.length===1?"":"s"}{flt.category.length?` in ${flt.category[0]}`:""}{q?` for “${q}”`:""}</span>
+            <button onClick={()=>{setQ("");setFlt(emptyFlt());}} style={{border:0,background:"transparent",color:BMS_RED,fontSize:13.5,cursor:"pointer",padding:0}}>Clear</button>
           </div>}
-          <section style={{padding:"18px 0 24px"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 18px 12px"}}>
-              <h2 style={{margin:0,fontSize:23,fontWeight:900,color:"#222",letterSpacing:-.4}}>Recommended Events</h2>
-              <span role="button" onClick={()=>setSeeAll("Recommended Events")} style={{color:"#e53955",fontSize:14,fontWeight:750,cursor:"pointer"}}>See All ›</span>
-            </div>
-            {list.length===0 ? <div style={{padding:"28px 18px",color:"#777",textAlign:"center"}}>{savedOnly?"No saved events yet.":"No events match your search or filters."}</div>
-            : <div style={{display:"flex",gap:14,overflowX:"auto",padding:"0 18px 8px",scrollSnapType:"x proximity"}}>{list.slice(0,10).map(bmsCard)}</div>}
+
+          <section style={{padding:"18px 0 26px"}}>
+            {head("Recommended Events", null, "rec")}
+            {list.length===0 ? <div style={{padding:"28px 18px",color:"#777",textAlign:"center"}}>No events match your search.</div> : row(list)}
           </section>
 
-          {list.length>3 && <section style={{padding:"6px 0 28px",background:"#fafafa",borderTop:"1px solid #f1f1f1"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 18px 12px"}}>
-              <h2 style={{margin:0,fontSize:22,fontWeight:900,color:"#222"}}>Popular Near You</h2>
-              <span role="button" onClick={()=>setSeeAll("Popular Near You")} style={{color:"#e53955",fontSize:14,fontWeight:750,cursor:"pointer"}}>See All ›</span>
+          {(nToday + nTomorrow + nWeekend) > 0 && <section style={{padding:"4px 0 26px"}}>
+            {head("Best Events This Week", "Monday to Sunday, we got you covered")}
+            <div style={{display:"flex",gap:12,overflowX:"auto",padding:"0 18px",scrollbarWidth:"none"}}>
+              {tile("Plan for Today", nToday, ["#D9A7C7", "#B38BD0"], null, "🤔", ()=>setSeeAll({title:"Plan for Today",key:"today"}), 150, 150)}
+              {tile("Plan for Tomorrow", nTomorrow, ["#B5D86B", "#5FA83A"], null, "😎", ()=>setSeeAll({title:"Plan for Tomorrow",key:"tomorrow"}), 150, 150)}
+              {tile("Weekend Plans", nWeekend, ["#8DD3E0", "#4A93C7"], null, "🥳", ()=>setSeeAll({title:"Weekend Plans",key:"weekend"}), 150, 150)}
             </div>
-            <div style={{display:"flex",gap:14,overflowX:"auto",padding:"0 18px 8px"}}>{list.slice(3,13).map(bmsCard)}</div>
           </section>}
+
+          {trips.length > 0 && <section style={{padding:"4px 0 26px"}}>
+            {head("Weekend Getaways 🏝️", "Book now, pay in parts before you travel", "trips")}
+            {row(trips)}
+          </section>}
+
+          {catCounts.length > 0 && <section style={{padding:"4px 0 26px"}}>
+            {head("Browse Events By Category", "Live events for all your entertainment needs")}
+            <div style={{display:"grid",gridAutoFlow:"column",gridTemplateRows:catCounts.length > 2 ? "repeat(2,112px)" : "112px",gridAutoColumns:"168px",gap:12,overflowX:"auto",padding:"0 18px",scrollbarWidth:"none"}}>
+              {catCounts.map((c,i)=>tile(c.name, c.n, TILE_GRADS[i % TILE_GRADS.length], c.image_url, categoryIcon(c.name), ()=>setSeeAll({title:c.name,key:"cat:"+c.name}), 168, 112, "cat"+c.name))}
+            </div>
+          </section>}
+
+          {list.length > 3 && <section style={{padding:"4px 0 26px"}}>
+            {head("Popular Events", null, "pop")}
+            {row(getItems("pop"))}
+          </section>}
+
+          {catCounts.map(c=><section key={"row"+c.name} style={{padding:"4px 0 26px"}}>
+            {head(c.name, null, "cat:"+c.name)}
+            {row(getItems("cat:"+c.name))}
+          </section>)}
+
+          <div style={{padding:"6px 18px 0",textAlign:"center"}}>
+            <button onClick={()=>setSeeAll({title:"All Categories",key:"allcats"})} style={{border:0,background:"transparent",color:BMS_RED,fontSize:17,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8,padding:"10px"}}><span style={{fontSize:19}}>🗂️</span> Explore All Categories</button>
+            <div style={{height:1,background:"#e5e7eb",margin:"14px 0 22px"}}/>
+            <img src="/logo-white.png" alt="" onError={ev=>{ev.currentTarget.style.display="none"}} style={{height:44,objectFit:"contain",filter:"invert(1) grayscale(1)",opacity:.18,display:"inline-block"}}/>
+            <div style={{fontSize:13,color:"#bbb",letterSpacing:3,fontWeight:700,margin:"6px 0 130px"}}>GLASSWINGS EVENTS</div>
+          </div>
+
+          {seeAll && <div style={{position:"fixed",top:0,bottom:0,left:stick?stick.left:(homeRef.current?.getBoundingClientRect().left||0),width:homeRef.current?.getBoundingClientRect().width||"100%",zIndex:70,background:"#fff",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+            <div style={{position:"sticky",top:0,zIndex:2,background:"#fff",display:"flex",alignItems:"center",gap:14,padding:"14px 14px 10px"}}>
+              <button onClick={()=>setSeeAll(null)} aria-label="Back" style={{border:0,background:"transparent",fontSize:26,cursor:"pointer",padding:"0 6px",color:"#222",lineHeight:1}}>‹</button>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:20,color:"#222",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{seeAll.key === "allcats" ? "See All" : seeAll.title}</div>
+                <div style={{fontSize:14,color:"#666"}}>{currentCity}{seeAll.key !== "allcats" ? ` · ${seeAllItems.length} event${seeAllItems.length===1?"":"s"}` : ""}</div>
+              </div>
+            </div>
+            {seeAll.key === "allcats" ? <div style={{padding:"8px 18px 120px"}}>
+              <div style={{fontSize:20,fontWeight:500,color:"#222",margin:"10px 0 12px"}}>Categories</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:12}}>
+                {catCounts.map((c,i)=>tile(c.name, c.n, TILE_GRADS[i % TILE_GRADS.length], c.image_url, categoryIcon(c.name), ()=>setSeeAll({title:c.name,key:"cat:"+c.name}), "auto", 130, "all"+c.name))}
+                {catCounts.length===0 && <div style={{color:"#777"}}>No live events right now.</div>}
+              </div>
+            </div> : <>
+              <div style={{display:"flex",gap:9,padding:"4px 18px 12px",overflowX:"auto",scrollbarWidth:"none"}}>
+                <button onClick={()=>setFsheet(true)} style={filterPill(fltCount(flt)>0)}>☰ Filters{fltCount(flt)>0?` (${fltCount(flt)})`:""}</button>
+                <button onClick={()=>setSsheet(true)} style={filterPill(sortBy!=="relevance")}>↕ Sort By</button>
+                {onToggleSave&&<button onClick={()=>setSavedOnly(v=>!v)} style={filterPill(savedOnly)}>{savedOnly?"❤️ Saved":"♡ Saved"}</button>}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"22px 14px",padding:"4px 18px 120px"}}>
+                {seeAllItems.map(e=>poster(e, true))}
+                {seeAllItems.length===0 && <div style={{gridColumn:"1/-1",color:"#777",textAlign:"center",padding:30}}>No events here right now.</div>}
+              </div>
+            </>}
+          </div>}
         </>
       ) : (
         <>
