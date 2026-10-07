@@ -2966,7 +2966,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
   );
 }
 // BookMyShow-style banner: pure image, 2:1, swipe + auto-advance, dots on the picture
-function BmsSlider({ slides, onSlide }) {
+function BmsSlider({ slides, onSlide, ratio = "2 / 1" }) {
   const ref = useRef(null), [i, setI] = useState(0), hold = useRef(0);
   const n = slides.length;
   useEffect(() => {
@@ -2976,7 +2976,7 @@ function BmsSlider({ slides, onSlide }) {
   }, [n]);
   if (!n) return null;
   return (
-    <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "2 / 1", background: "#e9ebee" }}>
+    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: ratio, background: "#e9ebee" }}>
       <div ref={ref} onScroll={e => { const el = e.currentTarget; setI(Math.round(el.scrollLeft / Math.max(1, el.clientWidth))); }} onTouchStart={() => { hold.current = Date.now(); }}
         style={{ display: "flex", width: "100%", height: "100%", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
         {slides.map((s, k) => <div key={k} onClick={() => onSlide && onSlide(s)} style={{ flex: "0 0 100%", height: "100%", scrollSnapAlign: "start", cursor: s.id ? "pointer" : "default", position: "relative" }}>
@@ -4982,7 +4982,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   };
   const lowPrice = e => { if (gwIsGetaway(e)) return gwTripPriceLabel(e).replace("🏝️ ", ""); const ts = ticketTypes[e.id] || []; const m = Math.min(...(ts.length ? ts.map(t => t.price || 0) : [e.ticket_price || 0])); return m === 0 ? "Free entry" : `₹${m.toLocaleString("en-IN")} onwards`; };
   const poster = (e, grid) => (
-    <div key={e.id} onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ flex: grid ? undefined : "0 0 41%", minWidth: grid ? 0 : 140, maxWidth: grid ? undefined : 210, cursor: "pointer", scrollSnapAlign: "start" }}>
+    <div key={e.id} onClick={() => onOpenDetail && onOpenDetail(e.id)} style={{ flex: grid ? undefined : "0 0 35%", minWidth: grid ? 0 : 124, maxWidth: grid ? undefined : 200, cursor: "pointer", scrollSnapAlign: "start" }}>
       <div style={{ position: "relative", aspectRatio: "2/3", borderRadius: 12, overflow: "hidden", background: "#eceef1" }}>
         {(e.vertical_video_url || e.portrait_video_url || (e.banner_url && e.banner_type === "video"))
           ? <video src={e.vertical_video_url || e.portrait_video_url || e.banner_url} poster={e.vertical_banner_url || e.poster_url || undefined} autoPlay loop muted playsInline preload="metadata" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -4995,22 +4995,22 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
         {gwEventClosed(e) && <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "rgba(185,28,28,.94)", color: "#fff", padding: "7px", fontSize: 11, fontWeight: 800, textAlign: "center" }}>{gwEventAvailability(e) === "housefull" ? "HOUSEFULL" : "SOLD OUT"}</div>}
         {onToggleSave && <button onClick={ev => { ev.stopPropagation(); onToggleSave(e.id); }} aria-label="Save" style={{ position: "absolute", left: 7, top: 7, width: 30, height: 30, border: 0, borderRadius: "50%", background: "rgba(0,0,0,.38)", fontSize: 13, cursor: "pointer" }}>{savedIds.has(e.id) ? "❤️" : "🤍"}</button>}
       </div>
-      <div style={{ fontSize: 13, color: "#333", marginTop: 8 }}>{shortDate(e)}</div>
-      <div style={{ fontSize: 16, color: "#222", lineHeight: 1.25, marginTop: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.title}</div>
+      <div style={{ fontSize: 12.5, color: "#333", marginTop: 7 }}>{shortDate(e)}</div>
+      <div style={{ fontSize: 15, color: "#222", lineHeight: 1.25, marginTop: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{e.title}</div>
       <div style={{ fontSize: 13.5, color: "#666", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{[e.venue, e.city].filter(Boolean).join(": ") || e.category || ""}</div>
       <div style={{ fontSize: 13.5, color: "#666", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lowPrice(e)}</div>
     </div>
   );
   const head = (title, sub, key) => (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "0 18px 14px", gap: 10 }}>
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "0 16px 10px", gap: 10 }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 21, fontWeight: 600, color: "#222", letterSpacing: -.2 }}>{title}</div>
+        <div style={{ fontSize: 20, fontWeight: 600, color: "#222", letterSpacing: -.2 }}>{title}</div>
         {sub && <div style={{ fontSize: 15, color: "#666", marginTop: 3 }}>{sub}</div>}
       </div>
       {key && <span role="button" onClick={() => setSeeAll({ title, key })} style={{ color: BMS_RED, fontSize: 15, cursor: "pointer", whiteSpace: "nowrap", paddingTop: 3 }}>See All ›</span>}
     </div>
   );
-  const row = items => <div style={{ display: "flex", gap: 14, overflowX: "auto", padding: "0 18px 4px", scrollSnapType: "x mandatory", scrollPaddingLeft: 18, scrollbarWidth: "none" }}>{items.slice(0, 12).map(e => poster(e))}</div>;
+  const row = items => <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "0 16px 4px", scrollSnapType: "x mandatory", scrollPaddingLeft: 18, scrollbarWidth: "none" }}>{items.slice(0, 12).map(e => poster(e))}</div>;
   const TILE_GRADS = [["#F7B39B", "#D98C7A"], ["#7CA7E8", "#8E7BD6"], ["#E7A6C9", "#B98BD9"], ["#F38A8A", "#F06D8B"], ["#5FC6D8", "#3C8DB8"], ["#9BC8F2", "#6FA4E6"], ["#B9D97A", "#7DB04A"], ["#F4B36B", "#E8894C"]];
   const tile = (label, count, grad, img, emoji, onClick, w = 168, h = 112, key) => (
     <div key={key || label} onClick={onClick} role="button" style={{ position: "relative", flex: w === "auto" ? undefined : `0 0 ${w}px`, width: w === "auto" ? "100%" : undefined, height: h, borderRadius: 14, overflow: "hidden", cursor: "pointer", background: `linear-gradient(135deg,${grad[0]},${grad[1]})` }}>
@@ -5051,15 +5051,15 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             </div>
           </div>}
 
-          <div style={{padding:"18px 18px 6px",background:"#fff"}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+          <div style={{padding:"14px 16px 4px",background:"#fff"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
               <div>
-                <div style={{fontSize:30,fontWeight:700,color:"#1f1f1f",letterSpacing:-.6,lineHeight:1.05}}>It All Starts Here!</div>
-                <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",padding:"7px 0 0",color:BMS_RED,fontSize:15,fontWeight:600,cursor:"pointer"}}>{currentCity} ›</button>
+                <div style={{fontSize:"clamp(21px,6.4vw,30px)",fontWeight:700,color:"#1f1f1f",letterSpacing:-.5,lineHeight:1.1,whiteSpace:"nowrap"}}>It All Starts Here!</div>
+                <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",padding:"4px 0 0",color:BMS_RED,fontSize:14.5,fontWeight:600,cursor:"pointer"}}>{currentCity} ›</button>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <button onClick={()=>setSearchOpen(v=>!v)} aria-label="Search" style={{width:44,height:44,borderRadius:"50%",border:"1.5px solid #d4d4d8",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0}}><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
-              <button onClick={()=>onProfile && onProfile()} aria-label="Profile" style={{width:48,height:48,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666",padding:0,overflow:"hidden",cursor:"pointer"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+              <button onClick={()=>setSearchOpen(v=>!v)} aria-label="Search" style={{width:40,height:40,borderRadius:"50%",border:"1.5px solid #d4d4d8",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0}}><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
+              <button onClick={()=>onProfile && onProfile()} aria-label="Profile" style={{width:42,height:42,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666",padding:0,overflow:"hidden",cursor:"pointer"}}>
                 {profile?.avatar_url
                   ? <img src={profile.avatar_url} alt={profile?.full_name ? `${profile.full_name} profile` : "Profile"} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                   : <User size={25}/>}
@@ -5076,16 +5076,16 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             </div>
           </div>}
 
-          <div ref={catRowRef} style={{display:"flex",overflowX:"auto",padding:"14px 6px 10px",scrollbarWidth:"none",background:"linear-gradient(#fff,#f7f7f8)"}}>
+          <div ref={catRowRef} style={{display:"flex",overflowX:"auto",padding:"8px 6px 8px",scrollbarWidth:"none",background:"linear-gradient(#fff,#f7f7f8)"}}>
             {[{name:""},...catTiles].map(c=>{ const on = c.name ? flt.category[0]===c.name : flt.category.length===0; return <div key={c.name||"all"} onClick={()=>pickCat(c.name)} style={{flex:"0 0 23%",minWidth:84,maxWidth:120,textAlign:"center",cursor:"pointer",padding:"0 3px",boxSizing:"border-box"}}>
-              <div style={{width:46,height:46,margin:"0 auto",borderRadius:12,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>
+              <div style={{width:42,height:42,margin:"0 auto",borderRadius:11,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>
                 {!c.name ? "✨" : c.image_url ? <img src={c.image_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:12}}/> : categoryIcon(c.name)}
               </div>
-              <div style={{fontSize:14,marginTop:8,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:on?BMS_RED:"#333",fontWeight:on?600:400}}>{c.name||"All"}</div>
+              <div style={{fontSize:13,marginTop:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:on?BMS_RED:"#333",fontWeight:on?600:400}}>{c.name||"All"}</div>
             </div>; })}
           </div>
 
-          {heroSlides.length>0 && <div style={{padding:"6px 18px 0"}}><BmsSlider slides={heroSlides} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div>}
+          {heroSlides.length>0 && <div style={{padding:"8px 16px 0"}}><BmsSlider ratio="2.35 / 1" slides={heroSlides} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div>}
           <PlanEventBanner profile={profile}/>
 
           {(q || flt.category.length > 0 || fltCount(flt) > 0) && <div style={{display:"flex",gap:8,alignItems:"center",padding:"4px 18px 10px",flexWrap:"wrap"}}>
@@ -5093,7 +5093,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             <button onClick={()=>{setQ("");setFlt(emptyFlt());}} style={{border:0,background:"transparent",color:BMS_RED,fontSize:13.5,cursor:"pointer",padding:0}}>Clear</button>
           </div>}
 
-          <section style={{padding:"18px 0 26px"}}>
+          <section style={{padding:"14px 0 26px"}}>
             {head("Recommended Events", null, "rec")}
             {list.length===0 ? <div style={{padding:"28px 18px",color:"#777",textAlign:"center"}}>No events match your search.</div> : row(list)}
           </section>
@@ -13193,8 +13193,8 @@ function PlanEventBanner({ profile }) {
   const [open, setOpen] = useState(false);
   if (!profile?.id) return null;
   return (
-    <div style={{ padding: "16px 18px 8px" }}>
-      <div onClick={() => setOpen(true)} role="button" style={{ position: "relative", cursor: "pointer", borderRadius: 14, overflow: "hidden", aspectRatio: "5 / 1", minHeight: 64, background: "linear-gradient(100deg,#1E1B4B 0%,#6D28D9 38%,#DB2777 72%,#F59E0B 100%)", display: "flex", alignItems: "center", padding: "0 3.5%", gap: "3%", boxSizing: "border-box", boxShadow: "0 3px 12px rgba(109,40,217,.18)" }}>
+    <div style={{ padding: "10px 16px 2px" }}>
+      <div onClick={() => setOpen(true)} role="button" style={{ position: "relative", cursor: "pointer", borderRadius: 12, overflow: "hidden", aspectRatio: "6.5 / 1", minHeight: 50, background: "linear-gradient(100deg,#1E1B4B 0%,#6D28D9 38%,#DB2777 72%,#F59E0B 100%)", display: "flex", alignItems: "center", padding: "0 3.5%", gap: "3%", boxSizing: "border-box", boxShadow: "0 3px 12px rgba(109,40,217,.18)" }}>
         <div aria-hidden style={{ position: "absolute", inset: 0, opacity: .22, fontSize: 22, lineHeight: 1.6, whiteSpace: "nowrap", overflow: "hidden", pointerEvents: "none", letterSpacing: 10 }}>🎈 🎂 💍 🎊 🎤 🎈 🎂 💍 🎊 🎤 🎈 🎂<br />💍 🎊 🎤 🎈 🎂 💍 🎊 🎤 🎈 🎂 💍 🎊</div>
         <div style={{ position: "relative", fontSize: "clamp(22px,7vw,34px)", lineHeight: 1, flexShrink: 0 }}>🎉</div>
         <div style={{ position: "relative", flex: 1, minWidth: 0, color: "#fff" }}>
