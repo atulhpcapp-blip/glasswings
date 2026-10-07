@@ -2965,6 +2965,30 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
     </div>
   );
 }
+// BookMyShow-style banner: pure image, 2:1, swipe + auto-advance, dots on the picture
+function BmsSlider({ slides, onSlide }) {
+  const ref = useRef(null), [i, setI] = useState(0), hold = useRef(0);
+  const n = slides.length;
+  useEffect(() => {
+    if (n < 2) return;
+    const t = setInterval(() => { if (Date.now() - hold.current < 5000) return; const el = ref.current; if (!el) return; const nx = (Math.round(el.scrollLeft / el.clientWidth) + 1) % n; el.scrollTo({ left: nx * el.clientWidth, behavior: nx === 0 ? "auto" : "smooth" }); }, 4000);
+    return () => clearInterval(t);
+  }, [n]);
+  if (!n) return null;
+  return (
+    <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", aspectRatio: "2 / 1", background: "#e9ebee" }}>
+      <div ref={ref} onScroll={e => { const el = e.currentTarget; setI(Math.round(el.scrollLeft / Math.max(1, el.clientWidth))); }} onTouchStart={() => { hold.current = Date.now(); }}
+        style={{ display: "flex", width: "100%", height: "100%", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
+        {slides.map((s, k) => <div key={k} onClick={() => onSlide && onSlide(s)} style={{ flex: "0 0 100%", height: "100%", scrollSnapAlign: "start", cursor: s.id ? "pointer" : "default", position: "relative" }}>
+          <img src={s.url} alt={s.title || ""} loading={k ? "lazy" : "eager"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        </div>)}
+      </div>
+      {n > 1 && <div style={{ position: "absolute", left: 0, right: 0, bottom: 8, display: "flex", justifyContent: "center", gap: 5, pointerEvents: "none" }}>
+        {slides.map((_, k) => <span key={k} style={{ width: k === i ? 16 : 6, height: 6, borderRadius: 99, background: k === i ? "#fff" : "rgba(255,255,255,.55)", boxShadow: "0 0 3px rgba(0,0,0,.35)", transition: "width .2s" }} />)}
+      </div>}
+    </div>
+  );
+}
 function HeroSlider({ slides, wide, onSlide }) {
   const [i, setI] = useState(0);
   const tx = useRef(null);
@@ -4862,6 +4886,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
   const [dateQuick, setDateQuick] = useState("all");
   const [savedOnly, setSavedOnly] = useState(false);
   const [seeAll, setSeeAll] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [wide, setWide] = useState(typeof window !== "undefined" && window.innerWidth >= 900);
   useEffect(() => { const f = () => setWide(window.innerWidth >= 900); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
   const ql = q.trim().toLowerCase();
@@ -5029,27 +5054,30 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
           <div style={{padding:"18px 18px 6px",background:"#fff"}}>
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
               <div>
-                <div style={{fontSize:28,fontWeight:700,color:"#222",letterSpacing:-.5,lineHeight:1.05}}>It All Starts Here!</div>
+                <div style={{fontSize:30,fontWeight:700,color:"#1f1f1f",letterSpacing:-.6,lineHeight:1.05}}>It All Starts Here!</div>
                 <button onClick={()=>setCitySheet(true)} style={{border:0,background:"transparent",padding:"7px 0 0",color:BMS_RED,fontSize:15,fontWeight:600,cursor:"pointer"}}>{currentCity} ›</button>
               </div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <button onClick={()=>setSearchOpen(v=>!v)} aria-label="Search" style={{width:44,height:44,borderRadius:"50%",border:"1.5px solid #d4d4d8",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0}}><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
               <button onClick={()=>onProfile && onProfile()} aria-label="Profile" style={{width:48,height:48,borderRadius:"50%",border:"1.5px solid #aaa",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",color:"#666",padding:0,overflow:"hidden",cursor:"pointer"}}>
                 {profile?.avatar_url
                   ? <img src={profile.avatar_url} alt={profile?.full_name ? `${profile.full_name} profile` : "Profile"} style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
                   : <User size={25}/>}
               </button>
+              </div>
             </div>
           </div>
 
-          <div style={{padding:"8px 16px 4px"}}>
+          {(searchOpen || q) && <div style={{padding:"8px 16px 4px"}}>
             <div style={{position:"relative"}}>
               <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:15,opacity:.7}}>🔍</span>
-              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search events, venues, artists…" style={{width:"100%",boxSizing:"border-box",padding:"11px 38px 11px 40px",border:"1px solid #e5e7eb",borderRadius:10,background:"#f5f5f6",fontSize:15,outline:"none",color:"#222"}}/>
-              {q && <span onClick={()=>setQ("")} style={{position:"absolute",right:13,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#777"}}>✕</span>}
+              <input autoFocus={searchOpen && !q} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search events, venues, artists…" style={{width:"100%",boxSizing:"border-box",padding:"11px 38px 11px 40px",border:"1px solid #e5e7eb",borderRadius:10,background:"#f5f5f6",fontSize:15,outline:"none",color:"#222"}}/>
+              <span onClick={()=>{setQ("");setSearchOpen(false);}} style={{position:"absolute",right:13,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#777"}}>✕</span>
             </div>
-          </div>
+          </div>}
 
-          <div ref={catRowRef} style={{display:"flex",overflowX:"auto",padding:"14px 6px 14px",scrollbarWidth:"none"}}>
-            {[{name:""},...catTiles].map(c=>{ const on = c.name ? flt.category[0]===c.name : flt.category.length===0; return <div key={c.name||"all"} onClick={()=>pickCat(c.name)} style={{flex:"0 0 21%",minWidth:76,maxWidth:110,textAlign:"center",cursor:"pointer",padding:"0 4px",boxSizing:"border-box"}}>
+          <div ref={catRowRef} style={{display:"flex",overflowX:"auto",padding:"14px 6px 10px",scrollbarWidth:"none",background:"linear-gradient(#fff,#f7f7f8)"}}>
+            {[{name:""},...catTiles].map(c=>{ const on = c.name ? flt.category[0]===c.name : flt.category.length===0; return <div key={c.name||"all"} onClick={()=>pickCat(c.name)} style={{flex:"0 0 23%",minWidth:84,maxWidth:120,textAlign:"center",cursor:"pointer",padding:"0 3px",boxSizing:"border-box"}}>
               <div style={{width:46,height:46,margin:"0 auto",borderRadius:12,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>
                 {!c.name ? "✨" : c.image_url ? <img src={c.image_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:12}}/> : categoryIcon(c.name)}
               </div>
@@ -5057,7 +5085,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             </div>; })}
           </div>
 
-          {heroSlides.length>0 && <div style={{padding:"4px 18px 0"}}><div style={{borderRadius:14,overflow:"hidden"}}><HeroSlider slides={heroSlides} wide={wide} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div></div>}
+          {heroSlides.length>0 && <div style={{padding:"6px 18px 0"}}><BmsSlider slides={heroSlides} onSlide={sl=>sl.id&&onOpenDetail&&onOpenDetail(sl.id)}/></div>}
           <PlanEventBanner profile={profile}/>
 
           {(q || flt.category.length > 0 || fltCount(flt) > 0) && <div style={{display:"flex",gap:8,alignItems:"center",padding:"4px 18px 10px",flexWrap:"wrap"}}>
@@ -13165,7 +13193,7 @@ function PlanEventBanner({ profile }) {
   const [open, setOpen] = useState(false);
   if (!profile?.id) return null;
   return (
-    <div style={{ padding: "14px 18px 16px" }}>
+    <div style={{ padding: "16px 18px 8px" }}>
       <div onClick={() => setOpen(true)} role="button" style={{ position: "relative", cursor: "pointer", borderRadius: 14, overflow: "hidden", aspectRatio: "5 / 1", minHeight: 64, background: "linear-gradient(100deg,#1E1B4B 0%,#6D28D9 38%,#DB2777 72%,#F59E0B 100%)", display: "flex", alignItems: "center", padding: "0 3.5%", gap: "3%", boxSizing: "border-box", boxShadow: "0 3px 12px rgba(109,40,217,.18)" }}>
         <div aria-hidden style={{ position: "absolute", inset: 0, opacity: .22, fontSize: 22, lineHeight: 1.6, whiteSpace: "nowrap", overflow: "hidden", pointerEvents: "none", letterSpacing: 10 }}>🎈 🎂 💍 🎊 🎤 🎈 🎂 💍 🎊 🎤 🎈 🎂<br />💍 🎊 🎤 🎈 🎂 💍 🎊 🎤 🎈 🎂 💍 🎊</div>
         <div style={{ position: "relative", fontSize: "clamp(22px,7vw,34px)", lineHeight: 1, flexShrink: 0 }}>🎉</div>
