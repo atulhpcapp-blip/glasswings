@@ -4902,6 +4902,9 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     return true;
   };
   useEffect(() => { supabase.from("slider_images").select("*").order("position").order("created_at").then(({ data }) => setCustom(data || [])); }, []);
+  const [homeAds, setHomeAds] = useState([]);
+  useEffect(() => { if (privateMode) return; supabase.from("home_ads").select("*").order("sort").order("created_at", { ascending: false }).then(({ data, error }) => { if (!error) setHomeAds(data || []); }); }, [privateMode]);
+  const adsAt = place => <HomeAdBlock ads={homeAds.filter(x => x.placement === place)} onOpenEvent={id => onOpenDetail && onOpenDetail(id)} />;
   useEffect(() => { if (focus) { onOpenDetail && onOpenDetail(focus); onFocusDone && onFocusDone(); } }, [focus]);
   const cityNames = (cities && cities.length) ? cities.map(c => c.name) : Array.from(new Set(events.map(e => e.city).filter(Boolean)));
   const catTiles = (categories && categories.length) ? categories : Array.from(new Set(events.map(e => e.category).filter(Boolean))).map(n => ({ name: n }));
@@ -5097,6 +5100,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
             {head("Recommended Events", null, "rec")}
             {list.length===0 ? <div style={{padding:"28px 18px",color:"#777",textAlign:"center"}}>No events match your search.</div> : row(list)}
           </section>
+          {adsAt("after_recommended")}
 
           {(nToday + nTomorrow + nWeekend) > 0 && <section style={{padding:"4px 0 26px"}}>
             {head("Best Events This Week", "Monday to Sunday, we got you covered")}
@@ -5106,6 +5110,7 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
               {tile("Weekend Plans", nWeekend, ["#8DD3E0", "#4A93C7"], null, "🥳", ()=>setSeeAll({title:"Weekend Plans",key:"weekend"}), 150, 150)}
             </div>
           </section>}
+          {adsAt("after_week")}
 
           {trips.length > 0 && <section style={{padding:"4px 0 26px"}}>
             {head("Weekend Getaways 🏝️", "Book now, pay in parts before you travel", "trips")}
@@ -5118,17 +5123,20 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
               {catCounts.map((c,i)=>tile(c.name, c.n, TILE_GRADS[i % TILE_GRADS.length], c.image_url, categoryIcon(c.name), ()=>setSeeAll({title:c.name,key:"cat:"+c.name}), 168, 112, "cat"+c.name))}
             </div>
           </section>}
+          {adsAt("after_categories")}
 
           {list.length > 3 && <section style={{padding:"4px 0 26px"}}>
             {head("Popular Events", null, "pop")}
             {row(getItems("pop"))}
           </section>}
+          {adsAt("after_popular")}
 
           {catCounts.map(c=><section key={"row"+c.name} style={{padding:"4px 0 26px"}}>
             {head(c.name, null, "cat:"+c.name)}
             {row(getItems("cat:"+c.name))}
           </section>)}
 
+          {adsAt("bottom")}
           <div style={{padding:"6px 18px 0",textAlign:"center"}}>
             <button onClick={()=>setSeeAll({title:"All Categories",key:"allcats"})} style={{border:0,background:"transparent",color:BMS_RED,fontSize:17,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:8,padding:"10px"}}><span style={{fontSize:19}}>🗂️</span> Explore All Categories</button>
             <div style={{height:1,background:"#e5e7eb",margin:"14px 0 22px"}}/>
@@ -10866,6 +10874,141 @@ function RoomChat({ gwEvents = [], room, groupType = "room", user, profile, isAd
       </div>
       </>
       )}
+    </div>
+  );
+}
+
+// ---------- 📢 Home page ad banners (BookMyShow-style cards between sections) ----------
+const GW_AD_PLACES = [["after_recommended", "After Recommended Events"], ["after_week", "After Best Events This Week"], ["after_categories", "After Browse By Category"], ["after_popular", "After Popular Events"], ["bottom", "Bottom of the page"]];
+const gwAdLive = a => {
+  if (!a || a.active === false) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  if (a.show_from && new Date(a.show_from + "T00:00:00") > today) return false;
+  if (a.show_until && new Date(a.show_until + "T00:00:00") < today) return false;
+  return true;
+};
+function HomeAdBlock({ ads, onOpenEvent }) {
+  const ref = useRef(null), [i, setI] = useState(0);
+  const list = (ads || []).filter(gwAdLive);
+  useEffect(() => {
+    list.forEach(a => { try { const k = "gw_ad_v_" + a.id; if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, "1"); } catch { } supabase.rpc("home_ad_track", { p_ad: a.id, p_kind: "view" }).then(() => {}, () => {}); });
+  }, [list.map(a => a.id).join(",")]);
+  if (!list.length) return null;
+  const open = a => {
+    supabase.rpc("home_ad_track", { p_ad: a.id, p_kind: "click" }).then(() => {}, () => {});
+    if (a.event_id && onOpenEvent) return onOpenEvent(a.event_id);
+    if (a.link_url) { const u = /^https?:\/\//i.test(a.link_url) ? a.link_url : "https://" + a.link_url; window.open(u, "_blank", "noopener"); }
+  };
+  const card = a => (
+    <div key={a.id} style={{ flex: "0 0 100%", scrollSnapAlign: "start", boxSizing: "border-box", padding: "0 16px" }}>
+      <div style={{ border: "1px solid #e3e6ea", borderRadius: 14, overflow: "hidden", background: "#f3f5f8" }}>
+        <div onClick={() => open(a)} style={{ position: "relative", cursor: "pointer", background: "#111" }}>
+          <img src={a.image_url} alt={a.title || "Offer"} loading="lazy" style={{ width: "100%", display: "block", maxHeight: 420, objectFit: "cover" }} />
+          <span style={{ position: "absolute", top: 8, left: 8, background: "rgba(0,0,0,.55)", color: "#fff", fontSize: 10, letterSpacing: .8, padding: "3px 7px", borderRadius: 5 }}>SPONSORED</span>
+        </div>
+        <div style={{ padding: "12px 14px 14px" }}>
+          {a.title && <div style={{ fontSize: 17, color: "#222", marginBottom: 10 }}>{a.title}</div>}
+          <button onClick={() => open(a)} style={{ width: "100%", background: "#fff", border: "1.5px solid #F84464", color: "#F84464", borderRadius: 10, padding: "11px", fontSize: 16, cursor: "pointer", fontFamily: "inherit" }}>{a.cta_label || "Know more"}</button>
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <section style={{ padding: "4px 0 26px" }}>
+      <div ref={ref} onScroll={e => setI(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))} style={{ display: "flex", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none" }}>
+        {list.map(card)}
+      </div>
+      {list.length > 1 && <div style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 10 }}>{list.map((_, k) => <span key={k} style={{ width: k === i ? 16 : 6, height: 6, borderRadius: 99, background: k === i ? "#333" : "#cfd2d6" }} />)}</div>}
+    </section>
+  );
+}
+
+function HomeAdsManager() {
+  const [uid, setUid] = useState(null), [rows, setRows] = useState(null), [err, setErr] = useState(""), [evs, setEvs] = useState([]), [busy, setBusy] = useState(false);
+  const blank = { image_url: "", title: "", cta_label: "Book now", link_url: "", event_id: "", advertiser: "", placement: "after_recommended", show_from: "", show_until: "", active: true };
+  const [f, setF] = useState(blank), [editing, setEditing] = useState(null);
+  const fileRef = useRef(null);
+  const load = () => supabase.from("home_ads").select("*").order("placement").order("sort").order("created_at", { ascending: false }).then(({ data, error }) => { if (error) setErr(error.message); else { setErr(""); setRows(data || []); } });
+  useEffect(() => {
+    load();
+    supabase.auth.getUser().then(({ data }) => setUid(data?.user?.id || null));
+    supabase.from("events").select("id, title, emoji, event_at, end_at, event_date").order("created_at", { ascending: false }).limit(80).then(({ data }) => setEvs((data || []).filter(gwEventLive)));
+  }, []);
+  const inp = { width: "100%", boxSizing: "border-box", border: `1px solid ${W.line}`, borderRadius: 10, padding: "10px 12px", fontSize: 16, color: "#111B21", background: "#fff", outline: "none", fontFamily: "inherit" };
+  const lbl = { fontSize: 12, fontWeight: 800, color: W.soft, margin: "10px 0 5px" };
+  const pick = async ev => {
+    const file = ev.target.files?.[0]; if (!file || !uid) return;
+    setBusy(true);
+    try { const url = await uploadPhoto(uid, file); setF(x => ({ ...x, image_url: url })); } catch (x) { alert("Upload failed: " + (x.message || x)); }
+    setBusy(false); if (fileRef.current) fileRef.current.value = "";
+  };
+  const save = async () => {
+    if (!f.image_url) return alert("Add a picture first.");
+    if (!f.event_id && !f.link_url.trim()) return alert("Choose an event or paste a link for the button.");
+    const row = { image_url: f.image_url, title: f.title.trim() || null, cta_label: f.cta_label.trim() || "Know more", link_url: f.link_url.trim() || null, event_id: f.event_id || null, advertiser: f.advertiser.trim() || null, placement: f.placement, show_from: f.show_from || null, show_until: f.show_until || null, active: !!f.active };
+    const { error } = editing ? await supabase.from("home_ads").update(row).eq("id", editing) : await supabase.from("home_ads").insert(row);
+    if (error) return alert(error.message);
+    setF(blank); setEditing(null); load();
+  };
+  const del = async a => { if (!window.confirm("Delete this ad?")) return; await supabase.from("home_ads").delete().eq("id", a.id); load(); };
+  const toggle = async a => { await supabase.from("home_ads").update({ active: !a.active }).eq("id", a.id); load(); };
+  if (err) return <div style={{ padding: 14 }}><div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 14, padding: 14, color: "#9A3412", fontSize: 13.5 }}>Run <b>home_ads.sql</b> in Supabase → SQL Editor first.<div style={{ fontSize: 11.5, opacity: .8 }}>{err}</div></div></div>;
+  return (
+    <div style={{ padding: 14, maxWidth: 820 }}>
+      <div style={{ background: "linear-gradient(120deg,#111827,#7C3AED 60%,#F84464)", color: "#fff", borderRadius: 16, padding: "14px 16px", marginBottom: 14 }}>
+        <div style={{ fontWeight: 900, fontSize: 17 }}>📢 Home page ads</div>
+        <div style={{ fontSize: 12.5, opacity: .92, marginTop: 3, lineHeight: 1.45 }}>Sponsor or offer cards that appear between the sections of the Events home page as people scroll (like BookMyShow's "Exclusive reward for you"). Separate from the top slider. Several ads in the same place become a swipe carousel.</div>
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 14, marginBottom: 16 }}>
+        <div style={{ fontWeight: 900, color: W.ink, fontSize: 15 }}>{editing ? "✏️ Edit ad" : "➕ New ad"}</div>
+        <div style={lbl}>Picture (wide works best, e.g. 1200 × 750)</div>
+        <input ref={fileRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+        <div onClick={() => fileRef.current?.click()} style={{ border: `1.5px dashed ${f.image_url ? W.line : W.teal}`, borderRadius: 12, minHeight: 120, display: "grid", placeItems: "center", cursor: "pointer", overflow: "hidden", background: "#f8fafc", color: W.teal, fontWeight: 800 }}>
+          {f.image_url ? <img src={f.image_url} alt="" style={{ width: "100%", display: "block" }} /> : (busy ? "Uploading…" : "+ Upload picture")}
+        </div>
+        <div style={lbl}>Line under the picture</div>
+        <input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} placeholder="e.g. Exclusive reward for you" style={inp} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><div style={lbl}>Button text</div><input value={f.cta_label} onChange={e => setF({ ...f, cta_label: e.target.value })} placeholder="Book now" style={inp} /></div>
+          <div style={{ flex: 1 }}><div style={lbl}>Advertiser (for you)</div><input value={f.advertiser} onChange={e => setF({ ...f, advertiser: e.target.value })} placeholder="e.g. Coca-Cola" style={inp} /></div>
+        </div>
+        <div style={lbl}>Button opens…</div>
+        <select value={f.event_id} onChange={e => setF({ ...f, event_id: e.target.value })} style={inp}>
+          <option value="">A website / WhatsApp link (below)</option>
+          {evs.map(ev => <option key={ev.id} value={ev.id}>{(ev.emoji || "🎟️") + " " + ev.title}</option>)}
+        </select>
+        {!f.event_id && <input value={f.link_url} onChange={e => setF({ ...f, link_url: e.target.value })} placeholder="https://… or wa.me/91…" style={{ ...inp, marginTop: 8 }} />}
+        <div style={lbl}>Where on the home page</div>
+        <select value={f.placement} onChange={e => setF({ ...f, placement: e.target.value })} style={inp}>{GW_AD_PLACES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><div style={lbl}>Show from</div><input type="date" value={f.show_from} onChange={e => setF({ ...f, show_from: e.target.value })} style={inp} /></div>
+          <div style={{ flex: 1 }}><div style={lbl}>Show until</div><input type="date" value={f.show_until} onChange={e => setF({ ...f, show_until: e.target.value })} style={inp} /></div>
+        </div>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", margin: "12px 0", fontSize: 14, fontWeight: 700, color: W.ink }}><input type="checkbox" checked={f.active} onChange={e => setF({ ...f, active: e.target.checked })} style={{ width: 18, height: 18 }} /> Show this ad</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", padding: 12 }}>{editing ? "💾 Save changes" : "➕ Add ad"}</button>
+          {editing && <button onClick={() => { setEditing(null); setF(blank); }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "12px 16px" }}>Cancel</button>}
+        </div>
+      </div>
+
+      <div style={{ fontWeight: 900, color: W.ink, fontSize: 15, marginBottom: 8 }}>Your ads</div>
+      {!rows ? <Center>Loading…</Center> : rows.length === 0 ? <div style={{ color: W.soft, fontSize: 13.5 }}>No ads yet.</div> : rows.map(a => {
+        const live = gwAdLive(a); const ctr = a.views ? Math.round(a.clicks * 1000 / a.views) / 10 : 0;
+        return <div key={a.id} style={{ display: "flex", gap: 12, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 14, padding: 10, marginBottom: 10 }}>
+          <img src={a.image_url} alt="" style={{ width: 96, height: 64, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, color: W.ink, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.title || "(no title)"}{a.advertiser ? <span style={{ color: W.soft, fontWeight: 600 }}> · {a.advertiser}</span> : null}</div>
+            <div style={{ fontSize: 12, color: W.soft }}>{(GW_AD_PLACES.find(p => p[0] === a.placement) || [, a.placement])[1]}{a.show_until ? ` · until ${a.show_until}` : ""}</div>
+            <div style={{ fontSize: 12, marginTop: 3 }}><span style={{ fontWeight: 800, color: live ? W.teal : "#B91C1C" }}>{live ? "● Showing" : a.active ? "⏹ Not in dates" : "⏸ Off"}</span> · 👁 {a.views} views · 👆 {a.clicks} taps{a.views ? ` (${ctr}%)` : ""}</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              <button onClick={() => { setEditing(a.id); setF({ ...blank, ...Object.fromEntries(Object.entries(a).map(([k, v]) => [k, v == null ? "" : v])), active: !!a.active }); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { } }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, padding: "5px 10px", fontSize: 12 }}>✏️ Edit</button>
+              <button onClick={() => toggle(a)} style={{ ...btn("#fff", a.active ? "#B45309" : W.teal), border: `1px solid ${W.line}`, padding: "5px 10px", fontSize: 12 }}>{a.active ? "⏸ Turn off" : "▶ Turn on"}</button>
+              <button onClick={() => del(a)} style={{ ...btn("#fff", "#B91C1C"), border: "1px solid #FECACA", padding: "5px 10px", fontSize: 12 }}>🗑</button>
+            </div>
+          </div>
+        </div>;
+      })}
     </div>
   );
 }
@@ -17607,11 +17750,11 @@ const GW_ADMIN_GROUPS = [
   ['Start here', ['guide']],
   ['Overview', ['dash','analytics']],
   ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
-  ['Events', ['review','events','private','stalls','sponsors','leads','door','directory','rooms']],
+  ['Events', ['review','events','homeads','private','stalls','sponsors','leads','door','directory','rooms']],
   ['Money', ['money','accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
   ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
-const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',review:'🛂',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',review:'🛂',homeads:'📢',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
 function AdminNavigation({ tabs, selected, onSelect, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const dialog = useRef(null), trigger = useRef(null);
@@ -18097,6 +18240,7 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
     ...(isSuper ? [["subscribers", "💎 Subscribers"]] : []),
     ...(isSuper ? [["money", "💰 Money"]] : []),
+    ...((isSuper || canApprove) ? [["homeads", "📢 Home ads"]] : []),
     ...(isSuper ? [["accounts", "📊 Accounts"]] : []),
     ...(isSuper ? [["subcoupons", "🏷️ Sub coupons"]] : []),
     ...(isSuper ? [["coupons", "🏷️ Coupons"]] : []),
@@ -18139,6 +18283,7 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
         : seg === "reports" ? <ReportsAdmin />
         : seg === "subcoupons" ? <PlanCouponsAdmin />
         : seg === "money" ? <MoneyDashboard />
+        : seg === "homeads" ? <HomeAdsManager />
         : seg === "accounts" ? <AccountsAdmin />
         : seg === "subscribers" ? <SubscribersAdmin />
         : seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
