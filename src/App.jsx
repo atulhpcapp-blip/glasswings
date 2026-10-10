@@ -3018,6 +3018,20 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
 function BmsSlider({ slides, onSlide, ratio = "2 / 1" }) {
   const ref = useRef(null), [i, setI] = useState(0), hold = useRef(0);
   const n = slides.length;
+  const activeSlide = useRef(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const align = () => {
+      const index = Math.min(Math.max(0, activeSlide.current), Math.max(0, n - 1));
+      el.scrollTo({ left: index * el.clientWidth, behavior: "auto" });
+      activeSlide.current = index;
+      setI(index);
+    };
+    align();
+    window.addEventListener("resize", align);
+    return () => window.removeEventListener("resize", align);
+  }, [n]);
   useEffect(() => {
     if (n < 2) return;
     const t = setInterval(() => { if (Date.now() - hold.current < 5000) return; const el = ref.current; if (!el) return; const nx = (Math.round(el.scrollLeft / el.clientWidth) + 1) % n; el.scrollTo({ left: nx * el.clientWidth, behavior: nx === 0 ? "auto" : "smooth" }); }, 4000);
@@ -3025,14 +3039,14 @@ function BmsSlider({ slides, onSlide, ratio = "2 / 1" }) {
   }, [n]);
   if (!n) return null;
   return (
-    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: ratio, background: "#e9ebee" }}>
-      <div ref={ref} onScroll={e => { const el = e.currentTarget; setI(Math.round(el.scrollLeft / Math.max(1, el.clientWidth))); }} onTouchStart={() => { hold.current = Date.now(); }}
+    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: ratio, background: "#102822" }}>
+      <div ref={ref} onScroll={e => { const el = e.currentTarget; activeSlide.current = Math.round(el.scrollLeft / Math.max(1, el.clientWidth)); setI(activeSlide.current); }} onTouchStart={() => { hold.current = Date.now(); }}
         style={{ display: "flex", width: "100%", height: "100%", overflowX: "auto", scrollSnapType: "x mandatory", scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
-        {slides.map((s, k) => <div key={k} onClick={() => onSlide && onSlide(s)} style={{ flex: "0 0 100%", height: "100%", scrollSnapAlign: "start", cursor: s.id ? "pointer" : "default", position: "relative" }}>
-          <img src={s.url} alt={s.title || ""} loading={k ? "lazy" : "eager"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        {slides.map((s, k) => <div key={s.id || s.url || k} onClick={() => onSlide && onSlide(s)} style={{ flex: "0 0 100%", width: "100%", minWidth: 0, overflow: "hidden", height: "100%", scrollSnapAlign: "start", cursor: s.id ? "pointer" : "default", position: "relative" }}>
+          <img src={s.url} alt={s.title || ""} loading={k ? "lazy" : "eager"} style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", display: "block" }} />
         </div>)}
       </div>
-      {n > 1 && <div style={{ position: "absolute", left: 0, right: 0, bottom: 8, display: "flex", justifyContent: "center", gap: 5, pointerEvents: "none" }}>
+      {n > 1 && <div style={{ position: "absolute", left: 0, right: 0, bottom: 8, display: "flex", justifyContent: "center", gap: 5, flexWrap: "wrap", maxHeight: 24, overflow: "hidden", pointerEvents: "none" }}>
         {slides.map((_, k) => <span key={k} style={{ width: k === i ? 16 : 6, height: 6, borderRadius: 99, background: k === i ? "#fff" : "rgba(255,255,255,.55)", boxShadow: "0 0 3px rgba(0,0,0,.35)", transition: "width .2s" }} />)}
       </div>}
     </div>
@@ -3056,7 +3070,7 @@ function HeroSlider({ slides, wide, onSlide }) {
       {slides.map((sl, idx) => (
         <div key={idx} style={{ position: "absolute", inset: 0, opacity: idx === i ? 1 : 0, transition: "opacity .6s ease" }}>
           <img src={sl.url} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(26px) brightness(.62)", transform: "scale(1.15)" }} />
-          <img src={sl.url} alt="" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: wide ? "cover" : "contain", objectPosition: "center" }} />
+          <img src={sl.url} alt="" decoding="async" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", objectPosition: "center" }} />
         </div>
       ))}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(rgba(6,18,26,.04) 38%, rgba(6,14,22,.8))" }} />
@@ -3121,13 +3135,13 @@ function PublicLanding() {
   const evSlide = ({ e, img }) => ({ url: img, title: `${e.emoji || "🎟️"} ${e.title}`, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
   const promoSlides = events
     .filter(e => Number(e.promo_pct) > 0 && e.approved !== false && gwEventLive(e))
-    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
+    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url || e.vertical_banner_url }))
     .filter(x => x.img)
     .sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct))
     .map(evSlide);
   const customSlides = custom.filter(sl => gwSlideLive(sl, events)).map(sl => ({ url: sl.url, id: sl.event_id || undefined }));
   const autoSlides = events
-    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url }))
+    .map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url || e.vertical_banner_url }))
     .filter(x => x.img && x.e.approved !== false && gwEventLive(x.e))
     .sort((a, b) => (a.e.event_at ? new Date(a.e.event_at).getTime() : 9e15) - (b.e.event_at ? new Date(b.e.event_at).getTime() : 9e15))
     .map(evSlide);
@@ -3135,7 +3149,7 @@ function PublicLanding() {
   const cust2 = customSlides.filter(c => !c.id || !seen.has(c.id));
   cust2.forEach(c => { if (c.id) seen.add(c.id); });
   const auto2 = autoSlides.filter(a2 => !seen.has(a2.id));
-  const heroSlides = [...promoSlides, ...cust2, ...auto2].slice(0, 8);
+  const heroSlides = [...promoSlides, ...cust2, ...auto2];
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
   if (detailEvent) {
@@ -4969,13 +4983,13 @@ function Events({ events, categories, cities, profile, ticketTypes, subs, stats,
     return m === 0 ? "Free" : `From ₹${m}`;
   };
   const evSlide = ({ e, img }) => ({ url: img, title: e.title, sub: [e.event_date, e.city].filter(Boolean).join(" · "), cta: "Get tickets", id: e.id });
-  const promoSlides = events.filter(e => Number(e.promo_pct) > 0 && e.approved !== false && gwEventLive(e)).map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img).sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct)).map(evSlide);
+  const promoSlides = events.filter(e => Number(e.promo_pct) > 0 && e.approved !== false && gwEventLive(e)).map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url || e.vertical_banner_url })).filter(x => x.img).sort((a, b) => Number(b.e.promo_pct) - Number(a.e.promo_pct)).map(evSlide);
   const customSlides = privateMode ? [] : custom.filter(sl => gwSlideLive(sl, events)).map(sl => ({ url: sl.url, id: sl.event_id || undefined }));
-  const autoSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url })).filter(x => x.img && x.e.approved !== false && gwEventLive(x.e)).sort((a, b) => (a.e.event_at ? new Date(a.e.event_at).getTime() : 9e15) - (b.e.event_at ? new Date(b.e.event_at).getTime() : 9e15)).map(evSlide);
+  const autoSlides = events.map(e => ({ e, img: (e.banner_type !== "video" && e.banner_url) || e.poster_url || e.vertical_banner_url })).filter(x => x.img && x.e.approved !== false && gwEventLive(x.e)).sort((a, b) => (a.e.event_at ? new Date(a.e.event_at).getTime() : 9e15) - (b.e.event_at ? new Date(b.e.event_at).getTime() : 9e15)).map(evSlide);
   const seen = new Set(promoSlides.map(ps => ps.id).filter(Boolean));
   const cust2 = customSlides.filter(c => !c.id || !seen.has(c.id)); cust2.forEach(c => { if (c.id) seen.add(c.id); });
   const auto2 = autoSlides.filter(a2 => !seen.has(a2.id));
-  const heroSlides = [...promoSlides, ...cust2, ...auto2].slice(0, 8);
+  const heroSlides = [...promoSlides, ...cust2, ...auto2];
 
   const currentCity = flt.city.length === 1 ? flt.city[0] : (profile?.city || "Hyderabad");
   const categoryIcon = (name) => {
@@ -11098,7 +11112,7 @@ function SliderManager() {
   return (
     <div style={{ background: "#fff", borderRadius: 14, border: `1px solid ${W.line}`, padding: 14, marginBottom: 12 }}>
       <div style={{ fontWeight: 700, color: W.ink }}>Homepage slider</div>
-      <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 10px" }}>These images rotate at the top of the events page. Link each one to an event: it opens that event and disappears by itself once the event is over. For a slide with no event, set "Show until". If you add none, the latest event banners are shown automatically.</div>
+      <div style={{ fontSize: 12.5, color: W.soft, margin: "2px 0 10px" }}>These images rotate at the top of the events page. Link each one to an event: it opens that event and disappears by itself once the event is over. For a slide with no event, set "Show until". Eligible event banners are always included automatically alongside these images; no eight-slide limit.</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {rows.map(r => (
           <div key={r.id} style={{ position: "relative", width: 130 }}>
