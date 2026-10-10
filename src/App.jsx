@@ -698,7 +698,56 @@ class GwErrorBoundary extends React.Component {
   }
 }
 export default function App() {
-  return <GwErrorBoundary><MobileLayoutStyles /><AppRoot /></GwErrorBoundary>;
+  return <GwErrorBoundary><MobileLayoutStyles /><GlasswingsAndroidInstallBar /><AppRoot /></GwErrorBoundary>;
+}
+
+// Android browser promotion: in normal flow so it never covers navigation.
+function GlasswingsAndroidInstallBar() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const modes = ["standalone", "fullscreen", "minimal-ui"].map(mode => window.matchMedia(`(display-mode: ${mode})`));
+    const update = () => {
+      let dismissed = false;
+      try { dismissed = Number(localStorage.getItem("gw_android_install_dismissed_until")) > Date.now(); } catch {}
+      const inApp = modes.some(mode => mode.matches) || navigator.standalone === true || document.referrer.startsWith("android-app://");
+      setVisible(/Android/i.test(navigator.userAgent) && !inApp && !dismissed);
+    };
+    update();
+    modes.forEach(mode => mode.addEventListener?.("change", update));
+    window.addEventListener("storage", update);
+    window.addEventListener("pageshow", update);
+    return () => {
+      modes.forEach(mode => mode.removeEventListener?.("change", update));
+      window.removeEventListener("storage", update);
+      window.removeEventListener("pageshow", update);
+    };
+  }, []);
+  const dismiss = () => {
+    try { localStorage.setItem("gw_android_install_dismissed_until", String(Date.now() + 7 * 24 * 60 * 60 * 1000)); } catch {}
+    setVisible(false);
+  };
+  if (!visible) return null;
+  return <aside aria-label="Get the Glasswings Android app" className="gw-android-install">
+    <style>{`
+      .gw-android-install{width:100%;background:linear-gradient(110deg,#073d35,#087b65);color:#fff;padding:10px 12px;font-family:system-ui,sans-serif;}
+      .gw-android-install-inner{max-width:760px;margin:auto;display:flex;align-items:center;gap:10px;min-width:0;}
+      .gw-android-install-logo{width:40px;height:40px;object-fit:contain;flex-shrink:0;}
+      .gw-android-install-copy{flex:1;min-width:0;line-height:1.3;}
+      .gw-android-install-copy strong{display:block;font-size:14px;}
+      .gw-android-install-copy span{display:block;font-size:11px;color:#d0e8dd;margin-top:3px;}
+      .gw-android-install-link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 14px;border-radius:12px;background:#d6efb5;color:#143b30;font-size:13px;font-weight:800;text-decoration:none;flex-shrink:0;}
+      .gw-android-install-close{border:0;background:transparent;color:white;min-width:44px;min-height:44px;font-size:25px;cursor:pointer;padding:0;flex-shrink:0;}
+      .gw-android-install a:focus-visible,.gw-android-install button:focus-visible{outline:2px solid white;outline-offset:2px;}
+      @media(min-width:820px){.gw-android-install{display:none;}}
+      @media(max-width:359px){.gw-android-install{padding:8px;}.gw-android-install-inner{gap:6px;}.gw-android-install-logo{display:none;}}
+    `}</style>
+    <div className="gw-android-install-inner">
+      <img className="gw-android-install-logo" src="/logo-white.png" alt="" />
+      <div className="gw-android-install-copy"><strong>Get the Glasswings app</strong><span>Android · Events, people & memories</span></div>
+      <a className="gw-android-install-link" href="https://play.google.com/store/apps/details?id=branded.m7fa41984d74842b6bb24d364d88fe092.hyderabadpartyclub" aria-label="Install Glasswings from Google Play">Install</a>
+      <button type="button" className="gw-android-install-close" onClick={dismiss} aria-label="Hide app install banner for seven days">×</button>
+    </div>
+  </aside>;
 }
 
 // Shared by signed-in and public screens; horizontal scrolling stays inside rails.
