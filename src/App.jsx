@@ -1039,11 +1039,23 @@ function PromoPctEditor({ event: e, onUpdate, canApprove }) {
     </div>
   );
 }
+function SliderBannerPreview({ url }) {
+  const [size, setSize] = useState(null);
+  useEffect(() => setSize(null), [url]);
+  return <div style={{ margin: "12px 0", padding: 14, border: "1px solid #cce6dc", borderRadius: 14, background: "#f3faf7", minWidth: 0 }}>
+    <div style={{ fontWeight: 800, color: W.ink }}>Homepage slider banner</div>
+    <p style={{ margin: "6px 0 10px", fontSize: 12, color: W.soft, lineHeight: 1.5 }}>Recommended: <b>1600 × 680 px</b> · Landscape image. Keep important text away from the edges. This banner is separate from the event poster and also serves as the event-page image. Eligible approved events appear automatically until they end.</p>
+    {url ? <div style={{ aspectRatio: "1600 / 680", width: "100%", overflow: "hidden", background: "#102822", borderRadius: 10 }}><img key={url} src={url} alt="Slider banner preview" onLoad={e => setSize([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} /></div> : <div style={{ padding: 16, border: "1px dashed #b5cfc2", borderRadius: 10, fontSize: 12, color: W.soft }}>Optional: upload a landscape image. Without one, the slider uses your event poster.</div>}
+    {size && <div style={{ marginTop: 8, fontSize: 12, color: W.soft }}>Your image: {size[0]} × {size[1]} px. {Math.abs(size[0] / size[1] - 1600 / 680) > .08 ? "The complete image will fit with space around it. Use the recommended dimensions to fill the slider." : "This image matches the slider shape."}</div>}
+  </div>;
+}
+
 function EventMediaEditor({ event: e, onUpdate }) {
   const pRef = useRef(null), bRef = useRef(null);
   const [up, setUp] = useState(false);
   const pick = async (file, kind) => {
     if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Please choose an image."); return; }
     setUp(true);
     try {
       const url = await uploadChatFile("banners", file);
@@ -1058,11 +1070,12 @@ function EventMediaEditor({ event: e, onUpdate }) {
       <label style={{ fontSize: 13, fontWeight: 700, color: W.ink }}>Event media</label>
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <button onClick={() => pRef.current?.click()} disabled={up} style={tile}>{up ? "Uploading…" : (e.poster_url ? "Replace poster (3:4)" : "+ Poster (3:4)")}</button>
-        <button onClick={() => bRef.current?.click()} disabled={up} style={tile}>{up ? "Uploading…" : (e.banner_url ? "Replace banner / video" : "+ Banner / video")}</button>
+        <button onClick={() => bRef.current?.click()} disabled={up} style={tile}>{up ? "Uploading…" : (e.banner_url ? "Replace slider banner" : "+ Slider banner")}</button>
       </div>
-      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Poster shows on event cards; banner (or video) shows on the slider and event page.</div>
+      <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Poster shows on event cards. Slider banner: 1600 × 680 px, landscape image.</div>
+      <SliderBannerPreview url={e.banner_type !== "video" ? e.banner_url : ""} />
       <input ref={pRef} type="file" accept="image/*" onChange={ev => { pick(ev.target.files?.[0], "poster"); ev.target.value = ""; }} style={{ display: "none" }} />
-      <input ref={bRef} type="file" accept="image/*,video/*" onChange={ev => { pick(ev.target.files?.[0], "banner"); ev.target.value = ""; }} style={{ display: "none" }} />
+      <input ref={bRef} type="file" accept="image/*" onChange={ev => { pick(ev.target.files?.[0], "banner"); ev.target.value = ""; }} style={{ display: "none" }} />
     </div>
   );
 }
@@ -19812,7 +19825,8 @@ function EventVideos({ ev, onUpdate }) {
       <label style={{ fontSize: 13, fontWeight: 700, color: W.ink, marginTop: 8 }}>🖥️ On the event page & when shared (landscape)</label>
       <div style={{ fontSize: 11.5, color: W.soft, marginTop: -6 }}>Shown on the opened event page (video plays with sound, on loop) and used when sharing to groups / WhatsApp. Video is used if present, otherwise the banner.</div>
       {row("landscape_video_url", ev.landscape_video_url, "16/9", 120, "🎥", "Landscape video (16:9)", "Plays on the event page (with sound) and is shared to groups. Used first.", lR, "video")}
-      {row("banner_url", landscapeBanner, "16/9", 120, "🖼️", "Landscape banner (16:9)", "Image used on the event page / when shared if there's no landscape video.", lbR, "image")}
+      <SliderBannerPreview url={landscapeBanner} />
+      {row("banner_url", landscapeBanner, "1600/680", 120, "🖼️", "Upload slider banner", "Recommended: 1600 × 680 px · Landscape image. Also used on the event page.", lbR, "image")}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
         <button onClick={flashSaved} style={{ ...btn(W.teal, "#fff"), opacity: busy ? 0.6 : 1 }} disabled={!!busy}>{busy ? "Uploading…" : "Save"}</button>
         {saved && <span style={{ fontSize: 13, fontWeight: 800, color: W.teal }}>Saved ✓</span>}
@@ -21550,7 +21564,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
   ];
   const STEP_TIPS = [
     ["Give the event a clear title and pick who's hosting — Glasswings Original, Partner (an outside organiser) or a Get-together.", "Partner events: add your organiser name and logo so guests see who's running it.", "Choose a category and city so the event shows under the right filters."],
-    ["Add a Poster (portrait 3:4) — this is what people see on the event card.", "Add a Banner (landscape) — shown on the event page and when the event is shared.", "Videos are optional; a vertical reel autoplays on the card if you add one."],
+    ["Add a Poster (portrait 3:4) — this is what people see on the event card.", "Add a Slider banner (1600 × 680 px) — preview the full image for the homepage slider and event page.", "Videos are optional; a vertical reel autoplays on the card if you add one."],
     ["Pick the date and start time, and always set the END time so the event auto-closes after it finishes.", "Use Weekly / Monthly / Custom for events that repeat.", "Choose Physical (add the venue), Online (add a link) or Venue TBD."],
     ["Write a short description, then add schedule, food, facilities and dress code if they apply.", "Add your line-up/artists, FAQs and terms so guests have everything.", "Pick entry badges (18+, Couples only, Members only…) — they show on the event."],
     ["Set the ticket price (enter 0 for a free event); add a member discount if you want.", "Add-ons are optional paid extras guests can add at checkout.", "After you tap Create, open the event to add more ticket types, guests (Guest/VIP/Team) and edit anything."],
@@ -21623,7 +21637,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
     }
   }, [memberScope]);
   const reset = () => setF(blankF);
-  const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
+  const pickBanner = async (e) => { const file = e.target.files?.[0]; if (!file) return; if (!file.type.startsWith("image/")) { alert("Please choose a landscape image for the slider banner."); return; } setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, banner: url, bannerType: file.type.startsWith("video") ? "video" : "image" })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const pRef = useRef(null);
   const pickPoster = async (e) => { const file = e.target.files?.[0]; if (!file) return; setUp(true); try { const url = await uploadChatFile("banners", file); setF(s => ({ ...s, poster: url })); } catch (x) { alert("Upload failed: " + x.message); } setUp(false); };
   const vvRef = useRef(null);
@@ -21761,7 +21775,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
           </>)}
 
           {step === 1 && (<>
-          <input ref={bRef} type="file" accept="image/*,video/*" onChange={pickBanner} style={{ display: "none" }} />
+          <input ref={bRef} type="file" accept="image/*" onChange={pickBanner} style={{ display: "none" }} />
           <input ref={pRef} type="file" accept="image/*" onChange={pickPoster} style={{ display: "none" }} />
           <input ref={vvRef} type="file" accept="video/*" onChange={pickVVideo} style={{ display: "none" }} />
           <input ref={vbRef} type="file" accept="image/*" onChange={pickVBanner} style={{ display: "none" }} />
@@ -21770,9 +21784,11 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
             <div onClick={() => pRef.current?.click()} style={{ width: 108, flexShrink: 0, aspectRatio: "3/4", borderRadius: 12, overflow: "hidden", border: f.poster ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textAlign: "center", color: W.soft, fontSize: 11.5, fontWeight: 600, padding: f.poster ? 0 : 8 }}>
               {f.poster ? <img src={f.poster} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? "Uploading…" : "+ Poster · portrait 3:4 (event cards)")}
             </div>
-            <div onClick={() => bRef.current?.click()} style={{ flex: 1, minWidth: 0, borderRadius: 12, overflow: "hidden", border: f.banner ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: W.bg, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textAlign: "center", color: W.soft, fontSize: 12, fontWeight: 600, padding: f.banner ? 0 : 8 }}>
-              {f.banner ? <BannerMedia url={f.banner} type={f.bannerType} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : (up ? "Uploading…" : "+ Banner · landscape (slider & event page) — or a video")}
-            </div>
+          </div>
+          <SliderBannerPreview url={f.bannerType !== "video" ? f.banner : ""} />
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
+            <button type="button" disabled={up} onClick={() => bRef.current?.click()} style={btn(W.teal, "#fff")}>{up ? "Uploading…" : f.banner ? "Replace slider banner" : "+ Upload slider banner"}</button>
+            {f.banner && <button type="button" disabled={up} onClick={() => setF(s => ({ ...s, banner: "", bannerType: "image" }))} style={btn("#fff", W.soft)}>Remove banner</button>}
           </div>
           <div onClick={() => vvRef.current?.click()} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 12, cursor: "pointer" }}>
             <div style={{ width: 80, aspectRatio: "9/16", flexShrink: 0, borderRadius: 12, overflow: "hidden", border: f.vvideo ? `1px solid ${W.line}` : `1.5px dashed ${W.line}`, background: "#0b1f1c", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
