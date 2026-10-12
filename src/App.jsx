@@ -21763,6 +21763,65 @@ const gwQCanAutoSwitch = (items,kind) => {
   return Array.isArray(items) && items.length===preset.length && items.every((item,i)=>
     item.name===preset[i].name && !(Number(item.rate)>0));
 };
+// Three-tier proposals retain itemised estimates independently for each option.
+// Suggested services have blank rates: Glasswings staff enter every real price.
+const gwQPackageTiers = [
+  {id:'good',name:'Good',subtitle:'Essential celebration'},
+  {id:'better',name:'Better',subtitle:'Enhanced experience'},
+  {id:'premium',name:'Premium',subtitle:'Signature experience'}
+];
+const gwQPremiumExtras = {
+  birthday:['Instant prints / photo booth','Guest hospitality coordinator'],
+  farmhouse:['Event photographer','Campfire (venue permitted)'],
+  corporate:['LED wall / screen','Corporate event documentation'],
+  wedding:['Videography / highlight film','Guest transportation / shuttle'],
+  conference:['Live-streaming / hybrid event setup','Corporate event documentation'],
+  other:['Event photographer','On-site event manager']
+};
+const gwQCloneItems = list => (list||[]).map(i=>({...i}));
+function gwQBuildPackageOptions(kind,baseItems,discount=0){
+  const base=gwQCloneItems(baseItems?.length?baseItems:gwQItemsFor(kind));
+  const minGood=Math.max(2,Math.ceil(base.length*0.55));
+  const extras=(gwQPremiumExtras[kind]||gwQPremiumExtras.other).filter(name=>!base.some(i=>i.name===name));
+  const premium=[...gwQCloneItems(base),...gwQItemsFor(kind).filter(i=>extras.includes(i.name))];
+  for(const name of extras){
+    if(premium.some(i=>i.name===name))continue;
+    const entry=gwQCatalogByName.get(name.toLowerCase());
+    premium.push({name,category:entry?.category||gwQCategoryFor(name),qty:1,unit:entry?.unit||'service',rate:''});
+  }
+  return [
+    {id:'good',name:'Good',description:'Essential services',items:gwQCloneItems(base.slice(0,minGood)),discount:0},
+    {id:'better',name:'Better',description:'More services and comfort',items:gwQCloneItems(base),discount:Math.max(0,Number(discount)||0)},
+    {id:'premium',name:'Premium',description:'Fuller, elevated experience',items:premium,discount:0}
+  ];
+}
+function gwQPackageOptions(d){
+  if(d?.package_mode!=='compare')return [];
+  const saved=Array.isArray(d.package_options)?d.package_options:[];
+  return gwQPackageTiers.map(t=>{
+    const p=saved.find(x=>x.id===t.id);
+    return {...t,...p,name:t.name,items:Array.isArray(p?.items)?p.items:[],discount:Math.max(0,Number(p?.discount)||0)};
+  });
+}
+const gwQPackageCalc=(doc,tier)=>gwQCalc({...doc,items:tier.items||[],discount:tier.discount||0});
+const gwQComparisonReady=d=>{
+  const amounts=gwQPackageOptions(d).map(p=>gwQPackageCalc(d,p).total);
+  return amounts.length===3 && amounts[0]>0 && amounts[0]<amounts[1] && amounts[1]<amounts[2];
+};
+function gwQPackageSummary(d){
+  const arr=gwQPackageOptions(d);
+  return arr.map(p=>({id:p.id,name:p.name,...gwQPackageCalc(d,p)}));
+}
+function gwQFormatTotal(d){
+  if(d.package_mode!=='compare'||d.doc_type==='proforma')return gwQMoney(gwQCalc(d).total);
+  return gwQPackageSummary(d).map(p=>`${p.name}: ${gwQMoney(p.total)}`).join(' · ');
+}
+function gwQAsSelectedPackage(doc,key){
+  const p=gwQPackageOptions(doc).find(x=>x.id===key);
+  if(!p)throw Error('Select a valid accepted package before creating the proforma invoice.');
+  return {...doc,items:gwQCloneItems(p.items),discount:p.discount||0,package_name:p.name,
+    package_mode:'single',package_options:[],selected_package:'',approved_package:key};
+}
 const gwQChannels = [
   ['phone','Phone call'], ['whatsapp','WhatsApp'], ['walk_in','Walk-in / personal'],
   ['instagram','Instagram'], ['referral','Referral'], ['website','Website'],
@@ -21779,7 +21838,8 @@ const gwQEmpty = (kind='birthday', type='quote') => ({
   payment_terms:'Proposed advance to confirm services; remaining balance according to the agreed schedule.',
   items:gwQItemsFor(kind),
   discount:0,tax_rate:0,advance_pct:30,status:'draft',doc_type:type,
-  source_request_id:null,related_quote_id:null,notes:''
+  source_request_id:null,related_quote_id:null,notes:'',
+  package_mode:'single',package_options:[],selected_package:'',approved_package:''
 });
 function gwQCalc(d) {
   const subtotal=(d.items||[]).reduce((a,i)=>a+Math.max(0,Number(i.qty)||0)*Math.max(0,Number(i.rate)||0),0);
@@ -21795,20 +21855,34 @@ function gwQDocNo(d) {
 }
 function gwQMarkup(d,company) {
   const sums=gwQCalc(d),doc=gwQDocNo(d),isPI=d.doc_type==='proforma';
+  const isComparison=d.package_mode==='compare'&&!isPI;
+  const options=gwQPackageOptions(d);
   const kind=isPI?'PROFORMA INVOICE':'EVENT QUOTATION';
   const safe=gwQEsc;
   const detail=(label,value)=>value?`<div class="detail"><span>${safe(label)}</span><b>${safe(value)}</b></div>`:'';
   const rows=(d.items||[]).filter(i=>i.name&&Number(i.qty)>0&&Number(i.rate)>0).map((i,k)=>`<tr><td>${k+1}</td><td>${safe(i.name)}<div class="linecategory">${safe(i.category||gwQCategoryFor(i.name))}</div></td><td class="num">${safe(i.qty)}</td><td>${safe(i.unit||'service')}</td><td class="money">${gwQMoney(i.rate)}</td><td class="money">${gwQMoney((Number(i.qty)||0)*(Number(i.rate)||0))}</td></tr>`).join('');
+  const pricedServices=isComparison?[...new Set(options.flatMap(p=>(p.items||[]).filter(i=>String(i.name||'').trim()&&Number(i.qty)>0&&Number(i.rate)>0).map(i=>i.name)))]:[];
+  const compareHTML=isComparison?`<section class="packagecompare"><div class="sect">Three ways to celebrate · choose your preferred package</div>
+    <table class="packagelist"><thead><tr><th>Package</th>${options.map(p=>`<th>${safe(p.name)}<span class="pkgsub">${safe(p.description||'')}</span></th>`).join('')}</tr></thead><tbody>
+    <tr><td>Package total</td>${options.map(p=>`<td class="pkgprice">${gwQMoney(gwQPackageCalc(d,p).total)}</td>`).join('')}</tr>
+    <tr><td>Proposed advance (${safe(d.advance_pct||0)}%)</td>${options.map(p=>`<td>${gwQMoney(gwQPackageCalc(d,p).advance)}</td>`).join('')}</tr>
+    <tr><td>Balance after advance</td>${options.map(p=>`<td>${gwQMoney(gwQPackageCalc(d,p).balance)}</td>`).join('')}</tr>
+    <tr><td>Subtotal · before tax</td>${options.map(p=>`<td>${gwQMoney(gwQPackageCalc(d,p).subtotal)}</td>`).join('')}</tr>
+    ${Number(d.tax_rate)>0?`<tr><td>Tax (${safe(d.tax_rate)}% where applicable)</td>${options.map(p=>`<td>${gwQMoney(gwQPackageCalc(d,p).tax)}</td>`).join('')}</tr>`:''}
+    </tbody></table>
+    <div class="sectiontitle">Included services comparison</div><table class="packagelist features"><thead><tr><th>Service</th>${options.map(p=>`<th>${safe(p.name)}</th>`).join('')}</tr></thead><tbody>
+    ${pricedServices.map(name=>`<tr><td>${safe(name)}</td>${options.map(p=>{const hit=(p.items||[]).find(i=>i.name===name&&Number(i.qty)>0&&Number(i.rate)>0);return `<td>${hit?`✓ ${safe(hit.qty)} ${safe(hit.unit||'')}`:'—'}</td>`}).join('')}</tr>`).join('')}
+    </tbody></table><p class="muted">Only priced line items are included. Package totals reflect item quantities, discounts and any applicable tax. Please confirm your preferred tier before invoicing.</p></section>`:'';
   const subtotal=`<div><span>Subtotal</span><strong>${gwQMoney(sums.subtotal)}</strong></div>`;
   const discount=sums.discount?`<div><span>Less discount</span><strong>− ${gwQMoney(sums.discount)}</strong></div>`:'';
   const tax=Number(d.tax_rate)>0?`<div><span>Tax (${safe(d.tax_rate)}% — where applicable)</span><strong>${gwQMoney(sums.tax)}</strong></div>`:'';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${safe(doc)} - ${kind}</title><style>
-  *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;background:#e9eeec;color:#172a25;margin:0;font-size:12.5px}main{width:210mm;min-height:297mm;margin:12mm auto;background:white;padding:18mm 16mm;box-shadow:0 4px 28px #0002}.mast{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #13795d;padding-bottom:16px}.brand{font-size:27px;letter-spacing:2px;font-weight:900;color:#0b644d}.company{font-size:11px;color:#536b61;line-height:1.7;margin-top:6px;white-space:pre-wrap}.heading{text-align:right}.heading small{font-weight:900;color:#128264;letter-spacing:1.3px}.heading h1{font-size:18px;margin:9px 0;color:#16352b}.muted{color:#60786d;font-size:11px;line-height:1.6}.hero{background:#f0f8f4;padding:13px 15px;margin:17px 0;border-left:4px solid #168463}.hero h2{margin:0 0 5px;font-size:17px}.cols{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:18px 0 14px}.sect{font-size:10px;font-weight:900;color:#158060;letter-spacing:1.1px;text-transform:uppercase;border-bottom:1px solid #dce7e1;padding-bottom:7px;margin-bottom:10px}.detail{margin:0 0 9px;overflow-wrap:anywhere}.detail span{display:block;color:#61786e;font-size:10px;margin-bottom:3px}.detail b{font-weight:700}.invoice{border-collapse:collapse;width:100%;margin-top:15px;table-layout:auto}.invoice th{background:#0d5845;color:#fff;font-size:10.5px;padding:10px 8px;text-align:left}.invoice td{border-bottom:1px solid #e0e8e3;padding:10px 8px;vertical-align:top}.linecategory{color:#7b9085;font-size:9px;margin-top:3px}.invoice th.num,.invoice td.num,.invoice th.money,.invoice td.money{text-align:right;white-space:nowrap}.summary{margin:22px 0 18px auto;max-width:330px}.summary>div{display:flex;justify-content:space-between;gap:16px;padding:7px 0}.summary .total{border-top:2px solid #0d7558;margin-top:5px;padding-top:12px;font-weight:900;color:#0c6049;font-size:16px}.summary .due{background:#e7f5ee;padding:10px 12px;border-radius:7px;font-weight:800}.textblock{white-space:pre-wrap;line-height:1.6;margin:5px 0 17px}.sectiontitle{font-weight:900;color:#0f624b;margin-top:20px;font-size:13px}.disclaimer{background:#f6f7f7;padding:11px 13px;border-radius:7px;color:#4d5d58;font-size:11px;margin-top:18px}.footer{border-top:1px solid #ccdcd4;margin-top:26px;padding-top:11px;font-size:10px;color:#687d73;line-height:1.5}.print{position:fixed;bottom:20px;right:20px;border:0;background:#0e7358;color:white;padding:13px 20px;border-radius:9px;font-weight:800;cursor:pointer}@media print{body{background:white}main{width:auto;min-height:0;box-shadow:none;margin:0;padding:13mm}.print{display:none}@page{size:A4;margin:0}}
+  *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;background:#e9eeec;color:#172a25;margin:0;font-size:12.5px}main{width:210mm;min-height:297mm;margin:12mm auto;background:white;padding:18mm 16mm;box-shadow:0 4px 28px #0002}.mast{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #13795d;padding-bottom:16px}.brand{font-size:27px;letter-spacing:2px;font-weight:900;color:#0b644d}.company{font-size:11px;color:#536b61;line-height:1.7;margin-top:6px;white-space:pre-wrap}.heading{text-align:right}.heading small{font-weight:900;color:#128264;letter-spacing:1.3px}.heading h1{font-size:18px;margin:9px 0;color:#16352b}.muted{color:#60786d;font-size:11px;line-height:1.6}.hero{background:#f0f8f4;padding:13px 15px;margin:17px 0;border-left:4px solid #168463}.hero h2{margin:0 0 5px;font-size:17px}.cols{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:18px 0 14px}.sect{font-size:10px;font-weight:900;color:#158060;letter-spacing:1.1px;text-transform:uppercase;border-bottom:1px solid #dce7e1;padding-bottom:7px;margin-bottom:10px}.detail{margin:0 0 9px;overflow-wrap:anywhere}.detail span{display:block;color:#61786e;font-size:10px;margin-bottom:3px}.detail b{font-weight:700}.invoice{border-collapse:collapse;width:100%;margin-top:15px;table-layout:auto}.invoice th{background:#0d5845;color:#fff;font-size:10.5px;padding:10px 8px;text-align:left}.invoice td{border-bottom:1px solid #e0e8e3;padding:10px 8px;vertical-align:top}.linecategory{color:#7b9085;font-size:9px;margin-top:3px}.invoice th.num,.invoice td.num,.invoice th.money,.invoice td.money{text-align:right;white-space:nowrap}.summary{margin:22px 0 18px auto;max-width:330px}.summary>div{display:flex;justify-content:space-between;gap:16px;padding:7px 0}.summary .total{border-top:2px solid #0d7558;margin-top:5px;padding-top:12px;font-weight:900;color:#0c6049;font-size:16px}.summary .due{background:#e7f5ee;padding:10px 12px;border-radius:7px;font-weight:800}.textblock{white-space:pre-wrap;line-height:1.6;margin:5px 0 17px}.sectiontitle{font-weight:900;color:#0f624b;margin-top:20px;font-size:13px}.disclaimer{background:#f6f7f7;padding:11px 13px;border-radius:7px;color:#4d5d58;font-size:11px;margin-top:18px}.footer{border-top:1px solid #ccdcd4;margin-top:26px;padding-top:11px;font-size:10px;color:#687d73;line-height:1.5}.packagecompare{margin:16px 0 20px}.packagelist{width:100%;border-collapse:collapse;table-layout:fixed;margin:9px 0 13px}.packagelist th{background:#0d5845;color:#fff;padding:10px 7px;text-align:center;font-size:11px}.packagelist th:first-child,.packagelist td:first-child{text-align:left;width:36%}.packagelist td{border-bottom:1px solid #e2ebe6;padding:9px 7px;text-align:center;word-wrap:break-word}.packagelist .pkgprice{color:#08765b;font-size:15px;font-weight:900}.pkgsub{display:block;font-size:9px;opacity:.8;font-weight:400;margin-top:5px}.features td{font-size:10.5px}.print{position:fixed;bottom:20px;right:20px;border:0;background:#0e7358;color:white;padding:13px 20px;border-radius:9px;font-weight:800;cursor:pointer}@media print{body{background:white}main{width:auto;min-height:0;box-shadow:none;margin:0;padding:13mm}.print{display:none}@page{size:A4;margin:0}}
   </style></head><body><main><div class="mast"><div><div class="brand">GLASSWINGS</div><div class="company">${safe(company.legal_name||'Glasswings Events Pvt. Ltd.')}\n${safe(company.address||'')}${company.phone?'\n'+safe(company.phone):''}${company.email?' · '+safe(company.email):''}${company.gstin?'\nGSTIN: '+safe(company.gstin):''}</div></div><div class="heading"><small>${kind}</small><h1>${safe(doc)}</h1><div class="muted">Prepared: ${new Date(d.created_at||Date.now()).toLocaleDateString('en-IN')}<br>${d.valid_until?'Valid until: '+safe(d.valid_until):'Validity: subject to confirmation'}</div></div></div>
-  <div class="hero"><h2>${safe(d.title||'Your event proposal')}</h2><div class="muted">${safe(d.package_name||'Tailored event services')}</div></div>
+  <div class="hero"><h2>${safe(d.title||'Your event proposal')}</h2><div class="muted">${safe(isComparison?'Good / Better / Premium package comparison':d.package_name||'Tailored event services')}</div></div>
   <div class="cols"><section><div class="sect">Prepared for / Bill to</div>${detail('Client',d.client_name)}${detail('Company',d.client_company)}${detail('Address',d.client_address)}${detail('Phone',d.client_phone)}${detail('Email',d.client_email)}${detail('Customer GSTIN',d.client_gstin)}</section><section><div class="sect">Event information</div>${detail('Occasion',String(d.event_type||'other').replaceAll('_',' '))}${detail('Date',d.event_date)}${detail('Time',d.event_time)}${detail('Venue type',d.venue_type)}${detail('Venue',d.venue)}${detail('Location',d.event_address||d.event_city)}${detail('Estimated guests',d.guests)}</section></div>
-  <table class="invoice"><thead><tr><th>#</th><th>Service / Deliverable</th><th class="num">Qty</th><th>Unit</th><th class="money">Rate</th><th class="money">Amount</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No line items added</td></tr>'}</tbody></table>
-  <div class="summary">${subtotal}${discount}${tax}<div class="total"><span>Grand total</span><strong>${gwQMoney(sums.total)}</strong></div><div class="due"><span>Proposed advance (${safe(d.advance_pct||0)}%)</span><strong>${gwQMoney(sums.advance)}</strong></div><div><span>Balance after advance</span><strong>${gwQMoney(sums.balance)}</strong></div></div>
+  ${isComparison?compareHTML:`<table class="invoice"><thead><tr><th>#</th><th>Service / Deliverable</th><th class="num">Qty</th><th>Unit</th><th class="money">Rate</th><th class="money">Amount</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No line items added</td></tr>'}</tbody></table>`}
+  ${isComparison?"":`<div class="summary">${subtotal}${discount}${tax}<div class="total"><span>Grand total</span><strong>${gwQMoney(sums.total)}</strong></div><div class="due"><span>Proposed advance (${safe(d.advance_pct||0)}%)</span><strong>${gwQMoney(sums.advance)}</strong></div><div><span>Balance after advance</span><strong>${gwQMoney(sums.balance)}</strong></div></div>`}
   ${d.inclusions?`<div class="sectiontitle">Inclusions</div><div class="textblock">${safe(d.inclusions)}</div>`:''}${d.exclusions?`<div class="sectiontitle">Exclusions</div><div class="textblock">${safe(d.exclusions)}</div>`:''}<div class="sectiontitle">Payment schedule</div><div class="textblock">${safe(d.payment_terms||'As agreed in writing.')}</div><div class="sectiontitle">Terms & conditions</div><div class="textblock">${safe(d.terms||'Subject to written confirmation.')}</div>${isPI?`<div class="sectiontitle">Payment instructions</div><div class="textblock">${safe(company.payment_details||'Please contact Glasswings for verified payment instructions.')}</div>`:''}
   <div class="disclaimer">${isPI?'This is a PROFORMA invoice / request for payment. It is not a GST tax invoice, payment confirmation or receipt.':'This is a commercial estimate, not a tax invoice or proof of payment.'} Prices and taxes are subject to the agreed scope and applicable law.</div><div class="footer">${safe(company.legal_name||'Glasswings Events Pvt. Ltd.')} · Event planning & experiences · Please retain this document for reference.</div></main><button class="print" onclick="window.print()">Print / Save as PDF</button></body></html>`;
 }
@@ -21816,6 +21890,7 @@ function GWQuoteManager({meId}) {
   const [documents,setDocuments]=useState([]);
   const [settings,setSettings]=useState({legal_name:'Glasswings Events Pvt. Ltd.',address:'',gstin:'',phone:'',email:'',payment_details:''});
   const [draft,setDraft]=useState(null),[step,setStep]=useState('client'),[companyOpen,setCompanyOpen]=useState(false);
+  const [acceptingId,setAcceptingId]=useState(null),[acceptTier,setAcceptTier]=useState('better');
   const [showImport,setShowImport]=useState(false),[leads,setLeads]=useState([]),[leadBusy,setLeadBusy]=useState(false),[leadError,setLeadError]=useState('');
   const [filter,setFilter]=useState('all'),[statusFilter,setStatusFilter]=useState('all'),[search,setSearch]=useState(''),[eventFilter,setEventFilter]=useState('all');
   const [serviceCategory,setServiceCategory]=useState('all'),[serviceQuery,setServiceQuery]=useState(''),[serviceMode,setServiceMode]=useState('recommended');
@@ -21834,11 +21909,39 @@ function GWQuoteManager({meId}) {
     setLoading(false);
   };
   useEffect(()=>{load();},[]);
-  const set=(field,value)=>setDraft(prev=>({...prev,[field]:value}));
+  const set=(field,value)=>setDraft(prev=>{
+    if(!prev)return prev;
+    const nextValue=typeof value==='function'?value(prev[field],prev):value;
+    if(prev.package_mode==='compare'&&['items','discount'].includes(field)){
+      return {...prev,[field]:nextValue,package_options:gwQPackageOptions(prev).map(p=>
+        p.id===prev.selected_package?{...p,[field]:nextValue}:p)};
+    }
+    return {...prev,[field]:nextValue};
+  });
+  const enableComparison=()=>setDraft(prev=>{
+    if(!prev||prev.package_mode==='compare'||prev.doc_type==='proforma')return prev;
+    const opts=gwQBuildPackageOptions(prev.event_type,prev.items,prev.discount);
+    const mid=opts.find(p=>p.id==='better');
+    return {...prev,package_mode:'compare',package_options:opts,selected_package:'better',
+      items:gwQCloneItems(mid.items),discount:mid.discount,package_name:'Better'};
+  });
+  const disableComparison=()=>{
+    if(!window.confirm('Use just the current package as a single-price quotation? Other package options will be discarded when you save.'))return;
+    setDraft(prev=>({...prev,package_mode:'single'}));
+  };
+  const chooseEditTier=id=>setDraft(prev=>{
+    const p=gwQPackageOptions(prev).find(x=>x.id===id);
+    return p?{...prev,selected_package:id,items:gwQCloneItems(p.items),discount:p.discount,package_name:p.name}:prev;
+  });
   const start=(kind='birthday',docType='quote')=>{setDraft(gwQEmpty(kind,docType));setStep('client');setServiceMode('recommended');setServiceQuery('');setServiceCategory('all');setErr('');setNotice('');};
   const edit=d=>{if(d.status!=='draft')return setErr('Issued documents are locked. Use Create revision.');setDraft({...d});setStep('client');setErr('');};
-  const copy=d=>{const next={...d,id:undefined,seq_no:undefined,created_at:undefined,updated_at:undefined,sent_at:undefined,accepted_at:undefined,status:'draft',related_quote_id:d.id,doc_type:d.doc_type};setDraft(next);setStep('client');setErr('');};
-  const makeProforma=d=>{const next={...d,id:undefined,seq_no:undefined,created_at:undefined,updated_at:undefined,sent_at:undefined,accepted_at:undefined,status:'draft',doc_type:'proforma',related_quote_id:d.id,source_channel:d.source_channel||'phone'};setDraft(next);setStep('client');setErr('');};
+  const copy=d=>{const next={...d,id:undefined,seq_no:undefined,created_at:undefined,updated_at:undefined,sent_at:undefined,accepted_at:undefined,status:'draft',related_quote_id:d.id,doc_type:d.doc_type,approved_package:''};setDraft(next);setStep('client');setErr('');};
+  const makeProforma=d=>{
+    if(d.package_mode==='compare'&&!d.approved_package){setErr('Choose the customer-approved Good, Better or Premium tier first.');return;}
+    const basis=d.package_mode==='compare'?gwQAsSelectedPackage(d,d.approved_package):d;
+    const next={...basis,id:undefined,seq_no:undefined,created_at:undefined,updated_at:undefined,sent_at:undefined,accepted_at:undefined,status:'draft',doc_type:'proforma',related_quote_id:d.id,source_channel:d.source_channel||'phone'};
+    setDraft(next);setStep('client');setErr('');
+  };
   const importLeads=async()=>{
     setShowImport(true);setLeadBusy(true);setLeadError('');
     const {data,error}=await supabase.from('event_requests').select('id,event_type,event_title,event_date,city,area,guests,contact_name,contact_phone,contact_email,notes').order('created_at',{ascending:false}).limit(200);
@@ -21860,9 +21963,18 @@ function GWQuoteManager({meId}) {
     if(Number(draft.discount)<0||Number(draft.discount)>current.subtotal)return setErr('Discount must be between zero and the subtotal.');
     if(Number(draft.tax_rate)<0||Number(draft.tax_rate)>100||Number(draft.advance_pct)<0||Number(draft.advance_pct)>100)return setErr('Tax and advance percentages must be between 0 and 100.');
     setBusy(true);setErr('');setNotice('');
-    const keys=['source_request_id','related_quote_id','source_channel','client_name','client_phone','client_email','client_company','client_address','client_gstin','title','event_type','event_date','event_time','event_city','venue','venue_type','event_address','guests','valid_until','follow_up_on','package_name','payment_terms','terms','inclusions','exclusions','items','discount','tax_rate','advance_pct','notes','doc_type','status'];
+    const keys=['source_request_id','related_quote_id','source_channel','client_name','client_phone','client_email','client_company','client_address','client_gstin','title','event_type','event_date','event_time','event_city','venue','venue_type','event_address','guests','valid_until','follow_up_on','package_name','payment_terms','terms','inclusions','exclusions','items','discount','tax_rate','advance_pct','notes','doc_type','status','package_mode','package_options','selected_package','approved_package'];
     const row=Object.fromEntries(keys.map(k=>[k,draft[k]??null]));
-    row.items=(draft.items||[]).filter(i=>String(i.name||'').trim()&&Number(i.qty)>0).map(i=>({name:String(i.name).trim(),category:gwQServiceCategories.includes(i.category)?i.category:gwQCategoryFor(i.name),qty:Number(i.qty),unit:String(i.unit||'service').trim(),rate:Math.max(0,Number(i.rate)||0)}));
+    const cleanItems=items=>(items||[]).filter(i=>String(i.name||'').trim()&&Number(i.qty)>0).map(i=>({name:String(i.name).trim(),category:gwQServiceCategories.includes(i.category)?i.category:gwQCategoryFor(i.name),qty:Number(i.qty),unit:String(i.unit||'service').trim(),rate:Math.max(0,Number(i.rate)||0)}));
+    row.items=cleanItems(draft.items);
+    if(draft.package_mode==='compare'){
+      row.package_options=gwQPackageOptions(draft).map(p=>({id:p.id,name:p.name,description:p.description,
+        discount:Math.max(0,Number(p.discount)||0),items:cleanItems(p.items)}));
+      for(const p of row.package_options){
+        const subtotal=gwQCalc({...draft,items:p.items,discount:0}).subtotal;
+        if(p.discount>subtotal){setBusy(false);return setErr(`${p.name} discount cannot be greater than its subtotal.`);}
+      }
+    }else row.package_options=[];
     for(const k of ['valid_until','event_date','follow_up_on'])row[k]=row[k]||null;
     row.guests=row.guests===''?null:Math.max(0,Number(row.guests)||0);
     row.client_phone=row.client_phone||'';
@@ -21875,13 +21987,15 @@ function GWQuoteManager({meId}) {
     setDraft(null);setNotice(`${gwQDocNo(data)} saved. You can now preview it, save as PDF, and share with the client.`);
     await load();
   };
-  const changeStatus=async(d,next)=>{
-    if(next==='sent'&&gwQCalc(d).total<=0)return setErr('Add at least one priced service before marking a quotation or proforma as sent.');
+  const changeStatus=async(d,next,packageId='')=>{
+    if(next==='sent'&&d.package_mode==='compare'&&!gwQComparisonReady(d))return setErr('Price all three packages with ascending totals: Good < Better < Premium.');
+    if(next==='sent'&&d.package_mode!=='compare'&&gwQCalc(d).total<=0)return setErr('Add at least one priced service before marking a quotation or proforma as sent.');
+    if(next==='accepted'&&d.package_mode==='compare'&&!gwQPackageTiers.some(p=>p.id===packageId))return setErr('Select the customer-approved package.');
     if(next==='accepted'&&!window.confirm('Confirm the client accepted this document? This does not confirm any payment.'))return;
     if(next==='cancelled'&&!window.confirm('Cancel this document? It will remain in history.'))return;
     setBusy(true);setErr('');
-    const {error}=await supabase.from('gw_event_documents').update({status:next}).eq('id',d.id);
-    setBusy(false);if(error){setErr(error.message);return;}setNotice(`${gwQDocNo(d)} marked ${next}.`);load();
+    const {error}=await supabase.from('gw_event_documents').update(next==='accepted'&&d.package_mode==='compare'?{status:next,approved_package:packageId}:{status:next}).eq('id',d.id);
+    setBusy(false);if(error){setErr(error.message);return;}setAcceptingId(null);setNotice(`${gwQDocNo(d)} marked ${next}${packageId?' · '+packageId+' package':''}.`);load();
   };
   const preview=d=>{
     const win=window.open('','_blank');if(!win)return setErr('Please allow pop-ups to preview and print the PDF.');
@@ -21889,7 +22003,10 @@ function GWQuoteManager({meId}) {
   };
   const message=d=>{
     const s=gwQCalc(d),kind=d.doc_type==='proforma'?'proforma invoice':'quotation';
-    return `Hello ${d.client_name},\n\nGreetings from Glasswings Events!\n\nPlease find our ${kind} ${gwQDocNo(d)} for ${d.title}.\nEvent date: ${d.event_date||'To be finalised'}\nTotal: ${gwQMoney(s.total)}\nProposed advance: ${gwQMoney(s.advance)}${d.valid_until?'\nValid until: '+d.valid_until:''}\n\nPlease review the attached PDF for service details, inclusions and terms. We look forward to planning your event.\n\nRegards,\nGlasswings Events`;
+    const priceLine=d.package_mode==='compare'&&d.doc_type==='quote'
+      ? `Options:\n${gwQPackageSummary(d).map(p=>`${p.name}: ${gwQMoney(p.total)} (advance ${gwQMoney(p.advance)})`).join('\n')}\nPlease confirm your preferred package.`
+      : `Total: ${gwQMoney(s.total)}\nProposed advance: ${gwQMoney(s.advance)}`;
+    return `Hello ${d.client_name},\n\nGreetings from Glasswings Events!\n\nPlease find our ${kind} ${gwQDocNo(d)} for ${d.title}.\nEvent date: ${d.event_date||'To be finalised'}\n${priceLine}${d.valid_until?'\nValid until: '+d.valid_until:''}\n\nPlease review the attached PDF for service details, inclusions and terms. We look forward to planning your event.\n\nRegards,\nGlasswings Events`;
   };
   const wa=d=>{
     if(!waNum(d.client_phone))return setErr('Add the customer mobile number to prepare a WhatsApp message.');
@@ -21927,18 +22044,14 @@ function GWQuoteManager({meId}) {
   const area=(label,key,rows=3)=> <label style={{display:'block',fontSize:12,fontWeight:750,color:'#536e60'}}>{label}<textarea rows={rows} value={draft?.[key]||''} onChange={e=>set(key,e.target.value)} style={{...input,marginTop:6,resize:'vertical'}}/></label>;
   const goTo=part=>{setStep(part);setErr('');};
   const changeEventType=next=>{
-    setDraft(prev=>({...prev,event_type:next,items:gwQCanAutoSwitch(prev.items,prev.event_type)?gwQItemsFor(next):prev.items}));
+    setDraft(prev=>prev.package_mode==='compare'?{...prev,event_type:next}:{...prev,event_type:next,items:gwQCanAutoSwitch(prev.items,prev.event_type)?gwQItemsFor(next):prev.items});
     setServiceMode('recommended');setServiceCategory('all');setServiceQuery('');
   };
   const resetSuggested=()=>{
     if((draft.items||[]).some(i=>Number(i.rate)>0)&&!window.confirm('Replace existing services and entered rates with blank template items?'))return;
     set('items',gwQItemsFor(draft.event_type));
   };
-  const addCatalogService=item=>setDraft(prev=>{
-    const exists=(prev.items||[]).some(i=>String(i.name||'').trim().toLowerCase()===item.name.toLowerCase());
-    if(exists)return prev;
-    return {...prev,items:[...(prev.items||[]),{name:item.name,category:item.category,qty:1,unit:item.unit,rate:''}]};
-  });
+  const addCatalogService=item=>set('items',items=>(items||[]).some(i=>String(i.name||'').trim().toLowerCase()===item.name.toLowerCase())?items:[...(items||[]),{name:item.name,category:item.category,qty:1,unit:item.unit,rate:''}]);
   const recommendedNames=new Set((gwQuoteTemplates[draft?.event_type]||gwQuoteTemplates.other).map(x=>x.toLowerCase()));
   const shownServices=gwQCatalogEntries.filter(item=>(serviceMode!=='recommended'||recommendedNames.has(item.name.toLowerCase()))
     &&(serviceCategory==='all'||serviceCategory===item.category)
@@ -21979,7 +22092,7 @@ function GWQuoteManager({meId}) {
           {field('Event title *','title')}
           <label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>Occasion / event type<select value={draft.event_type||'other'} onChange={e=>changeEventType(e.target.value)} style={{...input,marginTop:6}}>{gwQEventGroups.map(group=><optgroup key={group.label} label={group.label}>{group.types.map(([k,n])=><option value={k} key={k}>{n}</option>)}</optgroup>)}</select></label>
           {field('Event date','event_date','date')}{field('Time / slot','event_time')}<label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>Venue / space category<select value={draft.venue_type||''} onChange={e=>set('venue_type',e.target.value)} style={{...input,marginTop:6}}><option value="">Select venue category (optional)</option>{gwQVenueTypes.map(v=><option key={v} value={v}>{v}</option>)}</select></label>{field('Venue name','venue')}{field('City','event_city')}{field('Venue address','event_address')}{field('Expected guests','guests','number',{min:0})}
-          {field('Package title / proposal tier','package_name')}
+          {draft.package_mode!=='compare'&&field('Package title / proposal tier','package_name')}
           <label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>How did you receive the enquiry?<select value={draft.source_channel||'other'} onChange={e=>set('source_channel',e.target.value)} style={{...input,marginTop:6}}>{gwQChannels.map(([id,label])=><option value={id} key={id}>{label}</option>)}</select></label>
           {field('Follow-up date (admin reminder list)','follow_up_on','date')}
         </div>
@@ -21987,6 +22100,15 @@ function GWQuoteManager({meId}) {
         <div style={{display:'flex',justifyContent:'flex-end',marginTop:20}}><button onClick={()=>goTo('services')} style={btn('#087963','#fff')}>Next: Services & prices →</button></div>
       </>}
       {step==='services'&&<>
+        <div style={{background:'#f1f7f3',border:'1px solid #b8d8c6',borderRadius:13,padding:13,marginBottom:13}}>
+          <div style={{display:'flex',gap:10,justifyContent:'space-between',alignItems:'center',flexWrap:'wrap'}}><div><strong>Quotation format</strong><div style={{fontSize:12,color:'#607569'}}>Choose a traditional estimate or present three client-friendly packages.</div></div>
+            <div style={{display:'flex',gap:7,flexWrap:'wrap'}}><button onClick={disableComparison} disabled={draft.package_mode!=='compare'} style={btn(draft.package_mode==='compare'?'#fff':'#087963',draft.package_mode==='compare'?'#176247':'#fff')}>Single price</button><button onClick={enableComparison} disabled={draft.package_mode==='compare'||draft.doc_type==='proforma'} style={btn(draft.package_mode==='compare'?'#087963':'#fff',draft.package_mode==='compare'?'#fff':'#176247')}>Good / Better / Premium</button></div>
+          </div>
+          {draft.package_mode==='compare'&&<>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:8,marginTop:12}}>{gwQPackageOptions(draft).map(p=>{const stat=gwQPackageCalc(draft,p);return <button key={p.id} onClick={()=>chooseEditTier(p.id)} style={{border:`2px solid ${draft.selected_package===p.id?'#078063':'#dce9e1'}`,background:draft.selected_package===p.id?'#e4f7ed':'#fff',borderRadius:11,padding:'11px 12px',textAlign:'left',color:'#194c37',cursor:'pointer'}}><strong style={{display:'block',fontSize:15}}>{p.name}{draft.selected_package===p.id?' · Editing':''}</strong><span style={{display:'block',fontSize:11,color:'#587466',margin:'3px 0 8px'}}>{p.description}</span><b style={{fontSize:17}}>{gwQMoney(stat.total)}</b><span style={{display:'block',fontSize:11,color:'#587466',marginTop:4}}>Advance {gwQMoney(stat.advance)}</span></button>})}</div>
+            <p style={{fontSize:12,color:'#536e60',margin:'10px 0 0'}}>Edit one package at a time. Each option saves its own service quantities, rates and discount. Tax and advance percentages apply consistently across all three. No rates are assumed.</p>
+          </>}
+        </div>
         <h3 style={{margin:'0 0 5px'}}>Services and itemised pricing</h3>
         <p style={{fontSize:12,color:'#64786d',margin:'0 0 13px'}}>Choose services from professional categories or enter your own. Rates stay blank until you enter them; unpriced items will not print on client documents.</p>
         <div style={{background:'#f4f9f6',border:'1px solid #dbe9df',borderRadius:12,padding:13,marginBottom:13}}>
@@ -21999,6 +22121,7 @@ function GWQuoteManager({meId}) {
         <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}><button onClick={()=>set('items',[...(draft.items||[]),{name:'',category:serviceCategory!=='all'?serviceCategory:'Planning, permits & management',qty:1,unit:'service',rate:''}])} style={btn('#eaf6f0','#075e46')}>+ Custom service</button><button onClick={()=>set('items',(draft.items||[]).filter(i=>Number(i.rate)>0&&String(i.name||'').trim()))} style={btn('#f4f4f5','#475569')}>Remove unpriced rows</button></div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginTop:15}}>{field('Discount (₹)','discount','number',{min:0,step:'0.01'})}{field('Applicable tax %','tax_rate','number',{min:0,max:100,step:'0.01'})}{field('Proposed advance %','advance_pct','number',{min:0,max:100,step:'0.01'})}</div>
         <div style={{marginTop:15,background:'#ecf8f1',borderRadius:13,padding:16,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:12}}>{[['Subtotal',current.subtotal],['Tax',current.tax],['Grand total',current.total],['Advance',current.advance],['Balance',current.balance]].map(([label,value])=><div key={label}><div style={{color:'#557264',fontSize:11}}>{label}</div><div style={{fontSize:16,fontWeight:900,color:label==='Grand total'?'#075e46':'#28483a'}}>{gwQMoney(value)}</div></div>)}</div>
+        {draft.package_mode==='compare'&&<div style={{marginTop:13,display:'flex',gap:9,alignItems:'center',flexWrap:'wrap'}}><button disabled={!gwQComparisonReady(draft)} onClick={()=>preview(draft)} style={btn('#075e46','#fff')}>👁 Preview all 3 packages</button><span style={{fontSize:12,color:'#67796e'}}>Price all tiers so that Good is below Better, and Better is below Premium, before sending.</span></div>}
         <div style={{display:'flex',justifyContent:'space-between',marginTop:18,gap:8}}><button onClick={()=>goTo('client')} style={btn('#f1f6f3','#34564a')}>← Back</button><button onClick={()=>goTo('terms')} style={btn('#087963','#fff')}>Next: Terms & review →</button></div>
       </>}
       {step==='terms'&&<>
@@ -22006,10 +22129,10 @@ function GWQuoteManager({meId}) {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:11}}>{field('Valid until (if agreed)','valid_until','date')}{field('Follow-up date','follow_up_on','date')}</div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:11,marginTop:13}}>{area('Included services / deliverables','inclusions',3)}{area('Exclusions','exclusions',3)}{area('Payment milestones / due terms','payment_terms',3)}{area('Terms, cancellations & changes','terms',5)}</div>
         <div style={{marginTop:12}}>{area('Private admin notes (not printed on client PDF)','notes',3)}</div>
-        <div style={{background:'#f5f8f5',padding:14,borderRadius:10,marginTop:15}}><b>Document summary</b><div style={{fontSize:12,marginTop:6}}>{draft.client_name||'Client not specified'} · {draft.title||'Event title required'} · {gwQMoney(current.total)} · {draft.doc_type==='proforma'?'Proforma invoice':'Quotation'}</div><div style={{fontSize:11,color:'#607467',marginTop:6}}>This document does not record a payment. You will be able to print the saved document as an A4 PDF and share it separately.</div></div>
+        <div style={{background:'#f5f8f5',padding:14,borderRadius:10,marginTop:15}}><b>Document summary</b><div style={{fontSize:12,marginTop:6}}>{draft.client_name||'Client not specified'} · {draft.title||'Event title required'} · {gwQFormatTotal(draft)} · {draft.doc_type==='proforma'?'Proforma invoice':'Quotation'}</div><div style={{fontSize:11,color:'#607467',marginTop:6}}>This document does not record a payment. You will be able to print the saved document as an A4 PDF and share it separately.</div></div>
         <button onClick={()=>goTo('services')} style={{...btn('#f1f6f3','#34564a'),marginTop:13}}>← Back to pricing</button>
       </>}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:18,borderTop:'1px solid #e1ebe4',paddingTop:16}}><div style={{fontWeight:850,color:'#075e46'}}>Document total: {gwQMoney(current.total)}</div><button disabled={busy} onClick={save} style={{...btn('#087963','#fff'),padding:'12px 22px',fontSize:14,opacity:busy?.6:1}}>{busy?'Saving…':'Save draft & generate number'}</button></div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:18,borderTop:'1px solid #e1ebe4',paddingTop:16}}><div style={{fontWeight:850,color:'#075e46'}}>Document: {draft.package_mode==='compare'?'3 package options':gwQMoney(current.total)}</div><button disabled={busy} onClick={save} style={{...btn('#087963','#fff'),padding:'12px 22px',fontSize:14,opacity:busy?.6:1}}>{busy?'Saving…':'Save draft & generate number'}</button></div>
     </section>}
     <section style={panel}>
       <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:14,alignItems:'center'}}><div><h2 style={{margin:'0 0 4px',fontSize:18}}>Document register</h2><div style={{fontSize:12,color:'#60786b'}}>All phone, walk-in and online quotations in one searchable list</div></div><div style={{fontSize:12,color:'#718278'}}>{display.length} records</div></div>
@@ -22022,16 +22145,18 @@ function GWQuoteManager({meId}) {
       {loading?<p>Loading documents…</p>:!display.length?<div style={{padding:'34px 16px',textAlign:'center',color:'#688075',background:'#f5f8f6',borderRadius:12}}>No matching documents. Create a quotation manually to begin.</div>:display.map(d=>{
         const price=gwQCalc(d),isFollowup=d.status==='sent'&&d.follow_up_on&&d.follow_up_on<=today;
         return <article key={d.id} style={{border:'1px solid #e0eae4',borderRadius:12,padding:14,marginBottom:11,background:'#fff'}}>
-          <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-start'}}><div style={{flex:1,minWidth:210}}><div style={{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}><strong style={{color:'#0b6550',fontSize:14}}>{gwQDocNo(d)}</strong><span style={{background:d.doc_type==='proforma'?'#efe8ff':'#e8f5ef',color:d.doc_type==='proforma'?'#6d28d9':'#166344',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:900}}>{d.doc_type==='proforma'?'PROFORMA':'QUOTATION'}</span><span style={{background:'#f2f4f5',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:800}}>{statusLabel(d)}</span>{isFollowup&&<span style={{color:'#b45309',fontSize:10,fontWeight:900}}>⏰ Follow up due</span>}</div><div style={{fontWeight:850,fontSize:16,marginTop:6}}>{d.client_name}{d.client_company?' · '+d.client_company:''}</div><div style={{fontSize:12,color:'#63766a',marginTop:5}}>{gwQTypeName(d.event_type)} · {d.title} · {d.event_date||'Date TBD'} · {d.venue_type||d.event_city||'Venue TBD'}</div><div style={{fontSize:11,color:'#718279',marginTop:5}}>{gwQChannels.find(x=>x[0]===d.source_channel)?.[1]||'Manual'}{d.client_phone?' · '+d.client_phone:''}{d.follow_up_on?' · Follow-up '+d.follow_up_on:''}</div></div><div style={{fontSize:20,fontWeight:900,color:'#0a654f',whiteSpace:'nowrap'}}>{gwQMoney(price.total)}</div></div>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-start'}}><div style={{flex:1,minWidth:210}}><div style={{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}><strong style={{color:'#0b6550',fontSize:14}}>{gwQDocNo(d)}</strong><span style={{background:d.doc_type==='proforma'?'#efe8ff':'#e8f5ef',color:d.doc_type==='proforma'?'#6d28d9':'#166344',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:900}}>{d.doc_type==='proforma'?'PROFORMA':'QUOTATION'}</span><span style={{background:'#f2f4f5',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:800}}>{statusLabel(d)}</span>{isFollowup&&<span style={{color:'#b45309',fontSize:10,fontWeight:900}}>⏰ Follow up due</span>}</div><div style={{fontWeight:850,fontSize:16,marginTop:6}}>{d.client_name}{d.client_company?' · '+d.client_company:''}</div><div style={{fontSize:12,color:'#63766a',marginTop:5}}>{gwQTypeName(d.event_type)} · {d.title} · {d.event_date||'Date TBD'} · {d.venue_type||d.event_city||'Venue TBD'}</div><div style={{fontSize:11,color:'#718279',marginTop:5}}>{gwQChannels.find(x=>x[0]===d.source_channel)?.[1]||'Manual'}{d.client_phone?' · '+d.client_phone:''}{d.follow_up_on?' · Follow-up '+d.follow_up_on:''}</div></div><div style={{fontSize:d.package_mode==='compare'?13:20,fontWeight:900,color:'#0a654f',maxWidth:280,textAlign:'right'}}>{d.package_mode==='compare'?gwQPackageSummary(d).map(p=><div key={p.id}>{p.name}: {gwQMoney(p.total)}</div>):gwQMoney(price.total)}</div></div>
           <div style={{display:'flex',flexWrap:'wrap',gap:7,marginTop:12}}>
-            <button onClick={()=>preview(d)} disabled={price.total<=0} title={price.total<=0?'Add prices before preparing customer PDF':''} style={btn('#e9f7ef','#075e46')}>📄 Print / Save PDF</button>
-            <button onClick={()=>wa(d)} disabled={!d.client_phone||price.total<=0} style={btn('#dcfce7','#166534')}>WhatsApp</button>
-            <button onClick={()=>copyMessage(d)} disabled={price.total<=0} style={btn('#eff6ff','#1d4ed8')}>Copy message</button>
+            <button onClick={()=>preview(d)} disabled={d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0} title={d.package_mode==='compare'&&!gwQComparisonReady(d)?'Price all three tiers with ascending totals before printing':''} style={btn('#e9f7ef','#075e46')}>📄 {d.package_mode==='compare'?'Compare packages / PDF':'Print / Save PDF'}</button>
+            <button onClick={()=>wa(d)} disabled={!d.client_phone||(d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0)} style={btn('#dcfce7','#166534')}>WhatsApp</button>
+            <button onClick={()=>copyMessage(d)} disabled={d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0} style={btn('#eff6ff','#1d4ed8')}>Copy message</button>
             {d.status==='draft'&&<><button onClick={()=>edit(d)} style={btn('#edf1ff','#3730a3')}>Edit draft</button><button disabled={busy} onClick={()=>changeStatus(d,'sent')} style={btn('#087963','#fff')}>Mark as sent</button></>}
-            {d.status==='sent'&&<><button disabled={busy} onClick={()=>changeStatus(d,'accepted')} style={btn('#d1fae5','#065f46')}>Customer accepted</button><button disabled={busy} onClick={()=>changeStatus(d,'cancelled')} style={btn('#fee2e2','#991b1b')}>Cancel</button></>}
+            {d.status==='sent'&&<><button disabled={busy} onClick={()=>{if(d.package_mode==='compare'){setAcceptingId(d.id);setAcceptTier('better');}else changeStatus(d,'accepted');}} style={btn('#d1fae5','#065f46')}>Customer accepted</button><button disabled={busy} onClick={()=>changeStatus(d,'cancelled')} style={btn('#fee2e2','#991b1b')}>Cancel</button></>}
             <button onClick={()=>copy(d)} style={btn('#f6f0ff','#6d28d9')}>{d.status==='draft'?'Duplicate':'Create revision'}</button>
             {d.doc_type==='quote'&&d.status==='accepted'&&<button onClick={()=>makeProforma(d)} style={btn('#ede9fe','#5b21b6')}>→ Convert to proforma</button>}
           </div>
+          {acceptingId===d.id&&d.package_mode==='compare'&&d.status==='sent'&&<div style={{marginTop:12,border:'1px solid #b7d9c5',background:'#f0fbf4',borderRadius:11,padding:13}}><b>Which package did the customer approve?</b><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:9}}>{gwQPackageSummary(d).map(p=><label key={p.id} style={{display:'flex',alignItems:'center',gap:6,fontSize:13,background:'#fff',borderRadius:9,padding:'8px 10px'}}><input type="radio" name={`approved-${d.id}`} checked={acceptTier===p.id} onChange={()=>setAcceptTier(p.id)}/>{p.name} · {gwQMoney(p.total)}</label>)}</div><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}><button disabled={busy} onClick={()=>changeStatus(d,'accepted',acceptTier)} style={btn('#087963','#fff')}>Confirm client approval</button><button onClick={()=>setAcceptingId(null)} style={btn('#fff','#365044')}>Cancel</button></div><p style={{fontSize:11,color:'#607569',marginBottom:0}}>This is a manual approval record, not a confirmed payment. Only the accepted tier goes into the proforma invoice.</p></div>}
+          {d.approved_package&&d.package_mode==='compare'&&<div style={{fontSize:12,color:'#087963',marginTop:8,fontWeight:850}}>✓ Approved package: {d.approved_package.charAt(0).toUpperCase()+d.approved_package.slice(1)}</div>}
         </article>;
       })}
       <p style={{fontSize:11.5,color:'#64796c',margin:'12px 0 0'}}>Status changes are recorded manually. Saving a PDF or opening WhatsApp does not prove delivery, acceptance or payment. Sent/accepted documents are protected from editing; create a numbered revision for changes.</p>
