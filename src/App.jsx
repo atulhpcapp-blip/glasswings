@@ -21992,9 +21992,120 @@ main{position:relative;width:210mm;min-height:0;margin:8mm auto;background:#fff;
   </section>
   <div class="disclaimer">${isPI?'This is a PROFORMA invoice / request for payment. It is not a GST tax invoice, payment confirmation or receipt.':'This is a commercial estimate, not a tax invoice or proof of payment.'} Prices and taxes are subject to the agreed scope and applicable law.</div><div class="footer">${safe(company.legal_name||'GLASSWINGS EVENTS PRIVATE LIMITED')}${company.cin?' · CIN: '+safe(company.cin):''}${company.gstin?' · GSTIN: '+safe(company.gstin):''}<br/>Event planning & experiences · Please retain this document for reference. This document is generated electronically by Glasswings.</div></main><button class="print" onclick="window.print()">Print / Save as PDF</button></body></html>`;
 }
+
+// The formal A4 document and the high-resolution client poster use the SAME saved quotation data.
+// Themes affect presentation only; the original amounts, taxes, tiers and status are unchanged.
+const GW_Q_EXPORT_THEMES = [
+  {id:'gold-white',name:'Luxury Gold + White'},
+  {id:'emerald',name:'Dark Emerald Corporate'},
+  {id:'black-gold',name:'Minimal Elite Black + Gold'}
+];
+const GW_Q_EXPORT_LAYOUTS = [
+  {id:'formal',name:'Formal quotation / proforma'},
+  {id:'poster',name:'Premium quotation poster'},
+  {id:'menu',name:'Services menu with prices'}
+];
+const gwQThemePalette = theme => ({
+  'gold-white':{bg:'#fffdf8',panel:'#ffffff',ink:'#222927',quiet:'#576460',primary:'#94713e',gold:'#b79252',border:'#dfd1ba',deep:'#173d35'},
+  emerald:{bg:'#082d28',panel:'#103d35',ink:'#fff7e8',quiet:'#dfdecb',primary:'#dfbe83',gold:'#dfbe83',border:'#a18a56',deep:'#05221e'},
+  'black-gold':{bg:'#121311',panel:'#1d1e1b',ink:'#fff9ed',quiet:'#d7d0c2',primary:'#e0bf7e',gold:'#e0bf7e',border:'#9a8358',deep:'#090a09'}
+}[theme]||{bg:'#fffdf8',panel:'#fff',ink:'#222927',quiet:'#576460',primary:'#94713e',gold:'#b79252',border:'#dfd1ba',deep:'#173d35'});
+
+function gwQFormalThemeCss(theme) {
+  if(theme==='gold-white')return '';
+  const p=gwQThemePalette(theme);
+  return `
+  /* Theme override applies to official PDF and printable quotation. */
+  body{background:${p.deep}!important;color:${p.ink}!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  main{background:${p.bg}!important;color:${p.ink}!important}
+  .topband{background:linear-gradient(90deg,${p.gold},${p.primary},${p.gold})!important}
+  .mast{border-color:${p.gold}!important}
+  .brand,.heading h1,.detail b,.hero h2,.sectiontitle,.total,.summary .total,.gwproofitem b{color:${p.ink}!important}
+  .tagline,.sect,.gweyebrow,.gwaboutcard h3{color:${p.gold}!important}
+  .company,.detail span,.muted,.textblock,.gwaboutcard p,.gwproofitem span,.gwwebsite,.footer,.disclaimer{color:${p.quiet}!important}
+  .companychip,.docpill,.summary,.hero,.gwabout,.disclaimer,.gwproof,.gwaboutgrid{background:${p.panel}!important;color:${p.ink}!important;border-color:${p.border}!important}
+  .cols,.invoice,.packagelist,.summary,.footer,.detail,.sect{border-color:${p.border}!important}
+  .invoice th,.packagelist th,.gwabouthead{background:${p.deep}!important;color:${p.ink}!important}
+  .invoice td,.packagelist td{border-color:${p.border}!important;color:${p.ink}!important}
+  .summary .due{background:${p.deep}!important;color:${p.ink}!important}
+  .summary>div,.packagelist .pkgprice{color:${p.ink}!important}
+  .gwabouthead h2,.gwabouthead strong{color:${p.ink}!important}
+  .gwproofbrands,.gwproofbrands strong{color:${p.gold}!important}
+  .gwlogo{border-color:${p.gold}!important}
+  .watermark{color:${p.gold}!important;opacity:.08}
+  .print{background:${p.deep}!important;color:${p.gold}!important;border:1px solid ${p.gold}!important}
+  @media print{body,main{background:${p.bg}!important;color:${p.ink}!important}}
+  `;
+}
+function gwQHtmlWithTheme(html,theme){
+  // Inject only before the first style close tag of the generated A4 HTML.
+  return html.replace('</style>',gwQFormalThemeCss(theme)+'</style>');
+}
+function gwQPosterMarkup(d,company,theme='emerald',mode='poster') {
+  const p=gwQThemePalette(theme),safe=gwQEsc, isPI=d.doc_type==='proforma';
+  const isCompare=d.package_mode==='compare'&&!isPI;
+  const total=gwQCalc(d),tiers=isCompare?gwQPackageSummary(d):[];
+  const priced=(d.items||[]).filter(i=>i.name&&Number(i.qty)>0&&Number(i.rate)>0);
+  const title=isPI?'PROFORMA INVOICE':mode==='menu'?'EVENT SERVICES & PRICING':'PREMIUM EVENT QUOTATION';
+  const sn=(name,value)=>value?`<div class="meta"><label>${safe(name)}</label><strong>${safe(value)}</strong></div>`:'';
+  const lineItems=isCompare ? `<section class="tiers"><h2>GOOD · BETTER · PREMIUM</h2><div class="cards">${tiers.map(x=>`<div class="tier"><div class="tiername">${safe(x.name)}</div><div class="tiermoney">${gwQMoney(x.total)}</div><div class="tiernotes">Advance ${gwQMoney(x.advance)}<br/>Balance ${gwQMoney(x.balance)}</div></div>`).join('')}</div><div class="menu-title">Included services by package</div><table><thead><tr><th>Service</th>${gwQPackageOptions(d).map(x=>`<th>${safe(x.name)}</th>`).join('')}</tr></thead><tbody>${[...new Set(gwQPackageOptions(d).flatMap(x=>(x.items||[]).filter(i=>i.name&&Number(i.qty)>0&&Number(i.rate)>0).map(i=>i.name)))].map(n=>`<tr><td>${safe(n)}</td>${gwQPackageOptions(d).map(x=>{const item=(x.items||[]).find(i=>i.name===n&&Number(i.rate)>0&&Number(i.qty)>0);return `<td>${item?`✓ ${safe(item.qty)} ${safe(item.unit||'')}`:'—'}</td>`;}).join('')}</tr>`).join('')}</tbody></table></section>` :
+  mode==='menu' ? `<section class="services"><h2>YOUR EVENT SERVICES</h2><div class="servicegrid">${priced.map((i,k)=>`<div class="service"><div class="serviceno">${String(k+1).padStart(2,'0')}</div><div class="servicetxt"><b>${safe(i.name)}</b><small>${safe(i.category||gwQCategoryFor(i.name))} · ${safe(i.qty)} ${safe(i.unit||'service')} × ${gwQMoney(i.rate)}</small></div><strong>${gwQMoney(Number(i.qty)*Number(i.rate))}</strong></div>`).join('')}</div></section>` :
+  `<section class="services"><h2>YOUR EVENT PROPOSAL</h2><table><thead><tr><th>Service & scope</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${priced.map(i=>`<tr><td><b>${safe(i.name)}</b><small>${safe(i.category||gwQCategoryFor(i.name))}</small></td><td>${safe(i.qty)} ${safe(i.unit||'')}</td><td>${gwQMoney(i.rate)}</td><td>${gwQMoney(Number(i.qty)*Number(i.rate))}</td></tr>`).join('')}</tbody></table></section>`;
+  const figures=!isCompare?`<section class="figures"><div><span>Subtotal</span><strong>${gwQMoney(total.subtotal)}</strong></div>${total.discount?`<div><span>Less discount</span><strong>− ${gwQMoney(total.discount)}</strong></div>`:''}${Number(d.tax_rate)>0?`<div><span>Tax (${safe(d.tax_rate)}%)</span><strong>${gwQMoney(total.tax)}</strong></div>`:''}<div class="grand"><span>QUOTATION TOTAL</span><strong>${gwQMoney(total.total)}</strong></div><div><span>Proposed advance (${safe(d.advance_pct)}%)</span><strong>${gwQMoney(total.advance)}</strong></div><div><span>Balance after advance</span><strong>${gwQMoney(total.balance)}</strong></div></section>`:'';
+  const terms=[['Inclusions',d.inclusions],['Exclusions',d.exclusions],['Payment schedule',d.payment_terms],['Important terms',d.terms]].filter(([,v])=>v);
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>${safe(gwQDocNo(d))} — Glasswings Poster</title><style>
+    *{box-sizing:border-box}body{margin:0;background:${p.bg};color:${p.ink};font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}#gw-export{position:relative;width:800px;min-height:1120px;margin:0 auto;background:${p.bg};color:${p.ink};padding:38px 44px 26px;overflow:hidden}#gw-export:before{content:'';position:absolute;inset:14px;border:1px solid ${p.border};pointer-events:none}#gw-export:after{content:'';position:absolute;top:22px;left:22px;right:22px;bottom:22px;border:1px solid ${p.border}55;pointer-events:none}.line{height:2px;background:linear-gradient(90deg,transparent,${p.gold},transparent);margin:16px 0 20px}.top{display:flex;gap:17px;align-items:center}.logo{width:83px;height:83px;object-fit:cover;border-radius:15px;border:2px solid ${p.gold}}.company{font-family:Georgia,serif;color:${p.ink};font-size:23px;line-height:1.14;letter-spacing:1px}.tag{font-size:10px;letter-spacing:2px;color:${p.gold};margin-top:9px;font-weight:700}.head{margin:26px 0 18px;text-align:center}.eyebrow{font-size:10px;letter-spacing:3px;color:${p.gold};font-weight:900}.head h1{font-family:Georgia,serif;font-size:34px;font-weight:700;letter-spacing:1.6px;margin:10px 0 8px;color:${p.ink};line-height:1.15}.head p{margin:0;color:${p.quiet};font-size:13px}.metaarea{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:16px;background:${p.panel};border:1px solid ${p.border};border-radius:12px}.meta{display:flex;flex-direction:column;gap:4px;min-width:0}.meta label{color:${p.gold};text-transform:uppercase;font-size:9px;font-weight:800;letter-spacing:1px}.meta strong{font-size:12.5px;overflow-wrap:anywhere}.services{margin-top:22px}.services h2,.tiers h2{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:${p.gold};margin:0 0 11px}.services table,.tiers table{width:100%;border-collapse:collapse;color:${p.ink};font-size:12px}.services th,.tiers th{font-size:10px;letter-spacing:.7px;text-align:left;padding:11px 8px;background:${p.deep};color:${p.gold};border-bottom:1px solid ${p.border}}.services td,.tiers td{padding:11px 8px;border-bottom:1px solid ${p.border}88;vertical-align:top}.services td:not(:first-child){white-space:nowrap}.services td small{display:block;color:${p.quiet};font-size:10px;padding-top:4px}.services td:last-child{text-align:right;font-weight:800}.services th:last-child{text-align:right}.servicegrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.service{display:flex;align-items:center;gap:9px;background:${p.panel};border:1px solid ${p.border};border-radius:9px;padding:11px 10px;min-width:0}.serviceno{color:${p.gold};font-size:11px;font-weight:800}.servicetxt{flex:1;min-width:0}.servicetxt b{font-size:12px;display:block}.servicetxt small{font-size:9.2px;display:block;color:${p.quiet};margin-top:3px}.service>strong{font-size:12px;white-space:nowrap}.figures{margin:20px 0 0 auto;background:${p.panel};border:1px solid ${p.border};border-radius:10px;padding:12px 18px;max-width:440px}.figures>div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;color:${p.quiet};font-size:12px}.figures strong{color:${p.ink};white-space:nowrap}.figures .grand{border-top:1px solid ${p.border};border-bottom:1px solid ${p.border};padding:12px 0;margin:4px 0;color:${p.gold};font-size:15px;font-weight:800}.figures .grand strong{color:${p.gold};font-size:18px}.tiers{margin:23px 0}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.tier{border:1px solid ${p.border};background:${p.panel};padding:15px 8px;text-align:center;border-radius:9px}.tiername{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:${p.gold};font-weight:800}.tiermoney{font-size:19px;font-weight:900;margin:10px 0}.tiernotes{font-size:10px;color:${p.quiet};line-height:1.5}.menu-title{margin:20px 0 8px;font-size:11px;color:${p.gold};text-transform:uppercase;letter-spacing:1px}.footnotes{margin-top:19px;border-top:1px solid ${p.border};padding-top:12px}.footnotes p{font-size:10px;color:${p.quiet};white-space:pre-wrap;line-height:1.5;margin:5px 0}.footnotes b{color:${p.gold}}.about{margin-top:18px;padding:13px 15px;border:1px solid ${p.border};background:${p.panel};border-radius:10px}.about h3{color:${p.gold};font-size:11px;letter-spacing:1.1px;margin:0 0 8px}.about div{font-size:10px;line-height:1.55;color:${p.quiet}}.contacts{margin-top:22px;border-top:2px solid ${p.gold};padding-top:12px;display:flex;gap:14px;flex-wrap:wrap;justify-content:center;text-align:center;font-size:10.5px;color:${p.ink}}.contacts span{white-space:nowrap}.legal{text-align:center;font-size:9px;color:${p.quiet};line-height:1.5;margin-top:10px}.print{position:fixed;right:16px;bottom:16px;border:0;border-radius:50px;padding:11px 18px;background:${p.gold};color:${p.deep};font-size:13px;font-weight:800;cursor:pointer}@media print{body,#gw-export{background:${p.bg};color:${p.ink}}#gw-export{margin:0 auto}.print{display:none}@page{size:A4;margin:0}}
+  </style></head><body><div id="gw-export"><div class="top"><img class="logo" src="${safe(gwQBrandLogo(company))}" alt="Glasswings"/><div><div class="company">${safe((company.legal_name||'GLASSWINGS EVENTS PRIVATE LIMITED').toUpperCase())}</div><div class="tag">CURATED CELEBRATIONS · DISTINCTIVE EXPERIENCES</div></div></div><div class="line"></div><div class="head"><div class="eyebrow">${safe(gwQDocNo(d))}</div><h1>${title}</h1><p>${safe(d.title||'Your tailored Glasswings event proposal')}</p></div><div class="metaarea">${sn('Prepared for',d.client_name)}${sn('Event',gwQTypeName(d.event_type))}${sn('Date',d.event_date||'To be confirmed')}${sn('Location',d.venue||d.event_city||'To be confirmed')}${sn('Guests',d.guests)}${sn('Package',d.package_name)}${sn('Quotation validity',d.valid_until)}</div>${lineItems}${figures}<div class="footnotes">${terms.map(([k,v])=>`<p><b>${safe(k)}: </b>${safe(v)}</p>`).join('')}</div><div class="about"><h3>THE GLASSWINGS EXPERIENCE</h3><div>${safe(company.community_summary||gwQDefaultCompanySettings.community_summary)}</div></div><div class="contacts"><span>${safe(company.phone||'9777777491')}</span><span>${safe(company.email||'atul@glass-wings.com')}</span><span>www.glass-wings.com</span></div><div class="legal">${safe(company.legal_name||'GLASSWINGS EVENTS PRIVATE LIMITED')} · CIN ${safe(company.cin||'U56210TS2024PTC186035')} · ${safe(company.address||'Hyderabad')}<br/>${isPI?'Proforma only — not a GST tax invoice or proof of payment.':'Estimate only — not an invoice or proof of payment.'}</div></div><button class="print" onclick="window.print()">Print poster / Save PDF</button></body></html>`;
+}
+let gwQCanvasLoader = null;
+function gwQGetCanvasLib(){
+  // Lazy loading keeps the rest of Glasswings working even if image export is unused.
+  if(window.html2canvas)return Promise.resolve(window.html2canvas);
+  if(gwQCanvasLoader)return gwQCanvasLoader;
+  gwQCanvasLoader=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    script.onload=()=>window.html2canvas?resolve(window.html2canvas):reject(Error('Image renderer did not load.'));
+    script.onerror=()=>reject(Error('Could not load the image exporter. Check your internet connection and retry.'));
+    document.head.appendChild(script);
+  }).catch(e=>{gwQCanvasLoader=null;throw e;});
+  return gwQCanvasLoader;
+}
+async function gwQDownloadImage(d,company,theme,layout,mime){
+  const capture=await gwQGetCanvasLib();
+  const frame=document.createElement('iframe');
+  frame.title='Temporary Glasswings quotation image export';
+  frame.style.cssText='position:fixed;left:-10000px;top:0;width:900px;height:1200px;border:0;opacity:1;pointer-events:none;z-index:-1';
+  document.body.appendChild(frame);
+  try {
+    const doc=frame.contentDocument;
+    // Formal documents can span pages; posters are designed as one long, shareable portrait image.
+    const html=layout==='formal'?gwQHtmlWithTheme(gwQMarkup(d,company),theme):gwQPosterMarkup(d,company,theme,layout);
+    doc.open();doc.write(html);doc.close();
+    await new Promise(resolve=>setTimeout(resolve,120));
+    await Promise.all([...doc.images].map(img=>img.decode?.().catch(()=>{})||Promise.resolve()));
+    if(doc.fonts?.ready)await doc.fonts.ready;
+    const target=doc.querySelector(layout==='formal'?'main':'#gw-export');
+    if(!target)throw Error('Quotation layout was not found.');
+    const w=Math.ceil(Math.max(target.scrollWidth,target.getBoundingClientRect().width));
+    const h=Math.ceil(Math.max(target.scrollHeight,target.getBoundingClientRect().height));
+    if(w>9000||h>14000)throw Error('This quotation is too long for a single image. Choose the PDF version, or shorten the service list.');
+    const scale=Math.min(2,14000/Math.max(w,h));
+    const canvas=await capture(target,{backgroundColor:gwQThemePalette(theme).bg,scale,useCORS:true,logging:false,windowWidth:Math.max(900,w),windowHeight:Math.max(1200,h),scrollX:0,scrollY:0});
+    const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Could not create the image.')),mime,mime==='image/jpeg'?.94:undefined));
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=`${gwQDocNo(d)}-${layout}-${theme}.${mime==='image/jpeg'?'jpg':'png'}`;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }finally{frame.remove();}
+}
+
 function GWQuoteManager({meId}) {
   const [documents,setDocuments]=useState([]);
   const [settings,setSettings]=useState({...gwQDefaultCompanySettings});
+  const [exportTheme,setExportTheme]=useState(()=>{try{return localStorage.getItem('gw_quote_export_theme')||'emerald'}catch{return 'emerald'}});
+  const [exportLayout,setExportLayout]=useState('formal');
+  const [exportBusy,setExportBusy]=useState(false);
   const [draft,setDraft]=useState(null),[step,setStep]=useState('client'),[companyOpen,setCompanyOpen]=useState(false);
   const [acceptingId,setAcceptingId]=useState(null),[acceptTier,setAcceptTier]=useState('better');
   const [showImport,setShowImport]=useState(false),[leads,setLeads]=useState([]),[leadBusy,setLeadBusy]=useState(false),[leadError,setLeadError]=useState('');
@@ -22113,7 +22224,15 @@ function GWQuoteManager({meId}) {
   };
   const preview=d=>{
     const win=window.open('','_blank');if(!win)return setErr('Please allow pop-ups to preview and print the PDF.');
-    win.document.open();win.document.write(gwQMarkup(d,settings));win.document.close();
+    win.document.open();win.document.write(exportLayout==='formal'
+      ? gwQHtmlWithTheme(gwQMarkup(d,settings),exportTheme)
+      : gwQPosterMarkup(d,settings,exportTheme,exportLayout));win.document.close();
+  };
+  const downloadImage=async(d,type)=>{
+    setExportBusy(true);setErr('');
+    try{await gwQDownloadImage(d,settings,exportTheme,exportLayout,type);setNotice(`${type==='image/jpeg'?'JPEG':'PNG'} ready for sharing. The exported amounts come from the saved quotation.`);}
+    catch(e){setErr(e?.message||'Could not prepare the image. Use Print / Save PDF.');}
+    finally{setExportBusy(false);}
   };
   const message=d=>{
     const s=gwQCalc(d),kind=d.doc_type==='proforma'?'proforma invoice':'quotation';
@@ -22194,6 +22313,23 @@ function GWQuoteManager({meId}) {
       <button onClick={load} disabled={loading} style={btn('#fff','#075e46')}>↻ Refresh</button>
       <button onClick={showImport?()=>setShowImport(false):importLeads} style={btn('#f2f5f3','#455e53')}>Optional: Import website enquiry</button>
     </div>
+    <section style={{...panel,border:'1px solid #d4b57f',background:'#fffaf2',padding:'14px 16px',marginBottom:14}}>
+      <div style={{fontWeight:900,color:'#173d35',fontSize:15,marginBottom:4}}>🎨 Document design & export</div>
+      <p style={{fontSize:12,color:'#5f675f',margin:'0 0 11px'}}>Choose once and export any saved quotation or proforma as a formal PDF, a client-specific poster JPEG/PNG, or a priced services menu. Amounts and package details remain identical.</p>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:11}}>
+        <label style={{fontSize:12,fontWeight:800,color:'#375647'}}>Quotation theme
+          <select aria-label="Quotation design theme" value={exportTheme} onChange={e=>{setExportTheme(e.target.value);try{localStorage.setItem('gw_quote_export_theme',e.target.value)}catch{}}} style={{...input,marginTop:5}}>
+            {GW_Q_EXPORT_THEMES.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+        <label style={{fontSize:12,fontWeight:800,color:'#375647'}}>Layout & output
+          <select aria-label="Quotation layout" value={exportLayout} onChange={e=>setExportLayout(e.target.value)} style={{...input,marginTop:5}}>
+            {GW_Q_EXPORT_LAYOUTS.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <div style={{fontSize:11,color:'#65766b',marginTop:8}}>Use a document row below to preview or save as PDF, JPEG or PNG. Images are generated on your device; nothing is posted publicly.</div>
+    </section>
     {notice&&<div role="status" style={{...panel,borderColor:'#a5e0bd',background:'#e8f8ee',color:'#155734',padding:11}}>{notice}</div>}
     {err&&<div role="alert" style={{...panel,borderColor:'#fecaca',background:'#fff2f2',color:'#991b1b',padding:11}}>{err}</div>}
     {showImport&&<section style={panel}><h3 style={{margin:'0 0 6px'}}>Import an existing Plan My Event enquiry (optional)</h3><div style={{fontSize:12,color:'#647a6d',marginBottom:10}}>This only fills the customer and event fields. New manual documents never need an enquiry ID.</div>{leadBusy?'Loading website enquiries…':<select style={input} defaultValue="" onChange={e=>{if(e.target.value)useLead(e.target.value);e.target.value='';}}><option value="">Choose customer enquiry…</option>{leads.map(l=><option value={l.id} key={l.id}>{l.contact_name} — {l.event_title||l.event_type||'Event'} — {l.city||'Location TBD'}</option>)}</select>}{leadError&&<p style={{color:'#b91c1c',fontSize:12}}>{leadError}</p>}</section>}
@@ -22297,7 +22433,9 @@ function GWQuoteManager({meId}) {
         return <article key={d.id} style={{border:'1px solid #e0eae4',borderRadius:12,padding:14,marginBottom:11,background:'#fff'}}>
           <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-start'}}><div style={{flex:1,minWidth:210}}><div style={{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}><strong style={{color:'#0b6550',fontSize:14}}>{gwQDocNo(d)}</strong><span style={{background:d.doc_type==='proforma'?'#efe8ff':'#e8f5ef',color:d.doc_type==='proforma'?'#6d28d9':'#166344',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:900}}>{d.doc_type==='proforma'?'PROFORMA':'QUOTATION'}</span><span style={{background:'#f2f4f5',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:800}}>{statusLabel(d)}</span>{isFollowup&&<span style={{color:'#b45309',fontSize:10,fontWeight:900}}>⏰ Follow up due</span>}</div><div style={{fontWeight:850,fontSize:16,marginTop:6}}>{d.client_name}{d.client_company?' · '+d.client_company:''}</div><div style={{fontSize:12,color:'#63766a',marginTop:5}}>{gwQTypeName(d.event_type)} · {d.title} · {d.event_date||'Date TBD'} · {d.venue_type||d.event_city||'Venue TBD'}</div><div style={{fontSize:11,color:'#718279',marginTop:5}}>{gwQChannels.find(x=>x[0]===d.source_channel)?.[1]||'Manual'}{d.client_phone?' · '+d.client_phone:''}{d.follow_up_on?' · Follow-up '+d.follow_up_on:''}</div></div><div style={{fontSize:d.package_mode==='compare'?13:20,fontWeight:900,color:'#0a654f',maxWidth:280,textAlign:'right'}}>{d.package_mode==='compare'?gwQPackageSummary(d).map(p=><div key={p.id}>{p.name}: {gwQMoney(p.total)}</div>):gwQMoney(price.total)}</div></div>
           <div style={{display:'flex',flexWrap:'wrap',gap:7,marginTop:12}}>
-            <button onClick={()=>preview(d)} disabled={d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0} title={d.package_mode==='compare'&&!gwQComparisonReady(d)?'Price all three tiers with ascending totals before printing':''} style={btn('#e9f7ef','#075e46')}>📄 {d.package_mode==='compare'?'Compare packages / PDF':'Print / Save PDF'}</button>
+            <button onClick={()=>preview(d)} disabled={d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0} title={d.package_mode==='compare'&&!gwQComparisonReady(d)?'Price all three tiers with ascending totals before printing':''} style={btn('#e9f7ef','#075e46')}>📄 Preview / Save PDF</button>
+            <button onClick={()=>downloadImage(d,'image/jpeg')} disabled={exportBusy||(d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0)} style={btn('#fff4de','#79551e')}>{exportBusy?'Preparing image…':'🖼 Download JPEG'}</button>
+            <button onClick={()=>downloadImage(d,'image/png')} disabled={exportBusy||(d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0)} style={btn('#f4f0ff','#6e3998')}>Download PNG</button>
             <button onClick={()=>wa(d)} disabled={!d.client_phone||(d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0)} style={btn('#dcfce7','#166534')}>WhatsApp</button>
             <button onClick={()=>copyMessage(d)} disabled={d.package_mode==='compare'?!gwQComparisonReady(d):price.total<=0} style={btn('#eff6ff','#1d4ed8')}>Copy message</button>
             {d.status==='draft'&&<><button onClick={()=>edit(d)} style={btn('#edf1ff','#3730a3')}>Edit draft</button><button disabled={busy} onClick={()=>changeStatus(d,'sent')} style={btn('#087963','#fff')}>Mark as sent</button></>}
