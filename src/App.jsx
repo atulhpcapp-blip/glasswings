@@ -816,9 +816,10 @@ function Shell({ children }) {
     </div>
   );
 }
-function DesktopSidebar({ tab, setTab, isAdmin, isBookingAdmin = false, isTeam = false, isSuper = false, reviewBadge = 0, width, meetBadge = 0 }) {
+function DesktopSidebar({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, isTeam = false, isSuper = false, reviewBadge = 0, width, meetBadge = 0 }) {
   const items = [
     ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Booking Dashboard", highlight: true }, { id: "quotes", icon: Printer, label: "Quotations & Invoices", highlight: true }] : []),
+    ...(waAccess ? [{id:"wacenter",icon:MessageCircle,label:"WhatsApp Centre",highlight:true}] : []),
     { id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isTeam ? [{ id: "review", icon: Check, label: "Review", badge: reviewBadge }] : []), ...(isSuper ? [{ id: "money", icon: IndianRupee, label: "Money" }] : []), ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events" }] : []), ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40, overflowY: "auto", overscrollBehavior: "contain" }}>
@@ -3678,6 +3679,94 @@ function RestrictedGate({ user, profile, reviewFlag, photoReviewStatus = "", rel
     </div>
   );
 }
+// GLASSWINGS · WHATSAPP SALES ALERTS & ORGANISER CREDIT WALLET
+// Intentionally separate from in-app/game/lead credits.
+function GWWhatsAppCredits({userId,isGlasswings=false}) {
+  const [wallet,setWallet]=useState(null),[ledger,setLedger]=useState([]),[history,setHistory]=useState([]);
+  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[info,setInfo]=useState('');
+  const [phone,setPhone]=useState(''),[enabled,setEnabled]=useState(false),[pack,setPack]=useState(100);
+  const [loading,setLoading]=useState(true);
+  const frame={background:'#fff',border:'1px solid #DBE7E1',borderRadius:15,padding:17,margin:'12px 0'};
+  const ctrl={width:'100%',border:'1px solid #BFCFC7',borderRadius:10,padding:'11px 12px',fontSize:14,boxSizing:'border-box'};
+  const action=(bg='#0D6856')=>({border:0,borderRadius:10,padding:'11px 16px',cursor:'pointer',fontWeight:800,background:bg,color:'#fff',opacity:busy?.6:1});
+  const refresh=async()=>{
+    setLoading(true);
+    const jobs=[supabase.from('gw_wa_outbox').select('event_key,channel,status,created_at,payload,error_text').order('created_at',{ascending:false}).limit(30)];
+    if(!isGlasswings){
+      jobs.push(supabase.from('gw_wa_wallets').select('credits,notify_sales,destination_phone').eq('organiser_id',userId).maybeSingle());
+      jobs.push(supabase.from('gw_wa_credit_ledger').select('units,reason,created_at').eq('organiser_id',userId).order('created_at',{ascending:false}).limit(25));
+    }
+    const rs=await Promise.all(jobs);
+    if(rs[0].error)setError(rs[0].error.message);else setHistory(rs[0].data||[]);
+    if(!isGlasswings){
+      if(rs[1].error)setError(rs[1].error.message);
+      const w=rs[1].data||null;setWallet(w);setPhone(w?.destination_phone||'');setEnabled(!!w?.notify_sales);
+      setLedger(rs[2]?.data||[]);
+    }
+    setLoading(false);
+  };
+  useEffect(()=>{refresh();},[userId,isGlasswings]);
+  const save=async()=>{
+    setBusy(true);setError('');setInfo('');
+    const {error:e}=await supabase.rpc('gw_wa_my_preferences',{p_on:enabled,p_phone:phone});
+    setBusy(false);if(e){setError(e.message);return;}setInfo('WhatsApp preferences saved. Automated alerts require credits and an approved AiSensy campaign.');refresh();
+  };
+  const buy=async()=>{
+    if(busy)return;
+    setBusy(true);setError('');setInfo('');
+    try{
+      const {data:{session}}=await supabase.auth.getSession();
+      if(!session?.access_token)throw Error('Please log in again');
+      const response=await fetch('/api/whatsapp/credits-order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:session.access_token,units:pack})});
+      const order=await response.json();if(!response.ok||!order.ok)throw Error(order.error||'Unable to create order');
+      if(!(await loadRazorpay()))throw Error('Could not open Razorpay');
+      setBusy(false);
+      const rz=new window.Razorpay({key:order.key_id,order_id:order.order_id,amount:order.amount,currency:order.currency,
+        name:'Glasswings',description:`${pack} WhatsApp message credits`,theme:{color:'#0D6856'},
+        handler:async(p)=>{
+          setBusy(true);
+          try{
+            const res=await fetch('/api/whatsapp/credits-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...p,access_token:session.access_token})});
+            const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||'Verification pending');
+            setInfo(`${data.units} WhatsApp credits added. Available: ${data.credits}.`);await refresh();
+          }catch(e){setError(e.message+' If money was deducted, contact support with the Razorpay payment ID.');}
+          finally{setBusy(false);}
+        }});
+      rz.on('payment.failed',()=>setError('Payment failed or was cancelled. No WhatsApp credits were added.'));
+      rz.open();
+    }catch(e){setBusy(false);setError(e.message);}
+  };
+  return <div style={{padding:'16px',maxWidth:940,margin:'0 auto',color:'#142822'}}>
+    <div style={{background:'linear-gradient(125deg,#062D27,#125D4B)',color:'#fff',padding:'22px 20px',borderRadius:16,marginBottom:13}}>
+      <div style={{fontSize:11,fontWeight:900,letterSpacing:2,opacity:.72}}>GLASSWINGS · AISENSY</div>
+      <h1 style={{fontSize:23,margin:'7px 0 4px'}}>WhatsApp Centre</h1>
+      <div style={{fontSize:13,opacity:.88,lineHeight:1.5}}>{isGlasswings?'Automatic Glasswings sales notifications — independent of organiser credits.':'Your paid WhatsApp messaging wallet and event-sales alerts.'}</div>
+    </div>
+    {error&&<div role="alert" style={{...frame,color:'#9E2929',borderColor:'#FABBBB',background:'#FFF4F4'}}>{error}</div>}
+    {info&&<div role="status" style={{...frame,color:'#115C42',background:'#EFF9F3'}}>{info}</div>}
+    {isGlasswings ? <div style={frame}><div style={{fontWeight:900,fontSize:17}}>Glasswings owner alerts · Always enabled</div>
+      <p style={{fontSize:13,lineHeight:1.6,color:'#5B6C64'}}>Owner notifications for verified ticket sales and successful booking/trip payments do <b>not</b> consume organiser credits. Delivery still depends on approved AiSensy templates, the server dispatcher and your AiSensy account balance.</p>
+      <div style={{fontSize:13,fontWeight:800}}>Owner WhatsApp: 9777777491</div></div>
+    : <>
+      <div style={frame}><div style={{display:'flex',alignItems:'center',gap:12,justifyContent:'space-between',flexWrap:'wrap'}}><div><div style={{fontSize:12,fontWeight:850,color:'#4E7969'}}>AVAILABLE WHATSAPP CREDITS</div><div style={{fontSize:37,fontWeight:950,color:'#0D6856'}}>{wallet?.credits??0}</div></div><div style={{fontSize:12,color:'#61786F',maxWidth:290}}>1 credit = one accepted outbound AiSensy API request. Credits are separate from member and lead credits.</div></div>
+        <label style={{display:'block',fontSize:13,fontWeight:800,marginTop:14}}>Notification WhatsApp number<input style={{...ctrl,marginTop:6}} value={phone} placeholder="919777777491" inputMode="tel" onChange={e=>setPhone(e.target.value.replace(/[^+\d]/g,''))}/></label>
+        <label style={{display:'flex',alignItems:'center',gap:9,margin:'12px 0',fontWeight:700,fontSize:13}}><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> Receive automatic ticket and booking alerts when credits are available</label>
+        <button style={action()} onClick={save} disabled={busy}>{busy?'Please wait…':'Save WhatsApp preferences'}</button>
+      </div>
+      <div style={frame}><h3 style={{margin:'0 0 5px'}}>Buy WhatsApp credits</h3><p style={{fontSize:12,color:'#64786F'}}>Only paid-for units are added to your wallet. Razorpay confirms the transaction on the server.</p>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',margin:'12px 0'}}>{[20,50,100,250,500].map(n=><button key={n} onClick={()=>setPack(n)} style={{padding:'11px 15px',borderRadius:10,fontWeight:850,background:n===pack?'#0B604D':'#F3F8F5',border:'1px solid '+(n===pack?'#0B604D':'#DCE8E0'),color:n===pack?'#fff':'#1D483C',cursor:'pointer'}}>{n}</button>)}</div>
+        <button style={action('#875F2C')} onClick={buy} disabled={busy}>Buy {pack} credits with Razorpay</button>
+        <p style={{fontSize:11,color:'#6B7972'}}>Price is set by Glasswings administration on the server and shown in Razorpay checkout. WhatsApp messages for organisers are paid features; no free organiser sending entitlement is implied.</p>
+      </div>
+      <div style={frame}><h3 style={{margin:'0 0 12px'}}>Credit history</h3>{ledger.length?ledger.map((x,i)=><div key={i} style={{display:'flex',gap:12,justifyContent:'space-between',borderBottom:'1px solid #EFF3F0',padding:'8px 0',fontSize:12}}><span>{x.reason}<span style={{display:'block',fontSize:10,color:'#7A8980'}}>{new Date(x.created_at).toLocaleString('en-IN')}</span></span><b style={{color:x.units>0?'#0C7950':'#91542E'}}>{x.units>0?'+':''}{x.units}</b></div>):<div style={{fontSize:12,color:'#6D7C73'}}>No transactions yet</div>}</div>
+    </>}
+    <div style={frame}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><h3 style={{margin:0}}>Sales notification log</h3><button style={action('#596E64')} onClick={refresh}>Refresh</button></div>
+      <div style={{fontSize:11,color:'#6D7C73',margin:'7px 0 12px'}}>“Submitted” means AiSensy accepted the API request, not proof of WhatsApp delivery. Unconfirmed requests require review.</div>
+      {loading?<p>Loading…</p>:!history.length?<p style={{fontSize:12,color:'#6D7C73'}}>No sales alerts yet.</p>:history.map((x,i)=><div key={i} style={{padding:'10px 0',borderTop:'1px solid #EAF1ED',display:'flex',gap:12,justifyContent:'space-between'}}><div style={{fontSize:12}}><b>{x.payload?.event||'Event booking'}</b> · {x.payload?.buyer||'Customer'}<div style={{color:'#75847C',fontSize:11,marginTop:3}}>{x.payload?.kind||'sale'} · ₹{Number(x.payload?.amount||0).toLocaleString('en-IN')} · {new Date(x.created_at).toLocaleString('en-IN')}</div>{x.error_text&&<div style={{fontSize:10,color:'#B45309',marginTop:4}}>{x.error_text}</div>}</div><b style={{fontSize:11,color:x.status==='submitted'?'#0C7950':'#B45309'}}>{x.status.replaceAll('_',' ')}</b></div>)}
+    </div>
+  </div>;
+}
+
 function Main({ user }) {
   const wide = useWide(900);
   const SW = 248;
@@ -4821,6 +4910,7 @@ function Main({ user }) {
       </div>}
       {tab === "bookingdash" && isAdmin && <GWBookingDashboard events={(isSuper || !myCity) ? events : events.filter(ev => ev.city === myCity)} />}
       {tab === "quotes" && isAdmin && <GWQuoteManager meId={user.id} />}
+      {tab === "wacenter" && (isAdmin || isOrganiserOwner) && <GWWhatsAppCredits userId={user.id} isGlasswings={isAdmin} />}
       {tab === "admin" && isStaff && <Admin isGwTeam={isSuper || [profile?.role, ...(profile?.roles || [])].some(r => ["admin", "subadmin", "team", "staff"].includes(r))} caps={caps} canUseDirectory={[profile?.role, ...(profile?.roles || [])].some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r))} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "review" && isGwTeamMain && <div><TopBar title="🛂 Review events" /><EventReviewQueue isAdmin={isAdmin} /></div>}
       {tab === "money" && isSuper && <div><TopBar title="💰 Money" /><MoneyDashboard /></div>}
@@ -4893,7 +4983,7 @@ function Main({ user }) {
           );
         })()}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
-          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} />
+          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
             {twoPane ? (
               <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
@@ -4962,7 +5052,7 @@ function Main({ user }) {
         {screen}
       </div>
       {tab === "meet" && <ScrollTopFab />}
-      <Nav tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} />
+      <Nav tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} />
       <GwDialogHost />
       {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
@@ -20759,6 +20849,21 @@ function parseTimeStr(t) {
   if (ap === "PM" && h < 12) h += 12; if (ap === "AM" && h === 12) h = 0;
   return String(h).padStart(2, "0") + ":" + String(mn).padStart(2, "0");
 }
+function GWOrganiserWhatsappGate({event,children}) {
+  const [wallet,setWallet]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const partner=event?.host_type==='partner';
+  useEffect(()=>{
+    if(!partner||!event?.host_id){setLoading(false);return;}
+    setLoading(true);
+    supabase.from('gw_wa_wallets').select('credits,notify_sales').eq('organiser_id',event.host_id).maybeSingle()
+      .then(({data})=>setWallet(data||null)).finally(()=>setLoading(false));
+  },[partner,event?.host_id]);
+  if(!partner)return children;
+  if(loading)return <div style={{padding:12,fontSize:12,color:'#64748B'}}>Checking organiser WhatsApp credits…</div>;
+  if(!wallet||wallet.credits<1)return <div style={{padding:14,borderRadius:12,background:'#FFFBEB',border:'1px solid #E9C77A',color:'#7C571B',fontSize:13,lineHeight:1.55}}><b>🔒 WhatsApp is a paid organiser feature.</b><br/>Buy WhatsApp credits in <b>WhatsApp Centre</b> to unlock campaign sending, booking alerts and other AiSensy notifications. Glasswings-owned events remain exempt from organiser credits.</div>;
+  return <><div style={{fontSize:12,padding:'7px 10px',background:'#F4FBF7',borderRadius:9,marginBottom:8,color:'#135E49',fontWeight:700}}>💬 Organiser WhatsApp balance: {wallet.credits} credits. Each successful recipient submission uses one credit.</div>{children}</>;
+}
 function EventWaBlast({ event }) {
   const [open, setOpen] = useState(false);
   const [segs, setSegs] = useState([]);
@@ -21424,7 +21529,7 @@ function EventPromotionsTab({ event, onUpdate, canApprove, isSuper }) {
           })}
       </div>
       <ShareCaptionEditor event={event} onUpdate={onUpdate} />
-      <EventWaBlast event={event} />
+      <GWOrganiserWhatsappGate event={event}><EventWaBlast event={event} /></GWOrganiserWhatsappGate>
       <EventShare event={event} />
     </div>
   );
@@ -27620,10 +27725,11 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
     </div>
   );
 }
-function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0 }) {
+function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0 }) {
   const items = [
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
     ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Bookings", c: "#0E7490" }, { id: "quotes", icon: Printer, label: "Quotations", c: "#7C3AED" }] : []),
+    ...(waAccess ? [{id:"wacenter",icon:MessageCircle,label:"WhatsApp",c:"#0F766E"}] : []),
     { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
     { id: "meet", icon: Users, label: "Meet", c: "#EC4899" },
     { id: "groupchat", icon: MessageCircle, label: "Chat", c: "#0F766E" },
