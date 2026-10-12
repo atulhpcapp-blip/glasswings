@@ -1,6 +1,6 @@
 // Shared server-only helpers. Never import this file from App.jsx.
-const { createClient } = require('@supabase/supabase-js');
-const crypto = require('crypto');
+import { createClient } from '@supabase/supabase-js';
+import crypto from 'node:crypto';
 const DB_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const RZ_KEY = process.env.RAZORPAY_KEY_ID || process.env.RZP_KEY_ID;
@@ -32,4 +32,4 @@ async function rzp(path,opts={}){
   const j=await r.json().catch(()=>({})); if(!r.ok)throw Error(j.error?.description||'Razorpay request failed');return j;
 }
 function secureEq(a,b){if(!a||!b)return false;const x=Buffer.from(String(a)),y=Buffer.from(String(b));return x.length===y.length&&crypto.timingSafeEqual(x,y);}
-module.exports={db,fail,requireUser,rzp,secureEq,crypto,RZ_KEY,RZ_SECRET};
+export {db,fail,requireUser,rzp,secureEq,crypto,RZ_KEY,RZ_SECRET};

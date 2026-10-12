@@ -1,7 +1,7 @@
 // CALL from every EXISTING AiSensy endpoint, server side, before sending messages
 // for partner organisers. Do not call for Glasswings-owned campaigns.
 // This file alone cannot protect existing endpoints until they import it.
-const { db }=require('./gw-wa');
+import { db } from './gw-wa.js';
 async function withOrganiserCredit({organiserId,sendKey,send}) {
   if(!organiserId) throw Error('Organiser identity must come from server-side verified event ownership');
   const svc=db();
@@ -16,4 +16,4 @@ async function withOrganiserCredit({organiserId,sendKey,send}) {
     throw e;
   }
 }
-module.exports={withOrganiserCredit};
+export {withOrganiserCredit};
