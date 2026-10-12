@@ -2107,7 +2107,7 @@ function HereNow({ eventId, onOpenDM }) {
     </div>
   );
 }
-function EventGoers({ eventId, onOpenDM }) {
+function EventGoers({ eventId, onOpenDM, isGetaway = false }) {
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(null);
   useEffect(() => {
@@ -2115,7 +2115,8 @@ function EventGoers({ eventId, onOpenDM }) {
     Promise.all([
       supabase.rpc("event_meet_list", { p_event: eventId }).then(({ data }) => data || []).catch(() => []),
       supabase.rpc("guest_list", { p_event: eventId }).then(({ data, error }) => error ? [] : (data || [])).catch(() => []),
-    ]).then(([members, guests]) => {
+      isGetaway ? supabase.rpc("trip_event_goers", { p_event: eventId }).then(({ data, error }) => error ? [] : (data || [])).catch(() => []) : Promise.resolve([]),
+    ]).then(([members, guests, tripMembers]) => {
       if (!live) return;
       const doorGuests = guests
         .filter(g => ["cash", "upi"].includes(String(g.method || "").toLowerCase()) || gwIsInvitationGuest(g))
@@ -2130,10 +2131,26 @@ function EventGoers({ eventId, onOpenDM }) {
           waved_by_me: false,
           waved_me: false,
         }));
-      setRows([...(members || []), ...doorGuests]);
+      const seen = new Set();
+      setRows([...(members || []), ...(tripMembers || []).map(p=>({ ...p, is_trip_member:true, waved_by_me:false, waved_me:false })), ...doorGuests].filter(p=>{
+        const key = String(p.id || "");
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      }));
     });
-    return () => { live = false; };
-  }, [eventId]);
+    const refresh = ev => { if (!ev.detail || ev.detail === eventId) {
+      supabase.rpc("trip_event_goers", { p_event: eventId }).then(({data,error})=>{
+        if(error || !live)return;
+        setRows(old=>{
+          const base=(old||[]).filter(p=>!p.is_trip_member);
+          const seen=new Set(base.map(p=>String(p.id)));
+          return [...base,...(data||[]).filter(p=>!seen.has(String(p.id))).map(p=>({...p,is_trip_member:true,waved_by_me:false,waved_me:false}))];
+        });
+      });
+    }};
+    if (isGetaway) window.addEventListener("gwtripvisibility",refresh);
+    return () => { live = false; if (isGetaway) window.removeEventListener("gwtripvisibility",refresh); };
+  }, [eventId,isGetaway]);
   const wave = async (p) => {
     setBusy(p.id);
     const { data, error } = await supabase.rpc("wave_to", { p_user: p.id });
@@ -2159,8 +2176,8 @@ function EventGoers({ eventId, onOpenDM }) {
               {typeof window !== "undefined" && window.__gwVerified && window.__gwVerified.has(p.id) && <span style={{ position: "absolute", bottom: -3, right: -3 }}><TickBadge size={18} /></span>}
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
-            {p.is_door_guest ? (
-              <div style={{ marginTop: 4, width: "100%", padding: "5px 3px", borderRadius: 8, fontWeight: 800, fontSize: 9.5, lineHeight:1.25, background: p.guest_list_name ? "#FFF0DB" : "#FFF5E6", color: p.guest_list_name ? "#78521B" : "#9A6700" }}>{p.guest_list_name ? `💌 ${p.guest_list_name}` : "🚪 Door guest"}</div>
+            {p.is_door_guest || p.is_trip_member ? (
+              <div style={{ marginTop: 4, width: "100%", padding: "5px 3px", borderRadius: 8, fontWeight: 800, fontSize: 9.5, lineHeight:1.25, background: p.is_trip_member ? "#E0F2FE" : p.guest_list_name ? "#FFF0DB" : "#FFF5E6", color: p.is_trip_member ? "#0369A1" : p.guest_list_name ? "#78521B" : "#9A6700" }}>{p.is_trip_member ? "🏝️ Trip member" : p.guest_list_name ? `💌 ${p.guest_list_name}` : "🚪 Door guest"}</div>
             ) : (
               <button onClick={() => mutual ? (onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0])) : wave(p)} disabled={busy === p.id || (p.waved_by_me && !mutual)} style={{ marginTop: 4, width: "100%", padding: "5px 0", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 800, fontSize: 11, background: mutual ? "linear-gradient(95deg,#6D28D9,#008069)" : p.waved_by_me ? "#E7F6EF" : (p.waved_me ? "#EC4899" : W.teal), color: p.waved_by_me && !mutual ? "#0d6e58" : "#fff" }}>
                 {busy === p.id ? "…" : mutual ? "💬 Msg" : p.waved_by_me ? "✓" : (p.waved_me ? "Wave back" : "👋 Wave")}
@@ -2732,7 +2749,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {onOpenDM && hasTicket && <EventJoinNudge eventId={e.id} eventTitle={e.title} />}
           {onOpenDM && <SelfCheckin eventId={e.id} hasTicket={hasTicket} />}
           {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
-          {onOpenDM && <Sec title="Who's going"><EventGoers eventId={e.id} onOpenDM={onOpenDM} /></Sec>}
+          {onOpenDM && <Sec title="Who's going"><EventGoers eventId={e.id} onOpenDM={onOpenDM} isGetaway={gwIsGetaway(e)} /></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
           <EventSponsorsSection event={e} profile={profile} />
           <EventStallsCard event={e} profile={profile} />
@@ -15643,6 +15660,55 @@ const GW_TRIP_BSTATUS = {
 };
 const GW_TRIP_GRAD = "linear-gradient(120deg,#0E7490,#0EA5E9 45%,#F59E0B)";
 const gwIsGetaway = e => String(e?.event_kind || "") === "getaway";
+// A trip booking has one purchaser but can contain multiple travellers. Show verified
+// travellers in staff lists without creating duplicate tickets, accounts or guest QR codes.
+const gwTripRosterName = v => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
+function gwTripRosterFromBoard(board) {
+  const people = [];
+  for (const rec of (board?.bookings || [])) {
+    const b = rec.b || rec;
+    // Pending checkout, cancelled and released records must not be represented as guests.
+    if (!["booked", "paid"].includes(String(b.status || "").toLowerCase()) || Number(b.paid || 0) <= 0) continue;
+    const booker = rec.booker || b.booker || "";
+    const userId = b.user_id || b.booker_user_id || b.booker_id || b.created_by || rec.user_id || null;
+    const travellers = (Array.isArray(b.travellers) && b.travellers.length) ? b.travellers : [{ name: booker }];
+    travellers.forEach((t, index) => {
+      const isPurchaser = Boolean(booker && gwTripRosterName(t.name) === gwTripRosterName(booker));
+      people.push({
+        key: `trip-${b.id || b.code || "booking"}-${t.id || index}`,
+        name: t.name || (index === 0 ? booker : "Traveller"),
+        gender: t.gender || "", age: t.age || null,
+        phone: t.phone || (isPurchaser ? rec.booker_phone || b.booker_phone || "" : ""),
+        avatar_url: t.avatar_url || t.photo_url || "",
+        user_id: isPurchaser ? userId : (t.user_id || null),
+        isPurchaser, purchaser_name: booker, purchaser_user_id: userId,
+        status: b.status, code: b.code || "", package: b.package || "",
+        booking_id: b.id, paid: Number(b.paid || 0), total: Number(b.total || 0),
+        boarded: Boolean(t.boarded), travellers_in_booking: travellers.length
+      });
+    });
+  }
+  return people;
+}
+async function gwLoadTripRoster(eventId) {
+  const { data, error } = await supabase.rpc("trip_board", { p_event: eventId });
+  if (error) throw error;
+  if (!data || !Array.isArray(data.bookings)) throw new Error("Trip booking data was not returned.");
+  const people = gwTripRosterFromBoard(data);
+  const ids = [...new Set(people.map(p => p.user_id).filter(Boolean))];
+  if (!ids.length) return people;
+  // Staff RPC returns the roster; use the existing member profile only for the
+  // same linked member, never borrow another traveller's photo by position.
+  const { data: profiles, error: profileError } = await supabase.from("profiles")
+    .select("id,full_name,avatar_url,gender").in("id", ids);
+  if (profileError) return people; // still show the verified booking names
+  const byId = new Map((profiles || []).map(p => [String(p.id), p]));
+  return people.map(p => {
+    const m = byId.get(String(p.user_id));
+    return m ? { ...p, avatar_url: p.avatar_url || m.avatar_url || "", gender: p.gender || m.gender || "" } : p;
+  });
+}
+
 // "from ₹X" for getaway cards (they have no ticket price, so they must never say "Free")
 let gwTripFromMap = null, gwTripFromLoading = null;
 function gwLoadTripFrom() {
@@ -16029,6 +16095,7 @@ function GetawayBox({ event, profile }) {
           </div>}
       </div>
 
+      {active.some(b=>["booked","paid"].includes(b.status)) && <TripGoerPhotoChoice eventId={event.id} profile={profile}/>}
       {active.map(b => <MyTripCard key={b.id} b={b} onChange={load} />)}
       {(mine || []).filter(b => ["cancelled", "released"].includes(b.status)).map(b => (
         <div key={b.id} style={{ background: "#F8FAFC", border: `1px solid ${W.line}`, borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: W.soft, marginBottom: 8 }}>
@@ -16073,6 +16140,37 @@ function GetawayBox({ event, profile }) {
       {book && t.ready && !closed && !allFull && <TripBookSheet event={event} trip={t} profile={profile} onClose={() => setBook(false)} onDone={() => { setBook(false); load(); }} />}
     </div>
   );
+}
+
+// Only the account owner can opt their profile photo into the event-page line-up.
+function TripGoerPhotoChoice({ eventId, profile }) {
+  const [enabled,setEnabled]=useState(false),[busy,setBusy]=useState(false),[available,setAvailable]=useState(false),[error,setError]=useState("");
+  useEffect(()=>{
+    let live=true;
+    setAvailable(false);setError("");
+    if(!profile?.id)return;
+    supabase.from("trip_goer_visibility").select("show_profile").eq("event_id",eventId).eq("user_id",profile.id).maybeSingle()
+      .then(({data,error})=>{if(!live)return;if(error){setError("Photo choice is not configured yet. Ask admin to install the trip visibility SQL.");return;}setEnabled(Boolean(data?.show_profile));setAvailable(true);});
+    return()=>{live=false};
+  },[eventId,profile?.id]);
+  const change=async v=>{
+    if(!profile?.id || busy)return;
+    setBusy(true);setError("");
+    const {error}=await supabase.from("trip_goer_visibility").upsert({event_id:eventId,user_id:profile.id,show_profile:v,updated_at:new Date().toISOString()},{onConflict:"event_id,user_id"});
+    setBusy(false);
+    if(error){setError(error.message||"Could not update photo visibility.");return;}
+    setEnabled(v);
+    window.dispatchEvent(new CustomEvent("gwtripvisibility",{detail:eventId}));
+  };
+  if(!profile?.id || !available) return error ? <div style={{fontSize:11,color:"#B45309",margin:"7px 0"}}>{error}</div> : null;
+  return <div style={{border:"1px solid #BAE6FD",background:"#F0F9FF",borderRadius:12,padding:"10px 12px",margin:"8px 0 12px"}}>
+    <label style={{display:"flex",alignItems:"center",gap:9,color:"#075985",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>
+      <input type="checkbox" checked={enabled} disabled={busy} onChange={e=>change(e.target.checked)}/>
+      📷 Show my name & Glasswings profile photo in this trip's “Who's going” section
+    </label>
+    <div style={{fontSize:11,color:"#0369A1",marginTop:5}}>Optional, off by default. Your phone number, payment and companions' names are never published here. You can switch this off at any time.</div>
+    {error && <div style={{fontSize:11,color:"#B91C1C",marginTop:5}}>{error}</div>}
+  </div>;
 }
 
 function TripWaitlist({ event, profile }) {
@@ -20017,6 +20115,8 @@ function TimeCapsule({ event: e, profile }) {
 function EventMembersSheet({ event, onClose }) {
   const [rows, setRows] = useState(null);
   const [guestRows,setGuestRows]=useState([]);
+  const [tripPeople,setTripPeople]=useState([]);
+  const [tripError,setTripError]=useState("");
   const [missingPaid,setMissingPaid]=useState([]);
   const [restoreBusy,setRestoreBusy]=useState(null);
   const [restoreOpen,setRestoreOpen]=useState(false);
@@ -20026,11 +20126,14 @@ function EventMembersSheet({ event, onClose }) {
   const [err, setErr] = useState("");
   const [guestRefresh,setGuestRefresh]=useState(0);
   const load = async () => {
-    const [mr,gr,hr]=await Promise.all([
+    const [mr,gr,hr,tr]=await Promise.all([
       supabase.rpc("event_member_list",{p_event:event.id}),
       supabase.rpc("guest_list",{p_event:event.id}),
-      supabase.rpc("event_ticket_holders",{p_event:event.id})
+      supabase.rpc("event_ticket_holders",{p_event:event.id}),
+      gwIsGetaway(event) ? gwLoadTripRoster(event.id).then(people=>({people}),error=>({error})) : Promise.resolve({people:[]})
     ]);
+    setTripPeople(tr.people || []);
+    setTripError(tr.error?.message || "");
     const members=mr.error?[]:(mr.data||[]);
     if(mr.error)setErr(mr.error.message);else{setErr("");setRows(members);}
     if(!gr.error)setGuestRows(gr.data||[]);
@@ -20153,7 +20256,25 @@ function EventMembersSheet({ event, onClose }) {
           <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, minWidth: 0 }}>👥 Members · {event.title}</div>
           <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
-        <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} ticket member${rows.length === 1 ? "" : "s"} · ${guestRows.length} guest-list/door entr${guestRows.length===1?"y":"ies"} · ${(rows||[]).filter(r=>r.checked_in).length+guestRows.filter(g=>g.checked_in).length} checked in`}</div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 14 }}>{rows === null ? "Loading…" : `${rows.length} ticket member${rows.length === 1 ? "" : "s"} · ${guestRows.length} guest/door entr${guestRows.length===1?"y":"ies"}${gwIsGetaway(event)?` · ${tripPeople.length} confirmed trip traveller${tripPeople.length===1?"":"s"}`:""} · ${(rows||[]).filter(r=>r.checked_in).length+guestRows.filter(g=>g.checked_in).length} ticket/guest check-ins`}</div>
+        {gwIsGetaway(event) && <section style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:14,padding:12,marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginBottom:7}}>
+            <b style={{color:"#075985",fontSize:14.5}}>🏝️ Confirmed getaway members & guest list ({tripPeople.length})</b>
+            <button onClick={load} style={{...btn("#fff","#0369A1"),fontSize:11,padding:"5px 8px"}}>↻ Refresh</button>
+          </div>
+          <div style={{fontSize:11.5,color:"#0369A1",marginBottom:8}}>Booking travellers appear here after verified payment, including additional guests. Payment-pending and cancelled bookings are excluded. Trip Passes and boarding are managed under Travellers & payments; this view does not issue additional QR tickets.</div>
+          {tripError && <div role="alert" style={{color:"#B91C1C",fontSize:12}}>Could not load trip roster: {tripError}</div>}
+          {!tripError && !tripPeople.length && <div style={{fontSize:12,color:W.soft}}>No confirmed trip travellers yet.</div>}
+          {tripPeople.map(p => <div key={p.key} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:"1px solid #D4E8F5"}}>
+            <PersonAvatar url={p.avatar_url} name={p.name} size={44}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:850,color:W.ink}}>{p.name} {p.isPurchaser && <span style={{fontSize:10,color:"#0369A1"}}>· Booking member</span>}</div>
+              <div style={{fontSize:11.5,color:W.soft}}>{[p.gender,p.age?`${p.age} yrs`:null,p.package,p.code].filter(Boolean).join(" · ")}</div>
+              <div style={{fontSize:11.5,color:"#0369A1"}}>Booked by {p.purchaser_name || "member"} · {p.status === "paid" ? "Fully paid" : "Advance paid"}{p.boarded ? " · Boarded ✓" : ""}</div>
+              {p.phone && <a href={`tel:${p.phone}`} style={{fontSize:12,color:"#0369A1"}}>☎ {p.phone}</a>}
+            </div>
+          </div>)}
+        </section>}
         {guestRows.length>0&&<div style={{background:"#FFF9EE",border:"1px solid #F1DFC0",borderRadius:14,padding:12,marginBottom:14}}>
           <div style={{fontWeight:900,color:"#78521B",fontSize:14.5,marginBottom:7}}>💌 Guest Lists ({guestRows.length})</div>
           {guestRows.map(g=><div key={`guest-${g.id}`} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:"1px solid #F0E4CF"}}>
@@ -20225,6 +20346,8 @@ function CheckInSheet({ event, onClose }) {
   const [list, setList] = useState(null);
   const [err, setErr] = useState("");
   const [guests, setGuests] = useState([]);
+  const [tripPeople, setTripPeople] = useState([]);
+  const [tripError, setTripError] = useState("");
   const [gName, setGName] = useState(""); const [gPhone, setGPhone] = useState(""); const [gEmail, setGEmail] = useState(""); const [gQty, setGQty] = useState("1");
   const [gAge, setGAge] = useState(""); const [gLoc, setGLoc] = useState("");
   const [gBusy, setGBusy] = useState(false);
@@ -20234,10 +20357,13 @@ function CheckInSheet({ event, onClose }) {
   const gtm = (g) => TMETA[gwGuestTier(g)] || TMETA.guest;
   const gcount = (k) => guests.filter(g => gwGuestTier(g) === k).length;
   const load = async () => {
-    const [mr, gr] = await Promise.all([
+    const [mr, gr, tr] = await Promise.all([
       supabase.rpc("event_member_list", { p_event: event.id }),
       supabase.rpc("guest_list", { p_event: event.id }),
+      gwIsGetaway(event) ? gwLoadTripRoster(event.id).then(people=>({people}),error=>({error})) : Promise.resolve({people:[]})
     ]);
+    setTripPeople(tr.people || []);
+    setTripError(tr.error?.message || "");
     if (mr.error) setErr(mr.error.message || "Could not load attendees."); else setErr("");
     const members = (mr.data || []).map(m => ({ ...m, present: !!(m.present ?? m.checked_in) }));
     const normPhone = v => String(v || "").replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "").slice(-10);
@@ -20333,7 +20459,7 @@ function CheckInSheet({ event, onClose }) {
           <div style={{ fontWeight: 800, fontSize: 18, color: W.ink, minWidth: 0 }}>Check-in · {event.title}</div>
           <X size={22} color={W.soft} style={{ cursor: "pointer" }} onClick={onClose} />
         </div>
-        <div style={{ fontSize: 13, color: W.soft, marginBottom: 8 }}>{list === null ? "Loading…" : `${totalPresent} of ${totalExpected} checked in`}</div>
+        <div style={{ fontSize: 13, color: W.soft, marginBottom: 8 }}>{list === null ? "Loading…" : `${totalPresent} of ${totalExpected} ticket/door guests checked in${gwIsGetaway(event)?` · ${tripPeople.length} booked trip travellers (${tripPeople.filter(p=>p.boarded).length} boarded)`:""}`}</div>
         {list!==null&&<div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:16}}>
           <span style={{background:"#E8F2FB",color:"#1B6FB8",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>👨 Total guys {totalGuys}</span>
           <span style={{background:"#FBE9F2",color:"#C0246E",fontSize:11.5,fontWeight:900,padding:"5px 9px",borderRadius:999}}>👩 Total girls {totalGirls}</span>
@@ -20341,6 +20467,16 @@ function CheckInSheet({ event, onClose }) {
           {totalOther>0&&<span style={{background:"#F1F3F2",color:W.soft,fontSize:11.5,fontWeight:800,padding:"5px 9px",borderRadius:999}}>Sex not specified {totalOther}</span>}
         </div>}
         {err && <div style={{ background: "#FBE9E7", border: "1px solid #F2C4C0", color: "#C0392B", borderRadius: 10, padding: "10px 13px", fontSize: 13, marginBottom: 12 }}>⚠️ {err}</div>}
+        {gwIsGetaway(event) && <div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:12,padding:12,marginBottom:14}}>
+          <div style={{fontWeight:900,color:"#075985",marginBottom:4}}>🏝️ Booked getaway guests ({tripPeople.length})</div>
+          <div style={{fontSize:11.5,color:"#0369A1",marginBottom:6}}>Verified trip travellers only. Use Travellers & payments → Boarding to mark arrival; this list does not create event tickets.</div>
+          {tripError && <div style={{fontSize:12,color:"#B91C1C"}}>Trip guest list unavailable: {tripError}</div>}
+          {tripPeople.map(p=><div key={p.key} style={{display:"flex",gap:10,alignItems:"center",padding:"8px 0",borderTop:"1px solid #DAEAF5"}}>
+            <PersonAvatar url={p.avatar_url} name={p.name} size={38}/>
+            <div style={{flex:1,minWidth:0}}><b style={{fontSize:13.5}}>{p.name}</b><div style={{fontSize:11.5,color:W.soft}}>{p.package || "Trip guest"} · {p.code || ""} · {p.gender || ""}</div></div>
+            <span style={{fontSize:11,fontWeight:800,color:p.boarded?"#15803D":"#64748B"}}>{p.boarded?"✓ Boarded":"Expected"}</span>
+          </div>)}
+        </div>}
         {list !== null && present > 1 && <Introductions eventId={event.id} refreshKey={present} />}
         {list === null ? <Center>loading…</Center> : list.length === 0 ? <Center>No ticket holders yet.</Center> : (
           <>{seg("Ticket holders — Guys", guys)}{seg("Ticket holders — Girls", girls)}{others.length > 0 && seg("Ticket holders — Other / unspecified", others)}</>
