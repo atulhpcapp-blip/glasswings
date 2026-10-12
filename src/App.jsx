@@ -17761,6 +17761,7 @@ const GW_TAB_GUIDE = {
   rooms: { icon: "▣", title: "Rooms (group chats)", grad: "linear-gradient(120deg,#008069,#25D366)", one: "City and community group chats inside the app.", flow: [["➕", "Create room", "Name + city"], ["👥", "Members join", "Or you add them"], ["💬", "Chat", "Event posts go here"]], steps: ["Create a room for a city or community.", "Add members, or let them join.", "Event posts from Send appear in every room."] },
   // ----- event sub-tabs -----
   ev_details: { icon: "📝", title: "Event details", grad: "linear-gradient(120deg,#008069,#04B08F)", one: "Name, date, time, venue, description and availability. This is what buyers read first.", flow: [["📝", "Title & date", "Clear and exact"], ["📍", "Venue", "With map pin"], ["📄", "About", "Why come?"], ["🟢", "Availability", "Open / sold out"]], steps: ["Fill the title, date and time, and venue.", "Write a short, exciting description.", "Use Availability to mark the event Open, Sold out or Housefull."] },
+  ev_bookings: { icon: "📋", title: "Bookings & payments", grad: "linear-gradient(120deg,#0E7490,#008069)", one: "See exactly who booked this event and how much they paid. Getaways also show partial payments and balances.", flow: [["👤", "Booked by", "Name and contact"], ["💳", "Paid", "Online and cash / UPI records"], ["📋", "Balance", "Trip instalments"], ["⬇️", "Export", "Download CSV"]], steps: ["Open Bookings & Payments from the event card or event tabs.", "Search a customer, check their status and open the payment history.", "For getaways, pending checkout does not mean payment succeeded.", "Refresh after a booking and export the register whenever needed."] },
   ev_requests: { icon: "🙋", title: "RSVP requests", grad: "linear-gradient(120deg,#7C3AED,#C026D3)", one: "For approval-only events, guests request to join and you approve them.", flow: [["🙋", "Guest requests", "From event page"], ["👀", "Review", "Profile"], ["✓", "Approve", "Ticket on WhatsApp"]], steps: ["Check each request's profile.", "Approve to issue a ticket (sent on WhatsApp), or decline."] },
   ev_invite: { icon: "💌", title: "Invites", grad: "linear-gradient(120deg,#B7791F,#EC4899)", one: "Send personal invites and complimentary tickets for this event.", flow: [["🧑", "Guest", "Name + WhatsApp"], ["💌", "Invite", "Personal link"], ["🎟️", "Ticket", "If issued"]], steps: ["Add the guest's name and number.", "Send the invite, or issue a ticket directly."] },
   ev_media: { icon: "🖼️", title: "Media & share", grad: "linear-gradient(120deg,#2563EB,#0EA5E9)", one: "Banner, photos and videos make people buy. Then share the event link everywhere.", flow: [["🖼️", "Banner", "Wide image"], ["🎬", "Videos", "Reels / teaser"], ["🔗", "Share link", "WhatsApp, Instagram"]], steps: ["Upload a bright banner and a few photos.", "Add a short video if you have one.", "Copy the share link and post it on WhatsApp and Instagram."] },
@@ -21188,6 +21189,158 @@ function CreditCapEditor({ ev, onUpdate }) {
     </div>
   );
 }
+// Admin/organiser booking register for EVERY event. Uses existing permission-checked
+// server RPCs; do not fetch raw payment tables or expose this on public event pages.
+function EventBookingsPaymentsTab({ event }) {
+  const isTrip = gwIsGetaway(event);
+  const [result, setResult] = useState({ loading: true, rows: [], analysis: null, error: "", warning: "" });
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [expanded, setExpanded] = useState(null);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    setResult({ loading: true, rows: [], analysis: null, error: "", warning: "" });
+    const load = async () => {
+      try {
+        if (isTrip) {
+          const { data, error } = await supabase.rpc("trip_board", { p_event: event.id });
+          if (error) throw error;
+          if (!data || !Array.isArray(data.bookings)) throw new Error("The trip booking register was not returned. Check the trip_board RPC and organiser/admin access.");
+          const rows = data.bookings.map(item => ({ ...(item.b || {}), booker: item.booker || item.b?.booker || "Unknown booker", booker_phone: item.booker_phone || item.b?.booker_phone || "" }));
+          if (!cancelled) setResult({ loading: false, rows, analysis: data.totals || {}, error: "", warning: (data.totals?.people > 0 && !rows.length) ? "The trip summary reports travellers but the booking list is empty. Check trip_board access." : "" });
+        } else {
+          const [holders, analysis] = await Promise.all([
+            supabase.rpc("event_ticket_holders", { p_event: event.id }),
+            supabase.rpc("event_ticket_analysis", { p_event: event.id })
+          ]);
+          if (holders.error) throw holders.error;
+          if (!Array.isArray(holders.data)) throw new Error("The ticket booking register was not returned. Check event_ticket_holders access.");
+          const warn = analysis.error ? "Revenue summary unavailable: " + analysis.error.message :
+            Number(analysis.data?.paid_orders || 0) > 0 && holders.data.length === 0 ? "Paid orders exist but no ticket holders were returned. Check the ticket issuance and event_ticket_holders RPC." : "";
+          if (!cancelled) setResult({ loading: false, rows: holders.data, analysis: analysis.data || {}, error: "", warning: warn });
+        }
+      } catch (e) {
+        if (!cancelled) setResult({ loading: false, rows: [], analysis: null, error: e.message || "Unable to load bookings.", warning: "" });
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [event.id, isTrip, version]);
+
+  const rs = result.rows;
+  const active = isTrip ? rs.filter(b => ["pending", "booked", "paid"].includes(String(b.status || ""))) : rs;
+  const tripPaid = active.reduce((sum, b) => sum + Number(b.paid || 0), 0);
+  const tripTotal = active.reduce((sum, b) => sum + Number(b.total || 0), 0);
+  const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  const searchText = v => String(v ?? "").toLowerCase();
+  const filtered = rs.filter(b => {
+    const s = String(b.status || "");
+    if (isTrip && status === "confirmed" && !["booked", "paid"].includes(s)) return false;
+    if (isTrip && status === "pending" && s !== "pending") return false;
+    if (isTrip && status === "paid" && s !== "paid") return false;
+    if (isTrip && status === "cancelled" && !["cancelled", "released"].includes(s)) return false;
+    if (!isTrip && status === "paid" && !(Number(b.paid || 0) > 0 || Number(b.credits || 0) > 0)) return false;
+    if (!isTrip && status === "free" && (Number(b.paid || 0) > 0 || Number(b.credits || 0) > 0)) return false;
+    const hay = isTrip ? [b.booker, b.booker_phone, b.code, b.package, ...(b.travellers || []).map(t => t.name)] : [b.name, b.phone, b.ticket_type, b.ref, b.method];
+    return !search.trim() || hay.some(v => searchText(v).includes(search.trim().toLowerCase()));
+  });
+  const csvExport = () => {
+    const head = isTrip
+      ? ["Booking code", "Booked by", "Phone", "Date", "Package", "Travellers", "Traveller names", "Booking total INR", "Amount paid INR", "Balance INR", "Status", "Payment history"]
+      : ["Name", "Phone", "Ticket type", "Quantity", "Amount paid INR", "Credits", "Payment method", "Reference", "Checked in"];
+    const data = filtered.map(b => isTrip ? [
+      b.code, b.booker, b.booker_phone, b.created_at || "", b.package, b.people,
+      (b.travellers || []).map(t => t.name).join(" / "), b.total, b.paid,
+      ["cancelled", "released"].includes(b.status) ? 0 : Math.max(0, Number(b.total || 0) - Number(b.paid || 0)), b.status,
+      (b.payments || []).map(p => `${p.paid_at || ""} ${p.method || ""} INR ${p.amount || 0}`).join(" | ")
+    ] : [b.name, b.phone, b.ticket_type, b.qty, b.paid, b.credits || 0, b.method, b.ref, b.checked_in ? "Yes" : "No"]);
+    // Quote CSV fields and neutralise spreadsheet formulas in user-submitted names.
+    const cell = v => { const raw = String(v ?? ""); const safe = /^[\s]*[=+@-]/.test(raw) ? "'" + raw : raw; return `"${safe.replace(/"/g, '""')}"`; };
+    const csv = "\ufeff" + [head, ...data].map(row => row.map(cell).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url;
+    a.download = `${String(event.title || "event").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-bookings-payments.csv`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const stat = (label, value, hint) => <div style={{ flex: "1 1 130px", background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, padding: "11px 12px" }}>
+    <div style={{ fontWeight: 800, fontSize: 10, color: W.soft, letterSpacing: .6 }}>{label}</div>
+    <div style={{ fontSize: 21, fontWeight: 950, color: W.ink, marginTop: 3 }}>{value}</div>
+    {hint && <div style={{ fontSize: 11, color: W.soft }}>{hint}</div>}
+  </div>;
+  const filters = isTrip ? [["all", "All"], ["confirmed", "Booked / paid"], ["pending", "Checkout pending"], ["paid", "Fully paid"], ["cancelled", "Cancelled"]]
+    : [["all", "All ticket holders"], ["paid", "Paid / credits"], ["free", "Free / complimentary"]];
+  return <section style={{ borderRadius: 16, border: `1px solid ${W.line}`, background: "#F8FAFC", padding: 14 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ color: W.ink, fontWeight: 950, fontSize: 20 }}>📋 Bookings & Payments</div>
+        <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>{event.title} · {isTrip ? "Trip booking register (includes checkout-pending entries)" : "Ticket buyers / holders and recorded payments"}</div>
+      </div>
+      <button onClick={() => setVersion(v => v + 1)} disabled={result.loading} style={btn("#fff", W.teal)}>↻ Refresh</button>
+      <button onClick={csvExport} disabled={result.loading || !!result.error || !filtered.length} style={{ ...btn(W.teal, "#fff"), opacity: result.loading || !filtered.length ? .5 : 1 }}>⬇️ Export CSV</button>
+    </div>
+    {result.error && <div role="alert" style={{ color: "#B91C1C", background: "#FEF2F2", border: "1px solid #FECACA", padding: 12, borderRadius: 10, fontSize: 13 }}>Bookings could not be loaded: {result.error}. The database RPC must allow this admin or event organiser to view this event.</div>}
+    {result.warning && <div role="alert" style={{ color: "#9A3412", background: "#FFF7ED", border: "1px solid #FED7AA", padding: 10, borderRadius: 10, fontSize: 12.5, marginBottom: 10 }}>{result.warning}</div>}
+    {result.loading ? <Center>Loading bookings and payments…</Center> : !result.error && <>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "13px 0" }}>
+        {isTrip ? <>
+          {stat("BOOKINGS", active.length, `${active.filter(b => b.status === "pending").length} checkout pending`)}
+          {stat("TRAVELLERS", active.reduce((n, b) => n + Number(b.people || 0), 0))}
+          {stat("PAID SO FAR", money(tripPaid), "Includes partial payments")}
+          {stat("REMAINING", money(Math.max(0, tripTotal - tripPaid)), "Active / pending bookings")}
+        </> : <>
+          {stat("TICKET HOLDERS", rs.length)}
+          {stat("PAID ORDERS", Number(result.analysis?.paid_orders || 0))}
+          {stat("ONLINE PAID", money(result.analysis?.paid_gross || 0))}
+          {stat("DOOR CASH / UPI", money(Number(result.analysis?.door_cash || 0) + Number(result.analysis?.door_upi || 0)))}
+        </>}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        {filters.map(([k, name]) => <button key={k} onClick={() => setStatus(k)} style={{ ...btn(status === k ? W.teal : "#fff", status === k ? "#fff" : W.ink), padding: "7px 10px", fontSize: 12, border: `1px solid ${status === k ? W.teal : W.line}` }}>{name}</button>)}
+      </div>
+      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, booking code or payment reference" aria-label="Search event bookings" style={{ ...gwField, marginBottom: 12 }} />
+      <div style={{ fontSize: 12, color: W.soft, marginBottom: 8 }}>Showing {filtered.length} of {rs.length} {isTrip ? "booking records" : "ticket-holder records"}. {isTrip ? "Payment pending does not mean payment succeeded." : "For ticket-level details, see Sales."}</div>
+      {!filtered.length && <div style={{ padding: 18, background: "#fff", border: `1px solid ${W.line}`, borderRadius: 12, color: W.soft, fontSize: 13 }}>{rs.length ? "No records match these filters." : "No booking records returned for this event yet. Use Refresh after a successful payment."}</div>}
+      {filtered.map((b, i) => {
+        const key = b.id || b.ref || String(i);
+        const open = expanded === key;
+        const label = isTrip ? String(b.status || "pending") : Number(b.paid || 0) > 0 ? "Payment recorded" : Number(b.credits || 0) > 0 ? "Credits" : "Complimentary / zero amount";
+        const paid = Number(b.paid || 0);
+        const left = isTrip ? Math.max(0, Number(b.total || 0) - paid) : 0;
+        const phone = isTrip ? b.booker_phone : b.phone;
+        return <article key={key} style={{ padding: 12, background: "#fff", border: `1px solid ${W.line}`, borderLeft: `4px solid ${isTrip && b.status === "pending" ? "#F59E0B" : "#0E7A5F"}`, borderRadius: 12, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontSize: 15, fontWeight: 900, color: W.ink }}>{isTrip ? b.booker : b.name || "Ticket holder"}{isTrip ? ` · ${b.people || 1} traveller(s)` : Number(b.qty || 1) > 1 ? ` · ×${b.qty}` : ""}</div>
+              <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>{isTrip ? [b.package, b.code].filter(Boolean).join(" · ") : [b.ticket_type, b.method].filter(Boolean).join(" · ")}</div>
+              <div style={{ display: "inline-block", marginTop: 5, background: label === "pending" ? "#FFF7ED" : "#E8F7F1", color: label === "pending" ? "#9A3412" : "#075E46", borderRadius: 7, fontSize: 10.5, fontWeight: 900, padding: "3px 7px", textTransform: "capitalize" }}>{label}</div>
+              {phone && <div style={{ marginTop: 7, fontSize: 12.5 }}>📞 <a style={{ color: "#2563EB", fontWeight: 800 }} href={`tel:${phone}`}>{phone}</a> · <a href={`https://wa.me/${waNum(phone)}`} target="_blank" rel="noreferrer" style={{ color: "#08765b", fontWeight: 800 }}>WhatsApp</a></div>}
+              {isTrip && b.created_at && <div style={{ marginTop: 4, color: W.soft, fontSize: 11 }}>Booked: {new Date(b.created_at).toLocaleString("en-IN")}</div>}
+              {!isTrip && b.ref && <div style={{ marginTop: 5, color: W.soft, wordBreak: "break-all", fontSize: 11 }}>Payment / ticket ref: {b.ref}</div>}
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ color: "#047857", fontWeight: 950, fontSize: 18 }}>{money(paid)}</div>
+              <div style={{ color: W.soft, fontSize: 11 }}>paid</div>
+              {isTrip && <div style={{ color: left ? "#B45309" : "#15803D", fontWeight: 850, fontSize: 12, marginTop: 5 }}>{money(left)} remaining</div>}
+              {isTrip && <div style={{ color: W.soft, fontSize: 11 }}>of {money(b.total)}</div>}
+              {!isTrip && Number(b.credits || 0) > 0 && <div style={{ fontSize: 11.5, color: "#6D28D9" }}>+ {b.credits} credits</div>}
+            </div>
+          </div>
+          {(isTrip || b.ref) && <button type="button" onClick={() => setExpanded(open ? null : key)} style={{ ...btn("#F1F5F9", W.ink), fontSize: 12, padding: "6px 10px", marginTop: 9 }}>{open ? "Hide details" : isTrip ? "View travellers & payment history" : "View payment details"}</button>}
+          {open && <div style={{ marginTop: 9, borderTop: `1px solid ${W.line}`, paddingTop: 9, color: W.ink, fontSize: 12.5 }}>
+            {isTrip ? <>
+              <div style={{ fontWeight: 900, marginBottom: 5 }}>Travellers</div>
+              {(b.travellers || []).length ? b.travellers.map((t, k) => <div key={t.id || k} style={{ marginBottom: 4 }}>{k + 1}. {t.name} {t.phone ? `· ${t.phone}` : ""} {t.room_no ? `· Room ${t.room_no}` : ""}</div>) : <div>No traveller details supplied.</div>}
+              <div style={{ fontWeight: 900, margin: "9px 0 5px" }}>Verified payment records</div>
+              {(b.payments || []).length ? b.payments.map((p, k) => <div key={p.id || k} style={{ display: "flex", gap: 8, justifyContent: "space-between", marginBottom: 5 }}><span>{p.method === "razorpay" ? "Razorpay" : p.method || "Payment"}{p.paid_at ? ` · ${new Date(p.paid_at).toLocaleString("en-IN")}` : ""}{p.kind === "booking" ? " · Advance" : ""}</span><b>{money(p.amount)}</b></div>) : <div style={{ color: W.soft }}>No verified payment entries yet.</div>}
+            </> : <div>{b.method === "online" ? "Razorpay" : b.method || "Ticket"} · {b.ref}{b.checked_in ? " · Checked in" : ""}</div>}
+          </div>}
+        </article>;
+      })}
+    </>}
+  </section>;
+}
+
 function EventSalesTab({ event }) {
   const [a, setA] = useState(null);
   const [people, setPeople] = useState(null);
@@ -21528,6 +21681,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
   const [mSeg, setMSeg] = useState("details");
   const BASE_MSEGS = [
     ["details", "📝", "Details", "#008069", "#E7F6EF"],
+    ["bookings", "📋", "Bookings & Payments", "#0E7490", "#E0F7FA"],
     ["invite", "💌", "Invite", "#B7791F", "#FFF4DE"],
     ["media", "🖼️", "Media & share", "#2563EB", "#EAF1FE"],
     ["tickets", "🎟️", "Tickets", "#7C3AED", "#F3EEFE"],
@@ -22036,6 +22190,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
                         <EventReviewBar e={e} tts={ticketTypes && ticketTypes[e.id]} canReview={canReview} />
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
               <button onClick={(ev) => { ev.stopPropagation(); setManage(e.id); setMSeg("invite"); }} title="Send a personal invitation to a guest or Glasswings member" style={{ ...btn("#B7791F", "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5, fontWeight: 850 }}><span style={{fontSize:14}}>💌</span>Invite</button>
+              <button onClick={(ev) => { ev.stopPropagation(); setManage(e.id); setMSeg("bookings"); }} title="See who booked, their amount paid and remaining balance" style={{ ...btn("#0E7490", "#fff"), flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5, fontWeight: 850 }}>📋 Bookings & Payments</button>
               <button onClick={() => setMembersFor(e)} title="Who's coming — list, contact, withdraw" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Members</button>
               <button onClick={() => setCheckIn(e)} title="Check in attendees" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Users size={14} />Check-in</button>
               {!privateOnly && <button onClick={() => setSendFor(e)} title="Message members" style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center", padding: "9px 6px", fontSize: 12.5 }}><Send size={14} />Notify</button>}
@@ -22055,6 +22210,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
                 </div>
                 <GwTabGuide id={"ev_" + mSeg} />
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {mSeg === "bookings" && <EventBookingsPaymentsTab key={e.id} event={e} />}
                   {mSeg === "trip" && gwIsGetaway(e) && <TripSetupTab event={e} />}
                   {mSeg === "travellers" && gwIsGetaway(e) && <TripBoardTab event={e} />}
                   {mSeg === "details" && (<>
