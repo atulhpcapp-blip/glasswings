@@ -28,6 +28,13 @@
           "value": "(.*)\\.vercel\\.app"
         }
       ],
+      "missing": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "vercel-cron/1.0"
+        }
+      ],
       "destination": "https://glass-wings.com/:path*",
       "permanent": true
     }
