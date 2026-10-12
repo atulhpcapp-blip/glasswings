@@ -818,7 +818,7 @@ function Shell({ children }) {
 }
 function DesktopSidebar({ tab, setTab, isAdmin, isBookingAdmin = false, isTeam = false, isSuper = false, reviewBadge = 0, width, meetBadge = 0 }) {
   const items = [
-    ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Booking Dashboard", highlight: true }] : []),
+    ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Booking Dashboard", highlight: true }, { id: "quotes", icon: Printer, label: "Quotations & Invoices", highlight: true }] : []),
     { id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isTeam ? [{ id: "review", icon: Check, label: "Review", badge: reviewBadge }] : []), ...(isSuper ? [{ id: "money", icon: IndianRupee, label: "Money" }] : []), ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events" }] : []), ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40, overflowY: "auto", overscrollBehavior: "contain" }}>
@@ -4820,6 +4820,7 @@ function Main({ user }) {
         </div>
       </div>}
       {tab === "bookingdash" && isAdmin && <GWBookingDashboard events={(isSuper || !myCity) ? events : events.filter(ev => ev.city === myCity)} />}
+      {tab === "quotes" && isAdmin && <GWQuoteManager meId={user.id} />}
       {tab === "admin" && isStaff && <Admin isGwTeam={isSuper || [profile?.role, ...(profile?.roles || [])].some(r => ["admin", "subadmin", "team", "staff"].includes(r))} caps={caps} canUseDirectory={[profile?.role, ...(profile?.roles || [])].some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r))} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "review" && isGwTeamMain && <div><TopBar title="🛂 Review events" /><EventReviewQueue isAdmin={isAdmin} /></div>}
       {tab === "money" && isSuper && <div><TopBar title="💰 Money" /><MoneyDashboard /></div>}
@@ -21608,6 +21609,260 @@ function GWBookingDashDetail({ record, onReload }) {
     </div>) : <div style={{ fontSize: 12.5, color: W.soft }}>No verified payment has been recorded yet.</div>}
   </div>;
 }
+
+// GLASSWINGS — STANDALONE quotations & proforma invoices workspace.
+// Independent of Plan My Event: manual, phone, WhatsApp, walk-in and social leads work without any event request record.
+const gwQuoteTemplates = {
+  birthday: ["Venue / party space", "Theme décor & backdrop", "Cake & desserts", "Catering / snacks", "DJ / music & sound", "Photography / videography", "On-site event coordinator"],
+  farmhouse: ["Farmhouse / venue rental", "Catering & refreshments", "DJ, sound & lighting", "Pool and activity setup", "Security & event staff", "Housekeeping & utilities", "Event coordinator"],
+  corporate: ["Venue hire", "Stage, AV & sound", "Branding & décor", "Hospitality & catering", "Registration / ushers", "Photography", "Event management"],
+  wedding: ["Venue & hospitality", "Floral décor and styling", "Catering", "Sound, lights & entertainment", "Photography / videography", "Guest logistics", "Event coordination"],
+  other: ["Venue", "Décor / production", "Catering", "Music / entertainment", "Staffing & logistics", "Event coordination"]
+};
+const gwQChannels = [
+  ['phone','Phone call'], ['whatsapp','WhatsApp'], ['walk_in','Walk-in / personal'],
+  ['instagram','Instagram'], ['referral','Referral'], ['website','Website'],
+  ['plan_my_event','Plan My Event'], ['other','Other']
+];
+const gwQMoney = n => new Intl.NumberFormat('en-IN', {style:'currency',currency:'INR',maximumFractionDigits:2}).format(Number(n)||0);
+const gwQEsc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const gwQEmpty = (kind='birthday', type='quote') => ({
+  client_name:'',client_phone:'',client_email:'',client_company:'',client_address:'',client_gstin:'',
+  title:'',event_type:kind,event_date:'',event_time:'',event_city:'',venue:'',event_address:'',guests:'',
+  valid_until:'',follow_up_on:'',source_channel:'phone',package_name:'',
+  terms:'Event date and services are subject to confirmation and availability. Changes to the scope or guest count may change the price. Booking, cancellation, postponement and refund terms must be agreed in writing before payment.',
+  inclusions:'',exclusions:'Items not explicitly included above.',
+  payment_terms:'Proposed advance to confirm services; remaining balance according to the agreed schedule.',
+  items:(gwQuoteTemplates[kind]||gwQuoteTemplates.other).map(name=>({name,qty:1,unit:'service',rate:''})),
+  discount:0,tax_rate:0,advance_pct:30,status:'draft',doc_type:type,
+  source_request_id:null,related_quote_id:null,notes:''
+});
+function gwQCalc(d) {
+  const subtotal=(d.items||[]).reduce((a,i)=>a+Math.max(0,Number(i.qty)||0)*Math.max(0,Number(i.rate)||0),0);
+  const discount=Math.min(subtotal,Math.max(0,Number(d.discount)||0));
+  const taxable=Math.max(0,subtotal-discount);
+  const tax=Math.round(taxable*Math.max(0,Math.min(100,Number(d.tax_rate)||0)))/100;
+  const total=Math.round((taxable+tax)*100)/100;
+  const advance=Math.round(total*Math.max(0,Math.min(100,Number(d.advance_pct)||0)))/100;
+  return {subtotal,discount,tax,total,advance,balance:Math.max(0,Math.round((total-advance)*100)/100)};
+}
+function gwQDocNo(d) {
+  return d.seq_no ? `GW-${d.doc_type==='proforma'?'PI':'Q'}-${new Date(d.created_at||Date.now()).getFullYear()}-${String(d.seq_no).padStart(5,'0')}` : 'UNSAVED DRAFT';
+}
+function gwQMarkup(d,company) {
+  const sums=gwQCalc(d),doc=gwQDocNo(d),isPI=d.doc_type==='proforma';
+  const kind=isPI?'PROFORMA INVOICE':'EVENT QUOTATION';
+  const safe=gwQEsc;
+  const detail=(label,value)=>value?`<div class="detail"><span>${safe(label)}</span><b>${safe(value)}</b></div>`:'';
+  const rows=(d.items||[]).filter(i=>i.name&&Number(i.qty)>0).map((i,k)=>`<tr><td>${k+1}</td><td>${safe(i.name)}</td><td class="num">${safe(i.qty)}</td><td>${safe(i.unit||'service')}</td><td class="money">${gwQMoney(i.rate)}</td><td class="money">${gwQMoney((Number(i.qty)||0)*(Number(i.rate)||0))}</td></tr>`).join('');
+  const subtotal=`<div><span>Subtotal</span><strong>${gwQMoney(sums.subtotal)}</strong></div>`;
+  const discount=sums.discount?`<div><span>Less discount</span><strong>− ${gwQMoney(sums.discount)}</strong></div>`:'';
+  const tax=Number(d.tax_rate)>0?`<div><span>Tax (${safe(d.tax_rate)}% — where applicable)</span><strong>${gwQMoney(sums.tax)}</strong></div>`:'';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${safe(doc)} - ${kind}</title><style>
+  *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;background:#e9eeec;color:#172a25;margin:0;font-size:12.5px}main{width:210mm;min-height:297mm;margin:12mm auto;background:white;padding:18mm 16mm;box-shadow:0 4px 28px #0002}.mast{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #13795d;padding-bottom:16px}.brand{font-size:27px;letter-spacing:2px;font-weight:900;color:#0b644d}.company{font-size:11px;color:#536b61;line-height:1.7;margin-top:6px;white-space:pre-wrap}.heading{text-align:right}.heading small{font-weight:900;color:#128264;letter-spacing:1.3px}.heading h1{font-size:18px;margin:9px 0;color:#16352b}.muted{color:#60786d;font-size:11px;line-height:1.6}.hero{background:#f0f8f4;padding:13px 15px;margin:17px 0;border-left:4px solid #168463}.hero h2{margin:0 0 5px;font-size:17px}.cols{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:18px 0 14px}.sect{font-size:10px;font-weight:900;color:#158060;letter-spacing:1.1px;text-transform:uppercase;border-bottom:1px solid #dce7e1;padding-bottom:7px;margin-bottom:10px}.detail{margin:0 0 9px;overflow-wrap:anywhere}.detail span{display:block;color:#61786e;font-size:10px;margin-bottom:3px}.detail b{font-weight:700}.invoice{border-collapse:collapse;width:100%;margin-top:15px;table-layout:auto}.invoice th{background:#0d5845;color:#fff;font-size:10.5px;padding:10px 8px;text-align:left}.invoice td{border-bottom:1px solid #e0e8e3;padding:10px 8px;vertical-align:top}.invoice th.num,.invoice td.num,.invoice th.money,.invoice td.money{text-align:right;white-space:nowrap}.summary{margin:22px 0 18px auto;max-width:330px}.summary>div{display:flex;justify-content:space-between;gap:16px;padding:7px 0}.summary .total{border-top:2px solid #0d7558;margin-top:5px;padding-top:12px;font-weight:900;color:#0c6049;font-size:16px}.summary .due{background:#e7f5ee;padding:10px 12px;border-radius:7px;font-weight:800}.textblock{white-space:pre-wrap;line-height:1.6;margin:5px 0 17px}.sectiontitle{font-weight:900;color:#0f624b;margin-top:20px;font-size:13px}.disclaimer{background:#f6f7f7;padding:11px 13px;border-radius:7px;color:#4d5d58;font-size:11px;margin-top:18px}.footer{border-top:1px solid #ccdcd4;margin-top:26px;padding-top:11px;font-size:10px;color:#687d73;line-height:1.5}.print{position:fixed;bottom:20px;right:20px;border:0;background:#0e7358;color:white;padding:13px 20px;border-radius:9px;font-weight:800;cursor:pointer}@media print{body{background:white}main{width:auto;min-height:0;box-shadow:none;margin:0;padding:13mm}.print{display:none}@page{size:A4;margin:0}}
+  </style></head><body><main><div class="mast"><div><div class="brand">GLASSWINGS</div><div class="company">${safe(company.legal_name||'Glasswings Events Pvt. Ltd.')}\n${safe(company.address||'')}${company.phone?'\n'+safe(company.phone):''}${company.email?' · '+safe(company.email):''}${company.gstin?'\nGSTIN: '+safe(company.gstin):''}</div></div><div class="heading"><small>${kind}</small><h1>${safe(doc)}</h1><div class="muted">Prepared: ${new Date(d.created_at||Date.now()).toLocaleDateString('en-IN')}<br>${d.valid_until?'Valid until: '+safe(d.valid_until):'Validity: subject to confirmation'}</div></div></div>
+  <div class="hero"><h2>${safe(d.title||'Your event proposal')}</h2><div class="muted">${safe(d.package_name||'Tailored event services')}</div></div>
+  <div class="cols"><section><div class="sect">Prepared for / Bill to</div>${detail('Client',d.client_name)}${detail('Company',d.client_company)}${detail('Address',d.client_address)}${detail('Phone',d.client_phone)}${detail('Email',d.client_email)}${detail('Customer GSTIN',d.client_gstin)}</section><section><div class="sect">Event information</div>${detail('Occasion',String(d.event_type||'other').replaceAll('_',' '))}${detail('Date',d.event_date)}${detail('Time',d.event_time)}${detail('Venue',d.venue)}${detail('Location',d.event_address||d.event_city)}${detail('Estimated guests',d.guests)}</section></div>
+  <table class="invoice"><thead><tr><th>#</th><th>Service / Deliverable</th><th class="num">Qty</th><th>Unit</th><th class="money">Rate</th><th class="money">Amount</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No line items added</td></tr>'}</tbody></table>
+  <div class="summary">${subtotal}${discount}${tax}<div class="total"><span>Grand total</span><strong>${gwQMoney(sums.total)}</strong></div><div class="due"><span>Proposed advance (${safe(d.advance_pct||0)}%)</span><strong>${gwQMoney(sums.advance)}</strong></div><div><span>Balance after advance</span><strong>${gwQMoney(sums.balance)}</strong></div></div>
+  ${d.inclusions?`<div class="sectiontitle">Inclusions</div><div class="textblock">${safe(d.inclusions)}</div>`:''}${d.exclusions?`<div class="sectiontitle">Exclusions</div><div class="textblock">${safe(d.exclusions)}</div>`:''}<div class="sectiontitle">Payment schedule</div><div class="textblock">${safe(d.payment_terms||'As agreed in writing.')}</div><div class="sectiontitle">Terms & conditions</div><div class="textblock">${safe(d.terms||'Subject to written confirmation.')}</div>${isPI?`<div class="sectiontitle">Payment instructions</div><div class="textblock">${safe(company.payment_details||'Please contact Glasswings for verified payment instructions.')}</div>`:''}
+  <div class="disclaimer">${isPI?'This is a PROFORMA invoice / request for payment. It is not a GST tax invoice, payment confirmation or receipt.':'This is a commercial estimate, not a tax invoice or proof of payment.'} Prices and taxes are subject to the agreed scope and applicable law.</div><div class="footer">${safe(company.legal_name||'Glasswings Events Pvt. Ltd.')} · Event planning & experiences · Please retain this document for reference.</div></main><button class="print" onclick="window.print()">Print / Save as PDF</button></body></html>`;
+}
+function GWQuoteManager({meId}) {
+  const [documents,setDocuments]=useState([]);
+  const [settings,setSettings]=useState({legal_name:'Glasswings Events Pvt. Ltd.',address:'',gstin:'',phone:'',email:'',payment_details:''});
+  const [draft,setDraft]=useState(null),[step,setStep]=useState('client'),[companyOpen,setCompanyOpen]=useState(false);
+  const [showImport,setShowImport]=useState(false),[leads,setLeads]=useState([]),[leadBusy,setLeadBusy]=useState(false),[leadError,setLeadError]=useState('');
+  const [filter,setFilter]=useState('all'),[statusFilter,setStatusFilter]=useState('all'),[search,setSearch]=useState('');
+  const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[err,setErr]=useState(''),[notice,setNotice]=useState('');
+  const input={width:'100%',boxSizing:'border-box',border:'1px solid #d4e3db',borderRadius:9,padding:'10px 11px',fontSize:13.5,color:'#18362c',background:'#fff'};
+  const panel={background:'#fff',border:'1px solid #dbe8e0',borderRadius:15,padding:16,marginBottom:14};
+  const load=async()=>{
+    setLoading(true);
+    const [docs,conf]=await Promise.all([
+      supabase.from('gw_event_documents').select('*').order('created_at',{ascending:false}).limit(1000),
+      supabase.from('gw_quote_settings').select('*').eq('id',1).maybeSingle()
+    ]);
+    if(docs.error)setErr(docs.error.message+' — Check the Quotations & Proforma SQL permissions.');
+    else {setDocuments(docs.data||[]);setErr('');}
+    if(!conf.error&&conf.data)setSettings(conf.data);
+    setLoading(false);
+  };
+  useEffect(()=>{load();},[]);
+  const set=(field,value)=>setDraft(prev=>({...prev,[field]:value}));
+  const start=(kind='birthday',docType='quote')=>{setDraft(gwQEmpty(kind,docType));setStep('client');setErr('');setNotice('');};
+  const edit=d=>{if(d.status!=='draft')return setErr('Issued documents are locked. Use Create revision.');setDraft({...d});setStep('client');setErr('');};
+  const copy=d=>{const next={...d,id:undefined,seq_no:undefined,created_at:undefined,updated_at:undefined,sent_at:undefined,accepted_at:undefined,status:'draft',related_quote_id:d.id,doc_type:d.doc_type};setDraft(next);setStep('client');setErr('');};
+  const makeProforma=d=>{const next={...d,id:undefined,seq_no:undefined,created_at:undefined,updated_at:undefined,sent_at:undefined,accepted_at:undefined,status:'draft',doc_type:'proforma',related_quote_id:d.id,source_channel:d.source_channel||'phone'};setDraft(next);setStep('client');setErr('');};
+  const importLeads=async()=>{
+    setShowImport(true);setLeadBusy(true);setLeadError('');
+    const {data,error}=await supabase.from('event_requests').select('id,event_type,event_title,event_date,city,area,guests,contact_name,contact_phone,contact_email,notes').order('created_at',{ascending:false}).limit(200);
+    if(error)setLeadError('Website enquiry import unavailable: '+error.message+'. Manual quotations continue to work.');else setLeads(data||[]);
+    setLeadBusy(false);
+  };
+  const useLead=id=>{const l=leads.find(r=>String(r.id)===String(id));if(!l)return;
+    const kind=l.event_type==='birthday'?'birthday':/farm|house|pool/i.test(l.event_title||'')?'farmhouse':'other';
+    setDraft({...gwQEmpty(kind),source_channel:'plan_my_event',source_request_id:l.id,client_name:l.contact_name||'',client_phone:l.contact_phone||'',client_email:l.contact_email||'',title:l.event_title||'Event celebration',event_date:l.event_date||'',event_city:l.city||'',venue:l.area||'',guests:l.guests??'',notes:l.notes||''});
+    setStep('client');setShowImport(false);setErr('');
+  };
+  const current=draft?gwQCalc(draft):null;
+  const save=async()=>{
+    if(!draft?.client_name?.trim()||!draft?.title?.trim()){setStep('client');return setErr('Enter a customer name and event title. You can add the phone later.');}
+    if(draft.client_phone&&String(draft.client_phone).replace(/\D/g,'').length<10){setStep('client');return setErr('Please enter a complete mobile number or leave the field empty for now.');}
+    const priced=(draft.items||[]).filter(i=>String(i.name||'').trim()&&Number(i.qty)>0&&Number(i.rate)>0);
+    // A phone or walk-in enquiry may be saved before prices are final.
+    // Only priced documents can be marked sent or used as final customer quotations.
+    if(Number(draft.discount)<0||Number(draft.discount)>current.subtotal)return setErr('Discount must be between zero and the subtotal.');
+    if(Number(draft.tax_rate)<0||Number(draft.tax_rate)>100||Number(draft.advance_pct)<0||Number(draft.advance_pct)>100)return setErr('Tax and advance percentages must be between 0 and 100.');
+    setBusy(true);setErr('');setNotice('');
+    const keys=['source_request_id','related_quote_id','source_channel','client_name','client_phone','client_email','client_company','client_address','client_gstin','title','event_type','event_date','event_time','event_city','venue','event_address','guests','valid_until','follow_up_on','package_name','payment_terms','terms','inclusions','exclusions','items','discount','tax_rate','advance_pct','notes','doc_type','status'];
+    const row=Object.fromEntries(keys.map(k=>[k,draft[k]??null]));
+    row.items=(draft.items||[]).filter(i=>String(i.name||'').trim()&&Number(i.qty)>0).map(i=>({name:String(i.name).trim(),qty:Number(i.qty),unit:String(i.unit||'service').trim(),rate:Math.max(0,Number(i.rate)||0)}));
+    for(const k of ['valid_until','event_date','follow_up_on'])row[k]=row[k]||null;
+    row.guests=row.guests===''?null:Math.max(0,Number(row.guests)||0);
+    row.client_phone=row.client_phone||'';
+    const query=draft.id
+      ? supabase.from('gw_event_documents').update(row).eq('id',draft.id).select('*').single()
+      : supabase.from('gw_event_documents').insert({...row,created_by:meId}).select('*').single();
+    const {data,error}=await query;
+    setBusy(false);
+    if(error)return setErr(error.message);
+    setDraft(null);setNotice(`${gwQDocNo(data)} saved. You can now preview it, save as PDF, and share with the client.`);
+    await load();
+  };
+  const changeStatus=async(d,next)=>{
+    if(next==='sent'&&gwQCalc(d).total<=0)return setErr('Add at least one priced service before marking a quotation or proforma as sent.');
+    if(next==='accepted'&&!window.confirm('Confirm the client accepted this document? This does not confirm any payment.'))return;
+    if(next==='cancelled'&&!window.confirm('Cancel this document? It will remain in history.'))return;
+    setBusy(true);setErr('');
+    const {error}=await supabase.from('gw_event_documents').update({status:next}).eq('id',d.id);
+    setBusy(false);if(error){setErr(error.message);return;}setNotice(`${gwQDocNo(d)} marked ${next}.`);load();
+  };
+  const preview=d=>{
+    const win=window.open('','_blank');if(!win)return setErr('Please allow pop-ups to preview and print the PDF.');
+    win.document.open();win.document.write(gwQMarkup(d,settings));win.document.close();
+  };
+  const message=d=>{
+    const s=gwQCalc(d),kind=d.doc_type==='proforma'?'proforma invoice':'quotation';
+    return `Hello ${d.client_name},\n\nGreetings from Glasswings Events!\n\nPlease find our ${kind} ${gwQDocNo(d)} for ${d.title}.\nEvent date: ${d.event_date||'To be finalised'}\nTotal: ${gwQMoney(s.total)}\nProposed advance: ${gwQMoney(s.advance)}${d.valid_until?'\nValid until: '+d.valid_until:''}\n\nPlease review the attached PDF for service details, inclusions and terms. We look forward to planning your event.\n\nRegards,\nGlasswings Events`;
+  };
+  const wa=d=>{
+    if(!waNum(d.client_phone))return setErr('Add the customer mobile number to prepare a WhatsApp message.');
+    window.open(`https://wa.me/${waNum(d.client_phone)}?text=${encodeURIComponent(message(d))}`,'_blank','noopener,noreferrer');
+  };
+  const copyMessage=async d=>{
+    try{await navigator.clipboard.writeText(message(d));setNotice('WhatsApp/email message copied. Attach the PDF separately.');}
+    catch{setErr('Clipboard permission denied. Use WhatsApp or copy the text manually.');}
+  };
+  const saveSettings=async()=>{
+    setBusy(true);setErr('');
+    const payload={id:1,...Object.fromEntries(['legal_name','address','gstin','phone','email','payment_details'].map(k=>[k,settings[k]||'']))};
+    const {error}=await supabase.from('gw_quote_settings').upsert(payload);
+    setBusy(false);if(error)return setErr(error.message);setCompanyOpen(false);setNotice('Company details saved.');load();
+  };
+  const statusLabel=d=>d.status==='sent'&&d.valid_until&&d.valid_until<new Date().toISOString().slice(0,10)?'Expired':d.status.charAt(0).toUpperCase()+d.status.slice(1);
+  const display=documents.filter(d=>{
+    if(filter!=='all'&&d.doc_type!==filter)return false;
+    if(statusFilter!=='all'&&d.status!==statusFilter)return false;
+    const needle=search.trim().toLowerCase();
+    return !needle||`${d.client_name} ${d.client_phone} ${d.client_company||''} ${d.title} ${d.event_city||''} ${gwQDocNo(d)} ${d.source_channel||''}`.toLowerCase().includes(needle);
+  });
+  const pending=documents.filter(d=>d.doc_type==='quote'&&d.status==='sent');
+  const accepted=documents.filter(d=>d.doc_type==='quote'&&d.status==='accepted');
+  const today=new Date().toISOString().slice(0,10);
+  const followups=documents.filter(d=>d.status==='sent'&&d.follow_up_on&&d.follow_up_on<=today);
+  const summary=[
+    ['All quotations',documents.filter(d=>d.doc_type==='quote').length,'#0e6653'],
+    ['Awaiting response',pending.length,'#92400e'],
+    ['Accepted quotes',accepted.length,'#047857'],
+    ['Proforma invoices',documents.filter(d=>d.doc_type==='proforma').length,'#5b21b6'],
+  ];
+  const field=(label,key,type='text',option={})=><label style={{display:'block',fontSize:12,fontWeight:750,color:'#536e60'}}>{label}<input type={type} value={draft?.[key]??''} onChange={e=>set(key,e.target.value)} style={{...input,marginTop:6}} {...option}/></label>;
+  const area=(label,key,rows=3)=> <label style={{display:'block',fontSize:12,fontWeight:750,color:'#536e60'}}>{label}<textarea rows={rows} value={draft?.[key]||''} onChange={e=>set(key,e.target.value)} style={{...input,marginTop:6,resize:'vertical'}}/></label>;
+  const goTo=part=>{setStep(part);setErr('');};
+  return <main style={{padding:'20px clamp(12px,3vw,28px)',maxWidth:1420,margin:'0 auto',minHeight:'75vh',color:'#1d362d'}}>
+    <header style={{background:'linear-gradient(115deg,#103e34,#087861)',color:'#fff',borderRadius:18,padding:'22px clamp(16px,3vw,28px)',marginBottom:16,display:'flex',flexWrap:'wrap',gap:14,justifyContent:'space-between',alignItems:'center'}}>
+      <div><div style={{fontSize:11,letterSpacing:1.7,fontWeight:850,opacity:.76}}>GLASSWINGS · BUSINESS OPERATIONS</div><h1 style={{margin:'7px 0 5px',fontSize:'clamp(22px,3vw,30px)'}}>Quotations & Proforma Invoices</h1><div style={{fontSize:13,opacity:.86,maxWidth:660}}>An independent workspace for every enquiry — phone calls, WhatsApp, walk-ins, referrals, Instagram or your website.</div></div>
+      <button onClick={()=>start('other')} style={{...btn('#fff','#075e4c'),fontSize:14,padding:'12px 17px'}}>+ New quotation</button>
+    </header>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:9,marginBottom:14}}>{summary.map(([label,val,col])=><div key={label} style={{...panel,marginBottom:0,padding:'14px 16px',borderTop:`3px solid ${col}`}}><div style={{fontSize:12,color:'#62746a'}}>{label}</div><div style={{fontSize:26,fontWeight:900,color:col,marginTop:6}}>{val}</div></div>)}</div>
+    {followups.length>0&&<div style={{...panel,background:'#fff8e8',borderColor:'#f5d6a2',color:'#7a4907',padding:12}}>⏰ <b>{followups.length} follow-up{followups.length===1?'':'s'} due</b> — check sent quotations and contact clients. No message is sent automatically.</div>}
+    <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:13}}>
+      <button onClick={()=>start('birthday')} style={btn('#fdf2f8','#9d174d')}>🎂 Birthday quote</button>
+      <button onClick={()=>start('farmhouse')} style={btn('#eff6ff','#1d4ed8')}>🏡 Farmhouse / house party</button>
+      <button onClick={()=>start('corporate')} style={btn('#f0fdf4','#166534')}>🏢 Corporate event</button>
+      <button onClick={()=>start('other','proforma')} style={btn('#f4f0ff','#673ab7')}>+ New proforma invoice</button>
+      <button onClick={()=>setCompanyOpen(v=>!v)} style={btn('#fff','#354e41')}>⚙ Company & payment details</button>
+      <button onClick={load} disabled={loading} style={btn('#fff','#075e46')}>↻ Refresh</button>
+      <button onClick={showImport?()=>setShowImport(false):importLeads} style={btn('#f2f5f3','#455e53')}>Optional: Import website enquiry</button>
+    </div>
+    {notice&&<div role="status" style={{...panel,borderColor:'#a5e0bd',background:'#e8f8ee',color:'#155734',padding:11}}>{notice}</div>}
+    {err&&<div role="alert" style={{...panel,borderColor:'#fecaca',background:'#fff2f2',color:'#991b1b',padding:11}}>{err}</div>}
+    {showImport&&<section style={panel}><h3 style={{margin:'0 0 6px'}}>Import an existing Plan My Event enquiry (optional)</h3><div style={{fontSize:12,color:'#647a6d',marginBottom:10}}>This only fills the customer and event fields. New manual documents never need an enquiry ID.</div>{leadBusy?'Loading website enquiries…':<select style={input} defaultValue="" onChange={e=>{if(e.target.value)useLead(e.target.value);e.target.value='';}}><option value="">Choose customer enquiry…</option>{leads.map(l=><option value={l.id} key={l.id}>{l.contact_name} — {l.event_title||l.event_type||'Event'} — {l.city||'Location TBD'}</option>)}</select>}{leadError&&<p style={{color:'#b91c1c',fontSize:12}}>{leadError}</p>}</section>}
+    {companyOpen&&<section style={panel}><h3 style={{margin:'0 0 5px'}}>Glasswings document branding</h3><p style={{fontSize:12,color:'#677b70'}}>Enter verified legal, tax and bank details only. These appear on quotation and proforma PDFs.</p><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))',gap:10}}>{[['legal_name','Legal business name'],['address','Company address'],['gstin','GSTIN (if applicable)'],['phone','Business phone'],['email','Business email'],['payment_details','Verified payment instructions']].map(([key,label])=><label key={key} style={{fontSize:12,fontWeight:800,color:'#536e60'}}>{label}<textarea rows={key==='address'||key==='payment_details'?3:1} value={settings[key]||''} onChange={e=>setSettings(v=>({...v,[key]:e.target.value}))} style={{...input,marginTop:6}}/></label>)}</div><button onClick={saveSettings} disabled={busy} style={{...btn('#087963','#fff'),marginTop:12}}>{busy?'Saving…':'Save company details'}</button></section>}
+    {draft&&<section style={{...panel,borderColor:'#8ec9b1',boxShadow:'0 8px 30px #083e2910'}}>
+      <div style={{display:'flex',justifyContent:'space-between',gap:12,flexWrap:'wrap',alignItems:'center'}}><div><div style={{fontSize:11,color:'#138363',fontWeight:900,letterSpacing:1}}>DOCUMENT EDITOR · {draft.doc_type==='proforma'?'PROFORMA INVOICE':'QUOTATION'}</div><h2 style={{margin:'5px 0',fontSize:20}}>{draft.id?'Edit saved draft':'Create a new document'}</h2><div style={{fontSize:12,color:'#647c70'}}>Drafts can be saved before pricing is final. Saving generates a unique Glasswings reference.</div></div><button onClick={()=>{setDraft(null);setErr('');}} style={btn('#f1f4f2','#365044')}>✕ Close</button></div>
+      <div style={{display:'flex',gap:7,flexWrap:'wrap',borderBottom:'1px solid #e3ede6',padding:'15px 0 12px',marginBottom:16}}>{[['client','1 · Client & event'],['services','2 · Services & prices'],['terms','3 · Terms & review']].map(([k,label])=><button key={k} onClick={()=>goTo(k)} style={{...btn(step===k?'#087963':'#f0f5f1',step===k?'#fff':'#356451'),padding:'10px 14px'}}>{label}</button>)}</div>
+      {step==='client'&&<>
+        <h3 style={{margin:'0 0 12px'}}>Customer details</h3>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:11}}>{field('Customer / contact name *','client_name')}{field('WhatsApp / mobile (optional)','client_phone','tel')}{field('Email','client_email','email')}{field('Company (optional)','client_company')}{field('Customer address','client_address')}{field('Customer GSTIN (if provided)','client_gstin')}</div>
+        <h3 style={{margin:'22px 0 12px'}}>Event details</h3>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:11}}>
+          {field('Event title *','title')}
+          <label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>Event category<select value={draft.event_type||'other'} onChange={e=>{const k=e.target.value;set('event_type',k);}} style={{...input,marginTop:6}}>{[['birthday','Birthday'],['farmhouse','Farmhouse / house party'],['wedding','Wedding / engagement'],['corporate','Corporate'],['other','Other event']].map(([k,n])=><option value={k} key={k}>{n}</option>)}</select></label>
+          {field('Event date','event_date','date')}{field('Time / slot','event_time')}{field('Venue name','venue')}{field('City','event_city')}{field('Venue address','event_address')}{field('Expected guests','guests','number',{min:0})}
+          {field('Package title / proposal tier','package_name')}
+          <label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>How did you receive the enquiry?<select value={draft.source_channel||'other'} onChange={e=>set('source_channel',e.target.value)} style={{...input,marginTop:6}}>{gwQChannels.map(([id,label])=><option value={id} key={id}>{label}</option>)}</select></label>
+          {field('Follow-up date (admin reminder list)','follow_up_on','date')}
+        </div>
+        <div style={{display:'flex',justifyContent:'flex-end',marginTop:20}}><button onClick={()=>goTo('services')} style={btn('#087963','#fff')}>Next: Services & prices →</button></div>
+      </>}
+      {step==='services'&&<>
+        <h3 style={{margin:'0 0 5px'}}>Services and price breakdown</h3><p style={{fontSize:12,color:'#64786d',margin:'0 0 14px'}}>Start with the template, edit or remove any service. Only priced rows appear in the saved document.</p>
+        <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:12}}>{Object.keys(gwQuoteTemplates).map(k=><button key={k} onClick={()=>{if(window.confirm('Replace the current service list with the '+k+' template?'))set('items',gwQuoteTemplates[k].map(name=>({name,qty:1,unit:'service',rate:''})));}} style={btn('#f1f6f2','#24604a')}>{k==='other'?'Custom':k.charAt(0).toUpperCase()+k.slice(1)} template</button>)}</div>
+        <div style={{overflowX:'auto'}}><table style={{width:'100%',minWidth:620,borderCollapse:'collapse'}}><thead><tr style={{background:'#f0f8f3',fontSize:12}}><th align="left" style={{padding:9}}>Service / scope</th><th>Qty</th><th>Unit</th><th>Rate (₹)</th><th>Amount</th><th></th></tr></thead><tbody>{(draft.items||[]).map((i,k)=><tr key={k} style={{borderBottom:'1px solid #e7eee9'}}><td style={{padding:5}}><input value={i.name||''} aria-label={`Service ${k+1}`} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,name:e.target.value}:x))} style={{...input,minWidth:180}}/></td><td><input type="number" min="0" aria-label={`Quantity ${k+1}`} value={i.qty??1} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,qty:e.target.value}:x))} style={{...input,width:70}}/></td><td><input aria-label={`Unit ${k+1}`} value={i.unit||''} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,unit:e.target.value}:x))} style={{...input,width:90}}/></td><td><input type="number" min="0" step="0.01" aria-label={`Rate ${k+1}`} value={i.rate??''} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,rate:e.target.value}:x))} style={{...input,width:115}}/></td><td style={{fontWeight:900,fontSize:12,whiteSpace:'nowrap',padding:8}}>{gwQMoney((Number(i.qty)||0)*(Number(i.rate)||0))}</td><td><button aria-label={`Delete row ${k+1}`} onClick={()=>set('items',draft.items.filter((_,j)=>j!==k))} style={btn('#fff0ef','#b42318')}>×</button></td></tr>)}</tbody></table></div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}><button onClick={()=>set('items',[...(draft.items||[]),{name:'',qty:1,unit:'service',rate:''}])} style={btn('#eaf6f0','#075e46')}>+ Add service</button><button onClick={()=>set('items',(draft.items||[]).filter(i=>Number(i.rate)>0&&String(i.name||'').trim()))} style={btn('#f4f4f5','#475569')}>Remove unpriced rows</button></div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginTop:15}}>{field('Discount (₹)','discount','number',{min:0,step:'0.01'})}{field('Applicable tax %','tax_rate','number',{min:0,max:100,step:'0.01'})}{field('Proposed advance %','advance_pct','number',{min:0,max:100,step:'0.01'})}</div>
+        <div style={{marginTop:15,background:'#ecf8f1',borderRadius:13,padding:16,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:12}}>{[['Subtotal',current.subtotal],['Tax',current.tax],['Grand total',current.total],['Advance',current.advance],['Balance',current.balance]].map(([label,value])=><div key={label}><div style={{color:'#557264',fontSize:11}}>{label}</div><div style={{fontSize:16,fontWeight:900,color:label==='Grand total'?'#075e46':'#28483a'}}>{gwQMoney(value)}</div></div>)}</div>
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:18,gap:8}}><button onClick={()=>goTo('client')} style={btn('#f1f6f3','#34564a')}>← Back</button><button onClick={()=>goTo('terms')} style={btn('#087963','#fff')}>Next: Terms & review →</button></div>
+      </>}
+      {step==='terms'&&<>
+        <h3 style={{margin:'0 0 13px'}}>Client-facing terms and document validity</h3>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:11}}>{field('Valid until (if agreed)','valid_until','date')}{field('Follow-up date','follow_up_on','date')}</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(250px,1fr))',gap:11,marginTop:13}}>{area('Included services / deliverables','inclusions',3)}{area('Exclusions','exclusions',3)}{area('Payment milestones / due terms','payment_terms',3)}{area('Terms, cancellations & changes','terms',5)}</div>
+        <div style={{marginTop:12}}>{area('Private admin notes (not printed on client PDF)','notes',3)}</div>
+        <div style={{background:'#f5f8f5',padding:14,borderRadius:10,marginTop:15}}><b>Document summary</b><div style={{fontSize:12,marginTop:6}}>{draft.client_name||'Client not specified'} · {draft.title||'Event title required'} · {gwQMoney(current.total)} · {draft.doc_type==='proforma'?'Proforma invoice':'Quotation'}</div><div style={{fontSize:11,color:'#607467',marginTop:6}}>This document does not record a payment. You will be able to print the saved document as an A4 PDF and share it separately.</div></div>
+        <button onClick={()=>goTo('services')} style={{...btn('#f1f6f3','#34564a'),marginTop:13}}>← Back to pricing</button>
+      </>}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:18,borderTop:'1px solid #e1ebe4',paddingTop:16}}><div style={{fontWeight:850,color:'#075e46'}}>Document total: {gwQMoney(current.total)}</div><button disabled={busy} onClick={save} style={{...btn('#087963','#fff'),padding:'12px 22px',fontSize:14,opacity:busy?.6:1}}>{busy?'Saving…':'Save draft & generate number'}</button></div>
+    </section>}
+    <section style={panel}>
+      <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:14,alignItems:'center'}}><div><h2 style={{margin:'0 0 4px',fontSize:18}}>Document register</h2><div style={{fontSize:12,color:'#60786b'}}>All phone, walk-in and online quotations in one searchable list</div></div><div style={{fontSize:12,color:'#718278'}}>{display.length} records</div></div>
+      <div style={{display:'grid',gridTemplateColumns:'minmax(180px,1fr) repeat(2,minmax(130px,170px))',gap:8,marginBottom:16}}>
+        <input aria-label="Search documents" placeholder="Search name, mobile, event or document no." style={input} value={search} onChange={e=>setSearch(e.target.value)}/>
+        <select aria-label="Document category" style={input} value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All documents</option><option value="quote">Quotations</option><option value="proforma">Proforma invoices</option></select>
+        <select aria-label="Document status" style={input} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="sent">Sent / pending</option><option value="accepted">Accepted</option><option value="cancelled">Cancelled</option></select>
+      </div>
+      {loading?<p>Loading documents…</p>:!display.length?<div style={{padding:'34px 16px',textAlign:'center',color:'#688075',background:'#f5f8f6',borderRadius:12}}>No matching documents. Create a quotation manually to begin.</div>:display.map(d=>{
+        const price=gwQCalc(d),isFollowup=d.status==='sent'&&d.follow_up_on&&d.follow_up_on<=today;
+        return <article key={d.id} style={{border:'1px solid #e0eae4',borderRadius:12,padding:14,marginBottom:11,background:'#fff'}}>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-start'}}><div style={{flex:1,minWidth:210}}><div style={{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}><strong style={{color:'#0b6550',fontSize:14}}>{gwQDocNo(d)}</strong><span style={{background:d.doc_type==='proforma'?'#efe8ff':'#e8f5ef',color:d.doc_type==='proforma'?'#6d28d9':'#166344',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:900}}>{d.doc_type==='proforma'?'PROFORMA':'QUOTATION'}</span><span style={{background:'#f2f4f5',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:800}}>{statusLabel(d)}</span>{isFollowup&&<span style={{color:'#b45309',fontSize:10,fontWeight:900}}>⏰ Follow up due</span>}</div><div style={{fontWeight:850,fontSize:16,marginTop:6}}>{d.client_name}{d.client_company?' · '+d.client_company:''}</div><div style={{fontSize:12,color:'#63766a',marginTop:5}}>{d.title} · {d.event_date||'Date TBD'} · {d.event_city||'Venue TBD'}</div><div style={{fontSize:11,color:'#718279',marginTop:5}}>{gwQChannels.find(x=>x[0]===d.source_channel)?.[1]||'Manual'}{d.client_phone?' · '+d.client_phone:''}{d.follow_up_on?' · Follow-up '+d.follow_up_on:''}</div></div><div style={{fontSize:20,fontWeight:900,color:'#0a654f',whiteSpace:'nowrap'}}>{gwQMoney(price.total)}</div></div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:7,marginTop:12}}>
+            <button onClick={()=>preview(d)} disabled={price.total<=0} title={price.total<=0?'Add prices before preparing customer PDF':''} style={btn('#e9f7ef','#075e46')}>📄 Print / Save PDF</button>
+            <button onClick={()=>wa(d)} disabled={!d.client_phone||price.total<=0} style={btn('#dcfce7','#166534')}>WhatsApp</button>
+            <button onClick={()=>copyMessage(d)} disabled={price.total<=0} style={btn('#eff6ff','#1d4ed8')}>Copy message</button>
+            {d.status==='draft'&&<><button onClick={()=>edit(d)} style={btn('#edf1ff','#3730a3')}>Edit draft</button><button disabled={busy} onClick={()=>changeStatus(d,'sent')} style={btn('#087963','#fff')}>Mark as sent</button></>}
+            {d.status==='sent'&&<><button disabled={busy} onClick={()=>changeStatus(d,'accepted')} style={btn('#d1fae5','#065f46')}>Customer accepted</button><button disabled={busy} onClick={()=>changeStatus(d,'cancelled')} style={btn('#fee2e2','#991b1b')}>Cancel</button></>}
+            <button onClick={()=>copy(d)} style={btn('#f6f0ff','#6d28d9')}>{d.status==='draft'?'Duplicate':'Create revision'}</button>
+            {d.doc_type==='quote'&&d.status==='accepted'&&<button onClick={()=>makeProforma(d)} style={btn('#ede9fe','#5b21b6')}>→ Convert to proforma</button>}
+          </div>
+        </article>;
+      })}
+      <p style={{fontSize:11.5,color:'#64796c',margin:'12px 0 0'}}>Status changes are recorded manually. Saving a PDF or opening WhatsApp does not prove delivery, acceptance or payment. Sent/accepted documents are protected from editing; create a numbered revision for changes.</p>
+    </section>
+  </main>;
+}
+
 function GWBookingDashboard({ events = [] }) {
   const [period, setPeriod] = useState("upcoming");
   const [eventId, setEventId] = useState("all");
@@ -26779,7 +27034,7 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
 function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0 }) {
   const items = [
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
-    ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Bookings", c: "#0E7490" }] : []),
+    ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Bookings", c: "#0E7490" }, { id: "quotes", icon: Printer, label: "Quotations", c: "#7C3AED" }] : []),
     { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
     { id: "meet", icon: Users, label: "Meet", c: "#EC4899" },
     { id: "groupchat", icon: MessageCircle, label: "Chat", c: "#0F766E" },
