@@ -1,5 +1,5 @@
-const {db,fail,requireUser,rzp,RZ_KEY}=require('../_lib/gw-wa');
-module.exports=async(req,res)=>{
+import {db,fail,requireUser,rzp,RZ_KEY} from '../_lib/gw-wa.js';
+export default async function handler(req,res){
   if(req.method!=='POST')return fail(res,405,'POST only');
   try{
     const auth=await requireUser(req,res);if(!auth)return;
@@ -13,4 +13,4 @@ module.exports=async(req,res)=>{
     if(error)throw Error('Cannot record credit order: '+error.message);
     return res.status(200).json({ok:true,order_id:order.id,key_id:RZ_KEY,amount,currency:'INR',units});
   }catch(e){return fail(res,500,e.message||'Could not create credit order');}
-};
+}

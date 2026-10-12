@@ -1,5 +1,5 @@
-const {fail,requireUser,rzp,secureEq,crypto,RZ_SECRET}=require('../_lib/gw-wa');
-module.exports=async(req,res)=>{
+import {fail,requireUser,rzp,secureEq,crypto,RZ_SECRET} from '../_lib/gw-wa.js';
+export default async function handler(req,res){
   if(req.method!=='POST')return fail(res,405,'POST only');
   try{
     const auth=await requireUser(req,res);if(!auth)return;
@@ -16,4 +16,4 @@ module.exports=async(req,res)=>{
     const {data:wallet}=await auth.svc.from('gw_wa_wallets').select('credits').eq('organiser_id',auth.uid).single();
     return res.status(200).json({ok:true,units,credits:wallet?.credits??0});
   }catch(e){return fail(res,500,e.message||'Could not verify payment');}
-};
+}

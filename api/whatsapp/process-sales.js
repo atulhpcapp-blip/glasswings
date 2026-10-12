@@ -1,10 +1,10 @@
 // Configure a Vercel cron (GET /api/whatsapp/process-sales) and CRON_SECRET.
 // Pending notifications originate ONLY from verified-purchase DB records/Razorpay verification.
-const {db,fail}=require('../_lib/gw-wa');
+import {db,fail} from '../_lib/gw-wa.js';
 const API='https://backend.aisensy.com/campaign/t1/api/v2';
 function normalizePhone(x){let d=String(x||'').replace(/\D/g,'');if(d.length===10)d='91'+d;return d.length>=11&&d.length<=15?d:'';}
 function label(kind){return {ticket_sale:'Ticket sold',booking_payment:'Booking / advance received',trip_payment:'Trip instalment received',door_sale:'Door sale'}[kind]||'Payment received';}
-module.exports=async(req,res)=>{
+export default async function handler(req,res){
   if(req.method!=='GET'&&req.method!=='POST')return fail(res,405,'GET/POST only');
   if(!process.env.CRON_SECRET||req.headers.authorization!==`Bearer ${process.env.CRON_SECRET}`)return fail(res,401,'Invalid cron credential');
   if(!process.env.AISENSY_API_KEY)return fail(res,503,'AISENSY_API_KEY is not configured');
@@ -36,4 +36,4 @@ module.exports=async(req,res)=>{
     }
     return res.status(200).json({ok:true,processed:results.length,results});
   }catch(e){return fail(res,500,e.message||'Alert dispatcher failed');}
-};
+}
