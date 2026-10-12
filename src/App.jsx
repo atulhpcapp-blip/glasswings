@@ -2110,13 +2110,19 @@ function HereNow({ eventId, onOpenDM }) {
 function EventGoers({ eventId, onOpenDM, isGetaway = false }) {
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [goerError,setGoerError]=useState("");
   useEffect(() => {
     let live = true;
+    setGoerError("");
     Promise.all([
       supabase.rpc("event_meet_list", { p_event: eventId }).then(({ data }) => data || []).catch(() => []),
       supabase.rpc("guest_list", { p_event: eventId }).then(({ data, error }) => error ? [] : (data || [])).catch(() => []),
-      isGetaway ? supabase.rpc("trip_event_goers", { p_event: eventId }).then(({ data, error }) => error ? [] : (data || [])).catch(() => []) : Promise.resolve([]),
-    ]).then(([members, guests, tripMembers]) => {
+      isGetaway ? supabase.rpc("trip_event_goers", { p_event: eventId }).then(({ data, error }) => {
+        if(error){setGoerError("Who's Going could not load: "+error.message);return [];}
+        return data||[];
+      }).catch(e=>{setGoerError("Who's Going could not load: "+e.message);return [];}) : Promise.resolve([]),
+    ]).then(async ([members, guests, tripMembers]) => {
+      const memberProfiles=await gwHydrateMemberPhotos(members);
       if (!live) return;
       const doorGuests = guests
         .filter(g => ["cash", "upi"].includes(String(g.method || "").toLowerCase()) || gwIsInvitationGuest(g))
@@ -2132,7 +2138,7 @@ function EventGoers({ eventId, onOpenDM, isGetaway = false }) {
           waved_me: false,
         }));
       const seen = new Set();
-      setRows([...(members || []), ...(tripMembers || []).map(p=>({ ...p, is_trip_member:true, waved_by_me:false, waved_me:false })), ...doorGuests].filter(p=>{
+      setRows([...(memberProfiles || []), ...(tripMembers || []).map(p=>({ ...p, is_trip_member:true, waved_by_me:false, waved_me:false })), ...doorGuests].filter(p=>{
         const key = String(p.id || "");
         if (seen.has(key)) return false;
         seen.add(key); return true;
@@ -2140,7 +2146,9 @@ function EventGoers({ eventId, onOpenDM, isGetaway = false }) {
     });
     const refresh = ev => { if (!ev.detail || ev.detail === eventId) {
       supabase.rpc("trip_event_goers", { p_event: eventId }).then(({data,error})=>{
-        if(error || !live)return;
+        if(!live)return;
+        if(error){setGoerError("Who's Going could not refresh: "+error.message);return;}
+        setGoerError("");
         setRows(old=>{
           const base=(old||[]).filter(p=>!p.is_trip_member);
           const seen=new Set(base.map(p=>String(p.id)));
@@ -2164,15 +2172,19 @@ function EventGoers({ eventId, onOpenDM, isGetaway = false }) {
     setRows(rs => (rs || []).map(x => x.id === p.id ? { ...x, waved_by_me: true } : x));
     if (data.mutual) window.gwConfirm(`💚 You and ${(p.name || "").split(" ")[0]} both waved!\n\nYour chat is now open — say hi 💬`, () => { onOpenDM && onOpenDM(p.id, (p.name || "Member").split(" ")[0]); });
   };
-  if (rows === null || rows.length === 0) return null;
+  if (rows === null) return <div style={{fontSize:12,color:W.soft,padding:10}}>Loading attendee photos…</div>;
+  if(rows.length===0) return isGetaway ? <div style={{fontSize:12.5,color:W.soft,padding:"8px 0"}}>
+    {goerError ? <span style={{color:"#B91C1C"}}>{goerError}</span> : "Nobody has opted in to the public lineup yet. Members can enable the checkbox above."}
+  </div> : null;
   return (
     <div style={{ margin: "8px 0 4px" }}>
+      {goerError&&<div style={{fontSize:11.5,color:"#B91C1C",marginBottom:6}}>{goerError}</div>}
       <div style={{ fontWeight: 800, fontSize: 15, color: W.ink, marginBottom: 8 }}>👋 {rows.length} going — say hi before the night</div>
       <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
         {rows.map(p => { const mutual = p.waved_by_me && p.waved_me; return (
           <div key={p.id} style={{ flexShrink: 0, width: 92, textAlign: "center" }}>
             <div style={{ width: 74, height: 74, borderRadius: "50%", overflow: "visible", margin: "0 auto", background: W.bg, border: `2px solid ${p.waved_me ? "#EC4899" : W.line}`, position: "relative" }}>
-              <div style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden" }}>{p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{p.gender === "female" ? "👩" : p.gender === "male" ? "👨" : "🙂"}</div>}</div>
+              <div style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden" }}><PersonAvatar url={p.avatar_url} name={p.name} size={74}/></div>
               {typeof window !== "undefined" && window.__gwVerified && window.__gwVerified.has(p.id) && <span style={{ position: "absolute", bottom: -3, right: -3 }}><TickBadge size={18} /></span>}
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: W.ink, marginTop: 5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}</div>
@@ -2749,6 +2761,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
           {onOpenDM && hasTicket && <EventJoinNudge eventId={e.id} eventTitle={e.title} />}
           {onOpenDM && <SelfCheckin eventId={e.id} hasTicket={hasTicket} />}
           {onOpenDM && <HereNow eventId={e.id} onOpenDM={onOpenDM} />}
+          {onOpenDM && gwIsGetaway(e) && profile?.id && <TripGoerPhotoChoice eventId={e.id} profile={profile}/>}
           {onOpenDM && <Sec title="Who's going"><EventGoers eventId={e.id} onOpenDM={onOpenDM} isGetaway={gwIsGetaway(e)} /></Sec>}
           {e.description && <Sec title="About this event"><div style={{ fontSize: 15, color: "#3c4a47", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{e.description}</div></Sec>}
           <EventSponsorsSection event={e} profile={profile} />
@@ -15680,7 +15693,8 @@ function gwTripRosterFromBoard(board) {
         gender: t.gender || "", age: t.age || null,
         phone: t.phone || (isPurchaser ? rec.booker_phone || b.booker_phone || "" : ""),
         avatar_url: t.avatar_url || t.photo_url || "",
-        user_id: isPurchaser ? userId : (t.user_id || null),
+        user_id: (t.user_id || (isPurchaser ? userId : null)),
+        traveller_index: index,
         isPurchaser, purchaser_name: booker, purchaser_user_id: userId,
         status: b.status, code: b.code || "", package: b.package || "",
         booking_id: b.id, paid: Number(b.paid || 0), total: Number(b.total || 0),
@@ -15694,19 +15708,120 @@ async function gwLoadTripRoster(eventId) {
   const { data, error } = await supabase.rpc("trip_board", { p_event: eventId });
   if (error) throw error;
   if (!data || !Array.isArray(data.bookings)) throw new Error("Trip booking data was not returned.");
-  const people = gwTripRosterFromBoard(data);
-  const ids = [...new Set(people.map(p => p.user_id).filter(Boolean))];
-  if (!ids.length) return people;
-  // Staff RPC returns the roster; use the existing member profile only for the
-  // same linked member, never borrow another traveller's photo by position.
-  const { data: profiles, error: profileError } = await supabase.from("profiles")
-    .select("id,full_name,avatar_url,gender").in("id", ids);
-  if (profileError) return people; // still show the verified booking names
-  const byId = new Map((profiles || []).map(p => [String(p.id), p]));
-  return people.map(p => {
-    const m = byId.get(String(p.user_id));
-    return m ? { ...p, avatar_url: p.avatar_url || m.avatar_url || "", gender: p.gender || m.gender || "" } : p;
+  const people = gwTripRosterFromBoard(data).map(p=>({...p,event_id:eventId}));
+  if (!people.length) return people;
+  // Existing member IDs are authoritative. Some getaway travellers are recorded
+  // as text names only, without linking to their registered Glasswings profile.
+  const [linksResult, directoryResult] = await Promise.all([
+    supabase.from("trip_traveller_photo_links")
+      .select("booking_id,traveller_index,member_id").eq("event_id",eventId),
+    supabase.rpc("staff_directory")
+  ]);
+  const linked = new Map((linksResult.data||[]).map(x=>[
+    `${x.booking_id}:${x.traveller_index}`, String(x.member_id)
+  ]));
+  const directory = directoryResult.error ? [] : (directoryResult.data||[]);
+  const ids = [...new Set([
+    ...people.map(p=>p.user_id), ...[...linked.values()]
+  ].filter(Boolean).map(String))];
+  const { data: profiles } = ids.length ? await supabase.from("profiles")
+    .select("id,full_name,avatar_url,gender").in("id",ids) : {data:[]};
+  const members = new Map();
+  (directory||[]).forEach(m=>{if(m.id||m.user_id)members.set(String(m.id||m.user_id),m);});
+  (profiles||[]).forEach(m=>members.set(String(m.id),{...members.get(String(m.id)),...m}));
+  const fullDirectory=[...members.values()];
+  const ph=v=>String(v||"").replace(/\D/g,"").slice(-10);
+  const nm=v=>String(v||"").trim().toLocaleLowerCase("en-IN").replace(/\s+/g," ");
+  const indexed=(field,transform)=>{
+    const map=new Map();
+    for(const m of fullDirectory){const k=transform(m[field]); if(!k)continue;
+      const a=map.get(k)||[];a.push(m);map.set(k,a);
+    } return map;
+  };
+  const phones=indexed("phone",ph), names=indexed("full_name",nm);
+  return people.map(p=>{
+    const explicitlyLinked=linked.get(`${p.booking_id}:${p.traveller_index}`);
+    const byId=members.get(String(explicitlyLinked||p.user_id||""));
+    // Auto matching must be unambiguous. Exact full name + uniqueness only;
+    // short/common single names need admin to link the correct account manually.
+    const possiblePhone=phones.get(ph(p.phone))||[];
+    const fullName=nm(p.name);
+    const possibleName=fullName.includes(" ") ? (names.get(fullName)||[]) : [];
+    const matched=byId || (possiblePhone.length===1 ? possiblePhone[0] : null)
+      || (possibleName.length===1 ? possibleName[0] : null);
+    return {...p,
+      user_id:matched?.id||matched?.user_id||p.user_id,
+      avatar_url:p.avatar_url||matched?.avatar_url||"",
+      gender:p.gender||matched?.gender||"",
+      photo_linked:!!explicitlyLinked,
+      photo_match:explicitlyLinked?"Manual member link":byId?"Linked member":matched?"Verified member match":"No linked profile"
+    };
   });
+}
+
+// Staff/member ticket RPCs do not always return avatar_url, even when the
+// same Glasswings account has a photo on its profile.
+async function gwHydrateMemberPhotos(records) {
+  const base=records||[];
+  const ids=[...new Set(base.map(m=>m.user_id||m.id||m.member_id).filter(Boolean).map(String))];
+  if(!ids.length)return base;
+  const {data,error}=await supabase.from("profiles")
+    .select("id,avatar_url,full_name,gender").in("id",ids);
+  if(error)return base;
+  const photos=new Map((data||[]).map(x=>[String(x.id),x]));
+  return base.map(m=>{
+    const profile=photos.get(String(m.user_id||m.id||m.member_id||""));
+    return profile?{
+      ...m,
+      avatar_url:m.avatar_url||profile.avatar_url||"",
+      gender:m.gender||profile.gender||"",
+      name:m.name||m.full_name||profile.full_name||"Member"
+    }:m;
+  });
+}
+
+function TripLinkMemberPhoto({person,onLinked}) {
+  const [open,setOpen]=useState(false),[q,setQ]=useState(""),[rows,setRows]=useState([]);
+  const [busy,setBusy]=useState(false),[error,setError]=useState("");
+  const load=async()=>{
+    setOpen(true);setBusy(true);setError("");
+    const {data,error}=await supabase.rpc("staff_directory");
+    setBusy(false);
+    if(error){setError("Could not load member directory: "+error.message);return;}
+    setRows((data||[]).filter(m=>m.id||m.user_id));
+    setQ(person.name||"");
+  };
+  const save=async m=>{
+    setBusy(true);setError("");
+    const {error}=await supabase.from("trip_traveller_photo_links").upsert({
+      event_id:person.event_id,booking_id:person.booking_id,
+      traveller_index:person.traveller_index,member_id:m.id||m.user_id,
+      updated_at:new Date().toISOString()
+    },{onConflict:"event_id,booking_id,traveller_index"});
+    setBusy(false);
+    if(error){setError("Could not link photo: "+error.message);return;}
+    setOpen(false);await onLinked?.();
+  };
+  const results=q.trim().length<2?[]:rows.filter(m=>
+    `${m.full_name||""} ${m.phone||""}`.toLowerCase().includes(q.trim().toLowerCase())
+  ).slice(0,12);
+  return <div style={{marginTop:5}}>
+    <button type="button" onClick={()=>open?setOpen(false):load()} style={{...btn("#fff","#0369A1"),padding:"4px 8px",fontSize:11,border:"1px solid #BAE6FD"}}>
+      {open?"Close photo search":person.photo_linked?"Change linked member":"🔗 Link member photo"}
+    </button>
+    {open&&<div style={{border:"1px solid #BAE6FD",borderRadius:9,padding:9,marginTop:6,background:"#fff"}}>
+      <div style={{fontSize:11.5,color:"#075985",marginBottom:6}}>Select the traveller's real Glasswings account. This does not modify their booking or ticket.</div>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search registered member name or phone" style={{...gwField,padding:8}}/>
+      {busy&&<div style={{fontSize:12,marginTop:5}}>Loading / linking…</div>}
+      {error&&<div role="alert" style={{fontSize:12,color:"#B91C1C",marginTop:6}}>{error}</div>}
+      {!busy&&results.map(m=><button key={m.id||m.user_id} type="button" onClick={()=>save(m)} style={{display:"flex",gap:9,alignItems:"center",width:"100%",padding:"7px 3px",background:"transparent",border:0,borderBottom:"1px solid #E2E8F0",cursor:"pointer",textAlign:"left"}}>
+        <PersonAvatar name={m.full_name||"Member"} url={m.avatar_url} size={36}/>
+        <span style={{fontSize:12.5,color:W.ink}}><b>{m.full_name||"Member"}</b><span style={{display:"block",fontSize:11,color:W.soft}}>{m.phone||""}{m.avatar_url?" · Photo available":" · No profile photo"}</span></span>
+        <span style={{marginLeft:"auto",fontSize:11,color:"#0369A1"}}>Link</span>
+      </button>)}
+      {!busy&&q.trim().length>=2&&!results.length&&<div style={{fontSize:12,color:W.soft,marginTop:7}}>No member matches. Ask the traveller to register/update their profile photo first.</div>}
+    </div>}
+  </div>;
 }
 
 // "from ₹X" for getaway cards (they have no ticket price, so they must never say "Free")
@@ -16095,7 +16210,6 @@ function GetawayBox({ event, profile }) {
           </div>}
       </div>
 
-      {active.some(b=>["booked","paid"].includes(b.status)) && <TripGoerPhotoChoice eventId={event.id} profile={profile}/>}
       {active.map(b => <MyTripCard key={b.id} b={b} onChange={load} />)}
       {(mine || []).filter(b => ["cancelled", "released"].includes(b.status)).map(b => (
         <div key={b.id} style={{ background: "#F8FAFC", border: `1px solid ${W.line}`, borderRadius: 12, padding: "9px 12px", fontSize: 12.5, color: W.soft, marginBottom: 8 }}>
@@ -16166,9 +16280,9 @@ function TripGoerPhotoChoice({ eventId, profile }) {
   return <div style={{border:"1px solid #BAE6FD",background:"#F0F9FF",borderRadius:12,padding:"10px 12px",margin:"8px 0 12px"}}>
     <label style={{display:"flex",alignItems:"center",gap:9,color:"#075985",fontWeight:800,fontSize:12.5,cursor:"pointer"}}>
       <input type="checkbox" checked={enabled} disabled={busy} onChange={e=>change(e.target.checked)}/>
-      📷 Show my name & Glasswings profile photo in this trip's “Who's going” section
+      📷 I'm going — display my name and Glasswings profile photo in “Who's going”
     </label>
-    <div style={{fontSize:11,color:"#0369A1",marginTop:5}}>Optional, off by default. Your phone number, payment and companions' names are never published here. You can switch this off at any time.</div>
+    <div style={{fontSize:11,color:"#0369A1",marginTop:5}}>Optional public RSVP, off by default. This does not book a seat or confirm payment. Your phone, payments and travelling companions stay private. Switch it off at any time.</div>
     {error && <div style={{fontSize:11,color:"#B91C1C",marginTop:5}}>{error}</div>}
   </div>;
 }
@@ -20134,7 +20248,7 @@ function EventMembersSheet({ event, onClose }) {
     ]);
     setTripPeople(tr.people || []);
     setTripError(tr.error?.message || "");
-    const members=mr.error?[]:(mr.data||[]);
+    const members=await gwHydrateMemberPhotos(mr.error?[]:(mr.data||[]));
     if(mr.error)setErr(mr.error.message);else{setErr("");setRows(members);}
     if(!gr.error)setGuestRows(gr.data||[]);
     const normPhone=v=>String(v||"").replace(/\D/g,"").replace(/^91(?=\d{10}$)/,"").slice(-10);
@@ -20272,6 +20386,7 @@ function EventMembersSheet({ event, onClose }) {
               <div style={{fontSize:11.5,color:W.soft}}>{[p.gender,p.age?`${p.age} yrs`:null,p.package,p.code].filter(Boolean).join(" · ")}</div>
               <div style={{fontSize:11.5,color:"#0369A1"}}>Booked by {p.purchaser_name || "member"} · {p.status === "paid" ? "Fully paid" : "Advance paid"}{p.boarded ? " · Boarded ✓" : ""}</div>
               {p.phone && <a href={`tel:${p.phone}`} style={{fontSize:12,color:"#0369A1"}}>☎ {p.phone}</a>}
+              <TripLinkMemberPhoto person={p} onLinked={load}/>
             </div>
           </div>)}
         </section>}
@@ -20365,7 +20480,7 @@ function CheckInSheet({ event, onClose }) {
     setTripPeople(tr.people || []);
     setTripError(tr.error?.message || "");
     if (mr.error) setErr(mr.error.message || "Could not load attendees."); else setErr("");
-    const members = (mr.data || []).map(m => ({ ...m, present: !!(m.present ?? m.checked_in) }));
+    const members = (await gwHydrateMemberPhotos(mr.data || [])).map(m => ({ ...m, present: !!(m.present ?? m.checked_in) }));
     const normPhone = v => String(v || "").replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "").slice(-10);
     const normName = v => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
     const memberPhones = new Set(members.map(m => normPhone(m.phone)).filter(Boolean));
@@ -25550,9 +25665,11 @@ function VerifiedSeal({ size = 18 }) {
   );
 }
 function PersonAvatar({ url, name, size, verified, id }) {
+  const [imageFailed,setImageFailed]=useState(false);
+  useEffect(()=>setImageFailed(false),[url]);
   const isVer = verified || (id && typeof window !== "undefined" && window.__gwVerified && window.__gwVerified.has(id));
-  const inner = url
-    ? <img src={url} alt="" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+  const inner = url && !imageFailed
+    ? <img src={url} alt="" onError={()=>setImageFailed(true)} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
     : <div style={{ width: size, height: size, borderRadius: "50%", background: "#9DB2AC", color: "#fff", fontWeight: 700, fontSize: size * .42, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{(name || "?")[0].toUpperCase()}</div>;
   if (!isVer) return inner;
   return <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>{inner}<span style={{ position: "absolute", right: -2, bottom: -2 }}><TickBadge size={Math.max(12, Math.round(size * 0.34))} /></span></span>;
