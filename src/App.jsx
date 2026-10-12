@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient.js";
 import SupplierDirectory from "./SupplierDirectory.jsx";
 import * as appCfg from "./config.js";
 import {
-  MessageCircle, Compass, Shield, User, ArrowLeft, Send, Plus, LogOut, Lock,
+  MessageCircle, Compass, Shield, LayoutDashboard, User, ArrowLeft, Send, Plus, LogOut, Lock,
   Pin, Trash2, Settings, IndianRupee, Crown, Smile, Paperclip, Camera, X, Users, Phone, Zap, Calendar, MapPin, Ticket, Printer, Share2, Check, Pencil, Image as ImageIcon, Gamepad2, Trophy, Gift, Film
 } from "lucide-react";
 
@@ -816,12 +816,14 @@ function Shell({ children }) {
     </div>
   );
 }
-function DesktopSidebar({ tab, setTab, isAdmin, isTeam = false, isSuper = false, reviewBadge = 0, width, meetBadge = 0 }) {
-  const items = [{ id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isTeam ? [{ id: "review", icon: Check, label: "Review", badge: reviewBadge }] : []), ...(isSuper ? [{ id: "money", icon: IndianRupee, label: "Money" }] : []), ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events" }] : []), ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
+function DesktopSidebar({ tab, setTab, isAdmin, isBookingAdmin = false, isTeam = false, isSuper = false, reviewBadge = 0, width, meetBadge = 0 }) {
+  const items = [
+    ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Booking Dashboard", highlight: true }] : []),
+    { id: "events", icon: Calendar, label: "Events" }, { id: "private", icon: Lock, label: "Private Parties" }, { id: "meet", icon: Users, label: "Meet" }, { id: "groupchat", icon: MessageCircle, label: "Group Chat" }, { id: "shorts", icon: Zap, label: "Reels" }, { id: "series", icon: Film, label: "Movies" }, { id: "games", icon: Gamepad2, label: "Games" }, { id: "gallery", icon: ImageIcon, label: "Gallery" }, ...(isTeam ? [{ id: "review", icon: Check, label: "Review", badge: reviewBadge }] : []), ...(isSuper ? [{ id: "money", icon: IndianRupee, label: "Money" }] : []), ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events" }] : []), ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons" }] : []), ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Event Door" }] : []), ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin" }] : []), { id: "profile", icon: User, label: "Profile" }];
   return (
-    <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40 }}>
+    <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40, overflowY: "auto", overscrollBehavior: "contain" }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
-      {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: on ? W.teal : "transparent", color: on ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on ? 700 : 600, fontSize: 15 }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}{it.id === "meet" && meetBadge > 0 && <span style={{ marginLeft: "auto", background: "#EC4899", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{meetBadge}</span>}{it.badge > 0 && <span style={{ marginLeft: "auto", background: "#EA580C", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{it.badge}</span>}</button>; })}
+      {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} type="button" aria-current={on ? "page" : undefined} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: it.highlight ? "1px solid #2DD4BF80" : "1px solid transparent", cursor: "pointer", textAlign: "left", background: on ? W.teal : it.highlight ? "linear-gradient(95deg,#125E56,#11473F)" : "transparent", color: on || it.highlight ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on || it.highlight ? 800 : 600, fontSize: 15, flexShrink: 0, boxShadow: it.highlight ? "0 4px 12px rgba(0,0,0,.16)" : "none" }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}{it.id === "meet" && meetBadge > 0 && <span style={{ marginLeft: "auto", background: "#EC4899", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{meetBadge}</span>}{it.badge > 0 && <span style={{ marginLeft: "auto", background: "#EA580C", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{it.badge}</span>}</button>; })}
       <button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: "transparent", color: "#FF8D7A", fontWeight: 700, fontSize: 15 }}><LogOut size={20} />Log out</button>
     </div>
   );
@@ -4817,6 +4819,7 @@ function Main({ user }) {
           />
         </div>
       </div>}
+      {tab === "bookingdash" && isAdmin && <GWBookingDashboard events={(isSuper || !myCity) ? events : events.filter(ev => ev.city === myCity)} />}
       {tab === "admin" && isStaff && <Admin isGwTeam={isSuper || [profile?.role, ...(profile?.roles || [])].some(r => ["admin", "subadmin", "team", "staff"].includes(r))} caps={caps} canUseDirectory={[profile?.role, ...(profile?.roles || [])].some(r => ["superadmin", "admin", "subadmin", "organiser"].includes(r))} isSuper={isSuper} myCity={myCity} dims={dims} optsAll={optsAll} onReload={load} myEventsOnly={!!organiserStaff || !(isAdmin || (profile?.roles || []).includes("subadmin"))} meId={organiserScopeId} canApprove={isAdmin || (profile?.roles || []).includes("admin")} organiserStaff={organiserStaff} canManageOrganiserStaff={isOrganiserOwner && !organiserStaff} perms={perms} onSavePerm={savePerm} onSetRoles={setRoles} rooms={rooms} events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)} categories={categories} cities={cities} ticketTypes={ticketTypes} counts={counts} onCreateRoom={createRoom} onUpdateRoom={updateRoom} onDeleteRoom={deleteRoom} onCreateEvent={createEvent} onUpdateEvent={updateEvent} onDeleteEvent={deleteEvent} onDuplicateEvent={duplicateEvent} onAddOption={addOption} onDelOption={delOption} onSetOptionImage={setOptionImage} perksList={perksList} onAddPerk={addPerk} onDelPerk={delPerk} addonsMap={addons} onAddAddon={addAddon} onDelAddon={delAddon} onAddTicketType={addTicketType} onDelTicketType={delTicketType} onUpdateTicketType={updateTicketType} onBroadcast={broadcast} onBroadcastEvent={broadcastEvent} onSendDM={sendDM} onSendEventDM={sendEventDM} onGrantRoom={grantRoom} onRemoveRoom={removeRoom} onOpenThread={(id, title) => setOpen({ id, type: "dm", title })} />}
       {tab === "review" && isGwTeamMain && <div><TopBar title="🛂 Review events" /><EventReviewQueue isAdmin={isAdmin} /></div>}
       {tab === "money" && isSuper && <div><TopBar title="💰 Money" /><MoneyDashboard /></div>}
@@ -4889,12 +4892,12 @@ function Main({ user }) {
           );
         })()}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
-          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} />
+          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
             {twoPane ? (
               <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
             ) : (
-              <div style={{ maxWidth: (tab === "admin" || tab === "adminevents") ? "none" : 1100, margin: "0 auto", width: "100%", padding: tab === "admin" ? "0 24px" : 0, boxSizing: "border-box" }}>{screen}</div>
+              <div style={{ maxWidth: (tab === "admin" || tab === "adminevents" || tab === "bookingdash") ? "none" : 1100, margin: "0 auto", width: "100%", padding: tab === "admin" ? "0 24px" : 0, boxSizing: "border-box" }}>{screen}</div>
             )}
           </div>
         </div>
@@ -4958,7 +4961,7 @@ function Main({ user }) {
         {screen}
       </div>
       {tab === "meet" && <ScrollTopFab />}
-      <Nav tab={tab} setTab={setTab} isAdmin={isStaff} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} />
+      <Nav tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} />
       <GwDialogHost />
       {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
@@ -18513,7 +18516,6 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(isGwTeam ? [["review", "🛂 Review"]] : []),
-    ...((isSuper || caps.host) ? [["bookingdash", "📋 Booking Dashboard"]] : []),
     ...(caps.host ? [["events", "Events"], ["invite", "💌 INVITE"]] : []),
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...((leadAdmin || canManageOrganiserStaff) ? [["leads", leadTabLabel]] : []),
@@ -18581,7 +18583,6 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
         : seg === "coupons" ? <CouponsAdmin events={events} />
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard isSuper={isSuper} myEventsOnly={myEventsOnly} meId={meId} events={events} />
-        : seg === "bookingdash" ? <GWBookingDashboard events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "checkin" ? <DoorCheckin mode="checkin" events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
         : seg === "doorsales" ? <DoorCheckin mode="sales" events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
@@ -26775,9 +26776,10 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
     </div>
   );
 }
-function Nav({ tab, setTab, isAdmin, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0 }) {
+function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0 }) {
   const items = [
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
+    ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Bookings", c: "#0E7490" }] : []),
     { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
     { id: "meet", icon: Users, label: "Meet", c: "#EC4899" },
     { id: "groupchat", icon: MessageCircle, label: "Chat", c: "#0F766E" },
