@@ -17775,7 +17775,7 @@ const GW_GUIDE = {
   client: { icon: "🎉", title: "How it works", grad: "linear-gradient(120deg,#008069,#8B5CF6)", one: "Tell us your event → verified organisers call you with quotes → book and pay safely in the app.", steps: ["Fill in the event type, date, city, guests and budget.", "A few matching organisers contact you with quotes. Your number is shared only with them.", "Pick one and pay the advance in the app. The money is held safely by Glasswings."] },
 };
 const GW_GUIDE_ORDER = ["start", "getaway", "tickets", "food", "whatsapp", "door", "leads", "leadsettings", "pro", "profiles", "bookings", "stalls", "sponsors", "fees", "money"];
-const GW_GUIDE_FOR_TAB = { events: "start", private: "start", invite: "start", leads: "leads", stalls: "stalls", sponsors: "sponsors", checkin: "door", doorsales: "door", orgapps: "money", settle: "money", dash: "start", analytics: "start" };
+const GW_GUIDE_FOR_TAB = { bookingdash: "ev_bookings", events: "start", private: "start", invite: "start", leads: "leads", stalls: "stalls", sponsors: "sponsors", checkin: "door", doorsales: "door", orgapps: "money", settle: "money", dash: "start", analytics: "start" };
 function gwOpenGuide(id) { try { window.dispatchEvent(new CustomEvent("gwopenguide", { detail: id || "start" })); } catch { } }
 
 // Flow infographic: coloured numbered boxes joined by arrows; wraps on phones.
@@ -18513,6 +18513,7 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
     ...((isSuper || caps.analytics) ? [["dash", "Dashboard"]] : []),
     ...(isSuper ? [["credits", "💳 Credits"]] : []),
     ...(isGwTeam ? [["review", "🛂 Review"]] : []),
+    ...((isSuper || caps.host) ? [["bookingdash", "📋 Booking Dashboard"]] : []),
     ...(caps.host ? [["events", "Events"], ["invite", "💌 INVITE"]] : []),
     ...(caps.host ? [["private", "🔒 Private Parties"]] : []),
     ...((leadAdmin || canManageOrganiserStaff) ? [["leads", leadTabLabel]] : []),
@@ -18580,6 +18581,7 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
         : seg === "coupons" ? <CouponsAdmin events={events} />
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard isSuper={isSuper} myEventsOnly={myEventsOnly} meId={meId} events={events} />
+        : seg === "bookingdash" ? <GWBookingDashboard events={myEventsOnly ? events.filter(ev => ev.host_id === meId) : events} />
         : seg === "filters" ? <FiltersPanel categories={categories} cities={cities} dims={dims} optsAll={optsAll} onAddOption={onAddOption} onDelOption={onDelOption} onSetOptionImage={onSetOptionImage} onChanged={onReload} />
         : seg === "checkin" ? <DoorCheckin mode="checkin" events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
         : seg === "doorsales" ? <DoorCheckin mode="sales" events={events} ticketTypes={ticketTypes} myEventsOnly={myEventsOnly} meId={meId} onUpdateEvent={onUpdateEvent} />
@@ -21440,6 +21442,324 @@ function CreditCapEditor({ ev, onUpdate }) {
     </div>
   );
 }
+// =================== GLASSWINGS · ALL-EVENTS BOOKING DASHBOARD ===================
+// Uses existing role-checked RPCs. Never queries payment tables directly.
+// Ticket receipts use the EVENT sales summary (not a sum of holder rows, which
+// can otherwise double-count multi-ticket orders). Trip receipts include only
+// verified money on active bookings. Failed event queries remain visible.
+const gwBookingDashMoney = amount => "₹" + Number(amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const gwBookingDashNum = x => Number.isFinite(Number(x)) ? Number(x) : 0;
+const gwBookingDashDate = value => {
+  if (!value) return "—";
+  const dt = new Date(String(value).length <= 10 ? value + "T00:00:00" : value);
+  return Number.isNaN(dt.getTime()) ? String(value) : dt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+};
+function gwBookingDashCSV(records, fileName) {
+  const keys = ["Event", "Event date", "Type", "Customer", "Phone", "Reference", "Package or ticket", "Travellers / tickets", "Traveller names", "Status", "Booking total INR", "Paid INR", "Balance due INR", "Payment method", "Booking date", "Payment history"];
+  const csvCell = value => {
+    const raw = String(value ?? "");
+    // Prevent formula execution if a guest name/reference starts with =, +, -, @.
+    const neutral = /^\s*[=+@-]/.test(raw) ? "'" + raw : raw;
+    return '"' + neutral.replace(/"/g, '""') + '"';
+  };
+  const lines = records.map(r => [
+    r.eventTitle, r.eventDate || "", r.kind === "trip" ? "Getaway" : "Event ticket",
+    r.name, r.phone, r.reference, r.package, r.qty,
+    (r.travellers || []).map(p => p.name).join(" / "), r.status,
+    r.kind === "trip" ? r.total : "", r.paid,
+    r.kind === "trip" && !["pending", "cancelled", "released"].includes(r.status) ? r.due : "",
+    r.method, r.createdAt,
+    (r.payments || []).map(p => [p.paid_at || "", p.method || "", "INR " + (p.amount || 0)].join(" ")).join(" | ")
+  ]);
+  const csv = "\ufeff" + [keys, ...lines].map(line => line.map(csvCell).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url;
+  a.download = (fileName || "glasswings-bookings").replace(/[^a-z0-9_-]+/gi, "-") + ".csv";
+  a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function gwBookingDashFetchEvent(event) {
+  if (gwIsGetaway(event)) {
+    const { data, error } = await supabase.rpc("trip_board", { p_event: event.id });
+    if (error) throw error;
+    if (!data || !Array.isArray(data.bookings)) throw Error("trip_board returned no booking list.");
+    const records = data.bookings.map((rec, index) => {
+      const b = rec.b || rec;
+      const status = String(b.status || "pending").toLowerCase();
+      const paid = gwBookingDashNum(b.paid);
+      const total = gwBookingDashNum(b.total);
+      const travellers = Array.isArray(b.travellers) ? b.travellers : [];
+      const booker = rec.booker || b.booker || "Booker not recorded";
+      const phone = rec.booker_phone || b.booker_phone || "";
+      const userId = b.user_id || b.booker_user_id || b.booker_id || b.created_by || rec.user_id || null;
+      return {
+        key: "trip:" + event.id + ":" + (b.id || b.code || index), eventId: event.id,
+        eventTitle: event.title || "Untitled event", eventDate: event.event_at || event.event_date || "",
+        kind: "trip", id: b.id, code: b.code || "", reference: b.code || "",
+        name: booker, phone, userId, status, package: b.package || "Getaway",
+        qty: gwBookingDashNum(b.people) || travellers.length || 1, total, paid,
+        due: ["booked", "paid"].includes(status) ? Math.max(0, total - paid) : 0,
+        createdAt: b.created_at || "", payments: Array.isArray(b.payments) ? b.payments : [],
+        travellers, method: "Razorpay / verified instalments", avatar: b.avatar_url || rec.avatar_url || "",
+      };
+    });
+    const active = records.filter(r => ["booked", "paid"].includes(r.status) && r.paid > 0);
+    const payChannels = { online: 0, cash: 0, upi: 0, other: 0 };
+    // Do not label every getaway instalment as online: cash and manual UPI
+    // can also be verified against bookings. Cap ledger totals to b.paid.
+    active.forEach(r => {
+      const history = r.payments.filter(p => gwBookingDashNum(p.amount) > 0);
+      const ledgerTotal = history.reduce((sum, p) => sum + gwBookingDashNum(p.amount), 0);
+      const ratio = ledgerTotal > r.paid ? r.paid / ledgerTotal : 1;
+      history.forEach(p => {
+        const m = String(p.method || "").toLowerCase();
+        const key = m.includes("cash") ? "cash" : m.includes("upi") ? "upi"
+          : /razorpay|online|card|netbank|bank transfer/.test(m) ? "online" : "other";
+        payChannels[key] += gwBookingDashNum(p.amount) * ratio;
+      });
+      if (ledgerTotal < r.paid) payChannels.other += r.paid - ledgerTotal;
+    });
+    return {
+      event, kind: "trip", records,
+      metrics: {
+        collected: active.reduce((s, r) => s + r.paid, 0),
+        due: active.reduce((s, r) => s + r.due, 0),
+        confirmed: active.length,
+        pending: records.filter(r => r.status === "pending").length,
+        guests: active.reduce((s, r) => s + r.qty, 0),
+        ...payChannels,
+      },
+      warning: records.length === 0 && gwBookingDashNum(data.totals?.people) > 0 ? "Trip summary shows people but no bookings were returned." : ""
+    };
+  }
+  const [holders, analysis] = await Promise.all([
+    supabase.rpc("event_ticket_holders", { p_event: event.id }),
+    supabase.rpc("event_ticket_analysis", { p_event: event.id })
+  ]);
+  if (holders.error) throw holders.error;
+  if (analysis.error) throw analysis.error;
+  if (!Array.isArray(holders.data) || !analysis.data) throw Error("Event ticket holders or sales summary is missing.");
+  const a = analysis.data;
+  const records = holders.data.map((b, index) => {
+    const paid = gwBookingDashNum(b.paid);
+    const credits = gwBookingDashNum(b.credits);
+    const method = String(b.method || "").toLowerCase();
+    const status = paid > 0 ? "paid" : credits > 0 ? "credits" : "free";
+    return {
+      key: "ticket:" + event.id + ":" + (b.id || b.ref || index), eventId: event.id,
+      eventTitle: event.title || "Untitled event", eventDate: event.event_at || event.event_date || "",
+      kind: "ticket", name: b.name || "Ticket holder", phone: b.phone || "",
+      userId: b.user_id || b.member_id || null, avatar: b.avatar_url || "",
+      status, package: b.ticket_type || "Admission", reference: b.ref || "",
+      qty: gwBookingDashNum(b.qty) || 1, total: null, paid, due: 0,
+      createdAt: b.created_at || "", travellers: [], payments: [],
+      method: method === "online" ? "Razorpay" : method || (credits ? "Credits" : "Complimentary"),
+      checkedIn: !!b.checked_in, credits,
+    };
+  });
+  const online = gwBookingDashNum(a.paid_gross);
+  const cash = gwBookingDashNum(a.door_cash);
+  const upi = gwBookingDashNum(a.door_upi);
+  return {
+    event, kind: "ticket", records,
+    metrics: {
+      collected: online + cash + upi, due: 0, confirmed: gwBookingDashNum(a.paid_orders),
+      pending: 0, guests: gwBookingDashNum(a.tickets), online, cash, upi,
+    },
+    warning: gwBookingDashNum(a.paid_orders) > 0 && records.length === 0
+      ? "Paid orders exist but no ticket-holder records were returned." : ""
+  };
+}
+function GWBookingDashDetail({ record, onReload }) {
+  const [roster, setRoster] = useState([]);
+  const [photoError, setPhotoError] = useState("");
+  const loadPhotos = useCallback(async () => {
+    if (record.kind !== "trip") return;
+    try {
+      const list = await gwLoadTripRoster(record.eventId);
+      setRoster(list.filter(p => String(p.booking_id) === String(record.id)));
+      setPhotoError("");
+    } catch (e) { setPhotoError(e.message || "Photos could not be loaded."); }
+  }, [record.eventId, record.id, record.kind]);
+  useEffect(() => { loadPhotos(); }, [loadPhotos]);
+  if (record.kind !== "trip") return <div style={{ fontSize: 12.5, color: W.soft, lineHeight: 1.8 }}>
+    <div><b>Payment / ticket reference:</b> {record.reference || "Not provided"}</div>
+    <div><b>Payment method:</b> {record.method}</div>
+    <div><b>Entry:</b> {record.checkedIn ? "Checked in" : "Not yet checked in"}</div>
+    {record.credits > 0 && <div><b>Credits used:</b> {record.credits}</div>}
+  </div>;
+  return <div style={{ borderTop: `1px solid ${W.line}`, paddingTop: 11, marginTop: 12 }}>
+    <div style={{ fontWeight: 900, color: W.ink, marginBottom: 7, fontSize: 13 }}>👥 Travellers & member photos</div>
+    {photoError && <div role="alert" style={{ color: "#B91C1C", fontSize: 12, marginBottom: 7 }}>Photo lookup: {photoError}</div>}
+    {(record.travellers || []).length ? record.travellers.map((p, i) => {
+      const linked = roster.find(x => x.traveller_index === i);
+      return <div key={p.id || i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: `1px solid ${W.line}` }}>
+        <PersonAvatar name={p.name} url={linked?.avatar_url || p.avatar_url || p.photo_url} size={42} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 850, color: W.ink, fontSize: 13.5 }}>{p.name || "Traveller"}</div>
+          <div style={{ color: W.soft, fontSize: 11.5 }}>{[p.gender, p.age && `${p.age} yrs`, p.room_no && `Room ${p.room_no}`, p.boarded ? "Boarded" : "Not boarded"].filter(Boolean).join(" · ")}</div>
+          {linked && <TripLinkMemberPhoto person={linked} onLinked={async () => { await loadPhotos(); onReload?.(); }} />}
+        </div>
+      </div>;
+    }) : <div style={{ color: W.soft, fontSize: 12.5 }}>Names have not been entered for this booking yet.</div>}
+    <div style={{ fontWeight: 900, color: W.ink, margin: "14px 0 7px", fontSize: 13 }}>💳 Verified payment history</div>
+    {(record.payments || []).length ? record.payments.map((p, i) => <div key={p.id || i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: `1px dashed ${W.line}`, fontSize: 12.5, color: W.ink }}>
+      <span>{p.method || "Payment"}{p.paid_at ? ` · ${gwBookingDashDate(p.paid_at)}` : ""}</span><b>{gwBookingDashMoney(p.amount)}</b>
+    </div>) : <div style={{ fontSize: 12.5, color: W.soft }}>No verified payment has been recorded yet.</div>}
+  </div>;
+}
+function GWBookingDashboard({ events = [] }) {
+  const [period, setPeriod] = useState("upcoming");
+  const [eventId, setEventId] = useState("all");
+  const [limit, setLimit] = useState(25);
+  const [result, setResult] = useState({ loading: true, loaded: 0, total: 0, events: [], errors: [] });
+  const [profiles, setProfiles] = useState({});
+  const [search, setSearch] = useState("");
+  const [kindFilter, setKindFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [open, setOpen] = useState(null);
+  const [version, setVersion] = useState(0);
+  const [showEvents, setShowEvents] = useState(true);
+  const orderedEvents = useMemo(() => [...(events || [])].sort((a, b) => String(a.event_at || a.event_date || "").localeCompare(String(b.event_at || b.event_date || ""))), [events]);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const possible = orderedEvents.filter(e => {
+    if (eventId !== "all") return String(e.id) === String(eventId);
+    const d = e.event_at || e.event_date;
+    const time = d ? new Date(String(d).length <= 10 ? d + "T00:00:00" : d) : null;
+    if (!time || Number.isNaN(time.getTime())) return period !== "past";
+    if (period === "upcoming") return time >= today;
+    if (period === "past") return time < today;
+    return true;
+  });
+  const selectedEvents = eventId !== "all" ? possible : possible.slice(0, limit);
+  const eventSignature = selectedEvents.map(e => `${e.id}:${e.event_kind || ""}`).join("|");
+  useEffect(() => {
+    let cancelled = false;
+    const chosen = [...selectedEvents];
+    setResult({ loading: true, loaded: 0, total: chosen.length, events: [], errors: [] });
+    setProfiles({}); setOpen(null);
+    const run = async () => {
+      const good = [], errors = [];
+      // Small batches protect Supabase and avoid a flood of RPCs on mobile.
+      for (let i = 0; i < chosen.length && !cancelled; i += 3) {
+        const chunk = await Promise.all(chosen.slice(i, i + 3).map(async e => {
+          try { return { data: await gwBookingDashFetchEvent(e) }; }
+          catch (error) { return { error: { id: e.id, title: e.title, message: error.message || String(error) } }; }
+        }));
+        if (cancelled) return;
+        chunk.forEach(item => item.data ? good.push(item.data) : errors.push(item.error));
+        setResult({ loading: true, loaded: Math.min(i + 3, chosen.length), total: chosen.length, events: [...good], errors: [...errors] });
+      }
+      if (cancelled) return;
+      // Hydrate avatars by actual account IDs. Never guess identities from names.
+      const ids = [...new Set(good.flatMap(s => s.records.map(r => r.userId)).filter(Boolean).map(String))];
+      const found = {};
+      for (let i = 0; i < ids.length && !cancelled; i += 80) {
+        const { data } = await supabase.from("profiles").select("id,avatar_url,full_name").in("id", ids.slice(i, i + 80));
+        (data || []).forEach(p => { found[String(p.id)] = p; });
+      }
+      if (!cancelled) { setProfiles(found); setResult({ loading: false, loaded: chosen.length, total: chosen.length, events: good, errors }); }
+    };
+    run().catch(e => { if (!cancelled) setResult(prev => ({ ...prev, loading: false, errors: [...prev.errors, { id: "load", title: "Dashboard", message: e.message }] })); });
+    return () => { cancelled = true; };
+  }, [eventSignature, version]);
+  const reports = result.events;
+  const allRows = reports.flatMap(e => e.records);
+  const metric = key => reports.reduce((n, e) => n + gwBookingDashNum(e.metrics[key]), 0);
+  const needle = search.trim().toLowerCase();
+  const filtered = allRows.filter(r => {
+    if (kindFilter !== "all" && r.kind !== kindFilter) return false;
+    if (statusFilter === "paid" && !(r.status === "paid" && (r.kind !== "trip" || r.due <= 0))) return false;
+    if (statusFilter === "part" && !(r.kind === "trip" && r.status === "booked" && r.paid > 0 && r.due > 0)) return false;
+    if (statusFilter === "pending" && r.status !== "pending") return false;
+    if (statusFilter === "cancelled" && !["cancelled", "released"].includes(r.status)) return false;
+    if (statusFilter === "free" && !["free", "credits"].includes(r.status)) return false;
+    if (!needle) return true;
+    const hay = [r.name, r.phone, r.eventTitle, r.reference, r.package, r.method, ...(r.travellers || []).map(t => t.name)].join(" ").toLowerCase();
+    return hay.includes(needle);
+  }).sort((a, b) => String(b.createdAt || b.eventDate || "").localeCompare(String(a.createdAt || a.eventDate || "")));
+  const styles = { input: { ...gwField, padding: "10px 12px", borderRadius: 11, fontSize: 13.5 }, paper: { background: "#fff", border: "1px solid #E2E8F0", borderRadius: 16, padding: 15 } };
+  const kpi = (icon, label, value, note, tone = "#0E7490") => <div style={{ ...styles.paper, flex: "1 1 165px", minWidth: 0, boxShadow: "0 4px 18px #0F172A08" }}>
+    <div style={{ color: "#64748B", fontWeight: 800, fontSize: 11, letterSpacing: .6 }}>{icon} {label}</div>
+    <div style={{ color: tone, fontWeight: 950, fontSize: "clamp(20px, 2.7vw, 28px)", marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+    <div style={{ color: "#94A3B8", fontSize: 11, marginTop: 3 }}>{note}</div>
+  </div>;
+  const pickStatus = status => {
+    if (status === "paid") return ["#DCFCE7", "#166534", "Paid"];
+    if (status === "booked") return ["#DBEAFE", "#1D4ED8", "Booked / balance due"];
+    if (status === "pending") return ["#FEF3C7", "#92400E", "Checkout pending"];
+    if (["cancelled", "released"].includes(status)) return ["#FEE2E2", "#991B1B", status];
+    return ["#F1F5F9", "#475569", status === "free" ? "Complimentary" : status === "credits" ? "Credits" : status];
+  };
+  const summary = [...reports].sort((a, b) => b.metrics.collected - a.metrics.collected);
+  const maxRevenue = Math.max(1, ...summary.map(e => e.metrics.collected));
+  return <div style={{ padding: "18px clamp(12px, 3vw, 30px) 80px", background: "#F5F8FA", minHeight: "70vh", color: W.ink }}>
+    <div style={{ borderRadius: 22, background: "linear-gradient(120deg,#063F39,#087F70 58%,#0891B2)", padding: "22px clamp(16px,3vw,27px)", color: "#fff", marginBottom: 16, boxShadow: "0 12px 30px #064E3B25" }}>
+      <div style={{ fontWeight: 750, fontSize: 11, letterSpacing: 2, opacity: .82 }}>G L A S S W I N G S  ·  OPERATIONS</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+        <div><h2 style={{ margin: 0, fontSize: "clamp(23px, 4vw, 34px)", lineHeight: 1.15 }}>Booking Dashboard</h2><div style={{ fontSize: 12.5, marginTop: 7, opacity: .88 }}>Every event. Every verified payment. Every guest — in one place.</div></div>
+        <button type="button" onClick={() => setVersion(v => v + 1)} disabled={result.loading} style={{ ...btn("#fff", "#065F52"), opacity: result.loading ? .6 : 1, fontWeight: 850 }}>↻ Refresh live records</button>
+      </div>
+    </div>
+    <div style={{ ...styles.paper, marginBottom: 13, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+      <label style={{ flex: "2 1 270px", fontSize: 11, fontWeight: 850, color: "#64748B" }}>EVENT<select aria-label="Choose event" value={eventId} onChange={e => { setEventId(e.target.value); setLimit(25); }} style={{ ...styles.input, marginTop: 5 }}><option value="all">All accessible events</option>{orderedEvents.map(e => <option key={e.id} value={e.id}>{gwIsGetaway(e) ? "🏝️ " : "🎟️ "}{e.title || "Untitled"} · {gwBookingDashDate(e.event_at || e.event_date)}</option>)}</select></label>
+      <label style={{ flex: "1 1 150px", fontSize: 11, fontWeight: 850, color: "#64748B" }}>TIME RANGE<select aria-label="Event date range" value={period} onChange={e => { setPeriod(e.target.value); setLimit(25); }} disabled={eventId !== "all"} style={{ ...styles.input, marginTop: 5, opacity: eventId !== "all" ? .6 : 1 }}><option value="upcoming">Upcoming events</option><option value="past">Past events</option><option value="all">All dates</option></select></label>
+      <div style={{ flex: "1 1 180px", fontSize: 12, color: "#64748B", alignSelf: "center" }}>{result.loading ? `Loading ${result.loaded}/${result.total} events…` : `Loaded ${reports.length} event${reports.length === 1 ? "" : "s"}`}<div style={{ fontSize: 11 }}>Server-verified payments only</div></div>
+    </div>
+    {result.loading && <div role="status" aria-live="polite" style={{ height: 5, background: "#E2E8F0", borderRadius: 99, overflow: "hidden", marginBottom: 12 }}><div style={{ width: `${result.total ? 100 * result.loaded / result.total : 0}%`, height: "100%", background: "#0D9488", transition: "width .25s" }} /></div>}
+    {result.errors.length > 0 && <div role="alert" style={{ background: "#FFF7ED", border: "1px solid #FED7AA", padding: 12, borderRadius: 12, marginBottom: 13, color: "#9A3412", fontSize: 12.5 }}><b>⚠️ {result.errors.length} event(s) could not be loaded; financial totals are incomplete.</b>{result.errors.slice(0, 5).map(x => <div key={x.id} style={{ marginTop: 5 }}>{x.title}: {x.message}</div>)}</div>}
+    {reports.some(e => e.warning) && <div role="alert" style={{ background: "#FEFCE8", border: "1px solid #FDE68A", padding: 12, borderRadius: 12, marginBottom: 13, fontSize: 12, color: "#854D0E" }}>{reports.filter(e => e.warning).map(e => <div key={e.event.id}><b>{e.event.title}:</b> {e.warning}</div>)}</div>}
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 13 }}>
+      {kpi("💰", "COLLECTED", gwBookingDashMoney(metric("collected")), "Verified payment receipts", "#047857")}
+      {kpi("⏳", "TRIP BALANCE DUE", gwBookingDashMoney(metric("due")), "Only confirmed getaway bookings", "#D97706")}
+      {kpi("🎟️", "CONFIRMED ORDERS", metric("confirmed"), "Trip bookings + event paid orders")}
+      {kpi("🧳", "ATTENDEES / TICKETS", metric("guests"), "Confirmed travellers + issued tickets", "#6D28D9")}
+      {kpi("🟠", "CHECKOUT PENDING", metric("pending"), "Not counted as paid", "#B45309")}
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 12, marginBottom: 13 }}>
+      <section style={styles.paper}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><b style={{ fontSize: 14 }}>Payment channels</b><span style={{ fontSize: 10.5, color: W.soft }}>Loaded events</span></div>
+        {[["🟢 Online / Razorpay", metric("online"), "#059669"], ["💵 Cash", metric("cash"), "#D97706"], ["📱 UPI", metric("upi"), "#2563EB"], ["🏦 Other verified trip payments", metric("other"), "#7C3AED"]].map(([name, amount, color]) => <div key={name} style={{ marginTop: 12 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5 }}><span>{name}</span><b>{gwBookingDashMoney(amount)}</b></div><div style={{ height: 7, borderRadius: 99, background: "#E2E8F0", marginTop: 6 }}><div style={{ height: "100%", width: `${Math.max(0, Math.min(100, metric("collected") ? 100 * amount / metric("collected") : 0))}%`, background: color, borderRadius: 99 }} /></div></div>)}
+      </section>
+      <section style={styles.paper}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7 }}><b style={{ fontSize: 14 }}>Revenue by event</b><button onClick={() => setShowEvents(x => !x)} style={{ ...btn("#EFF6FF", "#1D4ED8"), padding: "5px 9px", fontSize: 11 }}>{showEvents ? "Hide" : "Show"}</button></div>
+        {showEvents && (summary.length ? summary.slice(0, 7).map(e => <div key={e.event.id} style={{ marginTop: 10 }}><div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5 }}><span style={{ maxWidth: "65%", textOverflow: "ellipsis", whiteSpace: "nowrap", overflow: "hidden" }}>{gwIsGetaway(e.event) ? "🏝️" : "🎟️"} {e.event.title}</span><b>{gwBookingDashMoney(e.metrics.collected)}</b></div><div style={{ height: 6, background: "#E2E8F0", borderRadius: 10, marginTop: 5 }}><div style={{ width: `${100 * e.metrics.collected / maxRevenue}%`, height: "100%", borderRadius: 10, background: "#0D9488" }} /></div></div>) : <div style={{ color: W.soft, fontSize: 12, marginTop: 12 }}>No revenue records loaded.</div>)}
+      </section>
+    </div>
+    <section style={{ ...styles.paper, padding: "14px clamp(11px,2vw,20px)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+        <div><h3 style={{ margin: 0, fontSize: 17 }}>Booking register</h3><div style={{ fontSize: 11.5, color: W.soft, marginTop: 3 }}>Search guests, check instalments, and contact bookers · {filtered.length} matching record(s)</div></div>
+        <button type="button" disabled={result.loading || !!result.errors.length || !filtered.length} title={result.errors.length ? "Resolve failed event queries before exporting a complete report" : "Download visible bookings"} onClick={() => gwBookingDashCSV(filtered, "glasswings-booking-dashboard")} style={{ ...btn("#008069", "#fff"), opacity: result.loading || !!result.errors.length || !filtered.length ? .5 : 1 }}>⬇️ Export CSV</button>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <input aria-label="Search booking" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔎 Search name, event, phone or booking ID…" style={{ ...styles.input, flex: "3 1 220px", minWidth: 0 }} />
+        <select aria-label="Booking type" value={kindFilter} onChange={e => setKindFilter(e.target.value)} style={{ ...styles.input, flex: "1 1 135px" }}><option value="all">All types</option><option value="trip">Getaways</option><option value="ticket">Event tickets</option></select>
+        <select aria-label="Payment status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...styles.input, flex: "1 1 155px" }}><option value="all">All statuses</option><option value="paid">Paid</option><option value="part">Part paid / due</option><option value="pending">Checkout pending</option><option value="cancelled">Cancelled</option><option value="free">Free / credits</option></select>
+      </div>
+      {!result.loading && !filtered.length && <div style={{ background: "#F8FAFC", padding: 28, color: W.soft, borderRadius: 13, textAlign: "center", fontSize: 13 }}>No matching booking records. Choose a different event, date range, or search.</div>}
+      {filtered.map(r => {
+        const status = pickStatus(r.status);
+        const avatar = r.avatar || profiles[String(r.userId)]?.avatar_url || "";
+        const expanded = open === r.key;
+        return <article key={r.key} style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 13, marginTop: 8, overflow: "hidden" }}>
+          <button type="button" onClick={() => setOpen(expanded ? null : r.key)} aria-expanded={expanded} style={{ width: "100%", padding: "12px", cursor: "pointer", border: 0, background: expanded ? "#F8FAFC" : "#fff", textAlign: "left", display: "flex", gap: 11, alignItems: "center", flexWrap: "wrap" }}>
+            <PersonAvatar name={r.name} url={avatar} size={43} />
+            <div style={{ flex: "2 1 185px", minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 900, color: W.ink }}>{r.name}</div><div style={{ fontSize: 11.5, color: "#64748B", marginTop: 3 }}>{r.eventTitle} · {r.kind === "trip" ? "🏝️ Getaway" : "🎟️ Tickets"}</div><div style={{ color: "#94A3B8", fontSize: 10.5, marginTop: 2 }}>{r.package || ""} {r.reference ? `· ${r.reference}` : ""}</div></div>
+            <div style={{ flex: "1 1 125px", minWidth: 0 }}><span style={{ display: "inline-block", color: status[1], background: status[0], padding: "4px 8px", borderRadius: 100, fontSize: 10.5, fontWeight: 900 }}>{status[2]}</span><div style={{ color: "#64748B", fontSize: 11, marginTop: 5 }}>{r.qty} {r.kind === "trip" ? "traveller(s)" : "ticket(s)"}</div></div>
+            <div style={{ flex: "1 1 128px", textAlign: "right", minWidth: 0 }}><div style={{ color: "#047857", fontWeight: 950, fontSize: 16 }}>{gwBookingDashMoney(r.paid)}</div><div style={{ color: "#64748B", fontSize: 10.5 }}>recorded paid</div>{r.kind === "trip" && ["booked", "paid"].includes(r.status) && <div style={{ color: r.due ? "#B45309" : "#16A34A", fontWeight: 850, fontSize: 11, marginTop: 3 }}>{gwBookingDashMoney(r.due)} due</div>}</div>
+            <span style={{ color: "#64748B", fontSize: 18 }}>{expanded ? "⌃" : "⌄"}</span>
+          </button>
+          {expanded && <div style={{ padding: "5px 14px 15px", borderTop: "1px solid #E2E8F0" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", justifyContent: "space-between", fontSize: 12.5, color: W.ink, marginTop: 10 }}><span>📅 {gwBookingDashDate(r.createdAt || r.eventDate)}</span><span>🎟️ {r.reference || "No reference"}</span>{r.kind === "trip" && <span>💳 Total: <b>{gwBookingDashMoney(r.total)}</b></span>}</div>
+            {r.phone && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}><a href={`tel:${r.phone}`} style={{ ...btn("#EEF2FF", "#4338CA"), textDecoration: "none", padding: "7px 10px", fontSize: 12 }}>📞 {r.phone}</a>{waNum(r.phone) && <a href={`https://wa.me/${waNum(r.phone)}`} target="_blank" rel="noreferrer" style={{ ...btn("#E8F7F1", "#047857"), textDecoration: "none", padding: "7px 10px", fontSize: 12 }}>WhatsApp</a>}</div>}
+            <GWBookingDashDetail record={r} onReload={() => setVersion(v => v + 1)} />
+          </div>}
+        </article>;
+      })}
+      {eventId === "all" && possible.length > limit && !result.loading && <button type="button" onClick={() => setLimit(v => v + 25)} style={{ ...btn("#E0F2FE", "#0369A1"), display: "flex", margin: "18px auto 5px", padding: "11px 17px", fontWeight: 900 }}>Load 25 more events ({possible.length - limit} remaining)</button>}
+      <div style={{ marginTop: 12, fontSize: 11, color: "#64748B", lineHeight: 1.5 }}>Financial overview uses server-side event sales totals and verified getaway payments. Cancelled/released and unpaid checkout bookings are excluded from collected income. Free/credit tickets are kept in the register but do not add cash revenue. All amounts shown are gross receipts, not Glasswings net earnings. Trip payments without a recorded method are classified as other verified payments. To correct payment or booking data, use the event's existing Sales / Travellers & payments controls.</div>
+    </section>
+  </div>;
+}
+// =================== END BOOKING DASHBOARD ===================
+
 // Admin/organiser booking register for EVERY event. Uses existing permission-checked
 // server RPCs; do not fetch raw payment tables or expose this on public event pages.
 function EventBookingsPaymentsTab({ event }) {
