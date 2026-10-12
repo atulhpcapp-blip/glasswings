@@ -8,9 +8,13 @@ export default async function handler(req,res){
   if(req.method!=='GET'&&req.method!=='POST')return fail(res,405,'GET/POST only');
   if(!process.env.CRON_SECRET||req.headers.authorization!==`Bearer ${process.env.CRON_SECRET}`)return fail(res,401,'Invalid cron credential');
   if(!process.env.AISENSY_API_KEY)return fail(res,503,'AISENSY_API_KEY is not configured');
+  let diagnosticStage='create Supabase client';
   try{
     const svc=db();
-    const {data:jobs,error}=await svc.rpc('gw_wa_claim',{p_limit:15});if(error)throw Error(error.message);
+    diagnosticStage='claim queued WhatsApp alerts';
+    const {data:jobs,error}=await svc.rpc('gw_wa_claim',{p_limit:15});
+    if(error){const e=new Error(error.message);e.code=error.code;throw e;}
+    diagnosticStage='process claimed WhatsApp alerts';
     const results=[];
     for(const job of jobs||[]){
       const p=job.payload||{};
@@ -35,5 +39,20 @@ export default async function handler(req,res){
       results.push({id:job.id,channel:job.channel,state:doneErr?'finalization_error':success?'submitted':'needs_review'});
     }
     return res.status(200).json({ok:true,processed:results.length,results});
-  }catch(e){return fail(res,500,e.message||'Alert dispatcher failed');}
+  }catch(e){
+    // Vercel logs show response codes but not the JSON error body. Log an actionable
+    // diagnostic without disclosing credentials, bearer tokens or customer payloads.
+    const secrets=[process.env.SUPABASE_SERVICE_ROLE_KEY,process.env.AISENSY_API_KEY,process.env.CRON_SECRET]
+      .filter(Boolean);
+    const redact=value=>secrets.reduce((msg,secret)=>msg.split(secret).join('[REDACTED]'),String(value||''))
+      .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi,'$1[REDACTED]')
+      .slice(0,400);
+    console.error('[GW-WA-CRON-DIAG]',{
+      stage:diagnosticStage,
+      code:redact(e?.code||'UNKNOWN'),
+      message:redact(e?.message||'Alert dispatcher failed')
+    });
+    return fail(res,500,'WhatsApp processor failed; see [GW-WA-CRON-DIAG] in Vercel Logs');
+  }
 }
+
