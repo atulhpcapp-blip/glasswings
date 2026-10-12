@@ -21612,12 +21612,156 @@ function GWBookingDashDetail({ record, onReload }) {
 
 // GLASSWINGS — STANDALONE quotations & proforma invoices workspace.
 // Independent of Plan My Event: manual, phone, WhatsApp, walk-in and social leads work without any event request record.
-const gwQuoteTemplates = {
-  birthday: ["Venue / party space", "Theme décor & backdrop", "Cake & desserts", "Catering / snacks", "DJ / music & sound", "Photography / videography", "On-site event coordinator"],
-  farmhouse: ["Farmhouse / venue rental", "Catering & refreshments", "DJ, sound & lighting", "Pool and activity setup", "Security & event staff", "Housekeeping & utilities", "Event coordinator"],
-  corporate: ["Venue hire", "Stage, AV & sound", "Branding & décor", "Hospitality & catering", "Registration / ushers", "Photography", "Event management"],
-  wedding: ["Venue & hospitality", "Floral décor and styling", "Catering", "Sound, lights & entertainment", "Photography / videography", "Guest logistics", "Event coordination"],
-  other: ["Venue", "Décor / production", "Catering", "Music / entertainment", "Staffing & logistics", "Event coordination"]
+// Event types and service taxonomy informed by established venue/vendor marketplaces.
+// Display groups are UI-only; only stable event_type values and individual JSON items are saved.
+const gwQEventGroups = [
+  {label:'Social & family celebrations',types:[
+    ['birthday','🎂 Birthday party'],['anniversary','💝 Anniversary'],['baby_shower','🍼 Baby shower / Seemantham'],
+    ['naming_ceremony','👶 Naming / cradle ceremony'],['housewarming','🏠 Housewarming / Griha Pravesh'],
+    ['farmhouse','🏡 Farmhouse / pool / house party'],['private_party','🎉 Private / theme party'],
+    ['graduation','🎓 Graduation / farewell'],['retirement','🌟 Retirement celebration'],['kids_party','🎈 Kids entertainment party']
+  ]},
+  {label:'Weddings & special occasions',types:[
+    ['wedding','💍 Wedding'],['engagement','💎 Engagement / ring ceremony'],['reception','🥂 Wedding reception'],
+    ['sangeet','🎶 Sangeet / cocktail'],['haldi_mehendi','🌼 Haldi / mehendi'],['pre_wedding','📸 Pre-wedding celebration']
+  ]},
+  {label:'Corporate & business events',types:[
+    ['corporate','🏢 Corporate party / event'],['conference','🎤 Conference / seminar'],
+    ['product_launch','🚀 Product / brand launch'],['team_outing','🤝 Team outing / retreat'],
+    ['awards','🏆 Awards / annual day'],['exhibition','🏷️ Exhibition / trade show'],
+    ['brand_activation','📣 Promotion / brand activation']
+  ]},
+  {label:'Community & entertainment',types:[
+    ['concert','🎵 Concert / live performance'],['festival','🪔 Festival / cultural event'],
+    ['college_event','🎓 College / school event'],['charity','❤️ Charity / community event'],
+    ['sports_event','🏅 Sports event'],['other','✨ Other / custom event']
+  ]}
+];
+const gwQEventTypes = gwQEventGroups.flatMap(group=>group.types);
+const gwQTypeName = value => (gwQEventTypes.find(t=>t[0]===value)?.[1]||String(value||'Other').replaceAll('_',' ')).replace(/^[^\p{L}\p{N}]+/u,'').trim();
+const gwQVenueTypes = [
+  'Function hall / banquet hall','Convention / exhibition centre','Hotel banquet / ballroom',
+  'Farmhouse / private villa','Resort / retreat','Wedding lawn / marriage garden',
+  'Rooftop / terrace','Restaurant / café / pub','Private home / apartment',
+  'Poolside venue','Auditorium / theatre','Beach / open-air venue',
+  'Clubhouse / community hall','Temple / ceremonial venue','Office / meeting room',
+  'Ground / stadium','Other / client-provided venue'
+];
+// Per-service units are suggestions only. Rates stay blank until the admin quotes a price.
+const gwQServiceCatalog = {
+  'Venues & accommodation': [
+    ['Function hall / banquet hall rental','day'],['Farmhouse / private villa rental','day'],['Hotel banquet / ballroom','day'],
+    ['Wedding lawn / outdoor space','day'],['Convention / conference hall','day'],['Resort / retreat venue','day'],
+    ['Rooftop / restaurant reservation','event'],['Clubhouse / community hall','day'],
+    ['Poolside party area','event'],['Auditorium / performance hall','day'],['Ground / stadium','day'],['Guest rooms / accommodation','room'],
+    ['Bridal / green room','room'],['Venue cleaning / housekeeping','event']
+  ],
+  'Catering & beverages': [
+    ['Buffet catering (veg / non-veg)','plate'],['Breakfast / high tea','person'],['Snacks / starters','person'],
+    ['Live food counters / chaat','counter'],['Kids menu','child'],['Birthday / celebration cake','cake'],
+    ['Dessert counter','counter'],['Soft drinks, juices & mocktails','person'],['Tea / coffee station','station'],
+    ['Water & refreshments','person'],['Licensed bar service / bartenders','service'],['Serving staff / buffet setup','staff'],
+    ['Welcome drinks','person'],['Packed meals / hampers','person']
+  ],
+  'Décor, florals & styling': [
+    ['Theme décor and backdrop','setup'],['Balloon decoration','setup'],['Floral décor / centrepieces','setup'],
+    ['Stage decoration','stage'],['Entrance arch / welcome signage','setup'],['Mandap / wedding backdrop','setup'],
+    ['Table styling and linens','table'],['Photo booth / selfie corner','setup'],['Fairy lights / ambience décor','setup'],
+    ['Branded photo wall / step-and-repeat','setup'],['Haldi / mehendi setup','setup'],['Props and furniture','lot']
+  ],
+  'Music, artists & entertainment': [
+    ['DJ with music set','event'],['Live band / singers','act'],['Anchor / emcee','event'],
+    ['Dhol / percussion artists','act'],['Dance troupe / choreographer','act'],['Comedian / magician','act'],
+    ['Kids entertainer / mascot','act'],['Games host / activities','event'],['Celebrity / special performer','act'],
+    ['Karaoke setup','event'],['Traditional / folk artist','act'],['Artist hospitality','act']
+  ],
+  'Stage, sound, lights & AV': [
+    ['PA / speaker and microphone setup','setup'],['DJ sound console','setup'],['Stage and podium','setup'],
+    ['LED wall / screen','day'],['Projector and screen','day'],['Conference microphones','unit'],
+    ['Stage lighting / moving heads','setup'],['Dance floor / LED floor','setup'],['Live-streaming / hybrid event setup','event'],
+    ['Generator / backup power','day'],['Special effects / cold pyro (subject to permits)','event']
+  ],
+  'Photography & content': [
+    ['Event photographer','day'],['Videography / highlight film','day'],['Candid photography','day'],
+    ['Drone footage (subject to permission)','event'],['Instant prints / photo booth','event'],
+    ['Social media reels / same-day edit','package'],['Pre-wedding shoot','session'],['Corporate event documentation','day']
+  ],
+  'Invitations, gifting & branding': [
+    ['Digital invitations / e-invites','design'],['Printed invitation cards','card'],['Return gifts / party favours','guest'],
+    ['Welcome kits / hampers','guest'],['Corporate merchandise / gifts','guest'],['Standee / flex / venue signage','unit'],
+    ['Stage branding and banners','setup'],['Name badges / lanyards','guest'],['Sponsor booths / branding','booth']
+  ],
+  'Guest services & staffing': [
+    ['Registration desk and hostesses','staff'],['Ushers / event volunteers','staff'],['Guest check-in / QR desk','desk'],
+    ['Bouncers / private security','staff'],['Valet parking staff','staff'],['Housekeeping staff','staff'],
+    ['First aid / medical support','team'],['Guest hospitality coordinator','staff'],['Childcare / kids supervisor','staff']
+  ],
+  'Transport & logistics': [
+    ['Guest transportation / shuttle','vehicle'],['Airport transfers','trip'],['Equipment transport','trip'],
+    ['Vendor loading / logistics','event'],['Vehicle parking management','event'],
+    ['Travel & accommodation coordination','service'],['Furniture rental','lot']
+  ],
+  'Activities & experiences': [
+    ['Pool games / pool supervisor','event'],['Team-building activities','session'],['Adventure / outdoor activities','person'],
+    ['Carnival games / stalls','stall'],['Kids play zone / bouncy castle','setup'],['Campfire (venue permitted)','event'],
+    ['Craft / workshop facilitator','session'],['Award trophies / medals','unit'],['Exhibition booth setup','booth']
+  ],
+  'Ceremonies & beauty': [
+    ['Priest / pandit / officiant','event'],['Puja materials / ceremonial setup','event'],
+    ['Mehendi artist','artist'],['Bridal / family makeup','person'],['Wedding choreographer','session'],
+    ['Wedding procession / baraat setup','event'],['Ring / cake table styling','setup']
+  ],
+  'Planning, permits & management': [
+    ['Full event planning and coordination','event'],['On-site event manager','day'],
+    ['Vendor sourcing and management','service'],['Event schedule / run of show','service'],
+    ['Rehearsal / technical coordination','session'],['Event registration management','event'],
+    ['Licences / permissions coordination','service'],['Venue insurance / safety plan coordination','service']
+  ]
+};
+const gwQServiceCategories = Object.keys(gwQServiceCatalog);
+const gwQCatalogEntries = gwQServiceCategories.flatMap(category => gwQServiceCatalog[category].map(([name,unit])=>({name,unit,category})));
+const gwQCatalogByName = new Map(gwQCatalogEntries.map(e=>[e.name.toLowerCase(),e]));
+const gwQCategoryFor = name => gwQCatalogByName.get(String(name||'').toLowerCase())?.category || 'Planning, permits & management';
+const gwQPresetServices = {
+  birthday:['Function hall / banquet hall rental','Theme décor and backdrop','Birthday / celebration cake','Buffet catering (veg / non-veg)','DJ with music set','Event photographer','Full event planning and coordination'],
+  farmhouse:['Farmhouse / private villa rental','Buffet catering (veg / non-veg)','Soft drinks, juices & mocktails','DJ with music set','Pool games / pool supervisor','Bouncers / private security','Venue cleaning / housekeeping'],
+  corporate:['Hotel banquet / ballroom','Buffet catering (veg / non-veg)','Stage and podium','PA / speaker and microphone setup','Stage branding and banners','Registration desk and hostesses','Event photographer','On-site event manager'],
+  wedding:['Wedding lawn / outdoor space','Mandap / wedding backdrop','Buffet catering (veg / non-veg)','Floral décor / centrepieces','Priest / pandit / officiant','Event photographer','Guest hospitality coordinator','Full event planning and coordination'],
+  engagement:['Function hall / banquet hall rental','Ring / cake table styling','Floral décor / centrepieces','Buffet catering (veg / non-veg)','Event photographer','Anchor / emcee'],
+  reception:['Hotel banquet / ballroom','Stage decoration','Buffet catering (veg / non-veg)','Live band / singers','Candid photography','Guest hospitality coordinator'],
+  sangeet:['Farmhouse / private villa rental','Stage lighting / moving heads','DJ with music set','Dance troupe / choreographer','Buffet catering (veg / non-veg)','Event photographer'],
+  haldi_mehendi:['Haldi / mehendi setup','Mehendi artist','Floral décor / centrepieces','Snacks / starters','Dhol / percussion artists','Candid photography'],
+  pre_wedding:['Pre-wedding shoot','Theme décor and backdrop','Bridal / family makeup','Guest rooms / accommodation','Travel & accommodation coordination'],
+  anniversary:['Function hall / banquet hall rental','Theme décor and backdrop','Birthday / celebration cake','Buffet catering (veg / non-veg)','Live band / singers','Event photographer'],
+  baby_shower:['Clubhouse / community hall','Floral décor / centrepieces','Theme décor and backdrop','Snacks / starters','Dessert counter','Event photographer'],
+  naming_ceremony:['Function hall / banquet hall rental','Puja materials / ceremonial setup','Priest / pandit / officiant','Buffet catering (veg / non-veg)','Floral décor / centrepieces','Event photographer'],
+  housewarming:['Puja materials / ceremonial setup','Priest / pandit / officiant','Buffet catering (veg / non-veg)','Entrance arch / welcome signage','Serving staff / buffet setup'],
+  private_party:['Rooftop / restaurant reservation','Theme décor and backdrop','DJ with music set','Snacks / starters','Soft drinks, juices & mocktails','Event photographer'],
+  graduation:['Function hall / banquet hall rental','Stage and podium','PA / speaker and microphone setup','Buffet catering (veg / non-veg)','Award trophies / medals','Event photographer'],
+  retirement:['Clubhouse / community hall','Floral décor / centrepieces','Buffet catering (veg / non-veg)','Anchor / emcee','Event photographer'],
+  kids_party:['Kids play zone / bouncy castle','Kids entertainer / mascot','Birthday / celebration cake','Kids menu','Balloon decoration','Childcare / kids supervisor'],
+  conference:['Convention / conference hall','Stage and podium','LED wall / screen','Conference microphones','Breakfast / high tea','Registration desk and hostesses','Corporate event documentation','On-site event manager'],
+  product_launch:['Convention / conference hall','Stage branding and banners','Branded photo wall / step-and-repeat','LED wall / screen','PA / speaker and microphone setup','Social media reels / same-day edit','Guest check-in / QR desk'],
+  team_outing:['Resort / retreat venue','Team-building activities','Buffet catering (veg / non-veg)','Guest transportation / shuttle','Adventure / outdoor activities','On-site event manager'],
+  awards:['Hotel banquet / ballroom','Stage and podium','Award trophies / medals','LED wall / screen','Anchor / emcee','Buffet catering (veg / non-veg)','Event photographer'],
+  exhibition:['Convention / conference hall','Exhibition booth setup','Sponsor booths / branding','Registration desk and hostesses','Stage branding and banners','Equipment transport','Bouncers / private security'],
+  brand_activation:['Rooftop / restaurant reservation','Branded photo wall / step-and-repeat','Corporate merchandise / gifts','Social media reels / same-day edit','Event registration management','Vendor sourcing and management'],
+  concert:['Auditorium / performance hall','Live band / singers','PA / speaker and microphone setup','Stage lighting / moving heads','LED wall / screen','Bouncers / private security','Event registration management'],
+  festival:['Wedding lawn / outdoor space','Stage decoration','Traditional / folk artist','Live food counters / chaat','PA / speaker and microphone setup','Bouncers / private security'],
+  college_event:['Auditorium / performance hall','Stage and podium','DJ with music set','LED wall / screen','Registration desk and hostesses','Event photographer'],
+  charity:['Clubhouse / community hall','PA / speaker and microphone setup','Registration desk and hostesses','Water & refreshments','Event photographer','Full event planning and coordination'],
+  sports_event:['Ground / stadium','Award trophies / medals','PA / speaker and microphone setup','Water & refreshments','First aid / medical support','Event photographer'],
+  other:['Function hall / banquet hall rental','Buffet catering (veg / non-veg)','Theme décor and backdrop','DJ with music set','Event photographer','Full event planning and coordination']
+};
+const gwQuoteTemplates = Object.fromEntries(gwQEventTypes.map(([key])=>[key,gwQPresetServices[key]||gwQPresetServices.other]));
+const gwQItemsFor = kind => (gwQuoteTemplates[kind]||gwQuoteTemplates.other).map(name=>{
+  const hit=gwQCatalogByName.get(name.toLowerCase());
+  return {name,category:hit?.category||gwQCategoryFor(name),qty:1,unit:hit?.unit||'service',rate:''};
+});
+const gwQCanAutoSwitch = (items,kind) => {
+  const preset=gwQItemsFor(kind);
+  return Array.isArray(items) && items.length===preset.length && items.every((item,i)=>
+    item.name===preset[i].name && !(Number(item.rate)>0));
 };
 const gwQChannels = [
   ['phone','Phone call'], ['whatsapp','WhatsApp'], ['walk_in','Walk-in / personal'],
@@ -21628,12 +21772,12 @@ const gwQMoney = n => new Intl.NumberFormat('en-IN', {style:'currency',currency:
 const gwQEsc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const gwQEmpty = (kind='birthday', type='quote') => ({
   client_name:'',client_phone:'',client_email:'',client_company:'',client_address:'',client_gstin:'',
-  title:'',event_type:kind,event_date:'',event_time:'',event_city:'',venue:'',event_address:'',guests:'',
+  title:'',event_type:kind,event_date:'',event_time:'',event_city:'',venue:'',venue_type:'',event_address:'',guests:'',
   valid_until:'',follow_up_on:'',source_channel:'phone',package_name:'',
   terms:'Event date and services are subject to confirmation and availability. Changes to the scope or guest count may change the price. Booking, cancellation, postponement and refund terms must be agreed in writing before payment.',
   inclusions:'',exclusions:'Items not explicitly included above.',
   payment_terms:'Proposed advance to confirm services; remaining balance according to the agreed schedule.',
-  items:(gwQuoteTemplates[kind]||gwQuoteTemplates.other).map(name=>({name,qty:1,unit:'service',rate:''})),
+  items:gwQItemsFor(kind),
   discount:0,tax_rate:0,advance_pct:30,status:'draft',doc_type:type,
   source_request_id:null,related_quote_id:null,notes:''
 });
@@ -21654,15 +21798,15 @@ function gwQMarkup(d,company) {
   const kind=isPI?'PROFORMA INVOICE':'EVENT QUOTATION';
   const safe=gwQEsc;
   const detail=(label,value)=>value?`<div class="detail"><span>${safe(label)}</span><b>${safe(value)}</b></div>`:'';
-  const rows=(d.items||[]).filter(i=>i.name&&Number(i.qty)>0).map((i,k)=>`<tr><td>${k+1}</td><td>${safe(i.name)}</td><td class="num">${safe(i.qty)}</td><td>${safe(i.unit||'service')}</td><td class="money">${gwQMoney(i.rate)}</td><td class="money">${gwQMoney((Number(i.qty)||0)*(Number(i.rate)||0))}</td></tr>`).join('');
+  const rows=(d.items||[]).filter(i=>i.name&&Number(i.qty)>0&&Number(i.rate)>0).map((i,k)=>`<tr><td>${k+1}</td><td>${safe(i.name)}<div class="linecategory">${safe(i.category||gwQCategoryFor(i.name))}</div></td><td class="num">${safe(i.qty)}</td><td>${safe(i.unit||'service')}</td><td class="money">${gwQMoney(i.rate)}</td><td class="money">${gwQMoney((Number(i.qty)||0)*(Number(i.rate)||0))}</td></tr>`).join('');
   const subtotal=`<div><span>Subtotal</span><strong>${gwQMoney(sums.subtotal)}</strong></div>`;
   const discount=sums.discount?`<div><span>Less discount</span><strong>− ${gwQMoney(sums.discount)}</strong></div>`:'';
   const tax=Number(d.tax_rate)>0?`<div><span>Tax (${safe(d.tax_rate)}% — where applicable)</span><strong>${gwQMoney(sums.tax)}</strong></div>`:'';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${safe(doc)} - ${kind}</title><style>
-  *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;background:#e9eeec;color:#172a25;margin:0;font-size:12.5px}main{width:210mm;min-height:297mm;margin:12mm auto;background:white;padding:18mm 16mm;box-shadow:0 4px 28px #0002}.mast{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #13795d;padding-bottom:16px}.brand{font-size:27px;letter-spacing:2px;font-weight:900;color:#0b644d}.company{font-size:11px;color:#536b61;line-height:1.7;margin-top:6px;white-space:pre-wrap}.heading{text-align:right}.heading small{font-weight:900;color:#128264;letter-spacing:1.3px}.heading h1{font-size:18px;margin:9px 0;color:#16352b}.muted{color:#60786d;font-size:11px;line-height:1.6}.hero{background:#f0f8f4;padding:13px 15px;margin:17px 0;border-left:4px solid #168463}.hero h2{margin:0 0 5px;font-size:17px}.cols{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:18px 0 14px}.sect{font-size:10px;font-weight:900;color:#158060;letter-spacing:1.1px;text-transform:uppercase;border-bottom:1px solid #dce7e1;padding-bottom:7px;margin-bottom:10px}.detail{margin:0 0 9px;overflow-wrap:anywhere}.detail span{display:block;color:#61786e;font-size:10px;margin-bottom:3px}.detail b{font-weight:700}.invoice{border-collapse:collapse;width:100%;margin-top:15px;table-layout:auto}.invoice th{background:#0d5845;color:#fff;font-size:10.5px;padding:10px 8px;text-align:left}.invoice td{border-bottom:1px solid #e0e8e3;padding:10px 8px;vertical-align:top}.invoice th.num,.invoice td.num,.invoice th.money,.invoice td.money{text-align:right;white-space:nowrap}.summary{margin:22px 0 18px auto;max-width:330px}.summary>div{display:flex;justify-content:space-between;gap:16px;padding:7px 0}.summary .total{border-top:2px solid #0d7558;margin-top:5px;padding-top:12px;font-weight:900;color:#0c6049;font-size:16px}.summary .due{background:#e7f5ee;padding:10px 12px;border-radius:7px;font-weight:800}.textblock{white-space:pre-wrap;line-height:1.6;margin:5px 0 17px}.sectiontitle{font-weight:900;color:#0f624b;margin-top:20px;font-size:13px}.disclaimer{background:#f6f7f7;padding:11px 13px;border-radius:7px;color:#4d5d58;font-size:11px;margin-top:18px}.footer{border-top:1px solid #ccdcd4;margin-top:26px;padding-top:11px;font-size:10px;color:#687d73;line-height:1.5}.print{position:fixed;bottom:20px;right:20px;border:0;background:#0e7358;color:white;padding:13px 20px;border-radius:9px;font-weight:800;cursor:pointer}@media print{body{background:white}main{width:auto;min-height:0;box-shadow:none;margin:0;padding:13mm}.print{display:none}@page{size:A4;margin:0}}
+  *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;background:#e9eeec;color:#172a25;margin:0;font-size:12.5px}main{width:210mm;min-height:297mm;margin:12mm auto;background:white;padding:18mm 16mm;box-shadow:0 4px 28px #0002}.mast{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #13795d;padding-bottom:16px}.brand{font-size:27px;letter-spacing:2px;font-weight:900;color:#0b644d}.company{font-size:11px;color:#536b61;line-height:1.7;margin-top:6px;white-space:pre-wrap}.heading{text-align:right}.heading small{font-weight:900;color:#128264;letter-spacing:1.3px}.heading h1{font-size:18px;margin:9px 0;color:#16352b}.muted{color:#60786d;font-size:11px;line-height:1.6}.hero{background:#f0f8f4;padding:13px 15px;margin:17px 0;border-left:4px solid #168463}.hero h2{margin:0 0 5px;font-size:17px}.cols{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin:18px 0 14px}.sect{font-size:10px;font-weight:900;color:#158060;letter-spacing:1.1px;text-transform:uppercase;border-bottom:1px solid #dce7e1;padding-bottom:7px;margin-bottom:10px}.detail{margin:0 0 9px;overflow-wrap:anywhere}.detail span{display:block;color:#61786e;font-size:10px;margin-bottom:3px}.detail b{font-weight:700}.invoice{border-collapse:collapse;width:100%;margin-top:15px;table-layout:auto}.invoice th{background:#0d5845;color:#fff;font-size:10.5px;padding:10px 8px;text-align:left}.invoice td{border-bottom:1px solid #e0e8e3;padding:10px 8px;vertical-align:top}.linecategory{color:#7b9085;font-size:9px;margin-top:3px}.invoice th.num,.invoice td.num,.invoice th.money,.invoice td.money{text-align:right;white-space:nowrap}.summary{margin:22px 0 18px auto;max-width:330px}.summary>div{display:flex;justify-content:space-between;gap:16px;padding:7px 0}.summary .total{border-top:2px solid #0d7558;margin-top:5px;padding-top:12px;font-weight:900;color:#0c6049;font-size:16px}.summary .due{background:#e7f5ee;padding:10px 12px;border-radius:7px;font-weight:800}.textblock{white-space:pre-wrap;line-height:1.6;margin:5px 0 17px}.sectiontitle{font-weight:900;color:#0f624b;margin-top:20px;font-size:13px}.disclaimer{background:#f6f7f7;padding:11px 13px;border-radius:7px;color:#4d5d58;font-size:11px;margin-top:18px}.footer{border-top:1px solid #ccdcd4;margin-top:26px;padding-top:11px;font-size:10px;color:#687d73;line-height:1.5}.print{position:fixed;bottom:20px;right:20px;border:0;background:#0e7358;color:white;padding:13px 20px;border-radius:9px;font-weight:800;cursor:pointer}@media print{body{background:white}main{width:auto;min-height:0;box-shadow:none;margin:0;padding:13mm}.print{display:none}@page{size:A4;margin:0}}
   </style></head><body><main><div class="mast"><div><div class="brand">GLASSWINGS</div><div class="company">${safe(company.legal_name||'Glasswings Events Pvt. Ltd.')}\n${safe(company.address||'')}${company.phone?'\n'+safe(company.phone):''}${company.email?' · '+safe(company.email):''}${company.gstin?'\nGSTIN: '+safe(company.gstin):''}</div></div><div class="heading"><small>${kind}</small><h1>${safe(doc)}</h1><div class="muted">Prepared: ${new Date(d.created_at||Date.now()).toLocaleDateString('en-IN')}<br>${d.valid_until?'Valid until: '+safe(d.valid_until):'Validity: subject to confirmation'}</div></div></div>
   <div class="hero"><h2>${safe(d.title||'Your event proposal')}</h2><div class="muted">${safe(d.package_name||'Tailored event services')}</div></div>
-  <div class="cols"><section><div class="sect">Prepared for / Bill to</div>${detail('Client',d.client_name)}${detail('Company',d.client_company)}${detail('Address',d.client_address)}${detail('Phone',d.client_phone)}${detail('Email',d.client_email)}${detail('Customer GSTIN',d.client_gstin)}</section><section><div class="sect">Event information</div>${detail('Occasion',String(d.event_type||'other').replaceAll('_',' '))}${detail('Date',d.event_date)}${detail('Time',d.event_time)}${detail('Venue',d.venue)}${detail('Location',d.event_address||d.event_city)}${detail('Estimated guests',d.guests)}</section></div>
+  <div class="cols"><section><div class="sect">Prepared for / Bill to</div>${detail('Client',d.client_name)}${detail('Company',d.client_company)}${detail('Address',d.client_address)}${detail('Phone',d.client_phone)}${detail('Email',d.client_email)}${detail('Customer GSTIN',d.client_gstin)}</section><section><div class="sect">Event information</div>${detail('Occasion',String(d.event_type||'other').replaceAll('_',' '))}${detail('Date',d.event_date)}${detail('Time',d.event_time)}${detail('Venue type',d.venue_type)}${detail('Venue',d.venue)}${detail('Location',d.event_address||d.event_city)}${detail('Estimated guests',d.guests)}</section></div>
   <table class="invoice"><thead><tr><th>#</th><th>Service / Deliverable</th><th class="num">Qty</th><th>Unit</th><th class="money">Rate</th><th class="money">Amount</th></tr></thead><tbody>${rows||'<tr><td colspan="6">No line items added</td></tr>'}</tbody></table>
   <div class="summary">${subtotal}${discount}${tax}<div class="total"><span>Grand total</span><strong>${gwQMoney(sums.total)}</strong></div><div class="due"><span>Proposed advance (${safe(d.advance_pct||0)}%)</span><strong>${gwQMoney(sums.advance)}</strong></div><div><span>Balance after advance</span><strong>${gwQMoney(sums.balance)}</strong></div></div>
   ${d.inclusions?`<div class="sectiontitle">Inclusions</div><div class="textblock">${safe(d.inclusions)}</div>`:''}${d.exclusions?`<div class="sectiontitle">Exclusions</div><div class="textblock">${safe(d.exclusions)}</div>`:''}<div class="sectiontitle">Payment schedule</div><div class="textblock">${safe(d.payment_terms||'As agreed in writing.')}</div><div class="sectiontitle">Terms & conditions</div><div class="textblock">${safe(d.terms||'Subject to written confirmation.')}</div>${isPI?`<div class="sectiontitle">Payment instructions</div><div class="textblock">${safe(company.payment_details||'Please contact Glasswings for verified payment instructions.')}</div>`:''}
@@ -21673,7 +21817,8 @@ function GWQuoteManager({meId}) {
   const [settings,setSettings]=useState({legal_name:'Glasswings Events Pvt. Ltd.',address:'',gstin:'',phone:'',email:'',payment_details:''});
   const [draft,setDraft]=useState(null),[step,setStep]=useState('client'),[companyOpen,setCompanyOpen]=useState(false);
   const [showImport,setShowImport]=useState(false),[leads,setLeads]=useState([]),[leadBusy,setLeadBusy]=useState(false),[leadError,setLeadError]=useState('');
-  const [filter,setFilter]=useState('all'),[statusFilter,setStatusFilter]=useState('all'),[search,setSearch]=useState('');
+  const [filter,setFilter]=useState('all'),[statusFilter,setStatusFilter]=useState('all'),[search,setSearch]=useState(''),[eventFilter,setEventFilter]=useState('all');
+  const [serviceCategory,setServiceCategory]=useState('all'),[serviceQuery,setServiceQuery]=useState(''),[serviceMode,setServiceMode]=useState('recommended');
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[err,setErr]=useState(''),[notice,setNotice]=useState('');
   const input={width:'100%',boxSizing:'border-box',border:'1px solid #d4e3db',borderRadius:9,padding:'10px 11px',fontSize:13.5,color:'#18362c',background:'#fff'};
   const panel={background:'#fff',border:'1px solid #dbe8e0',borderRadius:15,padding:16,marginBottom:14};
@@ -21690,7 +21835,7 @@ function GWQuoteManager({meId}) {
   };
   useEffect(()=>{load();},[]);
   const set=(field,value)=>setDraft(prev=>({...prev,[field]:value}));
-  const start=(kind='birthday',docType='quote')=>{setDraft(gwQEmpty(kind,docType));setStep('client');setErr('');setNotice('');};
+  const start=(kind='birthday',docType='quote')=>{setDraft(gwQEmpty(kind,docType));setStep('client');setServiceMode('recommended');setServiceQuery('');setServiceCategory('all');setErr('');setNotice('');};
   const edit=d=>{if(d.status!=='draft')return setErr('Issued documents are locked. Use Create revision.');setDraft({...d});setStep('client');setErr('');};
   const copy=d=>{const next={...d,id:undefined,seq_no:undefined,created_at:undefined,updated_at:undefined,sent_at:undefined,accepted_at:undefined,status:'draft',related_quote_id:d.id,doc_type:d.doc_type};setDraft(next);setStep('client');setErr('');};
   const makeProforma=d=>{const next={...d,id:undefined,seq_no:undefined,created_at:undefined,updated_at:undefined,sent_at:undefined,accepted_at:undefined,status:'draft',doc_type:'proforma',related_quote_id:d.id,source_channel:d.source_channel||'phone'};setDraft(next);setStep('client');setErr('');};
@@ -21715,9 +21860,9 @@ function GWQuoteManager({meId}) {
     if(Number(draft.discount)<0||Number(draft.discount)>current.subtotal)return setErr('Discount must be between zero and the subtotal.');
     if(Number(draft.tax_rate)<0||Number(draft.tax_rate)>100||Number(draft.advance_pct)<0||Number(draft.advance_pct)>100)return setErr('Tax and advance percentages must be between 0 and 100.');
     setBusy(true);setErr('');setNotice('');
-    const keys=['source_request_id','related_quote_id','source_channel','client_name','client_phone','client_email','client_company','client_address','client_gstin','title','event_type','event_date','event_time','event_city','venue','event_address','guests','valid_until','follow_up_on','package_name','payment_terms','terms','inclusions','exclusions','items','discount','tax_rate','advance_pct','notes','doc_type','status'];
+    const keys=['source_request_id','related_quote_id','source_channel','client_name','client_phone','client_email','client_company','client_address','client_gstin','title','event_type','event_date','event_time','event_city','venue','venue_type','event_address','guests','valid_until','follow_up_on','package_name','payment_terms','terms','inclusions','exclusions','items','discount','tax_rate','advance_pct','notes','doc_type','status'];
     const row=Object.fromEntries(keys.map(k=>[k,draft[k]??null]));
-    row.items=(draft.items||[]).filter(i=>String(i.name||'').trim()&&Number(i.qty)>0).map(i=>({name:String(i.name).trim(),qty:Number(i.qty),unit:String(i.unit||'service').trim(),rate:Math.max(0,Number(i.rate)||0)}));
+    row.items=(draft.items||[]).filter(i=>String(i.name||'').trim()&&Number(i.qty)>0).map(i=>({name:String(i.name).trim(),category:gwQServiceCategories.includes(i.category)?i.category:gwQCategoryFor(i.name),qty:Number(i.qty),unit:String(i.unit||'service').trim(),rate:Math.max(0,Number(i.rate)||0)}));
     for(const k of ['valid_until','event_date','follow_up_on'])row[k]=row[k]||null;
     row.guests=row.guests===''?null:Math.max(0,Number(row.guests)||0);
     row.client_phone=row.client_phone||'';
@@ -21763,6 +21908,7 @@ function GWQuoteManager({meId}) {
   const statusLabel=d=>d.status==='sent'&&d.valid_until&&d.valid_until<new Date().toISOString().slice(0,10)?'Expired':d.status.charAt(0).toUpperCase()+d.status.slice(1);
   const display=documents.filter(d=>{
     if(filter!=='all'&&d.doc_type!==filter)return false;
+    if(eventFilter!=='all'&&d.event_type!==eventFilter)return false;
     if(statusFilter!=='all'&&d.status!==statusFilter)return false;
     const needle=search.trim().toLowerCase();
     return !needle||`${d.client_name} ${d.client_phone} ${d.client_company||''} ${d.title} ${d.event_city||''} ${gwQDocNo(d)} ${d.source_channel||''}`.toLowerCase().includes(needle);
@@ -21780,6 +21926,25 @@ function GWQuoteManager({meId}) {
   const field=(label,key,type='text',option={})=><label style={{display:'block',fontSize:12,fontWeight:750,color:'#536e60'}}>{label}<input type={type} value={draft?.[key]??''} onChange={e=>set(key,e.target.value)} style={{...input,marginTop:6}} {...option}/></label>;
   const area=(label,key,rows=3)=> <label style={{display:'block',fontSize:12,fontWeight:750,color:'#536e60'}}>{label}<textarea rows={rows} value={draft?.[key]||''} onChange={e=>set(key,e.target.value)} style={{...input,marginTop:6,resize:'vertical'}}/></label>;
   const goTo=part=>{setStep(part);setErr('');};
+  const changeEventType=next=>{
+    setDraft(prev=>({...prev,event_type:next,items:gwQCanAutoSwitch(prev.items,prev.event_type)?gwQItemsFor(next):prev.items}));
+    setServiceMode('recommended');setServiceCategory('all');setServiceQuery('');
+  };
+  const resetSuggested=()=>{
+    if((draft.items||[]).some(i=>Number(i.rate)>0)&&!window.confirm('Replace existing services and entered rates with blank template items?'))return;
+    set('items',gwQItemsFor(draft.event_type));
+  };
+  const addCatalogService=item=>setDraft(prev=>{
+    const exists=(prev.items||[]).some(i=>String(i.name||'').trim().toLowerCase()===item.name.toLowerCase());
+    if(exists)return prev;
+    return {...prev,items:[...(prev.items||[]),{name:item.name,category:item.category,qty:1,unit:item.unit,rate:''}]};
+  });
+  const recommendedNames=new Set((gwQuoteTemplates[draft?.event_type]||gwQuoteTemplates.other).map(x=>x.toLowerCase()));
+  const shownServices=gwQCatalogEntries.filter(item=>(serviceMode!=='recommended'||recommendedNames.has(item.name.toLowerCase()))
+    &&(serviceCategory==='all'||serviceCategory===item.category)
+    &&(!serviceQuery.trim()||`${item.name} ${item.category}`.toLowerCase().includes(serviceQuery.trim().toLowerCase())))
+    .slice(0,serviceMode==='recommended'?30:60);
+  const selectedServices=new Set((draft?.items||[]).map(i=>String(i.name||'').toLowerCase()));
   return <main style={{padding:'20px clamp(12px,3vw,28px)',maxWidth:1420,margin:'0 auto',minHeight:'75vh',color:'#1d362d'}}>
     <header style={{background:'linear-gradient(115deg,#103e34,#087861)',color:'#fff',borderRadius:18,padding:'22px clamp(16px,3vw,28px)',marginBottom:16,display:'flex',flexWrap:'wrap',gap:14,justifyContent:'space-between',alignItems:'center'}}>
       <div><div style={{fontSize:11,letterSpacing:1.7,fontWeight:850,opacity:.76}}>GLASSWINGS · BUSINESS OPERATIONS</div><h1 style={{margin:'7px 0 5px',fontSize:'clamp(22px,3vw,30px)'}}>Quotations & Proforma Invoices</h1><div style={{fontSize:13,opacity:.86,maxWidth:660}}>An independent workspace for every enquiry — phone calls, WhatsApp, walk-ins, referrals, Instagram or your website.</div></div>
@@ -21791,6 +21956,9 @@ function GWQuoteManager({meId}) {
       <button onClick={()=>start('birthday')} style={btn('#fdf2f8','#9d174d')}>🎂 Birthday quote</button>
       <button onClick={()=>start('farmhouse')} style={btn('#eff6ff','#1d4ed8')}>🏡 Farmhouse / house party</button>
       <button onClick={()=>start('corporate')} style={btn('#f0fdf4','#166534')}>🏢 Corporate event</button>
+      <button onClick={()=>start('wedding')} style={btn('#fff7ed','#9a3412')}>💍 Wedding</button>
+      <button onClick={()=>start('anniversary')} style={btn('#fdf2f8','#9d174d')}>💝 Anniversary</button>
+      <button onClick={()=>start('conference')} style={btn('#f0f9ff','#075985')}>🎤 Conference</button>
       <button onClick={()=>start('other','proforma')} style={btn('#f4f0ff','#673ab7')}>+ New proforma invoice</button>
       <button onClick={()=>setCompanyOpen(v=>!v)} style={btn('#fff','#354e41')}>⚙ Company & payment details</button>
       <button onClick={load} disabled={loading} style={btn('#fff','#075e46')}>↻ Refresh</button>
@@ -21809,19 +21977,26 @@ function GWQuoteManager({meId}) {
         <h3 style={{margin:'22px 0 12px'}}>Event details</h3>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(185px,1fr))',gap:11}}>
           {field('Event title *','title')}
-          <label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>Event category<select value={draft.event_type||'other'} onChange={e=>{const k=e.target.value;set('event_type',k);}} style={{...input,marginTop:6}}>{[['birthday','Birthday'],['farmhouse','Farmhouse / house party'],['wedding','Wedding / engagement'],['corporate','Corporate'],['other','Other event']].map(([k,n])=><option value={k} key={k}>{n}</option>)}</select></label>
-          {field('Event date','event_date','date')}{field('Time / slot','event_time')}{field('Venue name','venue')}{field('City','event_city')}{field('Venue address','event_address')}{field('Expected guests','guests','number',{min:0})}
+          <label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>Occasion / event type<select value={draft.event_type||'other'} onChange={e=>changeEventType(e.target.value)} style={{...input,marginTop:6}}>{gwQEventGroups.map(group=><optgroup key={group.label} label={group.label}>{group.types.map(([k,n])=><option value={k} key={k}>{n}</option>)}</optgroup>)}</select></label>
+          {field('Event date','event_date','date')}{field('Time / slot','event_time')}<label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>Venue / space category<select value={draft.venue_type||''} onChange={e=>set('venue_type',e.target.value)} style={{...input,marginTop:6}}><option value="">Select venue category (optional)</option>{gwQVenueTypes.map(v=><option key={v} value={v}>{v}</option>)}</select></label>{field('Venue name','venue')}{field('City','event_city')}{field('Venue address','event_address')}{field('Expected guests','guests','number',{min:0})}
           {field('Package title / proposal tier','package_name')}
           <label style={{fontSize:12,fontWeight:750,color:'#536e60'}}>How did you receive the enquiry?<select value={draft.source_channel||'other'} onChange={e=>set('source_channel',e.target.value)} style={{...input,marginTop:6}}>{gwQChannels.map(([id,label])=><option value={id} key={id}>{label}</option>)}</select></label>
           {field('Follow-up date (admin reminder list)','follow_up_on','date')}
         </div>
+        <p style={{margin:'13px 0 0',fontSize:12,color:'#61786c'}}>Tip: Event type, venue and services are separate. Changing the occasion only replaces untouched default services; your entered prices are preserved.</p>
         <div style={{display:'flex',justifyContent:'flex-end',marginTop:20}}><button onClick={()=>goTo('services')} style={btn('#087963','#fff')}>Next: Services & prices →</button></div>
       </>}
       {step==='services'&&<>
-        <h3 style={{margin:'0 0 5px'}}>Services and price breakdown</h3><p style={{fontSize:12,color:'#64786d',margin:'0 0 14px'}}>Start with the template, edit or remove any service. Only priced rows appear in the saved document.</p>
-        <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:12}}>{Object.keys(gwQuoteTemplates).map(k=><button key={k} onClick={()=>{if(window.confirm('Replace the current service list with the '+k+' template?'))set('items',gwQuoteTemplates[k].map(name=>({name,qty:1,unit:'service',rate:''})));}} style={btn('#f1f6f2','#24604a')}>{k==='other'?'Custom':k.charAt(0).toUpperCase()+k.slice(1)} template</button>)}</div>
-        <div style={{overflowX:'auto'}}><table style={{width:'100%',minWidth:620,borderCollapse:'collapse'}}><thead><tr style={{background:'#f0f8f3',fontSize:12}}><th align="left" style={{padding:9}}>Service / scope</th><th>Qty</th><th>Unit</th><th>Rate (₹)</th><th>Amount</th><th></th></tr></thead><tbody>{(draft.items||[]).map((i,k)=><tr key={k} style={{borderBottom:'1px solid #e7eee9'}}><td style={{padding:5}}><input value={i.name||''} aria-label={`Service ${k+1}`} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,name:e.target.value}:x))} style={{...input,minWidth:180}}/></td><td><input type="number" min="0" aria-label={`Quantity ${k+1}`} value={i.qty??1} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,qty:e.target.value}:x))} style={{...input,width:70}}/></td><td><input aria-label={`Unit ${k+1}`} value={i.unit||''} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,unit:e.target.value}:x))} style={{...input,width:90}}/></td><td><input type="number" min="0" step="0.01" aria-label={`Rate ${k+1}`} value={i.rate??''} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,rate:e.target.value}:x))} style={{...input,width:115}}/></td><td style={{fontWeight:900,fontSize:12,whiteSpace:'nowrap',padding:8}}>{gwQMoney((Number(i.qty)||0)*(Number(i.rate)||0))}</td><td><button aria-label={`Delete row ${k+1}`} onClick={()=>set('items',draft.items.filter((_,j)=>j!==k))} style={btn('#fff0ef','#b42318')}>×</button></td></tr>)}</tbody></table></div>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}><button onClick={()=>set('items',[...(draft.items||[]),{name:'',qty:1,unit:'service',rate:''}])} style={btn('#eaf6f0','#075e46')}>+ Add service</button><button onClick={()=>set('items',(draft.items||[]).filter(i=>Number(i.rate)>0&&String(i.name||'').trim()))} style={btn('#f4f4f5','#475569')}>Remove unpriced rows</button></div>
+        <h3 style={{margin:'0 0 5px'}}>Services and itemised pricing</h3>
+        <p style={{fontSize:12,color:'#64786d',margin:'0 0 13px'}}>Choose services from professional categories or enter your own. Rates stay blank until you enter them; unpriced items will not print on client documents.</p>
+        <div style={{background:'#f4f9f6',border:'1px solid #dbe9df',borderRadius:12,padding:13,marginBottom:13}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:10}}><div><strong>Service catalogue</strong><div style={{fontSize:11.5,color:'#61776a'}}>Recommended for {gwQTypeName(draft.event_type)} or browse all {gwQCatalogEntries.length} services</div></div><button onClick={resetSuggested} style={btn('#e0f2e8','#176247')}>↺ Load occasion template</button></div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:7,marginBottom:10}}><button onClick={()=>{setServiceMode('recommended');setServiceCategory('all');}} style={btn(serviceMode==='recommended'?'#087963':'#fff',serviceMode==='recommended'?'#fff':'#24604a')}>★ Recommended</button><button onClick={()=>setServiceMode('all')} style={btn(serviceMode==='all'?'#087963':'#fff',serviceMode==='all'?'#fff':'#24604a')}>All service categories</button></div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:9,marginBottom:10}}><label style={{fontSize:12,fontWeight:700}}>Browse category<select value={serviceCategory} onChange={e=>{setServiceCategory(e.target.value);setServiceMode('all');}} style={{...input,marginTop:5}}><option value="all">All service categories</option>{gwQServiceCategories.map(category=><option key={category} value={category}>{category}</option>)}</select></label><label style={{fontSize:12,fontWeight:700}}>Find a service<input placeholder="Search catering, function hall, DJ…" value={serviceQuery} onChange={e=>{setServiceQuery(e.target.value);if(e.target.value)setServiceMode('all');}} style={{...input,marginTop:5}}/></label></div>
+          <div style={{display:'flex',gap:7,flexWrap:'wrap',maxHeight:215,overflowY:'auto'}}>{shownServices.length?shownServices.map(item=>{const added=selectedServices.has(item.name.toLowerCase());return <button key={item.name} onClick={()=>addCatalogService(item)} disabled={added} title={item.category} style={{...btn(added?'#eaf0ed':'#fff',added?'#81958a':'#176247'),fontSize:12,padding:'8px 10px',border:'1px solid #d3e3da',opacity:added?.7:1,cursor:added?'default':'pointer'}}>{added?'✓ ':'+ '}{item.name}</button>;}):<span style={{fontSize:12,color:'#71857b'}}>No matching services. Clear the search or add a custom service below.</span>}</div>
+        </div>
+        <div style={{overflowX:'auto'}}><table style={{width:'100%',minWidth:825,borderCollapse:'collapse'}}><thead><tr style={{background:'#f0f8f3',fontSize:12}}><th align="left" style={{padding:9}}>Service / scope</th><th align="left">Category</th><th>Qty</th><th>Unit</th><th>Rate (₹)</th><th>Amount</th><th></th></tr></thead><tbody>{(draft.items||[]).map((i,k)=><tr key={k} style={{borderBottom:'1px solid #e7eee9'}}><td style={{padding:5}}><input value={i.name||''} aria-label={`Service ${k+1}`} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,name:e.target.value}:x))} style={{...input,minWidth:180}}/></td><td><select aria-label={`Service category ${k+1}`} value={gwQServiceCategories.includes(i.category)?i.category:gwQCategoryFor(i.name)} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,category:e.target.value}:x))} style={{...input,minWidth:170,fontSize:11}}>{gwQServiceCategories.map(category=><option key={category} value={category}>{category}</option>)}</select></td><td><input type="number" min="0" aria-label={`Quantity ${k+1}`} value={i.qty??1} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,qty:e.target.value}:x))} style={{...input,width:70}}/></td><td><input aria-label={`Unit ${k+1}`} value={i.unit||''} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,unit:e.target.value}:x))} style={{...input,width:95}}/></td><td><input type="number" min="0" step="0.01" aria-label={`Rate ${k+1}`} value={i.rate??''} onChange={e=>set('items',draft.items.map((x,j)=>j===k?{...x,rate:e.target.value}:x))} style={{...input,width:115}}/></td><td style={{fontWeight:900,fontSize:12,whiteSpace:'nowrap',padding:8}}>{gwQMoney((Number(i.qty)||0)*(Number(i.rate)||0))}</td><td><button aria-label={`Delete row ${k+1}`} onClick={()=>set('items',draft.items.filter((_,j)=>j!==k))} style={btn('#fff0ef','#b42318')}>×</button></td></tr>)}</tbody></table></div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:10}}><button onClick={()=>set('items',[...(draft.items||[]),{name:'',category:serviceCategory!=='all'?serviceCategory:'Planning, permits & management',qty:1,unit:'service',rate:''}])} style={btn('#eaf6f0','#075e46')}>+ Custom service</button><button onClick={()=>set('items',(draft.items||[]).filter(i=>Number(i.rate)>0&&String(i.name||'').trim()))} style={btn('#f4f4f5','#475569')}>Remove unpriced rows</button></div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginTop:15}}>{field('Discount (₹)','discount','number',{min:0,step:'0.01'})}{field('Applicable tax %','tax_rate','number',{min:0,max:100,step:'0.01'})}{field('Proposed advance %','advance_pct','number',{min:0,max:100,step:'0.01'})}</div>
         <div style={{marginTop:15,background:'#ecf8f1',borderRadius:13,padding:16,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:12}}>{[['Subtotal',current.subtotal],['Tax',current.tax],['Grand total',current.total],['Advance',current.advance],['Balance',current.balance]].map(([label,value])=><div key={label}><div style={{color:'#557264',fontSize:11}}>{label}</div><div style={{fontSize:16,fontWeight:900,color:label==='Grand total'?'#075e46':'#28483a'}}>{gwQMoney(value)}</div></div>)}</div>
         <div style={{display:'flex',justifyContent:'space-between',marginTop:18,gap:8}}><button onClick={()=>goTo('client')} style={btn('#f1f6f3','#34564a')}>← Back</button><button onClick={()=>goTo('terms')} style={btn('#087963','#fff')}>Next: Terms & review →</button></div>
@@ -21838,15 +22013,16 @@ function GWQuoteManager({meId}) {
     </section>}
     <section style={panel}>
       <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:14,alignItems:'center'}}><div><h2 style={{margin:'0 0 4px',fontSize:18}}>Document register</h2><div style={{fontSize:12,color:'#60786b'}}>All phone, walk-in and online quotations in one searchable list</div></div><div style={{fontSize:12,color:'#718278'}}>{display.length} records</div></div>
-      <div style={{display:'grid',gridTemplateColumns:'minmax(180px,1fr) repeat(2,minmax(130px,170px))',gap:8,marginBottom:16}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:8,marginBottom:16}}>
         <input aria-label="Search documents" placeholder="Search name, mobile, event or document no." style={input} value={search} onChange={e=>setSearch(e.target.value)}/>
+        <select aria-label="Event type filter" style={input} value={eventFilter} onChange={e=>setEventFilter(e.target.value)}><option value="all">All event types</option>{gwQEventGroups.map(group=><optgroup key={group.label} label={group.label}>{group.types.map(([id,label])=><option key={id} value={id}>{label}</option>)}</optgroup>)}</select>
         <select aria-label="Document category" style={input} value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All documents</option><option value="quote">Quotations</option><option value="proforma">Proforma invoices</option></select>
         <select aria-label="Document status" style={input} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">All statuses</option><option value="draft">Draft</option><option value="sent">Sent / pending</option><option value="accepted">Accepted</option><option value="cancelled">Cancelled</option></select>
       </div>
       {loading?<p>Loading documents…</p>:!display.length?<div style={{padding:'34px 16px',textAlign:'center',color:'#688075',background:'#f5f8f6',borderRadius:12}}>No matching documents. Create a quotation manually to begin.</div>:display.map(d=>{
         const price=gwQCalc(d),isFollowup=d.status==='sent'&&d.follow_up_on&&d.follow_up_on<=today;
         return <article key={d.id} style={{border:'1px solid #e0eae4',borderRadius:12,padding:14,marginBottom:11,background:'#fff'}}>
-          <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-start'}}><div style={{flex:1,minWidth:210}}><div style={{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}><strong style={{color:'#0b6550',fontSize:14}}>{gwQDocNo(d)}</strong><span style={{background:d.doc_type==='proforma'?'#efe8ff':'#e8f5ef',color:d.doc_type==='proforma'?'#6d28d9':'#166344',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:900}}>{d.doc_type==='proforma'?'PROFORMA':'QUOTATION'}</span><span style={{background:'#f2f4f5',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:800}}>{statusLabel(d)}</span>{isFollowup&&<span style={{color:'#b45309',fontSize:10,fontWeight:900}}>⏰ Follow up due</span>}</div><div style={{fontWeight:850,fontSize:16,marginTop:6}}>{d.client_name}{d.client_company?' · '+d.client_company:''}</div><div style={{fontSize:12,color:'#63766a',marginTop:5}}>{d.title} · {d.event_date||'Date TBD'} · {d.event_city||'Venue TBD'}</div><div style={{fontSize:11,color:'#718279',marginTop:5}}>{gwQChannels.find(x=>x[0]===d.source_channel)?.[1]||'Manual'}{d.client_phone?' · '+d.client_phone:''}{d.follow_up_on?' · Follow-up '+d.follow_up_on:''}</div></div><div style={{fontSize:20,fontWeight:900,color:'#0a654f',whiteSpace:'nowrap'}}>{gwQMoney(price.total)}</div></div>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-start'}}><div style={{flex:1,minWidth:210}}><div style={{display:'flex',gap:7,flexWrap:'wrap',alignItems:'center'}}><strong style={{color:'#0b6550',fontSize:14}}>{gwQDocNo(d)}</strong><span style={{background:d.doc_type==='proforma'?'#efe8ff':'#e8f5ef',color:d.doc_type==='proforma'?'#6d28d9':'#166344',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:900}}>{d.doc_type==='proforma'?'PROFORMA':'QUOTATION'}</span><span style={{background:'#f2f4f5',borderRadius:6,padding:'3px 7px',fontSize:10,fontWeight:800}}>{statusLabel(d)}</span>{isFollowup&&<span style={{color:'#b45309',fontSize:10,fontWeight:900}}>⏰ Follow up due</span>}</div><div style={{fontWeight:850,fontSize:16,marginTop:6}}>{d.client_name}{d.client_company?' · '+d.client_company:''}</div><div style={{fontSize:12,color:'#63766a',marginTop:5}}>{gwQTypeName(d.event_type)} · {d.title} · {d.event_date||'Date TBD'} · {d.venue_type||d.event_city||'Venue TBD'}</div><div style={{fontSize:11,color:'#718279',marginTop:5}}>{gwQChannels.find(x=>x[0]===d.source_channel)?.[1]||'Manual'}{d.client_phone?' · '+d.client_phone:''}{d.follow_up_on?' · Follow-up '+d.follow_up_on:''}</div></div><div style={{fontSize:20,fontWeight:900,color:'#0a654f',whiteSpace:'nowrap'}}>{gwQMoney(price.total)}</div></div>
           <div style={{display:'flex',flexWrap:'wrap',gap:7,marginTop:12}}>
             <button onClick={()=>preview(d)} disabled={price.total<=0} title={price.total<=0?'Add prices before preparing customer PDF':''} style={btn('#e9f7ef','#075e46')}>📄 Print / Save PDF</button>
             <button onClick={()=>wa(d)} disabled={!d.client_phone||price.total<=0} style={btn('#dcfce7','#166534')}>WhatsApp</button>
