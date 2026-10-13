@@ -41,7 +41,54 @@ async function isFlagged(sb, token, memberId, p) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  // Secure read-only history for Glasswings admins. Do NOT expose the service role key
+  // in the browser or weaken gw_profile_reminder_log's RLS protections.
+  if (req.method === 'GET') {
+    if (!SB_URL || !SB_KEY) return res.status(503).json({ error: 'Reminder history is not configured.' });
+    const authHeader = String(req.headers.authorization || '');
+    const token = /^Bearer\s+(.+)$/i.exec(authHeader)?.[1]?.trim() || '';
+    if (!token) return res.status(401).json({ error: 'Please sign in to view reminder history.' });
+    try {
+      const sb = createClient(SB_URL, SB_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+      const { data: auth, error: authErr } = await sb.auth.getUser(token);
+      if (authErr || !auth?.user?.id) return res.status(401).json({ error: 'Please sign in again.' });
+      const { data: admin, error: adminErr } = await sb.from('profiles').select('*').eq('id', auth.user.id).single();
+      if (adminErr || !isAdmin(admin)) return res.status(403).json({ error: 'Only Glasswings admins can view profile-reminder history.' });
+      const { data: logs, error: logErr } = await sb.from('gw_profile_reminder_log')
+        .select('id,member_id,campaign,reason,status,error_text,created_at,submitted_at')
+        .order('created_at', { ascending: false }).limit(200);
+      if (logErr) {
+        console.error('GW reminder history query:', logErr.code, logErr.message);
+        return res.status(503).json({ error: 'Could not load reminder history. Check the gw_profile_reminder_log table.' });
+      }
+      const memberIds = [...new Set((logs || []).map(x => x.member_id).filter(Boolean))];
+      const names = new Map();
+      // Small batches avoid oversized PostgREST URLs for active communities.
+      for (let i = 0; i < memberIds.length; i += 50) {
+        const batch = memberIds.slice(i, i + 50);
+        const { data: members, error: membersErr } = await sb.from('profiles')
+          .select('*').in('id', batch);
+        if (membersErr) console.error('GW reminder history name lookup:', membersErr.code, membersErr.message);
+        else (members || []).forEach(m => names.set(String(m.id), clean(m.full_name || m.name || m.display_name || '')));
+      }
+      // Only send the minimum fields required for the admin history UI.
+      return res.status(200).json({ ok: true, logs: (logs || []).map(item => ({
+        id: item.id,
+        member_id: item.member_id,
+        member_name: names.get(String(item.member_id)) || '',
+        campaign: item.campaign,
+        reason: item.reason,
+        status: item.status,
+        error_text: item.error_text,
+        created_at: item.created_at,
+        submitted_at: item.submitted_at,
+      })) });
+    } catch (e) {
+      console.error('GW reminder history:', e?.message || String(e));
+      return res.status(500).json({ error: 'Could not load reminder history. Check Vercel logs.' });
+    }
+  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'GET or POST only' });
   if (!SB_URL || !SB_KEY || !API_KEY || !CAMPAIGN) return res.status(503).json({ error: 'Profile reminder campaign is not configured. Set GW_PROFILE_UPDATE_CAMPAIGN and activate the AiSensy campaign.' });
   const body = getBody(req);
   const token = String(body.access_token || '');
