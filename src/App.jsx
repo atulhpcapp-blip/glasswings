@@ -6016,6 +6016,86 @@ function CommunityLiveRoom({ user, profile, onUpgrade, onlineMembers = [], onNud
   </div>;
 }
 
+// Meet Me social proof: first name + city from already-visible discoverable profiles.
+// Never invent a join, expose a hidden/flagged user or claim an older join happened today.
+function RecentMeetJoinToasts({ members = [], meId, wide, enabled = true }) {
+  const [active, setActive] = useState(null);
+  const [visible, setVisible] = useState(false);
+  const seenRef = useRef(null);
+  const shownRef = useRef(0);
+  const localDay = date => new Date(date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: 'short', day: 'numeric' });
+  const recent = useMemo(() => {
+    const now = Date.now();
+    const today = localDay(now);
+    return (Array.isArray(members) ? members : [])
+      .filter(p => {
+        if (!p?.id || String(p.id) === String(meId) || p.review_flag) return false;
+        if (!p.name || /^(member|someone|guest)$/i.test(String(p.name).trim())) return false;
+        const joinedAt = Date.parse(p.joined || '');
+        return Number.isFinite(joinedAt) && joinedAt <= now && joinedAt >= now - 7 * 86400000;
+      })
+      .map(p => ({
+        id: String(p.id),
+        name: String(p.name).trim().split(/\s+/)[0].slice(0, 28),
+        city: String(p.city || '').trim().slice(0, 40),
+        joined: p.joined,
+        today: localDay(p.joined) === today
+      }))
+      .sort((a,b) => Number(b.today)-Number(a.today) || Date.parse(b.joined)-Date.parse(a.joined))
+      .slice(0, 12);
+  }, [members, meId]);
+  const recentIds = recent.map(p=>p.id).join('|');
+
+  useEffect(() => {
+    if (seenRef.current === null) {
+      let fromSession = [];
+      try { fromSession = JSON.parse(sessionStorage.getItem('gw_meet_join_toasts_seen') || '[]'); } catch { /* privacy modes */ }
+      seenRef.current = new Set(Array.isArray(fromSession) ? fromSession : []);
+    }
+    if (!enabled || shownRef.current >= 3) { setVisible(false); return; }
+    const queue = recent.filter(p => !seenRef.current.has(p.id)).slice(0, 3 - shownRef.current);
+    if (!queue.length) return;
+    let alive = true, showTimer = null, hideTimer = null, i = 0;
+    const showNext = () => {
+      if (!alive || i >= queue.length || shownRef.current >= 3) return;
+      const person = queue[i++];
+      seenRef.current.add(person.id);
+      shownRef.current += 1;
+      try { sessionStorage.setItem('gw_meet_join_toasts_seen', JSON.stringify([...seenRef.current].slice(-80))); } catch { /* private browsing */ }
+      setActive(person);
+      setVisible(true);
+      hideTimer = setTimeout(() => { if (alive) setVisible(false); }, 5200);
+      if (i < queue.length) showTimer = setTimeout(showNext, 19000);
+    };
+    showTimer = setTimeout(showNext, 4000);
+    return () => {
+      alive = false;
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [recentIds, enabled]);
+
+  if (!active || !enabled) return null;
+  return (
+    <div aria-live="polite" aria-atomic="true" style={{
+      position:'fixed', left:wide?22:12, bottom:wide?22:92, zIndex:90,
+      width:wide?330:'calc(100% - 24px)', maxWidth:360, pointerEvents:'none',
+      opacity:visible?1:0, transform:visible?'translateY(0)':'translateY(14px)',
+      transition:'opacity .3s ease, transform .3s ease'
+    }}>
+      <div style={{display:'flex',alignItems:'center',gap:11,padding:'12px 14px',borderRadius:16,color:'#fff',background:'linear-gradient(135deg,rgba(74,28,128,.97),rgba(209,48,130,.97))',border:'1px solid rgba(255,255,255,.17)',boxShadow:'0 16px 42px rgba(0,0,0,.24)',backdropFilter:'blur(12px)'}}>
+        <div style={{width:38,height:38,borderRadius:12,background:'rgba(255,255,255,.16)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:19}}>💞</div>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:10.5,fontWeight:900,color:'#FEE2F2',letterSpacing:.7,textTransform:'uppercase',marginBottom:3}}>New on Meet Me</div>
+          <div style={{fontSize:13.5,lineHeight:1.42}}>
+            <b>{active.name}</b>{active.city ? <> from <b>{active.city}</b></> : null} {active.today?'joined today 🎉':'joined this week 🎉'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = false, onOpenDM, isAdmin = false, isStaff = false, isSuper = false, isMod = false, onUpgrade }) {
   const [mtab, setMtab] = useState("discover");
   const [newMemberRange, setNewMemberRange] = useState("30");
@@ -6480,6 +6560,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   );
   return (
     <div style={asTab ? { paddingBottom: 90 } : { position: "fixed", inset: 0, zIndex: 160, background: W.bg, overflowY: "auto" }}>
+      {/* Match the existing event purchase social-proof popup; only genuine visible Meet Me joins. */}
+      <RecentMeetJoinToasts members={rows || []} meId={meId} wide={wide} enabled={mtab === 'discover' && !peek && !matchCel && !noteFor} />
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "linear-gradient(120deg,#008069 0%,#6D28D9 55%,#DB2777 100%)", color: "#fff", padding: "13px 14px 14px", display: "flex", flexDirection: "column", gap: 11, boxShadow: "0 4px 16px rgba(109,40,217,.22)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {!asTab && <ArrowLeft size={21} onClick={onClose} style={{ cursor: "pointer" }} />}
@@ -18130,12 +18212,15 @@ function GwTabGuide({ id, style }) {
 
 
 const GW_ADMIN_GROUPS = [
+  // Keep daily-use actions at the top of the far-left admin sidebar (and mobile drawer).
+  // Existing role-based `tabs` permissions still determine which links are visible.
+  ['⭐ Quick Access', ['wacampaigns','flagged','pending']],
   ['Start here', ['guide']],
   ['Overview', ['dash','analytics']],
-  ['People', ['pending','flagged','members','orgmembers','segments','manage','verify','reports','connect']],
+  ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
   ['Events', ['review','events','homeads','private','stalls','sponsors','leads','door','directory','rooms']],
   ['Money', ['money','accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
-  ['Communication & settings', ['wacampaigns','broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
+  ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
 const GW_ADMIN_ICONS = {pending:'⏳',flagged:'🚩',wacampaigns:'📱',guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',review:'🛂',homeads:'📢',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
 // GLASSWINGS ADMIN: Flagged member follow-up and segment-based AiSensy campaigns.
@@ -18510,7 +18595,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
       .gw-an-item>span:first-child{width:24px;flex-shrink:0;text-align:center;font-size:18px}
       .gw-an-item.gw-an-guide{background:linear-gradient(90deg,#EDE9FE,#E0F2FE);color:#4C1D95;font-weight:850;border-color:#C4B5FD}.gw-an-item:hover{background:#f0f6f3}.gw-an-item.active{background:#dff3eb;color:#005b48;border-color:#b4ddce;box-shadow:inset 3px 0 #008069;font-weight:850}
       .gw-admin-layout :focus-visible,.gw-admin-drawer :focus-visible{outline:3px solid #e9a132;outline-offset:2px}
-      .gw-admin-sidebar h3,.gw-admin-drawer h3{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#778c93;margin:22px 12px 9px}
+      .gw-admin-sidebar h3,.gw-admin-drawer h3{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#778c93;margin:22px 12px 9px}.gw-admin-sidebar nav section:first-child,.gw-admin-drawer nav section:first-child{background:#F1FAF6;border:1px solid #CDE7DA;border-radius:13px;padding:1px 4px 7px;margin-bottom:8px}.gw-admin-sidebar nav section:first-child h3,.gw-admin-drawer nav section:first-child h3{margin-top:10px;color:#08755C}.gw-admin-sidebar nav section:first-child .gw-an-item,.gw-admin-drawer nav section:first-child .gw-an-item{font-weight:850;color:#075D50}
       .gw-admin-content{min-width:0;overflow-wrap:anywhere;padding-bottom:calc(110px + env(safe-area-inset-bottom))}.gw-admin-mobilebar{display:none}
       .gw-admin-collapsed{grid-template-columns:76px minmax(0,1fr)}.gw-admin-collapsed .gw-admin-sidebar .gw-an-label,.gw-admin-collapsed .gw-admin-sidebar header strong{display:none}.gw-admin-collapsed .gw-admin-sidebar h3{font-size:0;border-top:1px solid #e3ebeb;margin:16px 8px 8px}
       .gw-admin-drawer{position:fixed;inset:0 auto 0 0;margin:0;width:min(360px,90vw);height:100dvh;max-height:100dvh;max-width:90vw;border:0;padding:18px 14px calc(24px + env(safe-area-inset-bottom));background:#fff;color:#172b32;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box}
@@ -18519,7 +18604,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
     `}</style>
     <aside className="gw-admin-sidebar"><header><strong>ADMIN WORKSPACE</strong><button type="button" aria-label={collapsed?'Expand admin sidebar':'Collapse admin sidebar'} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>{collapsed?'»':'«'}</button></header><nav aria-label="Admin navigation">{groups()}</nav></aside>
     <div className="gw-admin-content"><div className="gw-admin-mobilebar"><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>dialog.current?.showModal()}>☰ Admin Menu</button><strong style={{flex:1}}>{label(selected)}</strong>{selected!=='guide'&&<button type="button" onClick={()=>choose('guide')} style={{background:'linear-gradient(120deg,#4C1D95,#8B5CF6)',color:'#fff'}}>📘 Guide</button>}</div>{children}</div>
-    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['guide','dash','pending','flagged','wacampaigns','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
+    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['wacampaigns','flagged','pending','dash','guide','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
   </div>;
 }
 
