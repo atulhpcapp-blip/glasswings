@@ -5,6 +5,7 @@
 // Env (server-only): GW_RAZORPAY_NOTIFY_WEBHOOK_SECRET, RAZORPAY_KEY_ID,
 // RAZORPAY_KEY_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
 import crypto from 'node:crypto';
+import { waitUntil } from '@vercel/functions';
 import { createClient } from '@supabase/supabase-js';
 
 const reply = (status, body) => Response.json(body, { status });
@@ -49,6 +50,36 @@ async function razorpayGet(path) {
   });
   if (!result.ok) throw Error(`Razorpay validation HTTP ${result.status}`);
   return result.json();
+}
+
+
+// Wake the existing authorised dispatcher after queuing a captured payment.
+// This is a background task. It must never hold up Razorpay's 200 acknowledgement.
+// If it fails, the existing five-minute cron remains the retry mechanism.
+async function wakeOwnerAlerts() {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    console.error('[GW-WA-INSTANT] CRON_SECRET missing; scheduled backup will process the alert');
+    return;
+  }
+  try {
+    // Fixed, trusted destination: never derive the bearer-token target from an HTTP Host header.
+    const response = await fetch('https://glass-wings.com/api/whatsapp/process-sales', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${secret}` },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!response.ok) {
+      console.error('[GW-WA-INSTANT] Dispatcher HTTP status', response.status);
+    } else {
+      console.info('[GW-WA-INSTANT] Dispatcher accepted wake-up');
+    }
+  } catch (error) {
+    // Avoid logging secrets or personally identifying payment data.
+    console.error('[GW-WA-INSTANT] Dispatcher unavailable; cron backup remains active',
+      error?.name === 'TimeoutError' ? 'timeout' : 'network failure');
+  }
 }
 
 async function handle(request) {
@@ -151,6 +182,10 @@ async function handle(request) {
     event_key:`razorpay:${paymentId}`,channel:'glasswings',payload,
   },{onConflict:'event_key,channel',ignoreDuplicates:true});
   if (error) throw Error(`WhatsApp queue failed (${error.code||'database'})`);
+  // Respond to Razorpay promptly. The async wake-up runs after the HTTP response.
+  // DB event_key + channel uniqueness and gw_wa_claim row locking guard against
+  // duplicate webhook/cron sends for the same claimed queue item.
+  waitUntil(wakeOwnerAlerts());
   return reply(200,{ok:true,queued_or_existing:true});
 }
 
