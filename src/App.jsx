@@ -3017,7 +3017,7 @@ function PublicEventPage({ e, types, addons, popular, events, wide, onBack, onBu
                 <div onClick={onViewPlans} style={{ background: "linear-gradient(95deg,#6D28D9,#EC4899)", borderRadius: 12, padding: "10px 13px", margin: "12px 0 2px", fontSize: 13, fontWeight: 800, color: "#fff", cursor: "pointer" }}>
                   {(Number(e.member_discount_pct) || 0) > 0
                     ? `💎 Premium members get ${e.member_discount_pct}% OFF this event — view plans →`
-                    : "💎 Go Premium — perks, all rooms & ticket discounts → "}
+                    : "💎 Go Premium — event offers, games & member benefits → "}
                 </div>
               )}
               <div style={{ fontWeight: 800, fontSize: 17, color: W.ink, padding: "12px 0 4px" }}>{gwIsGetaway(e) ? "🏝️ Book this trip" : hasTicket ? "Buy more tickets" : "Tickets"}</div>
@@ -3137,40 +3137,55 @@ function HeroSlider({ slides, wide, onSlide }) {
   );
 }
 // Shareable membership overview. Pricing and payment always happen after sign-in.
-const GW_SUBSCRIBE_LINK = "https://www.glass-wings.com/?subscribe=1";
-function GwPublicMembershipPreview({ onLogin, onSignup }) {
+const GW_SUBSCRIBE_LINK = "https://www.glass-wings.com/?membership=1";
+// Keep previously shared ?subscribe=1 links working, but share the new dedicated Premium page.
+function gwIsMembershipLink() {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    return q.get("membership") === "1" || q.get("subscribe") === "1";
+  } catch { return false; }
+}
+function gwPremiumTagline(tagline) {
+  const txt = String(tagline || "").trim();
+  return /\brooms?\b/i.test(txt) ? "Event ticket benefits · travel & weekend getaways · premium games" : txt;
+}
+function GwPublicMembershipPreview({ onLogin, onSignup, femaleViewer = false }) {
   const perks = [
-    ["🎟️", "Member ticket discounts", "Up to 100% off on eligible Glasswings events, where a member discount is offered."],
-    ["💎", "Subscribers Zone", "Access to exclusive subscriber community spaces and eligible private-party invitations."],
-    ["🎮", "Premium games", "Enjoy subscriber access to premium games and matchmaking features."],
-    ["🎉", "One membership", "Choose an available plan, see current prices and pay securely through Razorpay after logging in."]
+    ["🎟️", "Exclusive event ticket benefits", "Member pricing and up to 100% off on eligible Glasswings tickets where a member offer is available."],
+    ["🎉", "Parties, travel & weekend getaways", "Explore house parties, pub parties, meetups, travel experiences and weekend getaways with member offers where available."],
+    ["💎", "Subscribers Zone & private invitations", "Active subscribers get automatic Subscribers Zone membership. Invitations appear under Private Parties whenever available."],
+    ["💘", "Games and meaningful connections", "Premium access to Vibe Checks, Random Match and Blind Banter, according to the membership benefits offered."],
   ];
-  return <div style={{ minHeight: "100dvh", background: "#F8F6FF", color: W.ink, fontFamily: "system-ui,sans-serif" }}>
-    <header style={{ background: "#0C3936", padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-      <a href="/" aria-label="Glasswings home"><img src="/logo-white.png" alt="Glasswings" style={{ height: 30, maxWidth: 145, objectFit: "contain" }} /></a>
-      <button type="button" onClick={onLogin} style={{ border: "1px solid #FFFFFF99", background: "transparent", borderRadius: 10, color: "#fff", padding: "9px 14px", fontWeight: 700, cursor: "pointer" }}>Log in</button>
+  return <div style={{ minHeight: "100dvh", background: "linear-gradient(160deg,#F6F3FF 0%,#FFFFFF 54%,#EFFBF6 100%)", color: W.ink, fontFamily: "system-ui,sans-serif" }}>
+    <header style={{ background: "#082D29", padding: "14px clamp(16px,5vw,48px)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <a href="/" aria-label="Glasswings home"><img src="/logo-white.png" alt="Glasswings" style={{ height: 32, maxWidth: 158, objectFit: "contain" }} /></a>
+      <a href="/" style={{ color: "#E7FFF4", fontSize: 13, fontWeight: 750, textDecoration: "none" }}>← Back to Glasswings</a>
     </header>
-    <main style={{ maxWidth: 620, margin: "auto", padding: "30px 16px 60px" }}>
-      <div style={{ background: "linear-gradient(120deg,#6528B5,#CC3D96)", borderRadius: 22, padding: "28px 20px", color: "#fff", boxShadow: "0 12px 28px #6D28D929" }}>
-        <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1 }}>GLASSWINGS MEMBERSHIP</div>
-        <h1 style={{ fontSize: 29, margin: "13px 0 8px", lineHeight: 1.2 }}>💎 More experiences. More benefits.</h1>
-        <p style={{ fontSize: 15, margin: 0, opacity: .95, lineHeight: 1.55 }}>Explore exclusive member benefits, events and premium community experiences.</p>
-      </div>
-      <h2 style={{ fontSize: 19, margin: "26px 4px 14px" }}>What members enjoy</h2>
-      <div style={{ display: "grid", gap: 12 }}>
-        {perks.map(([emoji,title,detail]) => <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 13, border: "1px solid #ECE6F5", padding: 15, borderRadius: 16, background: "#fff" }}>
-          <span style={{ fontSize: 25 }} aria-hidden="true">{emoji}</span>
-          <div><div style={{ fontSize: 15, fontWeight: 800 }}>{title}</div><p style={{ fontSize: 13, margin: "5px 0 0", lineHeight: 1.5, color: W.soft }}>{detail}</p></div>
+    <main style={{ maxWidth: 950, margin: "0 auto", padding: "clamp(22px,4vw,46px) 18px 70px" }}>
+      <section style={{ background: "linear-gradient(120deg,#4C1D95,#8A2BE2 55%,#D9469D)", borderRadius: 26, padding: "clamp(24px,5vw,48px)", color: "#fff", boxShadow: "0 15px 38px #4C1D952B" }}>
+        <div style={{ letterSpacing: 2, fontSize: 12, fontWeight: 900 }}>THE GLASSWINGS EXPERIENCE</div>
+        <h1 style={{ fontSize: "clamp(29px,5vw,45px)", margin: "12px 0 12px", lineHeight: 1.1 }}>💎 Glasswings Premium</h1>
+        <p style={{ maxWidth: 650, fontSize: "clamp(15px,2vw,18px)", opacity: .96, lineHeight: 1.65, margin: 0 }}>More experiences. More connections. Member offers for parties, meetups, travel and weekend getaways.</p>
+        <div style={{ marginTop: 18, fontSize: 12, color: "#FAF1FF", fontWeight: 650 }}>Discover benefits, choose your plan and join the experience — all in one place.</div>
+      </section>
+      <h2 style={{ fontSize: 23, margin: "30px 2px 16px" }}>Why become a Premium member?</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,310px),1fr))", gap: 14 }}>
+        {perks.map(([emoji,title,detail]) => <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 14, border: "1px solid #EAE4F6", padding: 19, borderRadius: 18, background: "#fff", boxShadow: "0 5px 18px #3015500C" }}>
+          <span style={{ fontSize: 29 }} aria-hidden="true">{emoji}</span>
+          <div><div style={{ fontSize: 16, fontWeight: 850 }}>{title}</div><p style={{ fontSize: 13.5, margin: "6px 0 0", lineHeight: 1.6, color: W.soft }}>{detail}</p></div>
         </div>)}
       </div>
-      <div style={{ marginTop: 20, background: "#E9F8F2", borderRadius: 13, padding: "13px 15px", fontSize: 13, color: "#175746", lineHeight: 1.55 }}>💃 Women enjoy benefits that are designated free under Glasswings membership rules. Paid subscription offers are shown to eligible male members and admins after sign-in.</div>
-      <button type="button" onClick={onSignup} style={{ marginTop: 18, width: "100%", background: "#6D28D9", color: "#fff", padding: 15, border: "none", borderRadius: 14, fontSize: 16, fontWeight: 850, cursor: "pointer" }}>Join Glasswings & view plans →</button>
-      <button type="button" onClick={onLogin} style={{ display: "block", margin: "14px auto 0", background: "none", border: 0, color: "#6D28D9", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>Already a member? Log in</button>
-      <p style={{ fontSize: 12, color: W.soft, marginTop: 18, textAlign: "center" }}>Plan prices, discounts and availability are shown in your account and may vary by event.</p>
+      <div style={{ marginTop: 23, background: "#E9F8F2", border: "1px solid #CDEDDC", borderRadius: 15, padding: "14px 18px", fontSize: 13, color: "#175746", lineHeight: 1.65 }}>💃 Women's complimentary access remains under the existing Glasswings membership rules; the paid Subscribe tab is intended for men and admins.</div>
+      <section style={{ maxWidth: 580, margin: "28px auto 0", textAlign: "center" }}>
+        <h2 style={{ fontSize: 22, marginBottom: 8 }}>{femaleViewer ? "Explore Glasswings" : "Ready for more experiences?"}</h2>
+        <p style={{ fontSize: 13.5, lineHeight: 1.6, color: W.soft, marginTop: 0 }}>{femaleViewer ? "Browse the community and events using your existing account." : "See available Premium plans and current pricing securely after logging in or joining."}</p>
+        <button type="button" onClick={femaleViewer ? onLogin : onSignup} style={{ width: "100%", background: "#6D28D9", color: "#fff", padding: 16, border: "none", borderRadius: 14, fontSize: 16, fontWeight: 850, cursor: "pointer" }}>{femaleViewer ? "Explore events →" : "Join Glasswings & see plans →"}</button>
+        {!femaleViewer && <button type="button" onClick={onLogin} style={{ display: "block", margin: "13px auto 0", background: "none", border: 0, color: "#6D28D9", fontSize: 14, fontWeight: 850, cursor: "pointer" }}>Already a member? Log in</button>}
+      </section>
+      <p style={{ fontSize: 12, color: W.soft, margin: "27px auto 0", textAlign: "center", maxWidth: 700, lineHeight: 1.5 }}>Up to 100% savings only applies to qualifying offers; not every event is free. Prices, games, invitations and benefits depend on the current plan and event.</p>
     </main>
   </div>;
 }
-
 function PublicLanding() {
   const wide = useWide(820);
   const [authMode, setAuthMode] = useState(null);
@@ -3233,7 +3248,7 @@ function PublicLanding() {
   const auto2 = autoSlides.filter(a2 => !seen.has(a2.id));
   const heroSlides = [...promoSlides, ...cust2, ...auto2];
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
-  if (new URLSearchParams(window.location.search).get("subscribe") === "1") return <GwPublicMembershipPreview onLogin={() => setAuthMode("login")} onSignup={() => setAuthMode("signup")} />;
+  if (gwIsMembershipLink()) return <GwPublicMembershipPreview onLogin={() => setAuthMode("login")} onSignup={() => setAuthMode("signup")} />;
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
   if (detailEvent) {
     const popSetD = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
@@ -3998,7 +4013,7 @@ function Main({ user }) {
   const subscriptionLinkOpened = useRef(false);
   useEffect(() => {
     if (!profile || subscriptionLinkOpened.current) return;
-    if (new URLSearchParams(window.location.search).get("subscribe") !== "1") return;
+    if (!gwIsMembershipLink()) return;
     subscriptionLinkOpened.current = true;
     if (showSubscribe) setSubPage({ highlight: null });
   }, [profile, showSubscribe]);
@@ -4112,7 +4127,7 @@ function Main({ user }) {
           if (!v.ok || !vd.ok) return setNotice(vd.error || "We couldn't confirm the payment. If money was deducted, contact us and we'll sort it.");
           await loadPlans(); await load();
           setSubPage(null);
-          setNotice(`🎉 Welcome to ${plan.name}! All your rooms are open.`);
+          setNotice(`🎉 Welcome to ${plan.name}! Your Glasswings membership is active.`);
         } catch { setNotice("Payment confirmation failed. If money was deducted, contact us and we'll sort it."); }
       },
     });
@@ -4982,6 +4997,21 @@ function Main({ user }) {
     </>
   );
 
+  // The membership page is an entire app view, not a modal over the current tab.
+  if (showSubscribe && subPage) {
+    return <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => {
+      setSubPage(null);
+      if (gwIsMembershipLink()) window.location.assign("/");
+    }} />;
+  }
+  // Female members never receive a paid Subscribe tab or checkout through the share link.
+  if (gwIsMembershipLink() && profile && !showSubscribe) {
+    return <GwPublicMembershipPreview femaleViewer onLogin={() => window.location.assign("/")} onSignup={() => window.location.assign("/")} />;
+  }
+  if (gwIsMembershipLink() && !profile) {
+    return <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", fontWeight: 750, background: "#F6F3FF", color: "#4C1D95" }}>Preparing Glasswings Premium…</div>;
+  }
+
   if (wide) {
     return (
       <>
@@ -5029,7 +5059,7 @@ function Main({ user }) {
           );
         })()}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
-          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} showSubscribe={showSubscribe} onSubscribe={() => setSubPage({ highlight: null })} />
+          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} showSubscribe={showSubscribe} onSubscribe={() => { window.location.assign(GW_SUBSCRIBE_LINK); }} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
             {twoPane ? (
               <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
@@ -5039,7 +5069,7 @@ function Main({ user }) {
           </div>
         </div>
         <GwDialogHost />
-        {showSubscribe && subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
+        
       </>
     );
   }
@@ -5098,9 +5128,9 @@ function Main({ user }) {
         {screen}
       </div>
       {tab === "meet" && <ScrollTopFab />}
-      <Nav tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} showSubscribe={showSubscribe} onSubscribe={() => setSubPage({ highlight: null })} />
+      <Nav tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} showSubscribe={showSubscribe} onSubscribe={() => { window.location.assign(GW_SUBSCRIBE_LINK); }} />
       <GwDialogHost />
-      {showSubscribe && subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
+      
     </>
   );
 }
@@ -24730,19 +24760,26 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
     setCouponOk(s => ({ ...s, [planId]: { percent: row.percent, code } }));
   };
   return (
-    <div style={{ position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, height: "100%", zIndex: 220, background: "#0d1f2a", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
-      <div style={{ background: "linear-gradient(135deg,#6D28D9,#EC4899)", color: "#fff", padding: "16px 16px 24px" }}>
+    <div style={{ minHeight: "100dvh", width: "100%", background: "linear-gradient(155deg,#170B32,#281049 55%,#091C22)", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div style={{ background: "linear-gradient(135deg,#4C1D95,#9D2CBB,#EC4899)", color: "#fff", padding: "clamp(22px,4vw,38px) max(18px,calc((100% - 1040px)/2))" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <ArrowLeft size={22} onClick={onClose} style={{ cursor: "pointer" }} />
-          <div style={{ fontWeight: 800, fontSize: 18 }}>💎 Glasswings Membership</div>
+          <button type="button" onClick={onClose} style={{ display: "flex", alignItems: "center", gap: 5, color: "#fff", background: "transparent", border: "1px solid #FFFFFF66", borderRadius: 10, padding: "9px 11px", fontWeight: 750, cursor: "pointer" }}><ArrowLeft size={17} /> Back</button>
+          <div style={{ fontWeight: 900, fontSize: 21 }}>💎 Glasswings Premium</div>
         </div>
-        <div style={{ fontSize: 13, opacity: .92, marginTop: 8, lineHeight: 1.45 }}>One membership. Subscribers Zone, games, and member ticket discounts. 🎉</div>
+        <div style={{ fontSize: 15, opacity: .95, marginTop: 10, lineHeight: 1.6, maxWidth: 740 }}>Explore exclusive benefits, events, travel & weekend getaways, and premium games. Choose your plan below.</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
           <button type="button" onClick={() => { const txt = GW_SUBSCRIBE_LINK; if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).then(() => window.alert("Subscription link copied ✅")).catch(() => window.prompt("Copy membership link:", txt)); else window.prompt("Copy membership link:", txt); }} style={{ cursor: "pointer", border: "1px solid #FFFFFF77", borderRadius: 10, background: "#FFFFFF22", color: "#fff", fontWeight: 800, padding: "9px 11px", fontSize: 12 }}>🔗 Copy subscription link</button>
-          <a href={"https://wa.me/?text=" + encodeURIComponent("💎 Glasswings membership: see the benefits and subscribe here: " + GW_SUBSCRIBE_LINK)} target="_blank" rel="noopener noreferrer" style={{ border: "1px solid #FFFFFF77", borderRadius: 10, background: "#FFFFFF22", color: "#fff", fontWeight: 800, padding: "9px 11px", fontSize: 12, textDecoration: "none" }}>📲 Share on WhatsApp</a>
+          <a href={"https://wa.me/?text=" + encodeURIComponent("💎 Glasswings Premium! Explore member event offers, parties, travel & weekend getaways, premium games and Subscribers Zone benefits: " + GW_SUBSCRIBE_LINK)} target="_blank" rel="noopener noreferrer" style={{ border: "1px solid #FFFFFF77", borderRadius: 10, background: "#FFFFFF22", color: "#fff", fontWeight: 800, padding: "9px 11px", fontSize: 12, textDecoration: "none" }}>📲 Share on WhatsApp</a>
         </div>
       </div>
-      <div style={{ padding: 14 }}>
+      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "24px 16px 45px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 9, marginBottom: 22 }}>
+          {[["🎟️", "Eligible event discounts"], ["🎉", "Parties, travel & weekend getaways"], ["💎", "Subscribers Zone"], ["💘", "Premium games & connections"]].map(([emoji, label]) =>
+            <span key={label} style={{ background: "#FFFFFF1A", border: "1px solid #FFFFFF44", borderRadius: 100, padding: "9px 12px", fontWeight: 750, fontSize: 12.5, color: "#fff" }}>{emoji} {label}</span>
+          )}
+        </div>
+        <h2 style={{ color: "#fff", fontSize: 21, fontWeight: 900, margin: "0 0 16px" }}>Choose your Glasswings Premium plan</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,330px),1fr))", gap: 17, alignItems: "start" }}>
         {active.map(pl => {
           const mine = myPlans.find(m => m.plan_id === pl.id);
           const dl = mine?.expires_at ? Math.max(0, Math.ceil((new Date(mine.expires_at).getTime() - Date.now()) / 86400000)) : null;
@@ -24754,15 +24791,15 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
                 <span style={{ fontSize: 26 }}>{pl.emoji || "💎"}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 800, color: W.ink, fontSize: 17 }}>{pl.name}</div>
-                  {pl.tagline && <div style={{ fontSize: 12, color: W.soft }}>{pl.tagline}</div>}
+                  {pl.tagline && <div style={{ fontSize: 12, color: W.soft }}>{gwPremiumTagline(pl.tagline)}</div>}
                 </div>
                 {hot && <span style={{ background: "#FCE7F3", color: "#BE185D", fontSize: 10.5, fontWeight: 800, padding: "4px 9px", borderRadius: 9 }}>MEMBER BENEFITS</span>}
               </div>
               {mine && <div style={{ background: "#E7F6EF", color: "#0d6e58", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, fontWeight: 700, margin: "10px 0 2px" }}>✅ You're a member{mine.expires_at ? ` — ⌛ ${dl} days left (till ${new Date(mine.expires_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})` : ""}. Buying again extends your validity.</div>}
               <div style={{ margin: "12px 0 4px" }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>🎟️</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>Up to 100% OFF on event tickets<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Member pricing on parties, meetups & getaways</div></div></div>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>🎟️</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>Up to 100% OFF on event tickets<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Member offers on house parties, pub parties, meetups, travel & weekend getaways</div></div></div>
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>💎</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>Subscribers Zone<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Automatic membership while your subscription is active. Invitations appear in Private Parties when available.</div></div></div>
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>💘</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>All games, fully unlocked<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Unlimited Vibe Checks · 🎲 random match · 🎭 Blind Banter</div></div></div>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 7 }}><span style={{ fontSize: 15 }}>💘</span><div style={{ fontSize: 13, color: W.ink, fontWeight: 700 }}>Premium games & connections<div style={{ fontSize: 11, color: W.soft, fontWeight: 500 }}>Unlimited Vibe Checks · 🎲 Random Match · 🎭 Blind Banter (as available in your plan)</div></div></div>
               </div>
               {isWoman && pl.women_free ? (
                 <div style={{ background: "linear-gradient(95deg,#FCE7F3,#F3E8FF)", borderRadius: 12, padding: "12px 14px", fontSize: 13.5, fontWeight: 800, color: "#BE185D", textAlign: "center" }}>💃 Free for women — you already have it all. Enjoy!</div>
@@ -24807,7 +24844,9 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
             </div>
           );
         })}
-        <div style={{ textAlign: "center", color: "rgba(255,255,255,.55)", fontSize: 11, padding: "4px 0 24px" }}>Secure payments by Razorpay · prices set by Glasswings</div>
+        </div>
+        {!active.length && <div style={{ color: "#fff", fontSize: 14, padding: "20px 0" }}>Membership plans are being prepared. Please check back soon.</div>}
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,.72)", fontSize: 11.5, padding: "25px 0" }}>Secure payments by Razorpay · plan pricing and qualifying offers vary · up to 100% off only on eligible events</div>
       </div>
     </div>
   );
