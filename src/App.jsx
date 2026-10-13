@@ -18270,10 +18270,13 @@ function GwMemberWhatsAppCampaigns(){
   const [segments,setSegments]=useState([]),[sid,setSid]=useState('');
   const [presets,setPresets]=useState([]),[presetId,setPresetId]=useState('');
   const [addOpen,setAddOpen]=useState(false),[newLabel,setNewLabel]=useState(''),[newCampaign,setNewCampaign]=useState(''),[newMedia,setNewMedia]=useState(true),[newParamCount,setNewParamCount]=useState(3);
+  const [newParamLabels,setNewParamLabels]=useState([]),[editLabels,setEditLabels]=useState(false),[draftLabels,setDraftLabels]=useState([]);
+  const MAX_WA_POSTER_BYTES=5000000; // AiSensy/WhatsApp JPG and PNG maximum (decimal MB).
   const [paramValues,setParamValues]=useState([]),[poster,setPoster]=useState(null),[posterUrl,setPosterUrl]=useState(''),[posterName,setPosterName]=useState('');
   const [testPhone,setTestPhone]=useState(''),[preview,setPreview]=useState(null),[tested,setTested]=useState(false),[consent,setConsent]=useState(false);
   const [busy,setBusy]=useState(false),[err,setErr]=useState(''),[notice,setNotice]=useState('');
   const selected=segments.find(s=>s.id===sid), chosen=presets.find(p=>p.id===presetId);
+  const paramLabel=(p,i)=>String(p?.param_labels?.[i]||'').trim();
   const posterPreview=useMemo(()=>poster?URL.createObjectURL(poster):'', [poster]);
   useEffect(()=>()=>{if(posterPreview)URL.revokeObjectURL(posterPreview);},[posterPreview]);
   const clearTest=()=>{setTested(false);setNotice('');};
@@ -18302,7 +18305,11 @@ function GwMemberWhatsAppCampaigns(){
     };
     load();return()=>{current=false;};
   },[]);
-  useEffect(()=>{setParamValues(chosen?Array.from({length:Number(chosen.param_count||0)},()=> ''):[]);setPoster(null);setPosterUrl('');setPosterName('');clearTest();},[presetId]);
+  useEffect(()=>{
+    setParamValues(chosen?Array.from({length:Number(chosen.param_count||0)},()=> ''):[]);
+    setDraftLabels(chosen?Array.from({length:Number(chosen.param_count||0)},(_,i)=>paramLabel(chosen,i)):[]);
+    setEditLabels(false);setPoster(null);setPosterUrl('');setPosterName('');clearTest();
+  },[presetId]);
   useEffect(()=>{
     let active=true;setPreview(null);clearTest();
     if(sid) api('preview',{segment_id:sid}).then(j=>{if(active)setPreview(j);}).catch(e=>{if(active)setErr(e.message);});
@@ -18310,11 +18317,24 @@ function GwMemberWhatsAppCampaigns(){
   },[sid]);
   const savePreset=async()=>{
     if(!newLabel.trim()||!newCampaign.trim())return alert('Enter a friendly campaign name and its actual AiSensy API campaign name.');
+    const labels=Array.from({length:newParamCount},(_,i)=>String(newParamLabels[i]||'').trim());
+    if(labels.some(x=>!x))return alert('Please name each template field exactly as it appears in your approved AiSensy template.');
     setBusy(true);setErr('');
     try{
-      const j=await api('save_preset',{label:newLabel.trim(),campaign:newCampaign.trim(),uses_media:newMedia,param_count:Number(newParamCount)});
-      await loadPresets();setPresetId(j.preset.id);setAddOpen(false);setNewLabel('');setNewCampaign('');
+      const j=await api('save_preset',{label:newLabel.trim(),campaign:newCampaign.trim(),uses_media:newMedia,param_count:Number(newParamCount),param_labels:labels});
+      await loadPresets();setPresetId(j.preset.id);setAddOpen(false);setNewLabel('');setNewCampaign('');setNewParamLabels([]);
       setNotice('Saved! You can select this campaign next time without remembering its AiSensy name.');
+    }catch(e){setErr(e.message)}finally{setBusy(false)}
+  };
+  const saveFieldLabels=async()=>{
+    if(!chosen)return;
+    const labels=Array.from({length:chosen.param_count},(_,i)=>String(draftLabels[i]||'').trim());
+    if(labels.some(x=>!x))return alert('Enter a clear label for each approved template variable.');
+    setBusy(true);setErr('');
+    try{
+      await api('update_preset_labels',{preset_id:chosen.id,param_labels:labels});
+      await loadPresets();setEditLabels(false);
+      setNotice('✓ Field names saved to this campaign. They will show every time you use it.');
     }catch(e){setErr(e.message)}finally{setBusy(false)}
   };
   const deletePreset=async()=>{
@@ -18327,12 +18347,17 @@ function GwMemberWhatsAppCampaigns(){
     if(!chosen?.uses_media)return '';
     if(posterUrl)return posterUrl;
     if(!poster)throw Error('Select a new event poster (JPG or PNG) before testing.');
-    if(poster.size>2*1024*1024)throw Error('Poster must be under 2 MB. Compress it and try again.');
-    const encoded=await new Promise((resolve,reject)=>{
-      const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(Error('Could not read the poster.'));reader.readAsDataURL(poster);
-    });
-    const j=await api('upload_media',{mime:poster.type,base64:encoded.split(',')[1]});
-    setPosterUrl(j.url);setPosterName(j.filename);return j.url;
+    if(!['image/jpeg','image/png'].includes(poster.type))throw Error('Poster must be a JPG or PNG image.');
+    if(!poster.size||poster.size>MAX_WA_POSTER_BYTES)throw Error('Poster must be 5 MB or smaller (JPG/PNG).');
+    // Get an admin-only signed upload token, then send bytes DIRECTLY to Supabase.
+    // This works for 5 MB media despite the Vercel 4.5 MB request-body limit.
+    const ticket=await api('prepare_media_upload',{mime:poster.type,size:poster.size});
+    const store=supabase.storage.from('gw_wa_campaign_media');
+    const {error:uploadError}=await store.uploadToSignedUrl(ticket.path,ticket.token,poster,{contentType:poster.type,cacheControl:'3600'});
+    if(uploadError)throw Error('Poster upload failed: '+uploadError.message);
+    const {data}=store.getPublicUrl(ticket.path);
+    if(!data?.publicUrl)throw Error('Poster uploaded, but its public URL could not be generated.');
+    setPosterUrl(data.publicUrl);setPosterName(ticket.filename);return data.publicUrl;
   };
   const basePayload=async()=>{
     if(!chosen)throw Error('Choose a saved AiSensy campaign.');
@@ -18397,6 +18422,11 @@ function GwMemberWhatsAppCampaigns(){
         <label style={{fontSize:12}}>Exact Live AiSensy API campaign name (only once)<input style={{...gwField,marginTop:4}} value={newCampaign} placeholder="glasswings_event_promotions" onChange={e=>setNewCampaign(e.target.value)}/></label>
         <label style={{display:'flex',gap:8,alignItems:'center',fontSize:12}}><input type="checkbox" checked={newMedia} onChange={e=>setNewMedia(e.target.checked)}/>This template has a changeable image header (event poster)</label>
         <label style={{fontSize:12}}>Number of approved template text variables<input type="number" min="0" max="15" style={{...gwField,marginTop:4}} value={newParamCount} onChange={e=>setNewParamCount(Math.max(0,Math.min(15,Number(e.target.value)||0)))}/></label>
+        {Array.from({length:newParamCount},(_,i)=><label key={i} style={{fontSize:12,fontWeight:750}}>What does {'{{'+(i+1)+'}}'} mean in this template?
+          <input style={{...gwField,marginTop:4}} maxLength={65} value={newParamLabels[i]||''} placeholder={i===0?'Example: Member first name':'Example: Event name, date, location, or offer'}
+            onChange={e=>setNewParamLabels(old=>Array.from({length:newParamCount},(_,j)=>i===j?e.target.value:(old[j]||'')))}/>
+        </label>)}
+        <div style={{fontSize:11.5,color:'#52635E'}}>Name each field one time using your approved AiSensy template. These labels are for Glasswings admins only and do not alter the approved WhatsApp message.</div>
         <button disabled={busy} onClick={savePreset} style={{...btn('#08765b','#fff'),justifyContent:'center'}}>Save campaign shortcut</button>
         <div style={{fontSize:11.5,color:'#5B6F68'}}>An existing Meta-approved Marketing Image template must be linked to a Live API campaign in AiSensy. Only the image and approved variable fields can change.</div>
       </div>}
@@ -18405,16 +18435,39 @@ function GwMemberWhatsAppCampaigns(){
           <span>✓ <b>{chosen.label}</b> · {chosen.uses_media?'Image template':'Text template'} · {chosen.param_count} text values</span>
           <button type="button" onClick={deletePreset} disabled={busy} style={btn('#fff','#A52F37')}>Remove shortcut</button>
         </div>
-        {chosen.uses_media&&<label style={{fontSize:13,fontWeight:850}}>3. Upload today's event poster (JPG or PNG; max 2 MB)
-          <input type="file" accept="image/png,image/jpeg" style={{...gwField,marginTop:7}} onChange={e=>{const f=e.target.files?.[0]||null;setPoster(f);setPosterUrl('');setPosterName('');clearTest();}}/>
+        {!!chosen.param_count&&<div style={{background:'#F6FBFF',border:'1px solid #C5DBEA',borderRadius:10,padding:12,display:'grid',gap:8}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+            <div><b style={{fontSize:13}}>🏷️ Saved template field names</b><div style={{fontSize:11.5,color:'#52635E'}}>Label the fields once. No more checking variable numbers in AiSensy each time.</div></div>
+            <button type="button" disabled={busy} onClick={()=>{setDraftLabels(Array.from({length:chosen.param_count},(_,i)=>paramLabel(chosen,i)));setEditLabels(x=>!x);}}
+              style={btn('#E2EDF8','#164B74')}>{editLabels?'Cancel':'✏️ Edit field names'}</button>
+          </div>
+          {editLabels? <>
+            {Array.from({length:chosen.param_count},(_,i)=><label key={i} style={{fontSize:12,fontWeight:750}}>{'{{'+(i+1)+'}}'} — Field description
+              <input maxLength={65} style={{...gwField,marginTop:4}} placeholder="Example: Event name" value={draftLabels[i]||''} onChange={e=>setDraftLabels(old=>old.map((v,j)=>j===i?e.target.value:v))}/>
+            </label>)}
+            <button type="button" disabled={busy} style={{...btn('#07684E','#fff'),justifyContent:'center'}} onClick={saveFieldLabels}>Save these field names</button>
+          </> : <div style={{display:'grid',gap:5}}>
+            {Array.from({length:chosen.param_count},(_,i)=><div key={i} style={{fontSize:12.5}}><code>{'{{'+(i+1)+'}}'}</code> → <b style={{color:paramLabel(chosen,i)?'#184C3F':'#B45309'}}>{paramLabel(chosen,i)||'Not named yet — click Edit field names'}</b></div>)}
+          </div>}
+        </div>}
+        {chosen.uses_media&&<label style={{fontSize:13,fontWeight:850}}>3. Upload today's event poster (JPG or PNG; max 5 MB)
+          <input type="file" accept="image/png,image/jpeg" style={{...gwField,marginTop:7}} onChange={e=>{
+            const f=e.target.files?.[0]||null;
+            setPosterUrl('');setPosterName('');clearTest();setErr('');
+            if(f&&(!['image/jpeg','image/png'].includes(f.type)||!f.size||f.size>MAX_WA_POSTER_BYTES)){
+              setPoster(null);setErr('Please choose a JPG/PNG poster of 5 MB or less.');e.target.value='';return;
+            }
+            setPoster(f);
+          }}/>
         </label>}
         {chosen.uses_media&&poster&&<div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
           <img src={posterPreview} alt="Selected event poster" style={{width:110,maxHeight:130,objectFit:'contain',borderRadius:8}}/>
           <span style={{fontSize:12,color:'#47645C'}}>{poster.name} · {(poster.size/1024).toFixed(0)} KB{posterUrl?' · Uploaded securely':''}</span>
         </div>}
         <div style={{fontSize:13,fontWeight:850}}>4. Enter today's promotion details</div>
-        {Array.from({length:chosen.param_count},(_,i)=><label key={i} style={{fontSize:12,fontWeight:700}}>Approved template value {'{{'+(i+1)+'}}'}
-          <input style={{...gwField,marginTop:5}} value={paramValues[i]||''} placeholder={i===0?'Event name / offer':i===1?'Date / venue':'Value required by your approved template'} onChange={e=>{setParamValues(a=>a.map((x,j)=>j===i?e.target.value:x));clearTest();}}/>
+        {Array.from({length:chosen.param_count},(_,i)=><label key={i} style={{fontSize:12,fontWeight:700}}>
+          {paramLabel(chosen,i)||`Variable ${i+1} — set a label above`} <span style={{fontWeight:450,color:'#64748B'}}>{'{{'+(i+1)+'}}'}</span>
+          <input style={{...gwField,marginTop:5}} value={paramValues[i]||''} placeholder={paramLabel(chosen,i)||'Enter value from approved template'} onChange={e=>{setParamValues(a=>a.map((x,j)=>j===i?e.target.value:x));clearTest();}}/>
         </label>)}
         <div style={{fontSize:11.5,color:'#5B6F68'}}>Use <code>{'{name}'}</code> inside a value to personalise it for each member. Keep the wording and number of variables consistent with the approved template.</div>
         <label style={{fontSize:13,fontWeight:850}}>5. Send a test to your own WhatsApp
@@ -18424,7 +18477,7 @@ function GwMemberWhatsAppCampaigns(){
         <label style={{display:'flex',gap:9,alignItems:'flex-start',fontSize:12.5,fontWeight:650}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I checked that this audience has recorded consent for WhatsApp marketing, will honour opt-outs, and understand AiSensy charges.</label>
         <button disabled={!tested||!consent||busy||!preview?.eligible||preview?.eligible>150} onClick={send} style={{...btn('#08765B','#fff'),justifyContent:'center',padding:14,fontWeight:900,opacity:(!tested||!consent||busy||!preview?.eligible)?0.5:1}}>📣 Send to {preview?.eligible||0} opted-in members</button>
       </>}
-      <div style={{background:'#F6F8FB',borderRadius:10,padding:11,fontSize:12,color:'#52635E'}}>The saved shortcut remembers the exact AiSensy API campaign name. You may change the poster and approved template values for every new event. Eligible contacts must have a recorded WhatsApp marketing opt-in; mere segment membership is not consent. Campaign requests are capped at 150 per send until background batching is installed.</div>
+      <div style={{background:'#F6F8FB',borderRadius:10,padding:11,fontSize:12,color:'#52635E'}}>Saved campaigns now remember the exact AiSensy API name and what each {'{{1}}'}, {'{{2}}'}, etc. means. Promotional JPG/PNG posters can be up to 5 MB. Eligible contacts must have a recorded WhatsApp marketing opt-in; segment membership alone is not consent. Campaign requests remain capped at 150 per send.</div>
       {err&&<div role="alert" style={{color:'#B42318',background:'#FFF0EF',padding:11,borderRadius:9,fontSize:12}}>{err}</div>}
       {notice&&<div role="status" style={{color:'#085C43',background:'#EAF7F1',padding:11,borderRadius:9,fontSize:12}}>{notice}</div>}
     </div>
