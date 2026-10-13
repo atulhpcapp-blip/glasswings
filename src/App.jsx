@@ -18132,12 +18132,128 @@ function GwTabGuide({ id, style }) {
 const GW_ADMIN_GROUPS = [
   ['Start here', ['guide']],
   ['Overview', ['dash','analytics']],
-  ['People', ['members','orgmembers','segments','manage','verify','reports','connect']],
+  ['People', ['pending','flagged','members','orgmembers','segments','manage','verify','reports','connect']],
   ['Events', ['review','events','homeads','private','stalls','sponsors','leads','door','directory','rooms']],
   ['Money', ['money','accounts','subscribers','subs','coupons','subcoupons','credits','settle']],
-  ['Communication & settings', ['broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
+  ['Communication & settings', ['wacampaigns','broadcast','inbox','emailmkt','team','orgstaff','orgapps','filters']]
 ];
-const GW_ADMIN_ICONS = {guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',review:'🛂',homeads:'📢',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+const GW_ADMIN_ICONS = {pending:'⏳',flagged:'🚩',wacampaigns:'📱',guide:'📘',checkin:'✅',doorsales:'💵',invite:'💌',leads:'📋',stalls:'🏪',sponsors:'🤝',dash:'▦',analytics:'◷',members:'👥',orgmembers:'👥',segments:'🎯',manage:'⚙',verify:'✓',reports:'🚩',connect:'🔗',events:'📅',private:'🔒',door:'🎟',directory:'☎',rooms:'▣',review:'🛂',homeads:'📢',money:'💰',accounts:'₹',subscribers:'👤',subs:'💎',coupons:'🏷',subcoupons:'🏷',credits:'💳',settle:'📣',broadcast:'📢',inbox:'✉',emailmkt:'@',team:'♟',orgstaff:'♟',orgapps:'🏢',filters:'☷'};
+// GLASSWINGS ADMIN: Flagged member follow-up and segment-based AiSensy campaigns.
+// Neither screen sends automatically. All outbound actions require an explicit confirmation.
+function GwFlaggedMembersPanel() {
+  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[err,setErr]=useState('');
+  const [busy,setBusy]=useState(''),[search,setSearch]=useState(''),[consent,setConsent]=useState(false);
+  const [notices,setNotices]=useState({});
+  const load=async()=>{
+    setLoading(true);setErr('');
+    try {
+      const [{data:dir,error:de},{data:meet,error:me},{data:flagRows,error:fe}] = await Promise.all([
+        supabase.rpc('staff_directory'),supabase.rpc('meet_list'),
+        supabase.from('profiles').select('id,review_flag').not('review_flag','is',null).limit(2000)
+      ]);
+      if(de)throw de;
+      const flags=new Map();
+      if(!fe)(flagRows||[]).forEach(x=>{if(x.review_flag)flags.set(String(x.id),String(x.review_flag));});
+      if(!me)(meet||[]).forEach(x=>{if(x.review_flag)flags.set(String(x.id),String(x.review_flag));});
+      const d=dir||[];
+      const ids=new Set(d.map(x=>String(x.id)));
+      let list=d.filter(x=>flags.has(String(x.id))).map(x=>({...x,review_flag:flags.get(String(x.id))}));
+      (meet||[]).filter(x=>flags.has(String(x.id))&&!ids.has(String(x.id))).forEach(x=>list.push({...x,full_name:x.full_name||x.name,review_flag:flags.get(String(x.id))}));
+      list.sort((a,b)=>String(a.full_name||a.name||'').localeCompare(String(b.full_name||b.name||'')));
+      setRows(list);
+      if(fe&&me)setErr('Unable to verify flagged-member records. Check that the admin account has access to Meet Me flags.');
+    }catch(e){setErr(e.message||'Could not load flagged members.');setRows([])}
+    finally{setLoading(false)}
+  };
+  useEffect(()=>{load()},[]);
+  const remind=async(m)=>{
+    if(!consent)return alert('Confirm this member opted in to WhatsApp service updates first.');
+    if(!window.confirm(`Send an AiSensy profile-update reminder to ${m.full_name||m.name||'this member'}?\n\nThis will NOT automatically remove their flag. Only send if the member consented to receive WhatsApp updates.`))return;
+    setBusy(m.id);setNotices(n=>({...n,[m.id]:''}));
+    try {
+      const {data:{session}}=await supabase.auth.getSession();
+      if(!session?.access_token)throw Error('Please sign in again.');
+      const res=await fetch('/api/whatsapp/flagged-reminder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:session.access_token,member_id:m.id,consent_confirmed:true})});
+      const j=await res.json().catch(()=>({}));
+      if(!res.ok||!j.ok)throw Error(j.error||'Reminder was not sent.');
+      setNotices(n=>({...n,[m.id]:'AiSensy accepted the reminder. Delivery is not yet confirmed.'}));
+    }catch(e){setNotices(n=>({...n,[m.id]:e.message||'Unable to send.'}));}
+    finally{setBusy('')}
+  };
+  const q=search.trim().toLowerCase();
+  const filtered=rows.filter(r=>!q||`${r.full_name||r.name||''} ${r.review_flag||''} ${r.phone||''}`.toLowerCase().includes(q));
+  return <div style={{padding:16,maxWidth:1000,margin:'0 auto'}}>
+    <div style={{background:'linear-gradient(115deg,#571827,#992A3F)',color:'#fff',borderRadius:18,padding:20,marginBottom:15}}>
+      <div style={{fontSize:11,fontWeight:850,letterSpacing:2,opacity:.8}}>MEET ME · MEMBER SAFETY</div>
+      <h2 style={{margin:'7px 0',fontSize:24}}>🚩 Flagged Members {loading?'':`(${rows.length})`}</h2>
+      <div style={{fontSize:13,opacity:.9}}>Review incomplete or flagged profiles and request updated photo / phone details by WhatsApp.</div>
+    </div>
+    <div style={{background:'#FFF8E8',border:'1px solid #F0DCAB',borderRadius:12,padding:12,marginBottom:13,fontSize:12.5,lineHeight:1.6}}>
+      To send a reminder, first activate an approved AiSensy API campaign named <b>glasswings_profile_update</b> and set <b>GW_PROFILE_UPDATE_CAMPAIGN</b> in Vercel. Template variables: member name, required update, website link. Members update details inside Glasswings; profile flags stay until reviewed.
+    </div>
+    <label style={{display:'flex',alignItems:'flex-start',gap:9,fontSize:12.5,fontWeight:700,margin:'10px 0 12px'}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I confirm that recipients have opted in to receive account updates through WhatsApp. Do not send to members who opted out.</label>
+    <div style={{display:'flex',gap:8,marginBottom:14}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search flagged member or reason" style={{...gwField,flex:1}}/><button onClick={load} disabled={loading} style={btn('#fff','#165d4e')}>↻ Refresh</button></div>
+    {loading&&<p>Checking flagged members…</p>}
+    {err&&<p role="alert" style={{color:'#AD2536'}}>{err}</p>}
+    {!loading&&!err&&!filtered.length&&<div style={{background:'#fff',borderRadius:12,padding:16}}>No flagged members found. If you know a flagged profile is missing, please check its flag record and admin permissions.</div>}
+    {filtered.map(m=><div key={m.id} style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:11,background:'#fff',border:'1px solid #EBD6D6',borderRadius:13,padding:13,margin:'8px 0'}}>
+      <PersonAvatar url={m.avatar_url||m.photo_url||m.photo} name={m.full_name||m.name} size={52}/>
+      <div style={{flex:'1 1 185px',minWidth:0}}><div style={{fontWeight:900,color:'#142822'}}>{m.full_name||m.name||'Member'}</div><div style={{fontSize:12,color:'#A22B45',fontWeight:800}}>🚩 {m.review_flag}</div><div style={{fontSize:12,color:'#667781'}}>{m.phone||m.mobile||'Phone not available in directory'}</div>{notices[m.id]&&<div role="status" style={{fontSize:11.5,color:notices[m.id].startsWith('AiSensy')?'#0B6B50':'#B91C1C',marginTop:4}}>{notices[m.id]}</div>}</div>
+      <button disabled={!consent||busy===m.id} onClick={()=>remind(m)} style={{...btn('#08765B','#fff'),opacity:!consent||busy===m.id?.5:1}}>{busy===m.id?'Sending…':'📱 Request photo / phone update'}</button>
+    </div>)}
+    <p style={{fontSize:11.5,color:'#62766e'}}>Reminders are sent individually with a 24-hour duplicate guard. AiSensy API acceptance is not proof of delivery. Never send passwords, OTPs or private documents in the WhatsApp message.</p>
+  </div>;
+}
+
+function GwMemberWhatsAppCampaigns(){
+  const [segments,setSegments]=useState([]),[sid,setSid]=useState(''),[campaign,setCampaign]=useState(''),[params,setParams]=useState(''),[testPhone,setTestPhone]=useState('');
+  const [busy,setBusy]=useState(false),[tested,setTested]=useState(false),[consent,setConsent]=useState(false),[result,setResult]=useState(''),[loadError,setLoadError]=useState('');
+  const refresh=async()=>{
+    setLoadError('');const {data,error}=await supabase.rpc('segment_directory');
+    if(error){setLoadError(error.message);setSegments([]);return;}
+    const ss=(data||[]).map(x=>({...x,id:x.segment_id}));setSegments(ss);setSid(prev=>ss.some(s=>s.id===prev)?prev:ss[0]?.id||'');
+  };
+  useEffect(()=>{refresh()},[]);
+  const selected=segments.find(s=>s.id===sid);
+  const call=async(extra)=>{
+    const {data:{session}}=await supabase.auth.getSession();
+    if(!session?.access_token)throw Error('Please sign in again.');
+    const res=await fetch('/api/whatsapp/segment-blast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:session.access_token,segment_id:sid,campaign:campaign.trim(),params:params.trim(),...extra})});
+    const j=await res.json().catch(()=>({}));if(!res.ok)throw Error(j.error||j.detail||'AiSensy API request failed');return j;
+  };
+  const test=async()=>{
+    if(!sid||!campaign.trim()||!testPhone.trim())return alert('Select a segment, campaign and your test number.');
+    setBusy(true);setResult('');setTested(false);
+    try{const j=await call({test_phone:testPhone.replace(/\D/g,'')});if(!Number(j.sent))throw Error(j.detail||'Test not accepted.');setTested(true);setResult('✓ AiSensy accepted the TEST. Check your own WhatsApp for the correct message.');}
+    catch(e){setResult(e.message)}finally{setBusy(false)}
+  };
+  const send=async()=>{
+    if(!tested)return alert('Send and check a test message first.');
+    if(!consent)return alert('Confirm WhatsApp campaign consent first.');
+    if(!selected||!Number(selected.member_count||0))return alert('Choose a segment containing members.');
+    if(!window.confirm(`Send the approved AiSensy campaign "${campaign.trim()}" to segment "${selected.name}"?\n\nSegment size: ${Number(selected.member_count||0)} members (eligible WhatsApp recipients may be fewer).\n\nMessages may incur AiSensy fees. Continue?`))return;
+    setBusy(true);setResult('');
+    try{const j=await call({});setResult(`AiSensy requests accepted: ${Number(j.sent)||0}. Failed: ${Number(j.failed)||0}. ${j.detail||''} Note: acceptance is not delivery confirmation.`);setTested(false);}catch(e){setResult(e.message)}finally{setBusy(false)}
+  };
+  const change=fn=>v=>{fn(v);setTested(false);setResult('')};
+  return <div style={{padding:16,maxWidth:850,margin:'0 auto'}}>
+    <div style={{background:'linear-gradient(115deg,#0B4739,#146A57)',color:'#fff',borderRadius:18,padding:21,marginBottom:14}}><div style={{fontSize:11,fontWeight:900,letterSpacing:2,opacity:.8}}>GLASSWINGS · MEET ME SEGMENTS</div><h2 style={{margin:'8px 0',fontSize:24}}>📱 WhatsApp Campaigns</h2><div style={{fontSize:13,opacity:.92}}>Create a template in AiSensy, then send to one Glasswings member segment from here.</div></div>
+    <div style={{background:'#fff',border:'1px solid #D8E6DF',borderRadius:15,padding:17,display:'grid',gap:12}}>
+      <label style={{fontSize:13,fontWeight:800}}>1. Choose Meet Me segment<select style={{...gwField,marginTop:5}} value={sid} onChange={e=>change(setSid)(e.target.value)}><option value="">Select a segment</option>{segments.map(s=><option value={s.id} key={s.id}>{s.name} · {Number(s.member_count||0)} members</option>)}</select></label>
+      {selected&&<div style={{background:'#EAF7F1',borderRadius:9,padding:10,color:'#075845',fontSize:12.5}}>🎯 {selected.name}: <b>{Number(selected.member_count||0)} members</b>. This count is not the number of opted-in, deliverable WhatsApp numbers.</div>}
+      <label style={{fontSize:13,fontWeight:800}}>2. AiSensy API campaign name<input style={{...gwField,marginTop:5}} placeholder="Exact name of an approved, Live AiSensy campaign" value={campaign} onChange={e=>change(setCampaign)(e.target.value)} maxLength={100}/></label>
+      <label style={{fontSize:13,fontWeight:800}}>3. Template values (optional)<input style={{...gwField,marginTop:5}} placeholder="Values separated by commas, matching your template" value={params} onChange={e=>change(setParams)(e.target.value)}/></label>
+      <div style={{background:'#F6F8FB',borderRadius:10,padding:11,fontSize:12,color:'#52635E'}}>AiSensy must already have the approved template and a Live API campaign. The existing segment-blast backend handles personalisation. Check consent and billing before sending to a full segment.</div>
+      <label style={{fontSize:13,fontWeight:800}}>4. Test on your own WhatsApp<input style={{...gwField,marginTop:5}} placeholder="91xxxxxxxxxx" value={testPhone} onChange={e=>change(setTestPhone)(e.target.value.replace(/[^\d+]/g,''))} inputMode="tel"/></label>
+      <button type="button" disabled={busy||!sid||!campaign.trim()||!testPhone.trim()} onClick={test} style={{...btn('#fff','#066C50'),border:'1px solid #AEDFD0',justifyContent:'center',padding:'12px',opacity:busy?.6:1}}>{busy?'Please wait…':'🧪 Send test to my phone'}</button>
+      <label style={{display:'flex',gap:9,alignItems:'flex-start',fontSize:12.5,fontWeight:650}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I confirm the selected recipients opted in to WhatsApp campaigns and will honour opt-outs. Sending is subject to AiSensy charges.</label>
+      <button type="button" disabled={!tested||!consent||busy||!Number(selected?.member_count||0)} onClick={send} style={{...btn('#08765B','#fff'),justifyContent:'center',padding:14,fontWeight:900,opacity:!tested||!consent||busy?.5:1}}>📣 Send campaign to selected segment</button>
+      {loadError&&<div role="alert" style={{color:'#A52828'}}>{loadError}</div>}
+      {result&&<div role="status" style={{background:'#EEF6F2',borderRadius:9,padding:11,fontSize:12.5}}>{result}</div>}
+    </div>
+  </div>;
+}
+
 function AdminNavigation({ tabs, selected, onSelect, children }) {
   const [collapsed, setCollapsed] = useState(false);
   const dialog = useRef(null), trigger = useRef(null);
@@ -18173,7 +18289,7 @@ function AdminNavigation({ tabs, selected, onSelect, children }) {
     `}</style>
     <aside className="gw-admin-sidebar"><header><strong>ADMIN WORKSPACE</strong><button type="button" aria-label={collapsed?'Expand admin sidebar':'Collapse admin sidebar'} aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>{collapsed?'»':'«'}</button></header><nav aria-label="Admin navigation">{groups()}</nav></aside>
     <div className="gw-admin-content"><div className="gw-admin-mobilebar"><button type="button" ref={trigger} aria-haspopup="dialog" onClick={()=>dialog.current?.showModal()}>☰ Admin Menu</button><strong style={{flex:1}}>{label(selected)}</strong>{selected!=='guide'&&<button type="button" onClick={()=>choose('guide')} style={{background:'linear-gradient(120deg,#4C1D95,#8B5CF6)',color:'#fff'}}>📘 Guide</button>}</div>{children}</div>
-    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['guide','review','dash','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
+    <dialog ref={dialog} className="gw-admin-drawer" aria-label="Admin menu" onClose={()=>trigger.current?.focus()} onClick={e=>{if(e.target===dialog.current){const r=e.currentTarget.getBoundingClientRect();if(e.clientX>r.right||e.clientX<r.left)dialog.current.close();}}}><header><strong>Admin Menu</strong><button type="button" aria-label="Close admin menu" onClick={()=>dialog.current.close()}>×</button></header><div className="gw-admin-quick">{['guide','dash','pending','flagged','wacampaigns','members','orgmembers','events','invite','directory'].flatMap(id=>tabs.filter(t=>t[0]===id)).map(item)}</div><nav aria-label="Mobile admin navigation">{groups()}</nav></dialog>
   </div>;
 }
 
@@ -18618,6 +18734,8 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
     ...((caps.broadcast && !myEventsOnly) ? [["broadcast", "Send"]] : []),
     ...((caps.members && !myEventsOnly) ? [["inbox", "Inbox"], ["members", "Members"]] : []),
     ...((isSuper || caps.host) ? [["segments", "🎯 Segments"]] : []),
+    ...((isSuper || (isGwTeam && caps.members && !myEventsOnly)) ? [["pending", "⏳ Pending Signups"], ["flagged", "🚩 Flagged Members"]] : []),
+    ...(isSuper ? [["wacampaigns", "📱 WhatsApp Campaigns"]] : []),
     ...((caps.members && !myEventsOnly) ? [["manage", "Manage members"], ["reports", "🚩 Reports"]] : []),
     ...(canApprove ? [["connect", "🔗 Connect"]] : []),
     ...(isSuper ? [["subs", "💎 Subs"]] : []),
@@ -18671,6 +18789,9 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
         : seg === "subscribers" ? <SubscribersAdmin />
         : seg === "subs" ? <div style={{ padding: 14 }}><PlansAdmin rooms={rooms} /></div>
         : seg === "segments" ? <SegmentsAdmin organiserScoped={myEventsOnly} />
+        : seg === "pending" ? <div style={{padding:16,maxWidth:950}}><h2 style={{margin:"4px 0 12px",fontSize:23}}>⏳ Pending Signups</h2><PendingSignups isSuper={isSuper} defaultOpen /></div>
+        : seg === "flagged" ? <GwFlaggedMembersPanel />
+        : seg === "wacampaigns" ? <GwMemberWhatsAppCampaigns />
         : seg === "coupons" ? <CouponsAdmin events={events} />
         : seg === "rooms" ? <AdminRooms rooms={(isSuper || !myCity) ? rooms : rooms.filter(r => r.city === myCity)} cities={cities} lockCity={!isSuper ? myCity : null} onCreate={onCreateRoom} onUpdate={onUpdateRoom} onDelete={onDeleteRoom} isSuper={isSuper} />
         : seg === "dash" ? <Dashboard isSuper={isSuper} myEventsOnly={myEventsOnly} meId={meId} events={events} />
@@ -18696,7 +18817,7 @@ function Admin({ isGwTeam = false, canUseDirectory, caps, isSuper, myCity, perms
               : seg === "team" ? <TeamPanel perms={perms} onSavePerm={onSavePerm} onSetRoles={onSetRoles} cities={cities} />
                 : seg === "connect" ? <ConnectionsPanel canApprove={canApprove} />
                 : seg === "credits" ? <CreditsAdmin />
-                : seg === "manage" ? <><PendingSignups isSuper={isSuper} /><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
+                : seg === "manage" ? <><AdminMembers onSendDM={onSendDM} rooms={rooms} events={events} onGrantRoom={onGrantRoom} onRemoveRoom={onRemoveRoom} canAdd={caps.add} canRemove={caps.remove} canEdit={caps.editMembers} canStamps={caps.stamps} isSuper={isSuper} cities={cities} onSetRoles={onSetRoles} /></>
                   : <MembersOverview isSuper={isSuper} />}
       </AdminNavigation>
     </div>
@@ -25057,9 +25178,9 @@ function PlansAdmin() {
     </div>
   );
 }
-function PendingSignups({ isSuper }) {
+function PendingSignups({ isSuper, defaultOpen = false }) {
   const [rows, setRows] = useState(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
   const load = () => supabase.rpc("admin_pending_users").then(({ data, error }) => { setErr(error ? (error.message || "failed") : null); setRows(error ? [] : (data || [])); });
