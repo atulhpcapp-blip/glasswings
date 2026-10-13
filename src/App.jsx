@@ -816,7 +816,7 @@ function Shell({ children }) {
     </div>
   );
 }
-function DesktopSidebar({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, isTeam = false, isSuper = false, reviewBadge = 0, width, meetBadge = 0 }) {
+function DesktopSidebar({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, isTeam = false, isSuper = false, reviewBadge = 0, width, meetBadge = 0, showSubscribe = false, onSubscribe }) {
   const items = [
     ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Booking Dashboard", highlight: true }, { id: "quotes", icon: Printer, label: "Quotations & Invoices", highlight: true }] : []),
     ...(waAccess ? [{id:"wacenter",icon:MessageCircle,label:"WhatsApp Centre",highlight:true}] : []),
@@ -825,7 +825,8 @@ function DesktopSidebar({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess
     <div style={{ position: "fixed", left: 0, top: 0, height: "100vh", width, background: "#0c1f26", display: "flex", flexDirection: "column", padding: "18px 12px", gap: 4, zIndex: 40, overflowY: "auto", overscrollBehavior: "contain" }}>
       <img src="/logo-white.png" alt="Glasswings Events" style={{ height: 32, objectFit: "contain", margin: "8px 12px 22px", alignSelf: "flex-start", maxWidth: "82%" }} />
       {items.map(it => { const on = tab === it.id; const I = it.icon; return <button key={it.id} type="button" aria-current={on ? "page" : undefined} onClick={() => setTab(it.id)} style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: it.highlight ? "1px solid #2DD4BF80" : "1px solid transparent", cursor: "pointer", textAlign: "left", background: on ? W.teal : it.highlight ? "linear-gradient(95deg,#125E56,#11473F)" : "transparent", color: on || it.highlight ? "#fff" : "rgba(255,255,255,.72)", fontWeight: on || it.highlight ? 800 : 600, fontSize: 15, flexShrink: 0, boxShadow: it.highlight ? "0 4px 12px rgba(0,0,0,.16)" : "none" }}><I size={20} strokeWidth={on ? 2.4 : 2} />{it.label}{it.id === "meet" && meetBadge > 0 && <span style={{ marginLeft: "auto", background: "#EC4899", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{meetBadge}</span>}{it.badge > 0 && <span style={{ marginLeft: "auto", background: "#EA580C", color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "2px 8px" }}>{it.badge}</span>}</button>; })}
-      <button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: "transparent", color: "#FF8D7A", fontWeight: 700, fontSize: 15 }}><LogOut size={20} />Log out</button>
+      {showSubscribe && <button type="button" onClick={onSubscribe} style={{ marginTop: "auto", display: "flex", gap: 11, alignItems: "center", background: "linear-gradient(100deg,#6D28D9,#C026D3)", color: "#fff", border: "none", borderRadius: 13, padding: "14px 13px", fontWeight: 850, fontSize: 14, cursor: "pointer", boxShadow: "0 5px 16px #6D28D955" }}><span style={{ fontSize: 19 }}>💎</span><span>Subscribe · Benefits</span></button>}
+      <button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ marginTop: showSubscribe ? 4 : "auto", display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: "transparent", color: "#FF8D7A", fontWeight: 700, fontSize: 15 }}><LogOut size={20} />Log out</button>
     </div>
   );
 }
@@ -3135,6 +3136,41 @@ function HeroSlider({ slides, wide, onSlide }) {
     </div>
   );
 }
+// Shareable membership overview. Pricing and payment always happen after sign-in.
+const GW_SUBSCRIBE_LINK = "https://www.glass-wings.com/?subscribe=1";
+function GwPublicMembershipPreview({ onLogin, onSignup }) {
+  const perks = [
+    ["🎟️", "Member ticket discounts", "Up to 100% off on eligible Glasswings events, where a member discount is offered."],
+    ["💎", "Subscribers Zone", "Access to exclusive subscriber community spaces and eligible private-party invitations."],
+    ["🎮", "Premium games", "Enjoy subscriber access to premium games and matchmaking features."],
+    ["🎉", "One membership", "Choose an available plan, see current prices and pay securely through Razorpay after logging in."]
+  ];
+  return <div style={{ minHeight: "100dvh", background: "#F8F6FF", color: W.ink, fontFamily: "system-ui,sans-serif" }}>
+    <header style={{ background: "#0C3936", padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <a href="/" aria-label="Glasswings home"><img src="/logo-white.png" alt="Glasswings" style={{ height: 30, maxWidth: 145, objectFit: "contain" }} /></a>
+      <button type="button" onClick={onLogin} style={{ border: "1px solid #FFFFFF99", background: "transparent", borderRadius: 10, color: "#fff", padding: "9px 14px", fontWeight: 700, cursor: "pointer" }}>Log in</button>
+    </header>
+    <main style={{ maxWidth: 620, margin: "auto", padding: "30px 16px 60px" }}>
+      <div style={{ background: "linear-gradient(120deg,#6528B5,#CC3D96)", borderRadius: 22, padding: "28px 20px", color: "#fff", boxShadow: "0 12px 28px #6D28D929" }}>
+        <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1 }}>GLASSWINGS MEMBERSHIP</div>
+        <h1 style={{ fontSize: 29, margin: "13px 0 8px", lineHeight: 1.2 }}>💎 More experiences. More benefits.</h1>
+        <p style={{ fontSize: 15, margin: 0, opacity: .95, lineHeight: 1.55 }}>Explore exclusive member benefits, events and premium community experiences.</p>
+      </div>
+      <h2 style={{ fontSize: 19, margin: "26px 4px 14px" }}>What members enjoy</h2>
+      <div style={{ display: "grid", gap: 12 }}>
+        {perks.map(([emoji,title,detail]) => <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 13, border: "1px solid #ECE6F5", padding: 15, borderRadius: 16, background: "#fff" }}>
+          <span style={{ fontSize: 25 }} aria-hidden="true">{emoji}</span>
+          <div><div style={{ fontSize: 15, fontWeight: 800 }}>{title}</div><p style={{ fontSize: 13, margin: "5px 0 0", lineHeight: 1.5, color: W.soft }}>{detail}</p></div>
+        </div>)}
+      </div>
+      <div style={{ marginTop: 20, background: "#E9F8F2", borderRadius: 13, padding: "13px 15px", fontSize: 13, color: "#175746", lineHeight: 1.55 }}>💃 Women enjoy benefits that are designated free under Glasswings membership rules. Paid subscription offers are shown to eligible male members and admins after sign-in.</div>
+      <button type="button" onClick={onSignup} style={{ marginTop: 18, width: "100%", background: "#6D28D9", color: "#fff", padding: 15, border: "none", borderRadius: 14, fontSize: 16, fontWeight: 850, cursor: "pointer" }}>Join Glasswings & view plans →</button>
+      <button type="button" onClick={onLogin} style={{ display: "block", margin: "14px auto 0", background: "none", border: 0, color: "#6D28D9", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>Already a member? Log in</button>
+      <p style={{ fontSize: 12, color: W.soft, marginTop: 18, textAlign: "center" }}>Plan prices, discounts and availability are shown in your account and may vary by event.</p>
+    </main>
+  </div>;
+}
+
 function PublicLanding() {
   const wide = useWide(820);
   const [authMode, setAuthMode] = useState(null);
@@ -3197,6 +3233,7 @@ function PublicLanding() {
   const auto2 = autoSlides.filter(a2 => !seen.has(a2.id));
   const heroSlides = [...promoSlides, ...cust2, ...auto2];
   if (authMode) return <Auth initialMode={authMode} onClose={() => setAuthMode(null)} />;
+  if (new URLSearchParams(window.location.search).get("subscribe") === "1") return <GwPublicMembershipPreview onLogin={() => setAuthMode("login")} onSignup={() => setAuthMode("signup")} />;
   const detailEvent = detail ? events.find(x => x.id === detail) : null;
   if (detailEvent) {
     const popSetD = new Set(Object.entries(pop).filter(([, n]) => n >= 5).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id]) => id));
@@ -3771,6 +3808,8 @@ function Main({ user }) {
   const wide = useWide(900);
   const SW = 248;
   const [profile, setProfile] = useState(null);
+  const subscribeRoles = (profile?.roles && profile.roles.length) ? profile.roles : (profile?.role && profile.role !== "member" ? [profile.role] : []);
+  const showSubscribe = gwGender(profile?.gender) === "male" || subscribeRoles.some(r => ["superadmin", "admin", "subadmin"].includes(r));
   const [rooms, setRooms] = useState([]);
   const [events, setEvents] = useState([]);
   const [subs, setSubs] = useState([]);
@@ -3956,6 +3995,13 @@ function Main({ user }) {
   const [allPlanRooms, setAllPlanRooms] = useState([]);
   const [myPlans, setMyPlans] = useState([]);
   const [subPage, setSubPage] = useState(null);
+  const subscriptionLinkOpened = useRef(false);
+  useEffect(() => {
+    if (!profile || subscriptionLinkOpened.current) return;
+    if (new URLSearchParams(window.location.search).get("subscribe") !== "1") return;
+    subscriptionLinkOpened.current = true;
+    if (showSubscribe) setSubPage({ highlight: null });
+  }, [profile, showSubscribe]);
   const loadPlans = async () => {
     if (!user?.id) return;
     const [{ data: pls }, { data: prsAll }, { data: mps }] = await Promise.all([
@@ -4922,7 +4968,7 @@ function Main({ user }) {
       {tab === "meet" && (needPhoto ? <PhotoGate user={user} profile={profile} reload={load} /> : <><WaCommunityBanner url={waGroup} /><MeetVerifyBanner user={user} profile={profile} /><StoriesBar stories={stories} events={events} meId={user.id} isStaff={isAdmin} canAccessEvent={canAccessEvent} onRefresh={loadStories} /><MeetPage user={user} profile={profile} onOrganiserApproved={load} meId={user.id} asTab onOpenDM={openDM} isAdmin={isAdmin} isStaff={isStaff} isSuper={isSuper} isMod={isMod} onUpgrade={() => setSubPage({ highlight: null })} /></>)}
       {tab === "groupchat" && <CommunityLiveRoom user={user} profile={profile} onlineMembers={lobbyOnline} onNudge={nudgeToRoom} onUpgrade={() => setSubPage({ highlight: null })} />}
       {tab === "profile" && <div style={{ padding: "14px 14px 0", maxWidth: 640, margin: "0 auto" }}><VerificationPanel user={user} profile={profile} /></div>}
-      {tab === "profile" && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
+      {tab === "profile" && myPlans.length > 0 && <PlanStatusCard myPlans={myPlans} plans={allPlans} onOpen={() => setSubPage({ highlight: null })} onStopRenew={async (mp) => {
         window.gwConfirm("Stop auto-renew? You keep access until your current period ends.", async () => {
           const { data: { session } } = await supabase.auth.getSession();
           const r = await fetch("/api/razorpay/cancel-sub", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, member_plan_id: mp.id }) });
@@ -4983,7 +5029,7 @@ function Main({ user }) {
           );
         })()}
         <div style={{ display: "flex", minHeight: "100vh", background: W.bg }}>
-          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} />
+          <DesktopSidebar tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} width={SW} meetBadge={meetBadge} showSubscribe={showSubscribe} onSubscribe={() => setSubPage({ highlight: null })} />
           <div style={{ marginLeft: SW, flex: 1, minWidth: 0, display: "flex", position: "relative" }}>
             {twoPane ? (
               <div style={{ flex: 1, minWidth: 0, position: "relative" }}>{chatEl || <EmptyConvo />}</div>
@@ -4993,7 +5039,7 @@ function Main({ user }) {
           </div>
         </div>
         <GwDialogHost />
-        {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
+        {showSubscribe && subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
       </>
     );
   }
@@ -5052,9 +5098,9 @@ function Main({ user }) {
         {screen}
       </div>
       {tab === "meet" && <ScrollTopFab />}
-      <Nav tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} />
+      <Nav tab={tab} setTab={(t) => { setOpen(null); setTab(t); }} isAdmin={isStaff} isBookingAdmin={isAdmin} waAccess={isAdmin || isOrganiserOwner} isTeam={isGwTeamMain} isSuper={isSuper} reviewBadge={reviewBadge} meetBadge={meetBadge} showSubscribe={showSubscribe} onSubscribe={() => setSubPage({ highlight: null })} />
       <GwDialogHost />
-      {subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
+      {showSubscribe && subPage && <SubscriptionPage plans={allPlans} planRooms={allPlanRooms} rooms={rooms} myPlans={myPlans} profile={profile} highlight={subPage.highlight} onBuy={buyPlan} onClose={() => setSubPage(null)} />}
     </>
   );
 }
@@ -24691,6 +24737,10 @@ function SubscriptionPage({ plans, planRooms, rooms, myPlans, profile, highlight
           <div style={{ fontWeight: 800, fontSize: 18 }}>💎 Glasswings Membership</div>
         </div>
         <div style={{ fontSize: 13, opacity: .92, marginTop: 8, lineHeight: 1.45 }}>One membership. Subscribers Zone, games, and member ticket discounts. 🎉</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+          <button type="button" onClick={() => { const txt = GW_SUBSCRIBE_LINK; if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).then(() => window.alert("Subscription link copied ✅")).catch(() => window.prompt("Copy membership link:", txt)); else window.prompt("Copy membership link:", txt); }} style={{ cursor: "pointer", border: "1px solid #FFFFFF77", borderRadius: 10, background: "#FFFFFF22", color: "#fff", fontWeight: 800, padding: "9px 11px", fontSize: 12 }}>🔗 Copy subscription link</button>
+          <a href={"https://wa.me/?text=" + encodeURIComponent("💎 Glasswings membership: see the benefits and subscribe here: " + GW_SUBSCRIBE_LINK)} target="_blank" rel="noopener noreferrer" style={{ border: "1px solid #FFFFFF77", borderRadius: 10, background: "#FFFFFF22", color: "#fff", fontWeight: 800, padding: "9px 11px", fontSize: 12, textDecoration: "none" }}>📲 Share on WhatsApp</a>
+        </div>
       </div>
       <div style={{ padding: 14 }}>
         {active.map(pl => {
@@ -28161,7 +28211,7 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
     </div>
   );
 }
-function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0 }) {
+function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0, showSubscribe = false, onSubscribe }) {
   const items = [
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
     ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Bookings", c: "#0E7490" }, { id: "quotes", icon: Printer, label: "Quotations", c: "#7C3AED" }] : []),
@@ -28182,7 +28232,8 @@ function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, i
     { id: "profile", icon: User, label: "Profile", c: "#6D28D9" },
   ];
   return (
-    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, background: "linear-gradient(180deg,#ffffff, #FBF7FF)", borderTop: "1px solid #EEE6F5", boxShadow: "0 -3px 14px rgba(109,40,217,.08)", display: "flex", overflowX: "auto", padding: "7px 2px 10px" }}>
+    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 460, background: "linear-gradient(180deg,#ffffff, #FBF7FF)", borderTop: "1px solid #EEE6F5", boxShadow: "0 -3px 14px rgba(109,40,217,.08)", display: "flex", overflow: "hidden", padding: "7px 2px 10px" }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", overflowX: "auto" }}>
       {items.map((it) => { const on = tab === it.id; const I = it.icon; return (
         <button key={it.id} onClick={() => setTab(it.id)} style={{ flex: "0 0 58px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: on ? "#fff" : W.soft, position: "relative" }}>
           {it.id === "meet" && meetBadge > 0 && <span style={{ position: "absolute", top: -2, right: "50%", transform: "translateX(16px)", background: "#EC4899", color: "#fff", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 6px", minWidth: 16, zIndex: 2, border: "1.5px solid #fff" }}>{meetBadge}</span>}
@@ -28193,6 +28244,8 @@ function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, i
           <span style={{ fontSize: 10.5, fontWeight: on ? 800 : 600, color: on ? it.c : W.soft }}>{it.label}</span>
         </button>
       ); })}
+      </div>
+      {showSubscribe && <button type="button" onClick={onSubscribe} aria-label="Subscribe and membership benefits" style={{ flex: "0 0 83px", background: "#F1E7FF", border: "1px solid #D6B4FB", borderRadius: 12, cursor: "pointer", display: "flex", flexDirection: "column", gap: 1, alignItems: "center", justifyContent: "center", padding: "4px 3px", boxShadow: "-3px 0 8px #FFFFFF" }}><span style={{ fontSize: 19 }}>💎</span><span style={{ fontSize: 10.5, fontWeight: 850, color: "#6D28D9" }}>Subscribe</span></button>}
     </div>
   );
 }
