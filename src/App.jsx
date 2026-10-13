@@ -12789,7 +12789,7 @@ function SegmentsAdmin({ organiserScoped = false }) {
     setBusy(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const r = await fetch("/api/whatsapp/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, segment_id: s.id, campaign: waCamp.trim(), params: waParams }) });
+      const r = await fetch("/api/whatsapp/segment-blast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ access_token: session?.access_token, segment_id: s.id, campaign: waCamp.trim(), params: waParams, confirmed: true, run_id: crypto.randomUUID() }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Send failed");
       alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? `\n\n${j.failed} failed.${j.detail ? "\nAiSensy says: " + j.detail : ""}` : ""}`);
@@ -18206,50 +18206,166 @@ function GwFlaggedMembersPanel() {
 }
 
 function GwMemberWhatsAppCampaigns(){
-  const [segments,setSegments]=useState([]),[sid,setSid]=useState(''),[campaign,setCampaign]=useState(''),[params,setParams]=useState(''),[testPhone,setTestPhone]=useState('');
-  const [busy,setBusy]=useState(false),[tested,setTested]=useState(false),[consent,setConsent]=useState(false),[result,setResult]=useState(''),[loadError,setLoadError]=useState('');
-  const refresh=async()=>{
-    setLoadError('');const {data,error}=await supabase.rpc('segment_directory');
-    if(error){setLoadError(error.message);setSegments([]);return;}
-    const ss=(data||[]).map(x=>({...x,id:x.segment_id}));setSegments(ss);setSid(prev=>ss.some(s=>s.id===prev)?prev:ss[0]?.id||'');
-  };
-  useEffect(()=>{refresh()},[]);
-  const selected=segments.find(s=>s.id===sid);
-  const call=async(extra)=>{
+  const [segments,setSegments]=useState([]),[sid,setSid]=useState('');
+  const [presets,setPresets]=useState([]),[presetId,setPresetId]=useState('');
+  const [addOpen,setAddOpen]=useState(false),[newLabel,setNewLabel]=useState(''),[newCampaign,setNewCampaign]=useState(''),[newMedia,setNewMedia]=useState(true),[newParamCount,setNewParamCount]=useState(3);
+  const [paramValues,setParamValues]=useState([]),[poster,setPoster]=useState(null),[posterUrl,setPosterUrl]=useState(''),[posterName,setPosterName]=useState('');
+  const [testPhone,setTestPhone]=useState(''),[preview,setPreview]=useState(null),[tested,setTested]=useState(false),[consent,setConsent]=useState(false);
+  const [busy,setBusy]=useState(false),[err,setErr]=useState(''),[notice,setNotice]=useState('');
+  const selected=segments.find(s=>s.id===sid), chosen=presets.find(p=>p.id===presetId);
+  const posterPreview=useMemo(()=>poster?URL.createObjectURL(poster):'', [poster]);
+  useEffect(()=>()=>{if(posterPreview)URL.revokeObjectURL(posterPreview);},[posterPreview]);
+  const clearTest=()=>{setTested(false);setNotice('');};
+  const api=async (action,extra={})=>{
     const {data:{session}}=await supabase.auth.getSession();
     if(!session?.access_token)throw Error('Please sign in again.');
-    const res=await fetch('/api/whatsapp/segment-blast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:session.access_token,segment_id:sid,campaign:campaign.trim(),params:params.trim(),...extra})});
-    const j=await res.json().catch(()=>({}));if(!res.ok)throw Error(j.error||j.detail||'AiSensy API request failed');return j;
+    const response=await fetch('/api/whatsapp/segment-blast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:session.access_token,action,...extra})});
+    const json=await response.json().catch(()=>({}));
+    if(!response.ok||!json.ok)throw Error(json.error||json.detail||'WhatsApp campaign request failed.');
+    return json;
+  };
+  const loadPresets=async()=>{
+    const j=await api('presets');setPresets(j.presets||[]);
+    setPresetId(current=>(j.presets||[]).some(p=>p.id===current)?current:(j.presets||[])[0]?.id||'');
+  };
+  useEffect(()=>{
+    let current=true;
+    const load=async()=>{
+      try{
+        const [segRes,presetRes]=await Promise.all([supabase.rpc('segment_directory'),api('presets')]);
+        if(!current)return;
+        if(segRes.error)throw segRes.error;
+        const ss=(segRes.data||[]).map(s=>({...s,id:s.segment_id}));
+        setSegments(ss);setSid(ss[0]?.id||'');setPresets(presetRes.presets||[]);setPresetId(presetRes.presets?.[0]?.id||'');
+      }catch(e){if(current)setErr(e.message||'Could not load campaign settings. Run the SQL setup first.');}
+    };
+    load();return()=>{current=false;};
+  },[]);
+  useEffect(()=>{setParamValues(chosen?Array.from({length:Number(chosen.param_count||0)},()=> ''):[]);setPoster(null);setPosterUrl('');setPosterName('');clearTest();},[presetId]);
+  useEffect(()=>{
+    let active=true;setPreview(null);clearTest();
+    if(sid) api('preview',{segment_id:sid}).then(j=>{if(active)setPreview(j);}).catch(e=>{if(active)setErr(e.message);});
+    return()=>{active=false;};
+  },[sid]);
+  const savePreset=async()=>{
+    if(!newLabel.trim()||!newCampaign.trim())return alert('Enter a friendly campaign name and its actual AiSensy API campaign name.');
+    setBusy(true);setErr('');
+    try{
+      const j=await api('save_preset',{label:newLabel.trim(),campaign:newCampaign.trim(),uses_media:newMedia,param_count:Number(newParamCount)});
+      await loadPresets();setPresetId(j.preset.id);setAddOpen(false);setNewLabel('');setNewCampaign('');
+      setNotice('Saved! You can select this campaign next time without remembering its AiSensy name.');
+    }catch(e){setErr(e.message)}finally{setBusy(false)}
+  };
+  const deletePreset=async()=>{
+    if(!chosen||!window.confirm(`Remove saved shortcut "${chosen.label}"? This will not delete the approved AiSensy template.`))return;
+    setBusy(true);setErr('');
+    try{await api('delete_preset',{preset_id:chosen.id});await loadPresets();setNotice('Saved shortcut removed.');}
+    catch(e){setErr(e.message)}finally{setBusy(false)}
+  };
+  const ensureMedia=async()=>{
+    if(!chosen?.uses_media)return '';
+    if(posterUrl)return posterUrl;
+    if(!poster)throw Error('Select a new event poster (JPG or PNG) before testing.');
+    if(poster.size>2*1024*1024)throw Error('Poster must be under 2 MB. Compress it and try again.');
+    const encoded=await new Promise((resolve,reject)=>{
+      const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(Error('Could not read the poster.'));reader.readAsDataURL(poster);
+    });
+    const j=await api('upload_media',{mime:poster.type,base64:encoded.split(',')[1]});
+    setPosterUrl(j.url);setPosterName(j.filename);return j.url;
+  };
+  const basePayload=async()=>{
+    if(!chosen)throw Error('Choose a saved AiSensy campaign.');
+    const media=await ensureMedia();
+    const vals=paramValues.map(x=>String(x||'').trim());
+    if(vals.length!==chosen.param_count||vals.some(x=>!x))throw Error('Enter every approved template value before testing.');
+    return {segment_id:sid,preset_id:chosen.id,campaign:chosen.campaign_name,params:vals,
+      media_url:media,media_filename:posterName||(poster?.type==='image/png'?'glasswings-poster.png':'glasswings-poster.jpg')};
   };
   const test=async()=>{
-    if(!sid||!campaign.trim()||!testPhone.trim())return alert('Select a segment, campaign and your test number.');
-    setBusy(true);setResult('');setTested(false);
-    try{const j=await call({test_phone:testPhone.replace(/\D/g,'')});if(!Number(j.sent))throw Error(j.detail||'Test not accepted.');setTested(true);setResult('✓ AiSensy accepted the TEST. Check your own WhatsApp for the correct message.');}
-    catch(e){setResult(e.message)}finally{setBusy(false)}
+    if(!testPhone.trim())return alert('Enter your own WhatsApp phone number for the test.');
+    setBusy(true);setErr('');setNotice('');setTested(false);
+    try{
+      const payload=await basePayload();
+      const j=await api('send',{...payload,test_phone:testPhone.replace(/\D/g,'')});
+      if(!j.sent)throw Error(j.detail||'AiSensy did not accept the test.');
+      setTested(true);setNotice('✓ Test accepted by AiSensy. Check that the NEW poster and text arrive correctly on your own WhatsApp before sending.');
+    }catch(e){setErr(e.message)}finally{setBusy(false)}
   };
   const send=async()=>{
-    if(!tested)return alert('Send and check a test message first.');
-    if(!consent)return alert('Confirm WhatsApp campaign consent first.');
-    if(!selected||!Number(selected.member_count||0))return alert('Choose a segment containing members.');
-    if(!window.confirm(`Send the approved AiSensy campaign "${campaign.trim()}" to segment "${selected.name}"?\n\nSegment size: ${Number(selected.member_count||0)} members (eligible WhatsApp recipients may be fewer).\n\nMessages may incur AiSensy fees. Continue?`))return;
-    setBusy(true);setResult('');
-    try{const j=await call({});setResult(`AiSensy requests accepted: ${Number(j.sent)||0}. Failed: ${Number(j.failed)||0}. ${j.detail||''} Note: acceptance is not delivery confirmation.`);setTested(false);}catch(e){setResult(e.message)}finally{setBusy(false)}
+    if(!tested)return alert('Send and check the test on your own phone first.');
+    if(!consent)return alert('Confirm verified WhatsApp marketing consent first.');
+    if(!preview?.eligible)return alert('There are no recorded opted-in members in this segment. Do not send without consent.');
+    if(preview.eligible>150)return alert('This segment exceeds the 150-recipient safety limit for one request.');
+    if(!window.confirm(`Send "${chosen?.label}" to ${preview.eligible} verified opted-in members in ${selected?.name}?\n\nThe same poster and template values you tested will be used. AiSensy charges apply. Continue?`))return;
+    setBusy(true);setErr('');setNotice('');
+    try{
+      const payload=await basePayload();
+      const j=await api('send',{...payload,confirmed:true,run_id:crypto.randomUUID()});
+      setNotice(`✓ AiSensy accepted ${j.sent} requests. Failed ${j.failed}. Excluded (no recorded consent): ${j.excluded}. ${j.detail||''} Acceptance is not delivery confirmation.`);
+      setTested(false);
+    }catch(e){setErr(e.message)}finally{setBusy(false)}
   };
-  const change=fn=>v=>{fn(v);setTested(false);setResult('')};
-  return <div style={{padding:16,maxWidth:850,margin:'0 auto'}}>
-    <div style={{background:'linear-gradient(115deg,#0B4739,#146A57)',color:'#fff',borderRadius:18,padding:21,marginBottom:14}}><div style={{fontSize:11,fontWeight:900,letterSpacing:2,opacity:.8}}>GLASSWINGS · MEET ME SEGMENTS</div><h2 style={{margin:'8px 0',fontSize:24}}>📱 WhatsApp Campaigns</h2><div style={{fontSize:13,opacity:.92}}>Create a template in AiSensy, then send to one Glasswings member segment from here.</div></div>
-    <div style={{background:'#fff',border:'1px solid #D8E6DF',borderRadius:15,padding:17,display:'grid',gap:12}}>
-      <label style={{fontSize:13,fontWeight:800}}>1. Choose Meet Me segment<select style={{...gwField,marginTop:5}} value={sid} onChange={e=>change(setSid)(e.target.value)}><option value="">Select a segment</option>{segments.map(s=><option value={s.id} key={s.id}>{s.name} · {Number(s.member_count||0)} members</option>)}</select></label>
-      {selected&&<div style={{background:'#EAF7F1',borderRadius:9,padding:10,color:'#075845',fontSize:12.5}}>🎯 {selected.name}: <b>{Number(selected.member_count||0)} members</b>. This count is not the number of opted-in, deliverable WhatsApp numbers.</div>}
-      <label style={{fontSize:13,fontWeight:800}}>2. AiSensy API campaign name<input style={{...gwField,marginTop:5}} placeholder="Exact name of an approved, Live AiSensy campaign" value={campaign} onChange={e=>change(setCampaign)(e.target.value)} maxLength={100}/></label>
-      <label style={{fontSize:13,fontWeight:800}}>3. Template values (optional)<input style={{...gwField,marginTop:5}} placeholder="Values separated by commas, matching your template" value={params} onChange={e=>change(setParams)(e.target.value)}/></label>
-      <div style={{background:'#F6F8FB',borderRadius:10,padding:11,fontSize:12,color:'#52635E'}}>AiSensy must already have the approved template and a Live API campaign. The existing segment-blast backend handles personalisation. Check consent and billing before sending to a full segment.</div>
-      <label style={{fontSize:13,fontWeight:800}}>4. Test on your own WhatsApp<input style={{...gwField,marginTop:5}} placeholder="91xxxxxxxxxx" value={testPhone} onChange={e=>change(setTestPhone)(e.target.value.replace(/[^\d+]/g,''))} inputMode="tel"/></label>
-      <button type="button" disabled={busy||!sid||!campaign.trim()||!testPhone.trim()} onClick={test} style={{...btn('#fff','#066C50'),border:'1px solid #AEDFD0',justifyContent:'center',padding:'12px',opacity:busy?.6:1}}>{busy?'Please wait…':'🧪 Send test to my phone'}</button>
-      <label style={{display:'flex',gap:9,alignItems:'flex-start',fontSize:12.5,fontWeight:650}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I confirm the selected recipients opted in to WhatsApp campaigns and will honour opt-outs. Sending is subject to AiSensy charges.</label>
-      <button type="button" disabled={!tested||!consent||busy||!Number(selected?.member_count||0)} onClick={send} style={{...btn('#08765B','#fff'),justifyContent:'center',padding:14,fontWeight:900,opacity:!tested||!consent||busy?.5:1}}>📣 Send campaign to selected segment</button>
-      {loadError&&<div role="alert" style={{color:'#A52828'}}>{loadError}</div>}
-      {result&&<div role="status" style={{background:'#EEF6F2',borderRadius:9,padding:11,fontSize:12.5}}>{result}</div>}
+  const card={background:'#fff',border:'1px solid #D8E6DF',borderRadius:15,padding:17,display:'grid',gap:12};
+  return <div style={{padding:16,maxWidth:860,margin:'0 auto'}}>
+    <div style={{background:'linear-gradient(115deg,#0B4739,#146A57)',color:'#fff',borderRadius:18,padding:21,marginBottom:14}}>
+      <div style={{fontSize:11,fontWeight:900,letterSpacing:2,opacity:.8}}>GLASSWINGS · MEET ME SEGMENTS</div>
+      <h2 style={{margin:'8px 0',fontSize:24}}>📱 WhatsApp Campaigns</h2>
+      <div style={{fontSize:13,opacity:.92}}>Select a saved promotion, upload today's poster, test on your phone and send to opted-in members. No need to recreate an approved template for each event.</div>
+    </div>
+    <div style={card}>
+      <label style={{fontWeight:850,fontSize:13}}>1. Who should receive it? — Meet Me segment
+        <select style={{...gwField,marginTop:6}} value={sid} onChange={e=>{setSid(e.target.value);setErr('');}}>
+          <option value="">Choose a segment</option>{segments.map(s=><option key={s.id} value={s.id}>{s.name} · {Number(s.member_count||0)} members</option>)}
+        </select>
+      </label>
+      {selected&&<div style={{background:'#EAF7F1',borderRadius:10,padding:11,color:'#075845',fontSize:12.5}}>
+        🎯 {selected.name} · <b>{preview?`${preview.eligible} with recorded WhatsApp opt-in`:'Checking consent…'}</b>
+        {preview&&<span> · {preview.excluded} excluded (no recorded opt-in)</span>}
+      </div>}
+      <div style={{display:'flex',alignItems:'center',gap:9,flexWrap:'wrap'}}>
+        <label style={{fontSize:13,fontWeight:850,flex:'1 1 230px'}}>2. Choose a saved campaign
+          <select style={{...gwField,marginTop:6}} value={presetId} onChange={e=>{setPresetId(e.target.value);setErr('');}}>
+            <option value="">Choose a campaign</option>{presets.map(p=><option key={p.id} value={p.id}>{p.uses_media?'🖼️ ':''}{p.label}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={busy} style={{...btn('#E9F3ED','#075845'),marginTop:20}} onClick={()=>{setAddOpen(x=>!x);setErr('');}}>+ Save a campaign once</button>
+      </div>
+      {addOpen&&<div style={{border:'1px solid #CCE2D4',background:'#F6FBF8',padding:13,borderRadius:12,display:'grid',gap:10}}>
+        <b style={{fontSize:13}}>Save an approved AiSensy campaign as an easy shortcut (one-time setup)</b>
+        <label style={{fontSize:12}}>Friendly name<input style={{...gwField,marginTop:4}} value={newLabel} placeholder="Glasswings Event Promotions" onChange={e=>setNewLabel(e.target.value)}/></label>
+        <label style={{fontSize:12}}>Exact Live AiSensy API campaign name (only once)<input style={{...gwField,marginTop:4}} value={newCampaign} placeholder="glasswings_event_promotions" onChange={e=>setNewCampaign(e.target.value)}/></label>
+        <label style={{display:'flex',gap:8,alignItems:'center',fontSize:12}}><input type="checkbox" checked={newMedia} onChange={e=>setNewMedia(e.target.checked)}/>This template has a changeable image header (event poster)</label>
+        <label style={{fontSize:12}}>Number of approved template text variables<input type="number" min="0" max="15" style={{...gwField,marginTop:4}} value={newParamCount} onChange={e=>setNewParamCount(Math.max(0,Math.min(15,Number(e.target.value)||0)))}/></label>
+        <button disabled={busy} onClick={savePreset} style={{...btn('#08765b','#fff'),justifyContent:'center'}}>Save campaign shortcut</button>
+        <div style={{fontSize:11.5,color:'#5B6F68'}}>An existing Meta-approved Marketing Image template must be linked to a Live API campaign in AiSensy. Only the image and approved variable fields can change.</div>
+      </div>}
+      {chosen&&<>
+        <div style={{background:'#F7F9FA',borderRadius:10,padding:10,fontSize:12.5,display:'flex',gap:8,justifyContent:'space-between',alignItems:'center',flexWrap:'wrap'}}>
+          <span>✓ <b>{chosen.label}</b> · {chosen.uses_media?'Image template':'Text template'} · {chosen.param_count} text values</span>
+          <button type="button" onClick={deletePreset} disabled={busy} style={btn('#fff','#A52F37')}>Remove shortcut</button>
+        </div>
+        {chosen.uses_media&&<label style={{fontSize:13,fontWeight:850}}>3. Upload today's event poster (JPG or PNG; max 2 MB)
+          <input type="file" accept="image/png,image/jpeg" style={{...gwField,marginTop:7}} onChange={e=>{const f=e.target.files?.[0]||null;setPoster(f);setPosterUrl('');setPosterName('');clearTest();}}/>
+        </label>}
+        {chosen.uses_media&&poster&&<div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+          <img src={posterPreview} alt="Selected event poster" style={{width:110,maxHeight:130,objectFit:'contain',borderRadius:8}}/>
+          <span style={{fontSize:12,color:'#47645C'}}>{poster.name} · {(poster.size/1024).toFixed(0)} KB{posterUrl?' · Uploaded securely':''}</span>
+        </div>}
+        <div style={{fontSize:13,fontWeight:850}}>4. Enter today's promotion details</div>
+        {Array.from({length:chosen.param_count},(_,i)=><label key={i} style={{fontSize:12,fontWeight:700}}>Approved template value {'{{'+(i+1)+'}}'}
+          <input style={{...gwField,marginTop:5}} value={paramValues[i]||''} placeholder={i===0?'Event name / offer':i===1?'Date / venue':'Value required by your approved template'} onChange={e=>{setParamValues(a=>a.map((x,j)=>j===i?e.target.value:x));clearTest();}}/>
+        </label>)}
+        <div style={{fontSize:11.5,color:'#5B6F68'}}>Use <code>{'{name}'}</code> inside a value to personalise it for each member. Keep the wording and number of variables consistent with the approved template.</div>
+        <label style={{fontSize:13,fontWeight:850}}>5. Send a test to your own WhatsApp
+          <input style={{...gwField,marginTop:6}} inputMode="tel" placeholder="91xxxxxxxxxx" value={testPhone} onChange={e=>{setTestPhone(e.target.value.replace(/[^\d+]/g,''));clearTest();}}/>
+        </label>
+        <button disabled={busy||!sid||!testPhone} onClick={test} style={{...btn('#fff','#07684e'),border:'1px solid #A6D2C2',padding:12,justifyContent:'center'}}>{busy?'Please wait…':'🧪 Test poster + campaign on my WhatsApp'}</button>
+        <label style={{display:'flex',gap:9,alignItems:'flex-start',fontSize:12.5,fontWeight:650}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I checked that this audience has recorded consent for WhatsApp marketing, will honour opt-outs, and understand AiSensy charges.</label>
+        <button disabled={!tested||!consent||busy||!preview?.eligible||preview?.eligible>150} onClick={send} style={{...btn('#08765B','#fff'),justifyContent:'center',padding:14,fontWeight:900,opacity:(!tested||!consent||busy||!preview?.eligible)?0.5:1}}>📣 Send to {preview?.eligible||0} opted-in members</button>
+      </>}
+      <div style={{background:'#F6F8FB',borderRadius:10,padding:11,fontSize:12,color:'#52635E'}}>The saved shortcut remembers the exact AiSensy API campaign name. You may change the poster and approved template values for every new event. Eligible contacts must have a recorded WhatsApp marketing opt-in; mere segment membership is not consent. Campaign requests are capped at 150 per send until background batching is installed.</div>
+      {err&&<div role="alert" style={{color:'#B42318',background:'#FFF0EF',padding:11,borderRadius:9,fontSize:12}}>{err}</div>}
+      {notice&&<div role="status" style={{color:'#085C43',background:'#EAF7F1',padding:11,borderRadius:9,fontSize:12}}>{notice}</div>}
     </div>
   </div>;
 }
@@ -21015,7 +21131,7 @@ function EventWaBlast({ event }) {
     if (!window.confirm(`Send WhatsApp campaign "${camp.trim()}" about "${event.title}" to ${audLbl}? AiSensy charges apply per message.`)) return;
     setBusy(true);
     try {
-      const { ok, j } = await call({});
+      const { ok, j } = await call({confirmed: true,run_id: crypto.randomUUID()});
       if (!ok) throw new Error(j.error || "Send failed");
       alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? `\n\n${j.failed} failed.${j.detail ? "\nAiSensy says: " + j.detail : ""}` : ""}`);
     } catch (e2) { alert(e2.message); }
@@ -25271,7 +25387,7 @@ function MembersOverview({ isSuper }) {
     const lbl = waAud === "all" ? "ALL members" : waAud.startsWith("seg:") ? `segment: ${waSegs.find(s => "seg:" + s.id === waAud)?.name || ""}` : `room: ${waRooms.find(r => "room:" + r.id === waAud)?.name || ""}`;
     if (!window.confirm(`Send WhatsApp campaign "${waCamp.trim()}" to ${lbl}? AiSensy charges apply per message.`)) return;
     setWaBusy(true);
-    try { const { ok, j } = await waCall({}); if (!ok) throw new Error(j.error || "Send failed"); alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? `\n\n${j.failed} failed.${j.detail ? "\nAiSensy says: " + j.detail : ""}` : ""}`); } catch (e) { alert(e.message); }
+    try { const { ok, j } = await waCall({confirmed: true,run_id: crypto.randomUUID()}); if (!ok) throw new Error(j.error || "Send failed"); alert(`📱 WhatsApp sent to ${j.sent} member${j.sent === 1 ? "" : "s"} ✓${j.failed ? `\n\n${j.failed} failed.${j.detail ? "\nAiSensy says: " + j.detail : ""}` : ""}`); } catch (e) { alert(e.message); }
     setWaBusy(false);
   };
   useEffect(() => {
