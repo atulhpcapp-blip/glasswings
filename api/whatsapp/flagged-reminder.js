@@ -11,7 +11,8 @@ const clean = x => String(x ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' 
 const normalize = p => {
   let v = String(p || '').replace(/\D/g, '');
   if (v.length === 10) v = '91' + v;
-  return /^91[6-9]\d{9}$/.test(v) ? '+' + v : '';
+  // AiSensy destination is a country-code-prefixed number without '+'.
+  return /^91[6-9]\d{9}$/.test(v) ? v : '';
 };
 
 function getBody(req) {
@@ -60,8 +61,18 @@ export default async function handler(req, res) {
     for (const key of ['whatsapp_opt_in', 'wa_opt_in', 'whatsapp_consent', 'allow_whatsapp']) {
       if (Object.prototype.hasOwnProperty.call(member, key) && member[key] === false) return res.status(409).json({ error: 'This member has opted out of WhatsApp messages.' });
     }
-    const phone = normalize(member.phone || member.mobile || member.phone_number || '');
-    if (!phone) return res.status(422).json({ error: 'No valid registered Indian WhatsApp number. Request contact correction through another channel.' });
+    // Glasswings stores the registered contact separately in public.member_phone.
+    // profiles.phone may be empty even for members with a valid saved number.
+    // Never use a phone supplied by the browser for this privileged send.
+    const { data: registered, error: phoneErr } = await sb.from('member_phone')
+      .select('phone').eq('user_id', memberId).maybeSingle();
+    if (phoneErr) {
+      console.error('GW profile reminder member_phone lookup:', phoneErr.code, phoneErr.message);
+      return res.status(503).json({ error: 'Could not retrieve the registered member phone. Please retry after checking member_phone access.' });
+    }
+    const phone = [registered?.phone, member.phone, member.mobile, member.phone_number]
+      .map(normalize).find(Boolean) || '';
+    if (!phone) return res.status(422).json({ error: 'No valid Indian mobile is saved for this member in Glasswings. Ask them to update their phone through the app or contact them by another channel.' });
     const name = clean(member.full_name || member.name || 'Member');
     const reason = clean(member.review_flag || 'profile photo and phone number');
     const log = { member_id: memberId, actor_id: auth.user.id, campaign: CAMPAIGN, reason, status: 'pending', opt_in_confirmed: true };
