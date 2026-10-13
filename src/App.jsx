@@ -18144,6 +18144,29 @@ function GwFlaggedMembersPanel() {
   const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[err,setErr]=useState('');
   const [busy,setBusy]=useState(''),[search,setSearch]=useState(''),[consent,setConsent]=useState(false);
   const [notices,setNotices]=useState({});
+  const [history,setHistory]=useState([]),[historyLoading,setHistoryLoading]=useState(true);
+  const [historyError,setHistoryError]=useState(''),[historySearch,setHistorySearch]=useState('');
+  const [showAllHistory,setShowAllHistory]=useState(false),[historyOpen,setHistoryOpen]=useState(true);
+  // The log records acceptance by AiSensy; delivery/read receipts are checked in AiSensy.
+  const historyStatus = s => s === 'submitted' ? 'Accepted by AiSensy' : s === 'needs_review' ? 'Needs review' : s === 'pending' ? 'Pending / unconfirmed' : String(s || 'Unknown');
+  const historyTime = d => {
+    if (!d || Number.isNaN(new Date(d).getTime())) return '—';
+    return new Date(d).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'});
+  };
+  const loadHistory=async()=>{
+    setHistoryLoading(true);setHistoryError('');
+    try {
+      const {data:{session}}=await supabase.auth.getSession();
+      if (!session?.access_token) throw Error('Please sign in again to view history.');
+      const res=await fetch('/api/whatsapp/flagged-reminder',{
+        method:'GET',headers:{Authorization:`Bearer ${session.access_token}`},cache:'no-store'
+      });
+      const j=await res.json().catch(()=>({}));
+      if (!res.ok||!j.ok) throw Error(j.error||'Could not load reminder history.');
+      setHistory(Array.isArray(j.logs)?j.logs:[]);
+    } catch(e) {setHistoryError(e.message||'Could not load reminder history.');}
+    finally {setHistoryLoading(false);}
+  };
   const load=async()=>{
     setLoading(true);setErr('');
     try {
@@ -18165,7 +18188,7 @@ function GwFlaggedMembersPanel() {
     }catch(e){setErr(e.message||'Could not load flagged members.');setRows([])}
     finally{setLoading(false)}
   };
-  useEffect(()=>{load()},[]);
+  useEffect(()=>{load();loadHistory();},[]);
   const remind=async(m)=>{
     if(!consent)return alert('Confirm this member opted in to WhatsApp service updates first.');
     if(!window.confirm(`Send an AiSensy profile-update reminder to ${m.full_name||m.name||'this member'}?\n\nThis will NOT automatically remove their flag. Only send if the member consented to receive WhatsApp updates.`))return;
@@ -18178,8 +18201,17 @@ function GwFlaggedMembersPanel() {
       if(!res.ok||!j.ok)throw Error(j.error||'Reminder was not sent.');
       setNotices(n=>({...n,[m.id]:'AiSensy accepted the reminder. Delivery is not yet confirmed.'}));
     }catch(e){setNotices(n=>({...n,[m.id]:e.message||'Unable to send.'}));}
-    finally{setBusy('')}
+    finally{setBusy('');loadHistory();}
   };
+  const latestHistory={};
+  history.forEach(h=>{if(h.member_id&&!latestHistory[h.member_id])latestHistory[h.member_id]=h;});
+  const attemptedToday=id=>{
+    const h=latestHistory[id];
+    if(!h?.created_at)return false;
+    const indiaDay=d=>new Date(d).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata'});
+    return indiaDay(h.created_at)===indiaDay(Date.now());
+  };
+  const matchingHistory=history.filter(h=>!historySearch.trim()||`${h.member_name||rows.find(m=>String(m.id)===String(h.member_id))?.full_name||''} ${h.reason||''} ${h.status||''}`.toLowerCase().includes(historySearch.trim().toLowerCase()));
   const q=search.trim().toLowerCase();
   const filtered=rows.filter(r=>!q||`${r.full_name||r.name||''} ${r.review_flag||''} ${r.phone||''}`.toLowerCase().includes(q));
   return <div style={{padding:16,maxWidth:1000,margin:'0 auto'}}>
@@ -18192,16 +18224,45 @@ function GwFlaggedMembersPanel() {
       To send a reminder, first activate an approved AiSensy API campaign named <b>glasswings_profile_update</b> and set <b>GW_PROFILE_UPDATE_CAMPAIGN</b> in Vercel. Template variables: member name, required update, website link. Members update details inside Glasswings; profile flags stay until reviewed.
     </div>
     <label style={{display:'flex',alignItems:'flex-start',gap:9,fontSize:12.5,fontWeight:700,margin:'10px 0 12px'}}><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>I confirm that recipients have opted in to receive account updates through WhatsApp. Do not send to members who opted out.</label>
-    <div style={{display:'flex',gap:8,marginBottom:14}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search flagged member or reason" style={{...gwField,flex:1}}/><button onClick={load} disabled={loading} style={btn('#fff','#165d4e')}>↻ Refresh</button></div>
+    <div style={{display:'flex',gap:8,marginBottom:14}}><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search flagged member or reason" style={{...gwField,flex:1}}/><button onClick={()=>{load();loadHistory();}} disabled={loading||historyLoading} style={btn('#fff','#165d4e')}>↻ Refresh</button></div>
+    <section aria-label="WhatsApp Reminder History" style={{background:'#fff',border:'1px solid #D5E4DF',borderRadius:14,padding:14,marginBottom:16}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+        <button type="button" onClick={()=>setHistoryOpen(v=>!v)} aria-expanded={historyOpen} style={{border:0,background:'transparent',textAlign:'left',padding:0,cursor:'pointer',color:'#163A30',fontSize:16,fontWeight:900}}>
+          📜 WhatsApp Reminder History ({history.length}) {historyOpen?'▴':'▾'}
+        </button>
+        <button type="button" disabled={historyLoading} onClick={loadHistory} style={btn('#F0FDF4','#166534')}>↻ Reload history</button>
+      </div>
+      <div style={{fontSize:12,color:'#61746C',marginTop:6}}>Latest 200 logged attempts · India time (IST). “Accepted by AiSensy” is not delivery confirmation. Use AiSensy to verify Delivered or Read.</div>
+      {historyOpen&&<div style={{marginTop:12}}>
+        <input aria-label="Search reminder history" value={historySearch} onChange={e=>{setHistorySearch(e.target.value);setShowAllHistory(false);}} placeholder="Search member, reason or status" style={{...gwField,width:'100%',boxSizing:'border-box',marginBottom:10}}/>
+        {historyLoading&&<p style={{fontSize:12.5}}>Loading reminder history…</p>}
+        {historyError&&<p role="alert" style={{color:'#B91C1C',fontSize:12.5}}>{historyError}</p>}
+        {!historyLoading&&!historyError&&matchingHistory.length===0&&<p style={{color:'#64748B',fontSize:12.5}}>No matching reminder records yet.</p>}
+        {!historyLoading&&!historyError&&matchingHistory.length>0&&<div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12.5,minWidth:560}}>
+            <thead><tr style={{color:'#334155',background:'#F1F5F9',textAlign:'left'}}>
+              <th scope="col" style={{padding:9}}>Member</th><th scope="col" style={{padding:9}}>Date & time (IST)</th><th scope="col" style={{padding:9}}>Status</th><th scope="col" style={{padding:9}}>Delivery check</th>
+            </tr></thead>
+            <tbody>{matchingHistory.slice(0,showAllHistory?200:20).map(h=><tr key={h.id} style={{borderBottom:'1px solid #E2E8F0'}}>
+              <td style={{padding:9,verticalAlign:'top'}}><b>{h.member_name||rows.find(m=>String(m.id)===String(h.member_id))?.full_name||`Member ${String(h.member_id||'').slice(0,8)}`}</b><div style={{fontSize:11,color:'#64748B'}}>{h.reason||'Profile update'}</div></td>
+              <td style={{padding:9,verticalAlign:'top'}}>{historyTime(h.created_at)}</td>
+              <td style={{padding:9,verticalAlign:'top',color:h.status==='submitted'?'#047857':h.status==='needs_review'?'#B91C1C':'#854D0E',fontWeight:700}}>{historyStatus(h.status)}{h.error_text&&<div style={{fontSize:11,fontWeight:400,marginTop:3}}>{h.error_text}</div>}</td>
+              <td style={{padding:9,verticalAlign:'top'}}><a href="https://app.aisensy.com/" target="_blank" rel="noopener noreferrer" style={{color:'#0369A1',fontWeight:800}}>Open AiSensy ↗</a><div style={{fontSize:10.5,color:'#64748B'}}>Find the member and sent time</div></td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
+        {!historyLoading&&!historyError&&matchingHistory.length>20&&<button type="button" onClick={()=>setShowAllHistory(v=>!v)} style={{...btn('#EFF6FF','#1D4ED8'),marginTop:10}}>{showAllHistory?'Show latest 20':`Show all ${matchingHistory.length} records`}</button>}
+      </div>}
+    </section>
     {loading&&<p>Checking flagged members…</p>}
     {err&&<p role="alert" style={{color:'#AD2536'}}>{err}</p>}
     {!loading&&!err&&!filtered.length&&<div style={{background:'#fff',borderRadius:12,padding:16}}>No flagged members found. If you know a flagged profile is missing, please check its flag record and admin permissions.</div>}
     {filtered.map(m=><div key={m.id} style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:11,background:'#fff',border:'1px solid #EBD6D6',borderRadius:13,padding:13,margin:'8px 0'}}>
       <PersonAvatar url={m.avatar_url||m.photo_url||m.photo} name={m.full_name||m.name} size={52}/>
-      <div style={{flex:'1 1 185px',minWidth:0}}><div style={{fontWeight:900,color:'#142822'}}>{m.full_name||m.name||'Member'}</div><div style={{fontSize:12,color:'#A22B45',fontWeight:800}}>🚩 {m.review_flag}</div><div style={{fontSize:12,color:'#667781'}}>{m.phone||m.mobile||'Phone not available in directory'}</div>{notices[m.id]&&<div role="status" style={{fontSize:11.5,color:notices[m.id].startsWith('AiSensy')?'#0B6B50':'#B91C1C',marginTop:4}}>{notices[m.id]}</div>}</div>
-      <button disabled={!consent||busy===m.id} onClick={()=>remind(m)} style={{...btn('#08765B','#fff'),opacity:!consent||busy===m.id?.5:1}}>{busy===m.id?'Sending…':'📱 Request photo / phone update'}</button>
+      <div style={{flex:'1 1 185px',minWidth:0}}><div style={{fontWeight:900,color:'#142822'}}>{m.full_name||m.name||'Member'}</div><div style={{fontSize:12,color:'#A22B45',fontWeight:800}}>🚩 {m.review_flag}</div><div style={{fontSize:12,color:'#667781'}}>{m.phone||m.mobile||'Phone not available in directory'}</div>{latestHistory[m.id]&&<div style={{fontSize:11.5,color:'#475569',marginTop:3}}>📅 Last reminder: {historyTime(latestHistory[m.id].created_at)} · {historyStatus(latestHistory[m.id].status)}</div>}{notices[m.id]&&<div role="status" style={{fontSize:11.5,color:notices[m.id].startsWith('AiSensy')?'#0B6B50':'#B91C1C',marginTop:4}}>{notices[m.id]}</div>}</div>
+      <button disabled={!consent||busy===m.id||attemptedToday(m.id)} onClick={()=>remind(m)} style={{...btn('#08765B','#fff'),opacity:!consent||busy===m.id||attemptedToday(m.id)?.5:1}}>{busy===m.id?'Sending…':attemptedToday(m.id)?'Reminder attempted today':'📱 Request photo / phone update'}</button>
     </div>)}
-    <p style={{fontSize:11.5,color:'#62766e'}}>Reminders are sent individually with a 24-hour duplicate guard. AiSensy API acceptance is not proof of delivery. Never send passwords, OTPs or private documents in the WhatsApp message.</p>
+    <p style={{fontSize:11.5,color:'#62766e'}}>Reminders are sent individually, with one attempt per member per India calendar day. AiSensy API acceptance is not proof of delivery. Never send passwords, OTPs or private documents in the WhatsApp message.</p>
   </div>;
 }
 
