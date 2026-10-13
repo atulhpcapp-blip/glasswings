@@ -10,7 +10,8 @@ const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_R
   auth: { persistSession: false, autoRefreshToken: false },
 });
 const STAFF = ['admin', 'superadmin', 'subadmin'];
-const MAX_MEDIA_BYTES = 2 * 1024 * 1024; // JSON base64 stays beneath common serverless-body limits.
+const MAX_MEDIA_BYTES = 5_000_000; // Decimal MB: remain at/below Meta and AiSensy image-header limit.
+const LEGACY_BASE64_BYTES = 2 * 1024 * 1024; // Old JSON upload route: Vercel request body is limited to 4.5 MB.
 const MAX_SEND = 150; // Bound one synchronous call: larger blasts need a queued campaign worker.
 const API = 'https://backend.aisensy.com/campaign/t1/api/v2';
 
@@ -23,6 +24,11 @@ function normPhone(value) {
   return null;
 }
 function fail(res, status, error) { return res.status(status).json({ ok: false, error }); }
+function getLabels(input, count) {
+  const labels = Array.isArray(input) ? input : [];
+  return Array.from({ length: count }, (_, i) =>
+    String(labels[i] ?? '').replace(/\s+/g, ' ').trim().slice(0, 65));
+}
 function parseParams(p) {
   if (Array.isArray(p)) return p.map(v => String(v).trim());
   return String(p || '').trim() ? String(p).split(',').map(v => v.trim()) : [];
@@ -108,7 +114,7 @@ export default async function handler(req, res) {
   const action = String(body.action || 'send');
   try {
     if (action === 'presets') {
-      const { data, error } = await sb.from('gw_wa_campaign_presets').select('id,label,campaign_name,uses_media,param_count,created_at').order('label');
+      const { data, error } = await sb.from('gw_wa_campaign_presets').select('id,label,campaign_name,uses_media,param_count,param_labels,created_at').order('label');
       if (error) throw error;
       return res.status(200).json({ ok: true, presets: data || [] });
     }
@@ -118,23 +124,58 @@ export default async function handler(req, res) {
       const paramCount = Number(body.param_count);
       if (label.length < 2 || campaign.length < 2 || !Number.isInteger(paramCount) || paramCount < 0 || paramCount > 15)
         return fail(res, 400, 'Enter a campaign nickname, exact AiSensy campaign name and the correct template-parameter count.');
+      const labels = getLabels(body.param_labels, paramCount);
+      if (paramCount && labels.some(x => !x)) return fail(res, 400, 'Give every approved template variable a descriptive label.');
       const { data, error } = await sb.from('gw_wa_campaign_presets').insert({ label, campaign_name: campaign,
-        uses_media: !!body.uses_media, param_count: paramCount, created_by: staffId }).select('id,label,campaign_name,uses_media,param_count').single();
+        uses_media: !!body.uses_media, param_count: paramCount, param_labels: labels, created_by: staffId })
+        .select('id,label,campaign_name,uses_media,param_count,param_labels').single();
       if (error) return fail(res, error.code === '23505' ? 409 : 500, error.code === '23505' ? 'That nickname already exists.' : error.message);
       return res.status(200).json({ ok: true, preset: data });
+    }
+    if (action === 'update_preset_labels') {
+      const presetId = String(body.preset_id || '');
+      if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(presetId)) return fail(res, 400, 'Choose a saved campaign first.');
+      const { data: previous, error: lookupError } = await sb.from('gw_wa_campaign_presets')
+        .select('id,param_count').eq('id', presetId).maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!previous) return fail(res, 404, 'Saved campaign not found.');
+      const count = previous.param_count;
+      const labels = getLabels(body.param_labels, count);
+      if (labels.some(x => !x)) return fail(res, 400, 'Give every approved template variable a descriptive label.');
+      const { data: updated, error } = await sb.from('gw_wa_campaign_presets')
+        .update({ param_labels: labels }).eq('id', presetId)
+        .select('id,label,campaign_name,uses_media,param_count,param_labels').single();
+      if (error) throw error;
+      return res.status(200).json({ ok: true, preset: updated });
     }
     if (action === 'delete_preset') {
       const { error } = await sb.from('gw_wa_campaign_presets').delete().eq('id', body.preset_id);
       if (error) throw error;
       return res.status(200).json({ ok: true });
     }
+    if (action === 'prepare_media_upload') {
+      // The image uploads directly from the admin browser to Supabase with a path-bound,
+      // short-lived signed token. Avoids the 4.5 MB Vercel JSON body limit entirely.
+      const mime = String(body.mime || '').toLowerCase();
+      const size = Number(body.size);
+      if (!['image/png', 'image/jpeg'].includes(mime)) return fail(res, 400, 'Choose a JPG or PNG image.');
+      if (!Number.isInteger(size) || size < 1 || size > MAX_MEDIA_BYTES)
+        return fail(res, 400, 'Event poster must be 5 MB or smaller (JPG/PNG).');
+      const ext = mime === 'image/png' ? 'png' : 'jpg';
+      const path = `${new Date().toISOString().slice(0, 7)}/${staffId}/${crypto.randomUUID()}.${ext}`;
+      const { data: ticket, error } = await sb.storage.from('gw_wa_campaign_media').createSignedUploadUrl(path);
+      if (error || !ticket?.token) throw Error(`Could not prepare poster upload: ${error?.message || 'missing upload token'}`);
+      return res.status(200).json({ ok: true, path, token: ticket.token,
+        filename: `glasswings-poster.${ext}`, max_media_bytes: MAX_MEDIA_BYTES });
+    }
+    // Retained for backwards compatibility with older clients uploading images <= 2 MiB.
     if (action === 'upload_media') {
       const mime = String(body.mime || '');
       if (!['image/png', 'image/jpeg'].includes(mime)) return fail(res, 400, 'Choose a JPG or PNG image.');
       const b64 = String(body.base64 || '').replace(/^data:[^,]+,/, '');
       if (b64.length > 2_900_000 || !/^[A-Za-z0-9+/=]+$/.test(b64)) return fail(res, 400, 'Image is too large or invalid (maximum 2 MB).');
       const bytes = Buffer.from(b64, 'base64');
-      if (!bytes.length || bytes.length > MAX_MEDIA_BYTES) return fail(res, 400, 'Image must be 2 MB or smaller.');
+      if (!bytes.length || bytes.length > LEGACY_BASE64_BYTES) return fail(res, 400, 'This older upload method supports 2 MB. Refresh the app to upload a 5 MB image.');
       const png = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
       const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
       if ((mime === 'image/png' && !png) || (mime === 'image/jpeg' && !jpeg)) return fail(res, 400, 'The file does not match its image type.');
