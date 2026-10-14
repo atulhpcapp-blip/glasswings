@@ -847,6 +847,7 @@ function Auth({ initialMode = "login", onClose }) {
   const buying = (() => { try { return !!localStorage.getItem("gw_buy"); } catch { return false; } })();
   const [name, setName] = useState(""), [email, setEmail] = useState(""), [pass, setPass] = useState(""), [gender, setGender] = useState("male");
   const [city, setCity] = useState(""), [area, setArea] = useState("");
+  const [waMarketingSignup, setWaMarketingSignup] = useState(false); // Separate, optional and unchecked.
   const [err, setErr] = useState(""), [note, setNote] = useState(""), [busy, setBusy] = useState(false);
   const VIBES = ["HOUSE PARTIES 🪩", "BLIND DATE EVENTS 💘", "SINGLES MEETUPS 🥂", "GAME NIGHTS 🎲", "LIVE EVENTS 🎤", "SATURDAY NIGHT PARTIES 🌃", "PUB PARTIES 🍻", "POOL PARTIES 🏖️", "THEME PARTIES 🎭", "ROOFTOP PARTIES 🌆", "WEEKEND GETAWAYS 🏕️", "TRIPS WITH FRIENDS 🚐", "WORKSHOPS 🎨", "SPORTS MEETUPS ⚽"];
   const [wi, setWi] = useState(0);
@@ -866,7 +867,7 @@ function Auth({ initialMode = "login", onClose }) {
     if (mode === "signup" && !city.trim()) return setErr("Please add your city.");
     setBusy(true);
     if (mode === "signup") {
-      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, gender, city: canonCity(city), area: _tcase(area) } } });
+      const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { full_name: name, gender, city: canonCity(city), area: _tcase(area), gw_wa_marketing_optin: waMarketingSignup === true, ...(waMarketingSignup ? { gw_wa_consent_version: "glasswings-whatsapp-marketing-v1", gw_wa_consent_accepted_at: new Date().toISOString() } : {}) } } });
       if (error) { setErr(error.message); }
       else {
         try {
@@ -957,6 +958,14 @@ function Auth({ initialMode = "login", onClose }) {
               <div style={{ fontSize: 11.5, color: "#7A7390", marginTop: 6, lineHeight: 1.4 }}>Pick from the list or type your own — helps us show people & events near you 📍</div>
             </div>
           )}
+          {mode === "signup" && <div style={{background:"#F0FDF4",border:"1px solid #A7F3D0",borderRadius:12,padding:12,color:"#14532D",textAlign:"left"}}>
+            <div style={{fontSize:13.5,fontWeight:850,marginBottom:6}}>📱 WhatsApp event invitations (optional)</div>
+            <label style={{display:"flex",gap:9,alignItems:"flex-start",fontSize:12.5,lineHeight:1.5,cursor:"pointer"}}>
+              <input type="checkbox" checked={waMarketingSignup} onChange={e=>setWaMarketingSignup(e.target.checked)} style={{marginTop:3,flexShrink:0}} />
+              <span>I agree to receive promotional WhatsApp messages from Glasswings about house parties, pub parties, blind dates, travel, weekend getaways and member offers. I can withdraw permission anytime in Profile.</span>
+            </label>
+            <div style={{fontSize:11,color:"#356256",marginTop:7}}>Not required to create an account. Unchecked by default. We'll attach your consent to the number you provide when completing your profile.</div>
+          </div>}
           {err && <div style={{ color: "#C0392B", fontSize: 13, fontWeight: 600, background: "#FDF0EF", borderRadius: 10, padding: "9px 12px" }}>{err}</div>}
           {note && <div style={{ color: W.teal, fontSize: 13, fontWeight: 600, background: "#E7F6EF", borderRadius: 10, padding: "9px 12px" }}>{note}</div>}
           <button onClick={go} disabled={busy} style={{ padding: 15, borderRadius: 14, border: "none", cursor: "pointer", background: "linear-gradient(95deg,#008069,#6D28D9,#EC4899)", backgroundSize: "200% 100%", color: "#fff", fontWeight: 800, fontSize: 15.5, opacity: busy ? .65 : 1, boxShadow: "0 8px 22px rgba(109,40,217,.4)", letterSpacing: .2 }}>
@@ -3398,6 +3407,7 @@ function ProfileGate({ user, profile, reload }) {
   const [prompts, setPrompts] = useState(["", "", ""]);
   const [busy, setBusy] = useState(false), [uploading, setUploading] = useState(false), [err, setErr] = useState("");
   const [waGroup, setWaGroup] = useState("");
+  const [waMarketingConsent, setWaMarketingConsent] = useState(user.user_metadata?.gw_wa_marketing_optin === true);
   useEffect(() => { supabase.from("gw_settings").select("txt").eq("key", "whatsapp_group").maybeSingle().then(({ data }) => setWaGroup((data?.txt || "").trim())); }, []);
   const fileRef = useRef(null);
   const cityOptsP = (() => { const m = new Map(); IN_CITIES.forEach(c => { const cn = canonCity(c); if (!m.has(_norm(cn))) m.set(_norm(cn), cn); }); return [...m.values()].sort((a, b) => a.localeCompare(b)); })();
@@ -3426,7 +3436,18 @@ function ProfileGate({ user, profile, reload }) {
     if (!buyLite && !avatar) return setErr("Please add a profile photo.");
     setBusy(true);
     const { error: e1 } = await supabase.from("member_details").upsert({ user_id: user.id, age: Number(age) || null, area: _tcase(area), profession: prof, city: canonCity(city), looking_for: lookingFor || null, icebreaker: icebreaker.trim() || null, prompts: PROMPT_QS.map((q, i) => ({ q, a: (prompts[i] || "").trim() })).filter(x => x.a) });
-    await supabase.from("member_phone").upsert({ user_id: user.id, phone });
+    const { error: phoneErr } = await supabase.from("member_phone").upsert({ user_id: user.id, phone });
+    if (phoneErr) { setBusy(false); return setErr("Could not save your phone number: " + phoneErr.message); }
+    // An existing checked signup consent may only be recorded AFTER the phone has been saved.
+    // Merely signing up (with the box unchecked) never creates marketing consent.
+    if (waMarketingConsent) {
+      try {
+        const token = (await supabase.auth.getSession()).data.session?.access_token;
+        const response = await fetch("/api/whatsapp/marketing-consent", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({access_token:token,action:"set",opt_in:true,consent_acknowledged:true,source:"signup_profile_completion_v1"})});
+        const result = await response.json().catch(()=>({}));
+        if (!response.ok || !result.ok) throw Error(result.error||"Consent could not be recorded.");
+      } catch(e) { setBusy(false); return setErr("Your profile is saved, but your WhatsApp marketing preference could not be recorded. Please tap Save again. " + (e.message||"")); }
+    }
     const { error: e2 } = await supabase.from("profiles").update({ full_name: name, avatar_url: avatar, profile_completed: true }).eq("id", user.id);
     try { localStorage.setItem("gw_open_explore", "1"); } catch {}
     try {
@@ -3488,6 +3509,14 @@ function ProfileGate({ user, profile, reload }) {
                 </div>
               ))}
             </div>
+          </div>
+          <div style={{background:"#ECFDF5",border:"1px solid #A7F3D0",borderRadius:12,padding:12}}>
+            <div style={{fontWeight:850,fontSize:13.5,color:"#065F46",marginBottom:6}}>📱 WhatsApp event invitations — optional</div>
+            <label style={{display:"flex",gap:9,alignItems:"flex-start",fontSize:12.5,lineHeight:1.55,color:"#14532D",cursor:"pointer"}}>
+              <input type="checkbox" checked={waMarketingConsent} onChange={e=>setWaMarketingConsent(e.target.checked)} style={{marginTop:3}} />
+              <span>I agree to receive promotional WhatsApp invitations for Glasswings events, travel, weekend getaways and offers. I can opt out anytime in Profile.</span>
+            </label>
+            <div style={{fontSize:11,color:"#406B5A",marginTop:6}}>Unchecked by default unless you already selected this option when signing up. Your account is created even if you decline.</div>
           </div>
           {inp("Profession", prof, setProf, "text", !buyLite)}
           {err && <div style={{ color: "#C0392B", fontSize: 13 }}>{err}</div>}
@@ -26749,6 +26778,41 @@ function OrganiserApplicationCard({ user, profile, onApproved, variant = "profil
   );
 }
 
+// Self-service controls: marketing permission can be freely withdrawn or given later.
+function GwWhatsAppMarketingPreference(){
+  const [status,setStatus]=useState(null),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+  const request=async(payload)=>{
+    const token=(await supabase.auth.getSession()).data.session?.access_token;
+    if(!token)throw Error('Please log in again.');
+    const r=await fetch('/api/whatsapp/marketing-consent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:token,...payload})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.ok)throw Error(j.error||'Could not update WhatsApp preference.');
+    return j;
+  };
+  useEffect(()=>{let live=true;request({action:'status'}).then(j=>{if(live)setStatus(j);}).catch(e=>{if(live)setMessage(e.message);});return()=>{live=false;};},[]);
+  const change=async(optIn)=>{
+    if(busy)return;
+    if(optIn&&!window.confirm('Receive WhatsApp marketing invitations from Glasswings for events, parties, travel, weekend getaways and offers? You can turn this off anytime.'))return;
+    setBusy(true);setMessage('');
+    try{
+      const j=await request({action:'set',opt_in:optIn,consent_acknowledged:optIn,source:'member_profile_preference_v1'});
+      setStatus(j);setMessage(optIn?'✓ WhatsApp marketing invitations enabled.':'✓ WhatsApp marketing invitations disabled.');
+    }catch(e){setMessage(e.message||'Unable to save preference.');}
+    finally{setBusy(false);}
+  };
+  return <div style={{background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:13,padding:14,marginTop:15,marginBottom:12}}>
+    <div style={{fontWeight:850,color:'#14532D',fontSize:14}}>📱 WhatsApp event invitations</div>
+    <div style={{fontSize:12.5,color:'#365D4F',marginTop:5,lineHeight:1.5}}>Get Glasswings house parties, blind dates, pub parties, travel, weekend getaway invitations and member offers. Optional; unsubscribe anytime in Profile.</div>
+    {status===null?<div style={{fontSize:12,color:'#64748B',marginTop:9}}>Loading marketing preference…</div>:
+      <label style={{display:'flex',gap:9,alignItems:'center',marginTop:11,fontSize:12.5,fontWeight:700,color:'#14532D',cursor:busy?'wait':'pointer'}}>
+        <input type='checkbox' disabled={busy||!status.has_phone} checked={!!status.opted_in} onChange={e=>change(e.target.checked)}/>
+        {status.opted_in?'Receive event promotions on WhatsApp — ON':'Receive event promotions on WhatsApp — OFF'}
+      </label>}
+    {status&&!status.has_phone&&<div style={{color:'#B45309',fontSize:11.5,marginTop:6}}>Add your valid Indian mobile number in your profile to use this option.</div>}
+    {message&&<div role='status' style={{fontSize:12,color:'#075985',marginTop:7}}>{message}</div>}
+  </div>;
+}
+
 function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, events, isVIP = false, waGroup = "" }) {
   const _roles = profile?.roles || [];
   const roleLabel = _roles.includes("superadmin") ? "Founder ⭐"
@@ -26811,6 +26875,7 @@ function Profile({ user, profile, reload, paidSubs = [], onCancelSub, streak, ev
       <TopBar title="Profile" right={<button onClick={() => { if (window.confirm("Log out of Glasswings?")) supabase.auth.signOut(); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", color: "#fff", border: "none", borderRadius: 9, padding: "8px 13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer", flexShrink: 0 }}><LogOut size={17} />Log out</button>} />
       <div style={{ padding: 16 }}>
         <div style={{ margin: "0 0 14px" }}><WaCommunityBanner url={waGroup} /></div>
+        <GwWhatsAppMarketingPreference />
         {profile?.avatar_url ? null : <div style={{background:"#FFF1F2",border:"1px solid #FECDD3",borderRadius:13,padding:"11px 13px",marginBottom:12,color:"#9F1239",fontSize:12.8,lineHeight:1.5}}><b>🚩 Photo required.</b> Profiles without a photo are automatically flagged. Upload a clear photo of yourself; after upload, admin/staff will be notified to review and clear the flag.</div>}
         <div style={{background:"linear-gradient(135deg,#ECFEFF 0%,#F5F3FF 48%,#FDF2F8 100%)",borderRadius:22,padding:10,border:"1px solid #E9D5FF"}}>
           <div style={{background:"#fff",borderRadius:18,overflow:"hidden",boxShadow:"0 10px 30px rgba(51,65,85,.10)"}}>
