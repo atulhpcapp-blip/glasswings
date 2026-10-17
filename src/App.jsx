@@ -6206,9 +6206,6 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [newMemberRange, setNewMemberRange] = useState("30");
   const [matchTab, setMatchTab] = useState("perfect");
   const [rows, setRows] = useState(null);
-  const [rosterError, setRosterError] = useState("");
-  const [rosterRefreshing, setRosterRefreshing] = useState(false);
-  const rosterRequestRef = useRef(0);
   const [inbox, setInbox] = useState([]);
   const [me, setMe] = useState({ area: "", city: "" });
   const [myGender, setMyGender] = useState(null);
@@ -6254,7 +6251,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [cityFlt, setCityFlt] = useState("all");
   const [ageFlt, setAgeFlt] = useState("all");
   const [moodFlt, setMoodFlt] = useState("all");
-  const [sortMeet, setSortMeet] = useState("new");
+  const [sortMeet, setSortMeet] = useState("match");
   const [eventsOnly, setEventsOnly] = useState(false);
   const [profDismiss, setProfDismiss] = useState(false);
   const [nameQ, setNameQ] = useState("");
@@ -6318,29 +6315,11 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     try { await supabase.from("member_details").upsert({ user_id: meId, looking_for: next || null }); } catch {}
   };
   const vipBadge = <span title="VIP" style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "linear-gradient(95deg,#7C3AED,#C026D3)", color: "#fff", fontSize: 9.5, fontWeight: 900, padding: "1px 6px", borderRadius: 8, marginLeft: 4, flexShrink: 0, verticalAlign: "middle", letterSpacing: .3 }}>⭐ VIP</span>;
-  // Keep the original visibility, blocking and hidden-profile rules enforced by Supabase.
-  // The latest request wins, so a slower background refresh cannot overwrite newer results.
-  const refreshRoster = useCallback(async () => {
-    const requestId = ++rosterRequestRef.current;
-    setRosterRefreshing(true);
-    try {
-      const [r, h] = await Promise.all([supabase.rpc("meet_list"), supabase.rpc("meet_hidden_ids")]);
-      if (requestId !== rosterRequestRef.current) return;
-      if (r.error) throw r.error;
-      if (h.error) throw h.error; // Never show unfiltered members if privacy lookup fails.
-      const hidden = new Set((h.data || []).map(v => String(typeof v === "object" ? (v?.id || v?.user_id || "") : v)));
-      setRows((r.data || []).filter(p => !hidden.has(String(p.id))));
-      setRosterError("");
-    } catch (error) {
-      if (requestId === rosterRequestRef.current) {
-        setRosterError(error?.message || "Could not refresh the Meet Me member list.");
-      }
-    } finally {
-      if (requestId === rosterRequestRef.current) setRosterRefreshing(false);
-    }
-  }, []);
   const load = () => {
-    refreshRoster();
+    Promise.all([supabase.rpc("meet_list"), supabase.rpc("meet_hidden_ids")]).then(([r, h]) => {
+      const hide = new Set(h.error ? [] : (h.data || []));
+      setRows((r.data || []).filter(p => !hide.has(p.id)));
+    });
     supabase.rpc("waves_inbox").then(({ data }) => setInbox(data || []));
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
     supabase.rpc("vip_ids").then(({ data, error }) => setVipSet(new Set(error ? [] : (data || []))));
@@ -6352,18 +6331,6 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("wave_streak").then(({ data, error }) => { if (!error && data) setStreak(data); });
   };
   useEffect(load, []);
-  useEffect(() => {
-    // Catch members who complete signup while Meet Me is already open.
-    const timer = window.setInterval(refreshRoster, 90000);
-    const onFocus = () => { if (!document.hidden) refreshRoster(); };
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onFocus);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
-    };
-  }, [refreshRoster]);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
   useEffect(() => { supabase.from("member_details").select("area, city, age, looking_for").eq("user_id", meId).maybeSingle().then(({ data }) => setMe({ area: (data?.area || "").trim(), city: (data?.city || "").trim(), age: data?.age || "", mood: data?.looking_for || "" })); supabase.from("profiles").select("gender").eq("id", meId).maybeSingle().then(({ data }) => setMyGender(data?.gender || null)); }, [meId]);
   useEffect(() => { if (mtab !== "waves") return; supabase.rpc("waves_mark_seen").then(() => { try { window.dispatchEvent(new Event("gwmeet")); } catch {} }); }, [mtab]);
@@ -6522,8 +6489,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   // Always populate: use location matches if we have them, otherwise show
   // recently-active members so the row is never empty.
   const nearHasLoc = locMatches.length > 0;
-  const nearYou = [...(nearHasLoc ? locMatches : (rows || []))]
-    .sort((a, b) => new Date(b.joined || 0) - new Date(a.joined || 0)).slice(0, 12);
+  const nearYou = (nearHasLoc ? locMatches : (rows || [])).slice(0, 12);
   const nearTitle = nearHasLoc ? `Near you${me.area ? ` — ${me.area}` : me.city ? ` — ${me.city}` : ""}` : "People to meet";
   const inAge = (a) => { if (ageFlt === "all") return true; const n = Number(a); if (!n) return false; if (ageFlt === "45+") return n >= 45; const [lo, hi] = ageFlt.split("-").map(Number); return n >= lo && n <= hi; };
   const nq = nameQ.trim().toLowerCase();
@@ -6752,23 +6718,6 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
               ); })}
             </div>
             <div style={{ fontSize: 11, color: W.soft, marginTop: 8, lineHeight: 1.45 }}>{me.mood ? "✅ Shown as a tag on your Meet card. Others can filter by vibe to find you, and matching the same vibe boosts your match score. Tap again to remove." : "Pick one to add a colourful tag to your card — people can filter by vibe, and sharing a vibe boosts your match score 💞"}</div>
-          </div>
-        </div>
-      )}
-      {mtab === "discover" && rows?.length > 0 && (
-        <div style={{ padding: "12px 14px 0" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-            <b style={{ color: W.ink, fontSize: 15 }}>🆕 Just joined Glasswings</b>
-            <button type="button" onClick={refreshRoster} disabled={rosterRefreshing} style={{ ...btn("#F3F0FF", "#6D28D9"), padding: "6px 10px", fontSize: 11.5 }}>{rosterRefreshing ? "Updating…" : "↻ Refresh"}</button>
-          </div>
-          <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
-            {[...rows].sort((a,b) => new Date(b.joined||0) - new Date(a.joined||0)).slice(0, 5).map(p => (
-              <button key={p.id} type="button" onClick={() => openPeek(p)} style={{ minWidth: 105, width: 112, flexShrink: 0, border: "1px solid #E5DDF5", borderRadius: 13, background: "#fff", padding: 8, textAlign: "center", cursor: "pointer", color: W.ink }}>
-                {p.avatar_url ? <img src={p.avatar_url} alt="" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: "50%", margin: "0 auto 6px", display: "block" }} /> : <span aria-hidden="true" style={{ fontSize: 37 }}>👤</span>}
-                <div style={{ fontWeight: 900, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(p.name || "Member").split(" ")[0]}</div>
-                <div style={{ fontSize: 10.5, color: W.soft, marginTop: 3 }}>{joinedAgo(p.joined)}</div>
-              </button>
-            ))}
           </div>
         </div>
       )}
@@ -7040,17 +6989,10 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         {!wide && filterBlock}
         <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "14px 14px 0", overflowX: "auto" }}>
           <span style={{ fontSize: 11.5, color: W.soft, fontWeight: 800, flexShrink: 0 }}>Sort:</span>
-          {[["new", "🆕 Newest first"], ["match", "💞 Best match"], ["active", "🟢 Most active"]].map(([k, l]) => (
+          {[["match", "💞 Best match"], ["active", "🟢 Most active"], ["new", "🆕 Newest"]].map(([k, l]) => (
             <button key={k} onClick={() => setSortMeet(k)} style={{ flexShrink: 0, padding: "7px 13px", borderRadius: 999, border: sortMeet === k ? "none" : "1.5px solid #E4DCEF", background: sortMeet === k ? "linear-gradient(95deg,#7C3AED,#EC4899)" : "#fff", color: sortMeet === k ? "#fff" : "#6B5B85", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{l}</button>
           ))}
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 9, padding: "10px 14px 0" }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: W.ink }}>🆕 New members first · {filtered.length} profiles</span>
-          <button type="button" disabled={rosterRefreshing} onClick={refreshRoster} style={{ ...btn("#E7F6EF", "#075E46"), padding: "7px 12px", fontSize: 12 }}>
-            {rosterRefreshing ? "Refreshing…" : "↻ Refresh members"}
-          </button>
-        </div>
-        {rosterError && <div role="alert" style={{ margin: "9px 14px", background: "#FFF1F2", color: "#9F1239", borderRadius: 10, padding: 10, fontSize: 12 }}>Couldn't update member list: {rosterError}</div>}
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 11 }}>
           {rows === null ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24 }}>Loading members…</div>
             : sortedFiltered.length === 0 ? <div style={{ gridColumn: "1/-1", color: W.soft, textAlign: "center", padding: 24, fontSize: 13 }}>No one here yet.</div>
@@ -7065,8 +7007,6 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
               <div style={{ flex: 1, minWidth: 180 }}>
                 <div style={{ fontWeight: 900, color: W.ink, fontSize: 16 }}>🆕 New members joined</div>
                 <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Admin & staff view · newest members first · tap a photo to review the profile.</div>
-                <button type="button" onClick={refreshRoster} disabled={rosterRefreshing} style={{ ...btn("#fff", "#4338CA"), padding: "7px 11px", fontSize: 11, marginTop: 8 }}>↻ {rosterRefreshing ? "Refreshing…" : "Refresh new members"}</button>
-                {rosterError && <div role="alert" style={{ color: "#9F1239", fontSize: 11.5 }}>{rosterError}</div>}
               </div>
               <div style={{ background: "#fff", border: "1px solid #D8DDF7", color: "#4338CA", borderRadius: 999, padding: "6px 11px", fontSize: 12, fontWeight: 900 }}>{newMembers.length} members</div>
             </div>
