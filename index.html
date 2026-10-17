@@ -20,6 +20,50 @@
     <meta property="og:image" content="https://glass-wings.com/icon-512.png" />
     <meta property="og:url" content="https://glass-wings.com" />
     <meta name="twitter:card" content="summary" />
+
+    <!-- Glasswings push: separate scope preserves the existing /sw.js worker. -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      window.OneSignalDeferred.push(async function (OneSignal) {
+        // OneSignal is configured for this exact HTTPS origin.
+        if (window.location.origin !== "https://www.glass-wings.com") return;
+        try {
+          await OneSignal.init({
+            appId: "71cc5eb2-5d32-47b1-8db7-ebd071abaa20",
+            serviceWorkerPath: "push/onesignal/OneSignalSDKWorker.js",
+            serviceWorkerParam: { scope: "/push/onesignal/" },
+            notifyButton: {
+              enable: true,
+              size: "small",
+              position: "bottom-right",
+              offset: { bottom: "100px", right: "16px" },
+              prenotify: false,
+              showCredit: false
+            },
+            promptOptions: {
+              slidedown: {
+                prompts: [{
+                  type: "push",
+                  autoPrompt: false,
+                  text: {
+                    actionMessage: "Stay close to your people. Get Glasswings party updates and upcoming events.",
+                    acceptButton: "Keep me updated",
+                    cancelButton: "Not now"
+                  }
+                }]
+              }
+            },
+            welcomeNotification: { disable: true },
+            notificationClickHandlerMatch: "origin",
+            notificationClickHandlerAction: "navigate"
+          });
+        } catch (error) {
+          // Notification setup must not prevent the main app from opening.
+          console.warn("[Glasswings] Push notifications could not initialise.", error);
+        }
+      });
+    </script>
   </head>
   <body style="margin:0;background:#d9d9d9;">
     <div id="root"></div>
