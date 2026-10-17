@@ -6276,7 +6276,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [cityFlt, setCityFlt] = useState("all");
   const [ageFlt, setAgeFlt] = useState("all");
   const [moodFlt, setMoodFlt] = useState("all");
-  const [sortMeet, setSortMeet] = useState("new");
+  const [sortMeet, setSortMeet] = useState("match");
   const [eventsOnly, setEventsOnly] = useState(false);
   const [profDismiss, setProfDismiss] = useState(false);
   const [nameQ, setNameQ] = useState("");
@@ -6358,7 +6358,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   };
   useEffect(load, []);
   useEffect(() => {
-    if (mtab !== 'discover' && mtab !== 'newmembers') return;
+    if (mtab !== 'discover' && mtab !== 'newmembers' && mtab !== 'directory') return;
     load();
     const refreshId = setInterval(load, 60000);
     return () => clearInterval(refreshId);
@@ -6727,6 +6727,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           ["discover", "✨ Discover"],
           ["community", "🟢 Live Room"],
           ["newmembers", "🆕 New Members"],
+          ["directory", "👥 Member Directory"],
           ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`],
           ["passed", "↩️ Passed Profiles"]
         ].map(([k, l]) => (
@@ -7048,6 +7049,28 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
         </div>
       </div>}
+      {mtab === "directory" && (
+        <section style={{ padding: "13px 14px 20px" }}>
+          <div style={{background:"linear-gradient(120deg,#ECFDF5,#EFF6FF)",border:"1px solid #D5E9DF",borderRadius:16,padding:14,marginBottom:12}}>
+            <div style={{display:"flex",gap:9,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}>
+              <div><div style={{fontSize:17,fontWeight:900,color:W.ink}}>👥 Meet Me Member Directory</div>
+                <div style={{fontSize:12,color:W.soft,marginTop:4}}>All eligible visible members, even after you Pass them. Private, blocked or flagged profiles remain protected.</div></div>
+              <button type="button" onClick={()=>{load();loadPassedProfiles();}} style={btn('#08765b','#fff')}>↻ Refresh</button>
+            </div>
+            <input value={nameQ} onChange={e=>setNameQ(e.target.value)} placeholder="Search members by name" aria-label="Search Meet Me members" style={{...gwField,marginTop:12}} />
+            <div style={{display:"flex",gap:7,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{fontSize:12,fontWeight:800,color:W.soft}}>Sort:</span>
+              {[["match","💞 Best Match"],["new","🆕 Newest"],["active","🟢 Active"]].map(([k,label])=><button key={k} type="button" onClick={()=>setSortMeet(k)} style={{...btn(sortMeet===k?'#08765b':'#fff',sortMeet===k?'#fff':'#075e46'),fontSize:12}}>{label}</button>)}
+              <span style={{marginLeft:"auto",fontSize:12,color:W.soft,fontWeight:800}}>{sortedFiltered.length} members</span>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:wide?'repeat(4,minmax(0,1fr))':'repeat(2,minmax(0,1fr))',gap:11}}>
+            {rows===null?<div style={{gridColumn:"1/-1",padding:24,color:W.soft}}>Loading members…</div>:
+              sortedFiltered.length===0?<div style={{gridColumn:"1/-1",padding:24,color:W.soft}}>No members match your search or filters.</div>:
+              sortedFiltered.map(p=>card(p))}
+          </div>
+        </section>
+      )}
       {mtab === "newmembers" && (
         <div style={{ padding: "12px 14px 0" }}>
           <div style={{ background: "linear-gradient(120deg,#EEF2FF,#FDF2F8)", border: "1px solid #D8DDF7", borderRadius: 16, padding: "13px 14px", marginBottom: 12 }}>
