@@ -6231,7 +6231,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     } catch(e) { setPassedError(e.message||'Could not undo pass.'); }
     finally { setUndoBusyId(null); }
   };
-  useEffect(()=>{if(mtab==='passed')loadPassedProfiles();},[mtab,meId]);
+  useEffect(()=>{loadPassedProfiles();},[meId]);
   const [me, setMe] = useState({ area: "", city: "" });
   const [myGender, setMyGender] = useState(null);
   const [wide, setWide] = useState(typeof window !== "undefined" && window.innerWidth >= 900);
@@ -6276,7 +6276,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [cityFlt, setCityFlt] = useState("all");
   const [ageFlt, setAgeFlt] = useState("all");
   const [moodFlt, setMoodFlt] = useState("all");
-  const [sortMeet, setSortMeet] = useState("match");
+  const [sortMeet, setSortMeet] = useState("new");
   const [eventsOnly, setEventsOnly] = useState(false);
   const [profDismiss, setProfDismiss] = useState(false);
   const [nameQ, setNameQ] = useState("");
@@ -6341,9 +6341,10 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   };
   const vipBadge = <span title="VIP" style={{ display: "inline-flex", alignItems: "center", gap: 2, background: "linear-gradient(95deg,#7C3AED,#C026D3)", color: "#fff", fontSize: 9.5, fontWeight: 900, padding: "1px 6px", borderRadius: 8, marginLeft: 4, flexShrink: 0, verticalAlign: "middle", letterSpacing: .3 }}>⭐ VIP</span>;
   const load = () => {
-    Promise.all([supabase.rpc("meet_list"), supabase.rpc("meet_hidden_ids")]).then(([r, h]) => {
-      const hide = new Set(h.error ? [] : (h.data || []));
-      setRows((r.data || []).filter(p => !hide.has(p.id)));
+    // Pass is a personal status, not a rule for hiding eligible member profiles.
+    // meet_list() itself enforces blocked, owner-hidden, incomplete and review-flag restrictions.
+    supabase.rpc("meet_list").then(({data,error}) => {
+      if (!error) setRows(data || []);
     });
     supabase.rpc("waves_inbox").then(({ data }) => setInbox(data || []));
     supabase.rpc("meet_views_count").then(({ data }) => setViewsN(data || 0));
@@ -6356,6 +6357,12 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     supabase.rpc("wave_streak").then(({ data, error }) => { if (!error && data) setStreak(data); });
   };
   useEffect(load, []);
+  useEffect(() => {
+    if (mtab !== 'discover' && mtab !== 'newmembers') return;
+    load();
+    const refreshId = setInterval(load, 60000);
+    return () => clearInterval(refreshId);
+  }, [mtab]);
   useEffect(() => { loadSpot(); const s = document.createElement("script"); s.src = "https://checkout.razorpay.com/v1/checkout.js"; s.async = true; document.body.appendChild(s); }, []);
   useEffect(() => { supabase.from("member_details").select("area, city, age, looking_for").eq("user_id", meId).maybeSingle().then(({ data }) => setMe({ area: (data?.area || "").trim(), city: (data?.city || "").trim(), age: data?.age || "", mood: data?.looking_for || "" })); supabase.from("profiles").select("gender").eq("id", meId).maybeSingle().then(({ data }) => setMyGender(data?.gender || null)); }, [meId]);
   useEffect(() => { if (mtab !== "waves") return; supabase.rpc("waves_mark_seen").then(() => { try { window.dispatchEvent(new Event("gwmeet")); } catch {} }); }, [mtab]);
@@ -6406,8 +6413,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     const { error } = await supabase.rpc("pass_member", { p_user: p.id });
     setWaveBusy(null);
     if (error) return window.gwConfirm(error.message, () => {});
-    setRows(rs => (rs || []).filter(x => x.id !== p.id));
-    setInbox(ib => (ib || []).filter(x => x.id !== p.id));
+    // Retain the profile in the directory and show its Passed status.
+    await loadPassedProfiles();
     setPeek(pk => (pk && pk.id === p.id) ? null : pk);
   };
   const openPeek = (p) => { setPeek(p); setPeekPhone(null); setPeekInfo(null); setPeekPrompts(null); supabase.rpc("record_profile_view", { p_user: p.id }); supabase.rpc("meet_profile", { p_user: p.id }).then(({ data }) => setPeekInfo((data || [])[0] || {})); supabase.rpc("meet_prompts", { p_user: p.id }).then(({ data }) => setPeekPrompts(Array.isArray(data) ? data : [])); if (isAdmin) supabase.rpc("admin_member_phone", { p_user: p.id }).then(({ data }) => setPeekPhone(data || "")); };
@@ -6531,6 +6538,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
     if (sortMeet === "active") return new Date(b.last_seen || 0) - new Date(a.last_seen || 0);
     return compat(b) - compat(a); // best match (default)
   });
+  const passedIds = new Set((passedProfiles || []).map(p => p.id));
   const joinedAgo = (j) => {
     if (!j) return "Join date unavailable";
     const ts = new Date(j).getTime();
@@ -6567,13 +6575,15 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         
         {online && <span style={{ position: "absolute", bottom: 8, right: 8, display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(8,18,24,.62)", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 20 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E", boxShadow: "0 0 6px #22C55E" }} />online</span>}
         {isNewbie(p.joined) && !online && <span style={{ position: "absolute", bottom: 8, right: 8, background: "#7C3AED", color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8 }}>🆕 NEW</span>}
-        {p.waved_me && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
+        {passedIds.has(p.id) && <span style={{ position: "absolute", top: 8, right: 8, background: "#FFEDD5", color: "#9A3412", fontSize: 10, fontWeight: 900, padding: "4px 8px", borderRadius: 8 }}>↩ Passed</span>}
+        {p.waved_me && !passedIds.has(p.id) && <span style={{ position: "absolute", top: 8, right: 8, background: "#FDF2F8", color: "#DB2777", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 8, border: "1px solid #FBCFE8" }}>👋 waved you</span>}
       </div>
       {isAdmin && p.review_flag && <div aria-label={"Flagged member: " + p.review_flag} style={{ background: "#B91C1C", color: "white", padding: "9px 11px", fontSize: 12, fontWeight: 900, borderTop: "2px solid #FCA5A5", overflowWrap: "anywhere" }}>🚩 FLAGGED · {p.review_flag}</div>}
       <div style={{ padding: "9px 11px" }}>
         <div style={{ fontWeight: 800, color: W.ink, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{mtab === "newmembers" ? (p.name || "Member") : (p.name || "Member").split(" ")[0]}{p.age ? `, ${p.age}` : ""}{isVip(p.id) ? vipBadge : null}</div>
         {mtab === "newmembers" && <div style={{ marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4, background: "#EEF2FF", color: "#4338CA", fontSize: 10.5, fontWeight: 900, padding: "3px 8px", borderRadius: 20 }}>🆕 {joinedAgo(p.joined)}</div>}
         {isVerified(p.id) && <VerifiedLine />}
+        {passedIds.has(p.id) && <div style={{fontSize:11,fontWeight:800,color:'#9A3412',marginTop:4}}>↩ Passed · still in member directory</div>}
         {mood && <div style={{ display: "inline-block", marginTop: 5, background: mood[3], color: mood[2], fontSize: 10.5, fontWeight: 800, padding: "2px 8px", borderRadius: 20 }}>{mood[1]}</div>}
         <div style={{ fontSize: 11, color: W.soft, marginTop: 4, minHeight: 14 }}>{[p.area || p.city, lastActive(p.last_seen)].filter(Boolean).join(" · ")}</div>
         {iceMap[p.id] && <div style={{ fontSize: 10.5, color: "#7C3AED", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: 600 }}>💬 {iceMap[p.id]}</div>}
@@ -6629,7 +6639,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
       </div>
       <div style={{ display: "flex", gap: 10, padding: 12 }}>
-        <button onClick={() => doPass(p)} disabled={waveBusy === p.id} title="Decline" style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 20, lineHeight: 1, cursor: "pointer" }}>✗</button>
+        <button onClick={() => doPass(p)} disabled={waveBusy === p.id || passedIds.has(p.id)} title={passedIds.has(p.id) ? "Already passed" : "Mark as passed"} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 20, lineHeight: 1, cursor: "pointer" }}>✗</button>
         <button onClick={() => doWave(p)} disabled={waveBusy === p.id} title="Like" style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(95deg,#EC4899,#F472B6)", color: "#fff", fontWeight: 900, fontSize: 15.5, cursor: "pointer", opacity: waveBusy === p.id ? .6 : 1 }}>{p.waved_me ? "✓ It's a match" : "✓ Like"}</button>
       </div>
     </div>
@@ -6716,7 +6726,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         {[
           ["discover", "✨ Discover"],
           ["community", "🟢 Live Room"],
-          ...(isStaff ? [["newmembers", "🆕 New Members"]] : []),
+          ["newmembers", "🆕 New Members"],
           ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`],
           ["passed", "↩️ Passed Profiles"]
         ].map(([k, l]) => (
@@ -6735,7 +6745,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
       </div>}
       {mtab === "passed" && <section style={{margin:14,padding:16,background:'#fff',border:'1px solid #D5E9DF',borderRadius:16}}>
         <div style={{fontWeight:900,fontSize:18,color:W.ink}}>↩️ Passed Profiles</div>
-        <p style={{fontSize:12.5,color:W.soft,lineHeight:1.5}}>Only profiles you personally passed appear here. Undo Pass restores a profile to Discover if it is still eligible and has not passed you.</p>
+        <p style={{fontSize:12.5,color:W.soft,lineHeight:1.5}}>Passing a member no longer hides them from the member directory. Undo Pass removes your Passed status.</p>
         <button type="button" onClick={loadPassedProfiles} disabled={passedBusy} style={{...btn('#E8F7F1','#08765b'),marginBottom:12}}>{passedBusy?'Refreshing…':'↻ Refresh list'}</button>
         {passedError&&<p role="alert" style={{color:'#B42318',fontSize:13}}>{passedError}</p>}
         {!passedBusy&&passedProfiles.length===0&&!passedError&&<p style={{color:W.soft}}>You have not passed any profiles.</p>}
@@ -7038,13 +7048,13 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
         </div>
         </div>
       </div>}
-      {mtab === "newmembers" && isStaff && (
+      {mtab === "newmembers" && (
         <div style={{ padding: "12px 14px 0" }}>
           <div style={{ background: "linear-gradient(120deg,#EEF2FF,#FDF2F8)", border: "1px solid #D8DDF7", borderRadius: 16, padding: "13px 14px", marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 180 }}>
                 <div style={{ fontWeight: 900, color: W.ink, fontSize: 16 }}>🆕 New members joined</div>
-                <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Admin & staff view · newest members first · tap a photo to review the profile.</div>
+                <div style={{ fontSize: 12, color: W.soft, marginTop: 3 }}>Newest eligible members first · tap a photo to see the profile.</div>
               </div>
               <div style={{ background: "#fff", border: "1px solid #D8DDF7", color: "#4338CA", borderRadius: 999, padding: "6px 11px", fontSize: 12, fontWeight: 900 }}>{newMembers.length} members</div>
             </div>
@@ -7107,7 +7117,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
             {likedYou.length === 0 ? empty("No new waves right now.")
               : likedYou.map(p => row(p, () => (
                 <div style={{ display: "flex", gap: 7 }}>
-                  <button onClick={() => doPass(p)} disabled={waveBusy === p.id} title="Decline" style={{ width: 40, padding: "9px 0", borderRadius: 10, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, cursor: "pointer" }}>✗</button>
+                  <button onClick={() => doPass(p)} disabled={waveBusy === p.id || passedIds.has(p.id)} title={passedIds.has(p.id) ? "Already passed" : "Mark as passed"} style={{ width: 40, padding: "9px 0", borderRadius: 10, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, cursor: "pointer" }}>✗</button>
                   <button onClick={() => doWave(p)} disabled={waveBusy === p.id} style={{ ...btn("linear-gradient(95deg,#EC4899,#F472B6)", "#fff"), padding: "9px 15px", fontSize: 13 }}>{waveBusy === p.id ? "…" : "✓ Wave back"}</button>
                 </div>
               ), "liked"))}
@@ -7293,7 +7303,7 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
                 ) : peek.waved_by_me ? (
                   <div style={{ flex: 2, padding: 12, borderRadius: 11, textAlign: "center", background: "#E7F6EF", color: "#0d6e58", fontWeight: 800 }}>✓ Liked · waiting</div>
                 ) : (<>
-                  <button onClick={() => doPass(peek)} title="Decline" style={{ flex: 1, padding: 12, borderRadius: 11, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>✗</button>
+                  <button onClick={() => doPass(peek)} disabled={passedIds.has(peek.id)} title={passedIds.has(peek.id) ? "Already passed" : "Mark as passed"} style={{ flex: 1, padding: 12, borderRadius: 11, border: "1px solid #F3C7C7", background: "#FFF1F1", color: "#DC2626", fontWeight: 800, fontSize: 16, cursor: "pointer" }}>✗</button>
                   <button onClick={() => { doWave(peek); setPeek(null); }} style={{ flex: 2, padding: 12, borderRadius: 11, border: "none", background: peek.waved_me ? "linear-gradient(95deg,#EC4899,#F472B6)" : W.teal, color: "#fff", fontWeight: 800, cursor: "pointer" }}>{peek.waved_me ? "✓ Match" : "✓ Like"}</button>
                 </>)}
               </div>
