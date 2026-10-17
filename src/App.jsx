@@ -6207,6 +6207,31 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
   const [matchTab, setMatchTab] = useState("perfect");
   const [rows, setRows] = useState(null);
   const [inbox, setInbox] = useState([]);
+  const [passedProfiles, setPassedProfiles] = useState([]);
+  const [passedBusy, setPassedBusy] = useState(false);
+  const [passedError, setPassedError] = useState('');
+  const [undoBusyId, setUndoBusyId] = useState(null);
+  const loadPassedProfiles = async () => {
+    setPassedBusy(true); setPassedError('');
+    try {
+      const {data,error}=await supabase.rpc('gw_my_passed_profiles');
+      if(error) throw error;
+      setPassedProfiles(data||[]);
+    } catch(e) { setPassedError(e.message||'Could not load passed profiles.'); }
+    finally { setPassedBusy(false); }
+  };
+  const undoMyPass = async (member) => {
+    setUndoBusyId(member.id); setPassedError('');
+    try {
+      const {data,error}=await supabase.rpc('gw_undo_my_pass',{p_user:member.id});
+      if(error) throw error;
+      if(!data) throw new Error('This pass has already been removed.');
+      await loadPassedProfiles();
+      load();
+    } catch(e) { setPassedError(e.message||'Could not undo pass.'); }
+    finally { setUndoBusyId(null); }
+  };
+  useEffect(()=>{if(mtab==='passed')loadPassedProfiles();},[mtab,meId]);
   const [me, setMe] = useState({ area: "", city: "" });
   const [myGender, setMyGender] = useState(null);
   const [wide, setWide] = useState(typeof window !== "undefined" && window.innerWidth >= 900);
@@ -6692,7 +6717,8 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           ["discover", "✨ Discover"],
           ["community", "🟢 Live Room"],
           ...(isStaff ? [["newmembers", "🆕 New Members"]] : []),
-          ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`]
+          ["waves", `👋 Waves${inbox.length ? ` (${inbox.length})` : ""}`],
+          ["passed", "↩️ Passed Profiles"]
         ].map(([k, l]) => (
           <button key={k} onClick={() => setMtab(k)} style={{ flex: "1 0 auto", minWidth: isStaff ? 120 : 0, padding: "9px 12px", borderRadius: 10, border: `1px solid ${mtab === k ? W.teal : W.line}`, background: mtab === k ? W.teal : "#fff", color: mtab === k ? "#fff" : W.soft, fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>{l}</button>
         ))}
@@ -6707,6 +6733,18 @@ function MeetPage({ user, profile, onOrganiserApproved, meId, onClose, asTab = f
           <div style={{ color: "#6D28D9", fontWeight: 900, fontSize: 12, flexShrink: 0 }}>ENTER ›</div>
         </div>
       </div>}
+      {mtab === "passed" && <section style={{margin:14,padding:16,background:'#fff',border:'1px solid #D5E9DF',borderRadius:16}}>
+        <div style={{fontWeight:900,fontSize:18,color:W.ink}}>↩️ Passed Profiles</div>
+        <p style={{fontSize:12.5,color:W.soft,lineHeight:1.5}}>Only profiles you personally passed appear here. Undo Pass restores a profile to Discover if it is still eligible and has not passed you.</p>
+        <button type="button" onClick={loadPassedProfiles} disabled={passedBusy} style={{...btn('#E8F7F1','#08765b'),marginBottom:12}}>{passedBusy?'Refreshing…':'↻ Refresh list'}</button>
+        {passedError&&<p role="alert" style={{color:'#B42318',fontSize:13}}>{passedError}</p>}
+        {!passedBusy&&passedProfiles.length===0&&!passedError&&<p style={{color:W.soft}}>You have not passed any profiles.</p>}
+        {passedProfiles.map(p=><div key={p.id} style={{display:'flex',alignItems:'center',gap:12,padding:'11px 0',borderBottom:`1px solid ${W.line}`,flexWrap:'wrap'}}>
+          <PersonAvatar url={p.avatar_url} name={p.name} size={48}/>
+          <div style={{flex:'1 1 130px',minWidth:0}}><div style={{fontWeight:800,color:W.ink}}>{p.name||'Member'}</div><div style={{fontSize:12,color:W.soft}}>{p.city||'Glasswings member'}</div></div>
+          <button type="button" disabled={undoBusyId===p.id} onClick={()=>undoMyPass(p)} style={{...btn('#08765b','#fff'),opacity:undoBusyId===p.id ? .6 : 1}}>{undoBusyId===p.id?'Restoring…':'↩ Undo Pass'}</button>
+        </div>)}
+      </section>}
       {mtab === "community" && <CommunityLiveRoom user={user} profile={profile} onUpgrade={onUpgrade} />}
       {mtab === "discover" && (
         <div style={{ padding: "12px 14px 0" }}>
