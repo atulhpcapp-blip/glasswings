@@ -3848,6 +3848,108 @@ function GWWhatsAppCredits({userId,isGlasswings=false}) {
   </div>;
 }
 
+// Event announcements: persistent inbox; Android push is dispatched securely on the server.
+function GwEventAlerts({ user, onOpenEvent }) {
+  const [items, setItems] = useState([]), [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(true), [error, setError] = useState('');
+  const [banner, setBanner] = useState(null), [saving, setSaving] = useState(false);
+  const buttonRef = useRef(null), panelRef = useRef(null);
+  const latestOpen = useRef(onOpenEvent); latestOpen.current = onOpenEvent;
+  const uid = user.id;
+  useEffect(() => {
+    let alive = true, running = false;
+    setItems([]); setBanner(null); setError(''); setBusy(true);
+    const refresh = async () => {
+      if (running || document.hidden) return;
+      running = true;
+      try {
+        const { data, error: err } = await supabase.rpc('gw_event_alert_inbox');
+        if (err) throw err;
+        if (!alive) return;
+        const rows = Array.isArray(data) ? data : [];
+        setItems(rows); setError('');
+        const fresh = rows.find(x => !x.read_at && Date.now() - new Date(x.created_at).getTime() < 86400000);
+        if (fresh) {
+          const key = 'gw_event_alert_banner:' + uid + ':' + fresh.id;
+          try { if (!localStorage.getItem(key)) { localStorage.setItem(key, '1'); setBanner(fresh); } } catch { /* Inbox remains available if storage is blocked. */ }
+        }
+      } catch (err) {
+        if (alive) setError(/PGRST202|42883/.test(err.code || '') ? 'Event notifications are being set up. Please try again later.' : 'Could not load notifications. Please try again.');
+      } finally { running = false; if (alive) setBusy(false); }
+    };
+    refresh();
+    const timer = setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh); window.addEventListener('gwalertsrefresh', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('focus', refresh); window.removeEventListener('gwalertsrefresh', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [uid]);
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow; document.body.style.overflow = 'hidden';
+    panelRef.current?.focus();
+    const key = e => {
+      if (e.key === 'Escape') { setOpen(false); return; }
+      if (e.key !== 'Tab') return;
+      const nodes = panelRef.current?.querySelectorAll('button:not(:disabled),a[href],[tabindex="0"]');
+      if (!nodes?.length) return;
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', key);
+    return () => { document.body.style.overflow = prev; document.removeEventListener('keydown', key); buttonRef.current?.focus(); };
+  }, [open]);
+  const unread = items.filter(x => !x.read_at).length;
+  const mark = async ids => {
+    if (!ids.length) return true;
+    setSaving(true);
+    try {
+      const { error: err } = await supabase.rpc('gw_event_alert_mark_read', { p_ids: ids });
+      if (err) throw err;
+      setItems(rows => rows.map(x => ids.includes(x.id) ? { ...x, read_at: new Date().toISOString() } : x));
+      return true;
+    } catch { setError('Could not save read status. Please try again.'); return false; }
+    finally { setSaving(false); }
+  };
+  const visit = async item => {
+    await mark([item.id]); setOpen(false); setBanner(null);
+    // Use the existing event route, including its access checks and login handling.
+    latestOpen.current(item.event_id);
+  };
+  return <section className="gw-alerts" aria-label="Event notifications">
+    <style>{`
+      .gw-alerts{font-family:inherit;min-width:0;}
+      .gw-alert-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 14px;background:#fff;border-bottom:1px solid #e6eeeb;}
+      .gw-alert-bell{position:relative;display:flex;align-items:center;gap:7px;border:1px solid #cce9df;background:#effaf6;color:#076b58;border-radius:999px;min-height:44px;padding:8px 13px;font-weight:800;cursor:pointer;}
+      .gw-alert-count{background:#db2777;color:#fff;border-radius:999px;padding:2px 6px;font-size:11px;}
+      .gw-alert-banner{margin:10px 12px;display:flex;gap:10px;align-items:center;padding:12px;border-radius:16px;background:linear-gradient(115deg,#073f37,#007e69 65%,#673ab7);color:white;}
+      .gw-alert-photo{width:62px;height:74px;object-fit:cover;border-radius:10px;flex-shrink:0;}
+      .gw-alert-overlay{position:fixed;inset:0;z-index:900;background:#001e1bbb;display:flex;justify-content:center;align-items:center;padding:12px;}
+      .gw-alert-panel{width:100%;max-width:520px;max-height:85dvh;overflow:auto;background:#f6faf8;border-radius:22px;box-shadow:0 20px 70px #0005;outline:none;}
+      .gw-alert-top{position:sticky;top:0;padding:18px;background:linear-gradient(115deg,#075347,#008575);color:#fff;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .gw-alert-row{margin:12px;padding:13px;border-radius:16px;background:white;border:1px solid #ddebe5;display:flex;gap:12px;align-items:flex-start;}
+      .gw-alert-row[data-unread=true]{border-left:4px solid #d8277c;}
+      .gw-alerts button:focus-visible{outline:3px solid #eaa52e;outline-offset:2px;}
+      @media(max-width:480px){.gw-alert-overlay{align-items:flex-end;padding:0;}.gw-alert-panel{border-radius:22px 22px 0 0;max-height:90dvh;padding-bottom:env(safe-area-inset-bottom);}}
+    `}</style>
+    <div className="gw-alert-bar"><span style={{fontSize:12,color:'#596e65'}}>Your next great memory ✨</span><button ref={buttonRef} className="gw-alert-bell" aria-expanded={open} onClick={() => {setOpen(true);setBanner(null);window.dispatchEvent(new Event('gwalertsrefresh'));}}>🔔 Notifications {unread > 0 && <span className="gw-alert-count">{unread > 99 ? '99+' : unread}</span>}</button></div>
+    {banner && !open && <div className="gw-alert-banner" role="status">
+      {banner.image_url && <img className="gw-alert-photo" src={banner.image_url} alt="" onError={e => {e.currentTarget.style.display='none';}} />}
+      <div style={{flex:1,minWidth:0}}><small>JUST ANNOUNCED 🎉</small><div style={{fontWeight:900,overflowWrap:'anywhere',margin:'4px 0'}}>{banner.title}</div><button onClick={() => visit(banner)} style={{...btn('#fff','#075347'),padding:'7px 12px',minHeight:40}}>View event →</button></div>
+      <button aria-label="Dismiss event announcement" onClick={() => setBanner(null)} style={{background:'transparent',border:0,color:'#fff',fontSize:24,minWidth:44,minHeight:44,cursor:'pointer'}}>×</button>
+    </div>}
+    {open && <div className="gw-alert-overlay" onClick={e => {if(e.target===e.currentTarget)setOpen(false);}}><div ref={panelRef} tabIndex={-1} className="gw-alert-panel" role="dialog" aria-modal="true" aria-labelledby="gw-alert-title">
+      <div className="gw-alert-top"><div><strong id="gw-alert-title" style={{fontSize:20}}>Your Glasswings updates</strong><div style={{fontSize:12,marginTop:5}}>Good people. Great plans. All in one place.</div></div><button aria-label="Close notifications" onClick={() => setOpen(false)} style={{background:'transparent',border:0,color:'#fff',fontSize:28,minWidth:44,minHeight:44,cursor:'pointer'}}>×</button></div>
+      <div style={{display:'flex',justifyContent:'space-between',padding:'12px 16px',gap:8}}><span>{unread} unread</span><button disabled={saving || !unread} onClick={() => mark(items.filter(x => !x.read_at).map(x => x.id))} style={{border:0,background:'none',color:'#00735c',fontWeight:800,minHeight:36}}>Mark all as read</button></div>
+      {error && <div role="alert" style={{padding:14,color:'#9b3434'}}>{error} <button onClick={() => window.dispatchEvent(new Event('gwalertsrefresh'))}>Retry</button></div>}
+      {busy ? <p style={{padding:20}}>Loading your updates…</p> : !items.length && !error ? <div style={{padding:'30px 24px',textAlign:'center'}}><div style={{fontSize:40}}>🎊</div><h3>You’re all caught up</h3><p>New event announcements will appear here when they’re published.</p></div> : items.map(item => <article className="gw-alert-row" data-unread={!item.read_at} key={item.id}>
+        {item.image_url ? <img className="gw-alert-photo" src={item.image_url} alt="" loading="lazy" onError={e => {e.currentTarget.style.display='none';}} /> : <span style={{fontSize:32}}>🎉</span>}
+        <div style={{flex:1,minWidth:0}}><strong style={{overflowWrap:'anywhere'}}>{item.title}</strong><p style={{fontSize:13,lineHeight:1.5,margin:'6px 0',color:'#53645d'}}>{item.body}</p><small style={{color:'#6b7c74'}}>{new Date(item.created_at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</small><div style={{marginTop:10}}><button disabled={saving} onClick={() => visit(item)} style={{...btn('#008069','#fff'),minHeight:44,padding:'9px 14px'}}>View event →</button></div></div>
+      </article>)}
+    </div></div>}
+  </section>;
+}
+
 function Main({ user }) {
   const wide = useWide(900);
   const SW = 248;
@@ -4895,6 +4997,7 @@ function Main({ user }) {
 
   const screen = (
     <>
+      <GwEventAlerts key={user.id} user={user} onOpenEvent={id => { window.location.assign("/?event=" + encodeURIComponent(id)); }} />
       {!isStandalone && !installHide && installEvt && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, background: "linear-gradient(95deg,#008069,#04B08F)", color: "#fff", padding: "10px 14px" }}>
           <span style={{ fontSize: 20 }}>📲</span>
