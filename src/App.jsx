@@ -5064,19 +5064,12 @@ function Main({ user }) {
       {tab === "events" && <Events events={events.filter(e => !gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} onProfile={()=>setTab("profile")} focus={focusEvent} onFocusDone={() => setFocusEvent(null)} savedIds={savedIds} onToggleSave={toggleSave} ratingSummary={ratingSummary} />}
       {tab === "private" && <Events privateMode events={events.filter(e => gwIsPrivateEvent(e) && eventLive(e))} dims={dims} optsAll={optsAll} categories={categories} cities={cities} profile={profile} ticketTypes={ticketTypes} subs={subs} stats={eventStats} typeSold={typeSold} addonsMap={addons} canAccessEvent={canAccessEvent} counts={eventCounts} onJoin={joinEvent} onTicket={setTicketView} onOpenDetail={setEventPage} />}
       {coupleFor && <CoupleInfoSheet room={coupleFor} userId={user.id} onClose={() => setCoupleFor(null)} onDone={async (r) => { setCoupleFor(null); await finishJoin(r); }} />}
-      {tab === "adminevents" && isStaff && <div>
-        <TopBar title="🎟️ Admin Events" />
-        <AdminQuickIssueTicket
-          events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)}
-          ticketTypes={ticketTypes}
-          canIssue={isAdmin || (profile?.roles || []).includes("admin")}
-          onDone={load}
-        />
-        <AdminQuickGuestInvite
-          events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)}
-          canIssue={isAdmin || (profile?.roles || []).includes("admin")}
-          onDone={load}
-        />
+      {tab === "adminevents" && isStaff && <AdminEventsWorkspace
+        events={(isSuper || !myCity) ? events : events.filter(e => e.city === myCity)}
+        ticketTypes={ticketTypes}
+        canIssue={isAdmin || (profile?.roles || []).includes("admin")}
+        onDone={load}
+      >
         <div style={{padding:"0 14px 14px"}}>
           <div style={{fontSize:13,fontWeight:950,color:W.ink,margin:"4px 0 10px"}}>Manage Events</div>
           <AdminEvents
@@ -5111,7 +5104,7 @@ function Main({ user }) {
             onSendEventDM={sendEventDM}
           />
         </div>
-      </div>}
+      </AdminEventsWorkspace>}
       {tab === "bookingdash" && isAdmin && <GWBookingDashboard events={(isSuper || !myCity) ? events : events.filter(ev => ev.city === myCity)} />}
       {tab === "quotes" && isAdmin && <GWQuoteManager meId={user.id} />}
       {tab === "wacenter" && (isAdmin || isOrganiserOwner) && <GWWhatsAppCredits userId={user.id} isGlasswings={isAdmin} />}
@@ -18929,6 +18922,39 @@ function AdminInviteHub({ events = [] }) {
 }
 
 
+
+function AdminEventsWorkspace({ events, ticketTypes, canIssue, onDone, children }) {
+  const [section, setSection] = useState("events");
+  const selectTab = value => setSection(value);
+  const tabs = [["events", "📅 Manage Events"], ["invitation", "💌 Invitation"]];
+  const handleTabKey = (event, index) => {
+    let next;
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") next = 1 - index;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = 1;
+    else return;
+    event.preventDefault();
+    setSection(tabs[next][0]);
+    event.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.focus();
+  };
+  return <div>
+    <TopBar title="🎟️ Admin Events" />
+    <div role="tablist" aria-label="Admin Events sections" style={{ display: "flex", gap: 8, margin: "14px", padding: 5, background: "#F3EEF9", borderRadius: 14 }}>
+      {tabs.map(([id, title], index) => <button key={id} type="button" role="tab" id={"gw-admin-events-tab-" + id} aria-controls={"gw-admin-events-panel-" + id} aria-selected={section === id} tabIndex={section === id ? 0 : -1} onKeyDown={event => handleTabKey(event, index)} onClick={() => selectTab(id)} style={{ flex: 1, minWidth: 0, minHeight: 46, border: 0, borderRadius: 11, padding: "10px 8px", background: section === id ? (id === "invitation" ? "linear-gradient(120deg,#7C3AED,#DB2777)" : "linear-gradient(120deg,#008069,#00A884)") : "transparent", color: section === id ? "#fff" : "#78658E", font: "inherit", fontSize: 13, fontWeight: 850, cursor: "pointer", boxShadow: section === id ? "0 3px 10px #663B9220" : "none" }}>{title}</button>)}
+    </div>
+    <div id="gw-admin-events-panel-events" role="tabpanel" aria-labelledby="gw-admin-events-tab-events" hidden={section !== "events"}>
+      {children}
+    </div>
+    <div id="gw-admin-events-panel-invitation" role="tabpanel" aria-labelledby="gw-admin-events-tab-invitation" hidden={section !== "invitation"}>
+      <div style={{ margin: "0 14px 14px", padding: "14px 16px", borderRadius: 15, background: "linear-gradient(120deg,#F5EEFF,#FFF0F7)", border: "1px solid #EBDCFA" }}>
+        <div style={{ fontSize: 17, fontWeight: 900, color: "#7838AB" }}>💌 Invitation</div>
+        <div style={{ fontSize: 12, color: "#93759E", marginTop: 5, lineHeight: 1.6 }}>Issue a ticket to a member or invite an outside guest. Choose the event in the form below.</div>
+      </div>
+      <AdminQuickIssueTicket events={events} ticketTypes={ticketTypes} canIssue={canIssue} onDone={onDone} />
+      <AdminQuickGuestInvite events={events} canIssue={canIssue} onDone={onDone} />
+    </div>
+  </div>;
+}
 
 function AdminQuickGuestInvite({ events = [], canIssue = false, onDone }) {
   const futureEvents = (events || []).filter(e => {
