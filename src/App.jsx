@@ -4830,7 +4830,7 @@ function Main({ user }) {
     if (failed?.error) { setNotice(failed.error.message); return []; }
     return [...new Set(results.flatMap(r => (r.data || []).map(m => m.user_id).filter(Boolean)))];
   };
-  const createEvent = async (d, dates, addonsList) => {
+  const createEvent = async (d, dates, addonsList, ticketTypesList = []) => {
     let list = (dates && dates.length) ? dates : [{ label: d.event_date || "", iso: d.event_at || null }];
     list = list.map(x => typeof x === "string" ? { label: x, iso: null } : x);
     if (!list.length) list = [{ label: "", iso: null }];
@@ -4843,9 +4843,19 @@ function Main({ user }) {
         : await supabase.from("events").insert(payload).select("id").single();
       const error = result.error;
       const ins = organiserStaff?.can_events ? { id: result.data } : result.data;
-      if (error) return setNotice(error.message);
+      if (error) { setNotice(error.message); return { error: error.message, id: firstId }; }
       if (!firstId) firstId = ins?.id;
       if (ins?.id) ids.push(ins.id);
+    }
+    if (ticketTypesList.length && ids.length) {
+      const rows = ids.flatMap(event_id => ticketTypesList.map(({ id, ...ticket }, sort) => ({ ...ticket, event_id, sort })));
+      const { error } = await supabase.from("event_ticket_types").insert(rows);
+      if (error) {
+        await load();
+        const message = "Event saved as a draft, but ticket types could not be saved: " + error.message + ". Open Tickets to finish setup before publishing.";
+        setNotice(message);
+        return { error: message, id: firstId };
+      }
     }
     if (addonsList && addonsList.length && ids.length) {
       const rows = [];
@@ -4858,6 +4868,7 @@ function Main({ user }) {
     await load();
     const team = isSuper || [profile?.role, ...(profile?.roles || [])].some(r => ["admin", "subadmin", "team", "staff"].includes(r));
     setNotice(team ? "📝 Saved as a draft (not visible to members). When it's ready, tap ✅ Publish on the event." : "📝 Saved as a draft. Only you can see it. Finish the details, then tap 📤 Send for review. Glasswings will check and publish it.");
+    return { id: firstId };
   };
   const broadcast = async (text) => {
     const t = (text || "").trim(); if (!t) return;
@@ -20286,7 +20297,7 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
     </Sheet>
   );
 }
-function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onUpdateEvent }) {
+function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onUpdateEvent, draft = false }) {
   const [plansList, setPlansList] = useState([]);
   useEffect(() => { supabase.from("plans").select("id, name, emoji").eq("active", true).then(({ data }) => setPlansList(data || [])); }, []);
   const [segsList, setSegsList] = useState([]);
@@ -20326,7 +20337,7 @@ function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onU
       <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity. Choose Anyone / Men only / Women only for every ticket.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
-        {types.length === 0 && <DefaultTicketDetailsEditor event={event} onUpdate={onUpdateEvent} />}
+        {!draft && types.length === 0 && <div style={{ fontSize: 12, color: W.soft }}>This existing event uses a General ticket. Add ticket types below to replace it.<DefaultTicketDetailsEditor event={event} onUpdate={onUpdateEvent} /></div>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 9px", color: "#7C3AED", fontWeight: 800, fontSize: 14.5, letterSpacing: .3, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}><Plus size={17} />CREATE NEW TICKET TYPE</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -23944,20 +23955,21 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
     { bg: "#FDE9FB", bar: "#C026D3" },
   ];
   const [step, setStep] = useState(0);
+  const [savingEvent, setSavingEvent] = useState(false);
   const STEPS = ["Basics", "Media", "When & where", "Details", "Tickets"];
   const STEP_HINTS = [
     "The essentials — what it's called, who's hosting, and where it fits.",
     "Poster, banner and any videos. All optional, but a poster makes the event card pop.",
     "When it happens and where people go. Set an end time so the event auto-closes.",
     "Everything guests read on the event page — schedule, artists, FAQs, terms.",
-    "Set the price and any add-ons, then create the event.",
+    "Add ticket types with their own prices and details, then create the event.",
   ];
   const STEP_TIPS = [
     ["Give the event a clear title and pick who's hosting — Glasswings Original, Partner (an outside organiser) or a Get-together.", "Partner events: add your organiser name and logo so guests see who's running it.", "Choose a category and city so the event shows under the right filters."],
     ["Add a Poster (portrait 3:4) — this is what people see on the event card.", "Add a Slider banner (1600 × 680 px) — preview the full image for the homepage slider and event page.", "Videos are optional; a vertical reel autoplays on the card if you add one."],
     ["Pick the date and start time, and always set the END time so the event auto-closes after it finishes.", "Use Weekly / Monthly / Custom for events that repeat.", "Choose Physical (add the venue), Online (add a link) or Venue TBD."],
     ["Write a short description, then add schedule, food, facilities and dress code if they apply.", "Add your line-up/artists, FAQs and terms so guests have everything.", "Pick entry badges (18+, Couples only, Members only…) — they show on the event."],
-    ["Set the ticket price (enter 0 for a free event); add a member discount if you want.", "Add-ons are optional paid extras guests can add at checkout.", "After you tap Create, open the event to add more ticket types, guests (Guest/VIP/Team) and edit anything."],
+    ["Add at least one ticket type, such as General, Men, Women or Couple. Enter 0 for a free ticket.", "Add-ons are optional paid extras guests can add at checkout.", "Set each ticket’s quantity, discounts and inclusions here. You can edit or add types later in Tickets."],
   ];
   const [membersFor, setMembersFor] = useState(null);
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -23994,7 +24006,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
   const upCount = events.filter(e => (!e.event_at || e.event_at >= todayISO)).length;
   const pastCount = events.filter(e => (e.event_at && e.event_at < todayISO)).length;
-  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", price: "", bookingMode: "purchase", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentIds: [] };
+  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", ticketTypes: [], bookingMode: "purchase", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentIds: [] };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const draftPrivateSegmentIds = Array.isArray(f.segmentIds)
@@ -24057,7 +24069,8 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
     return out;
   };
   const create = async () => {
-    if (!f.title) return;
+    if (savingEvent || !f.title) return;
+    if (!(f.kind === "getaway" && !privateOnly) && !f.ticketTypes.length) { setStep(4); alert("Add at least one ticket type. Use price 0 for free entry."); return; }
     if (privateOnly && !draftPrivateSegmentIds.length) { setStep(0); alert("Choose at least one invited segment for this private party."); return; }
     const dates = buildDates();
     if (!f.dateTbd && !(f.endTime || "").trim()) { setStep(2); alert("Please set the event END time (end date optional — same day assumed). This is required so the event auto-closes after it finishes."); return; }
@@ -24071,7 +24084,17 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
         : (f.endTime || "").trim());
     }
     if (f.repeat === "weekly" || f.repeat === "monthly") label0 += " · 🔁 recurring";
-    await onCreate({ ...(f.kind === "getaway" && !privateOnly ? { event_kind: "getaway", ticket_price: 0 } : {}), private_segment_ids: privateOnly ? draftPrivateSegmentIds : [], private_segment_id: privateOnly ? (draftPrivateSegmentIds[0] || null) : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: Number(f.price) || 0, booking_mode: f.bookingMode || "purchase", description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons);
+    setSavingEvent(true);
+    let result;
+    try {
+    result = await onCreate({ ...(f.kind === "getaway" && !privateOnly ? { event_kind: "getaway", ticket_price: 0 } : {}), private_segment_ids: privateOnly ? draftPrivateSegmentIds : [], private_segment_id: privateOnly ? (draftPrivateSegmentIds[0] || null) : null, member_discount_pct: f.memberDisc ? Math.min(100, Math.max(0, Number(f.memberDisc) || 0)) : 0, credit_cap_pct: f.creditCapPct ? Math.min(100, Math.max(0, Number(f.creditCapPct) || 0)) : 0, title: f.title, emoji: f.emoji || (privateOnly ? "🔒" : "🎟️"), ticket_price: f.ticketTypes.length ? Math.min(...f.ticketTypes.map(t => Number(t.price) || 0)) : 0, booking_mode: f.bookingMode || "purchase", description: f.desc, schedule: f.schedule, food_dining: f.food, facilities: f.facilities, dress_code: f.dress, event_date: label0, event_at: f.dateTbd ? null : (dates[0]?.iso || null), end_at: endAt, date_mode: f.dateTbd ? "tbd" : ((f.repeat === "weekly" || f.repeat === "monthly") ? "recurring" : "single"), location_type: f.locType, online_url: f.locType === "online" ? (f.onlineUrl || "").trim() : "", about_media: f.aboutMedia, venue: f.locType === "physical" ? f.venue : "", venue_lat: f.locType === "physical" ? f.venueLat : null, venue_lng: f.locType === "physical" ? f.venueLng : null, category: f.category, city: lockCity || f.city, tags: f.tags, banner_url: f.banner, banner_type: f.bannerType, vertical_video_url: f.vvideo || null, portrait_video_url: f.pvideo || null, landscape_video_url: f.lvideo || null, vertical_banner_url: f.vbanner || null, portrait_banner_url: f.pbanner || null, poster_url: f.poster, terms: f.terms, exclusions: f.exclusions, artists: f.artists, faqs: f.faqs, entry_badge: (f.entryBadge && f.entryBadge.length) ? f.entryBadge.join(", ") : null, host_type: f.hostType || "glasswings", host_name: f.hostType === "partner" ? (f.hostName || null) : null, host_logo: f.hostType === "partner" ? (f.hostLogo || null) : null }, dates, f.addons, f.kind === "getaway" && !privateOnly ? [] : f.ticketTypes);
+    } catch (error) { alert("Could not finish saving the event: " + error.message); return; }
+    finally { setSavingEvent(false); }
+    if (result?.error) {
+      alert(result.error);
+      if (result.id) { setManage(result.id); setMSeg("tickets"); setCreating(false); }
+      return;
+    }
     reset(); setCreating(false); setStep(0);
   };
   const chip = (name, sel, onClick) => <button key={name} onClick={onClick} style={{ padding: "6px 12px", borderRadius: 16, border: `1px solid ${sel ? W.teal : W.line}`, background: sel ? "#E7F6EF" : "#fff", color: W.ink, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{name}</button>;
@@ -24141,7 +24164,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
               </div>
             </div>
           )}
-          {f.hostType === "meetup" && <div style={{ fontSize: 12, color: "#92621C", background: "#FFF8E7", border: "1px solid #F2E2C4", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>☕ Get-together: set the ticket price as your G.O.D charge — women's 100% off and subscriber discounts apply exactly as usual.</div>}
+          {f.hostType === "meetup" && <div style={{ fontSize: 12, color: "#92621C", background: "#FFF8E7", border: "1px solid #F2E2C4", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>☕ Get-together: set each ticket type’s price as your G.O.D charge — women's 100% off and subscriber discounts apply exactly as usual.</div>}
           <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>Category</div>
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
             {categories.length === 0 ? <span style={{ fontSize: 12.5, color: W.soft }}>Add categories with "Manage" above first.</span> : categories.map(c => chip(c.name, f.category === c.name, () => setF({ ...f, category: f.category === c.name ? "" : c.name })))}
@@ -24313,7 +24336,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
           </>)}
 
           {step === 4 && (<>
-          {f.kind === "getaway" && !privateOnly && <div style={{ background: GW_TRIP_GRAD, color: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 12, fontSize: 13, lineHeight: 1.5 }}><b>🏝️ Getaways don't use tickets.</b> Leave the price at 0 and tap Create. Then open the getaway → <b>🏝️ Trip setup</b> to add room packages, the booking amount, extras (flights, casino) and the trip page.</div>}
+          {f.kind === "getaway" && !privateOnly && <div style={{ background: GW_TRIP_GRAD, color: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 12, fontSize: 13, lineHeight: 1.5 }}><b>🏝️ Getaways don't use tickets.</b> Tap Create. Then open the getaway → <b>🏝️ Trip setup</b> to add room packages, the booking amount, extras (flights, casino) and the trip page.</div>}
           <div style={{background:"linear-gradient(135deg,#EFF6FF,#F5F3FF)",border:"1px solid #C7D2FE",borderRadius:14,padding:12,marginBottom:12}}>
             <div style={{background:"#fff",border:"1px solid #E0E7FF",borderRadius:11,padding:"9px 10px",marginBottom:10,fontSize:11.8,color:"#475569",lineHeight:1.5}}>
               <b style={{color:"#312E81"}}>Choose how entry works for this event.</b><br/>
@@ -24326,11 +24349,11 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
             </div>
             <div style={{fontSize:11.5,color:W.soft,lineHeight:1.45,marginTop:8}}>{f.bookingMode==="admin_moderated"?"Members can view the event but cannot buy/claim a ticket. Only admins can issue entry tickets. You can switch this event back to normal purchase later.":"Members can buy or claim tickets normally. You can switch the event to admin-moderated later."}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <span style={{ color: W.soft, fontSize: 14 }}>₹</span>
-            <input value={f.price} onChange={e => setF({ ...f, price: e.target.value.replace(/\D/g, "") })} placeholder="0 (free)" inputMode="numeric" style={{ flex: 1, minWidth: 0, border: `1px solid ${W.line}`, borderRadius: 10, padding: "11px 13px", fontSize: 15, outline: "none" }} />
-            <span style={{ color: W.soft, fontSize: 14 }}>per ticket</span>
-          </div>
+          {!(f.kind === "getaway" && !privateOnly) && <TicketTypes draft types={f.ticketTypes} rooms={rooms}
+            onAdd={async (_, ticket) => setF(prev => ({ ...prev, ticketTypes: [...prev.ticketTypes, { ...ticket, id: crypto.randomUUID() }] }))}
+            onUpdate={async (id, ticket) => setF(prev => ({ ...prev, ticketTypes: prev.ticketTypes.map(t => t.id === id ? { ...t, ...ticket } : t) }))}
+            onDel={async id => setF(prev => ({ ...prev, ticketTypes: prev.ticketTypes.filter(t => t.id !== id) }))}
+          />}
           <div style={{ background: "#F8F5FF", border: "1px solid #E9D5FF", borderRadius: 10, padding: "9px 11px", marginBottom: 10 }}>
             <label style={{ fontSize: 12.5, fontWeight: 800, color: "#6D28D9" }}>💎 Member discount % (plan holders)</label>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
@@ -24354,7 +24377,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
             <button onClick={() => { if (step === 0) { setCreating(false); reset(); setStep(0); } else { setStep(step - 1); } }} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>{step === 0 ? "Cancel" : "← Back"}</button>
             {step < STEPS.length - 1
               ? <button onClick={() => { if (step === 0 && !f.title.trim()) { alert("Please add an event title first."); return; } setStep(step + 1); }} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center" }}>Next →</button>
-              : <button onClick={create} disabled={up} style={{ ...btn(privateOnly ? "#6D28D9" : W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: up ? .6 : 1 }}>✓ {privateOnly ? "Create private party" : "Create event"}</button>}
+              : <button onClick={create} disabled={up || savingEvent} style={{ ...btn(privateOnly ? "#6D28D9" : W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: up || savingEvent ? .6 : 1 }}>{savingEvent ? "Saving…" : privateOnly ? "✓ Create private party" : "✓ Create event"}</button>}
           </div>
         </div>
       ) : (
