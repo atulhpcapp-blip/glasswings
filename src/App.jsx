@@ -20297,6 +20297,12 @@ function MyTicket({ event: e, profile, rows, types = [], onClose, waGroup = "" }
     </Sheet>
   );
 }
+function GwTicketDisclosure({ title, children, initialOpen = false, group }) {
+  return <details name={group} open={initialOpen || undefined} style={{ border: `1px solid ${W.line}`, borderRadius: 12, background: "#fff", margin: "9px 0", overflow: "hidden" }}>
+    <summary style={{ padding: "14px 12px", cursor: "pointer", fontWeight: 800, color: W.ink, fontSize: 13, minHeight: 44, boxSizing: "border-box" }}>{title}</summary>
+    <div style={{ padding: "0 12px 12px", minWidth: 0 }}>{children}</div>
+  </details>;
+}
 function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onUpdateEvent, draft = false }) {
   const [plansList, setPlansList] = useState([]);
   useEffect(() => { supabase.from("plans").select("id, name, emoji").eq("active", true).then(({ data }) => setPlansList(data || [])); }, []);
@@ -20336,9 +20342,10 @@ function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onU
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
       <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity. Choose Anyone / Men only / Women only for every ticket.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
-        {types.map((t, i) => <EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} />)}
+        {types.map((t, i) => <GwTicketDisclosure key={t.id} group={"ticket-" + (eventId || "draft")} title={`${t.name} · ${t.price == null ? "Set price" : Number(t.price) === 0 ? "Free" : "₹" + t.price} · ${t.capacity == null ? "Unlimited" : "Qty " + t.capacity}`}><EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} /></GwTicketDisclosure>)}
         {!draft && types.length === 0 && <div style={{ fontSize: 12, color: W.soft }}>This existing event uses a General ticket. Add ticket types below to replace it.<DefaultTicketDetailsEditor event={event} onUpdate={onUpdateEvent} /></div>}
       </div>
+      <GwTicketDisclosure title="＋ Add ticket type" initialOpen={types.length === 0} group={"ticket-" + (eventId || "draft")} >
       <div style={{ display: "flex", alignItems: "center", gap: 7, margin: "16px 0 9px", color: "#7C3AED", fontWeight: 800, fontSize: 14.5, letterSpacing: .3, borderTop: `1px solid ${W.line}`, paddingTop: 14 }}><Plus size={17} />CREATE NEW TICKET TYPE</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Men)" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
@@ -20350,7 +20357,7 @@ function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onU
         <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Optional discount for men" inputMode="decimal" style={{ ...ip, width: 76 }} />
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many of this ticket to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 72 }} />
       </div>
-      <div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
+      <GwTicketDisclosure title="Inclusions, exclusions &amp; notes"><div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
           <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink }}>Ticket-specific details</div>
           <button type="button" onClick={repeatPrevious} disabled={!previousType} title={previousType ? `Copy from ${previousType.name}` : "Create the first ticket type before repeating details"} style={{ ...btn(previousType ? "#EDE9FE" : "#F2F2F2", previousType ? "#6D28D9" : "#999"), border: `1px solid ${previousType ? "#C4B5FD" : "#DDD"}`, padding: "6px 10px", fontSize: 11.5, cursor: previousType ? "pointer" : "not-allowed" }}>↻ {previousType ? "Repeat previous details" : "No previous ticket"}</button>
@@ -20361,8 +20368,8 @@ function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onU
           <label style={{ fontSize: 11.5, fontWeight: 800, color: "#B33A3A" }}>✕ Not included<textarea value={exclusions} onChange={e => setExclusions(e.target.value)} rows={3} placeholder={"Food\nParking\nTransport"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
           <label style={{ fontSize: 11.5, fontWeight: 800, color: "#9A6500" }}>! Important notes<textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder={"Valid for one person\nCarry a photo ID"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
         </div>
-      </div>
-      <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
+      </div></GwTicketDisclosure>
+      <GwTicketDisclosure title="Member discounts"><div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>💎 Discount for plan members (optional)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <select value={dRoom} onChange={e => setDRoom(e.target.value)} style={{ ...ip, flex: "1 1 120px", minWidth: 0 }}>
@@ -20376,16 +20383,17 @@ function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onU
           <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
         </div>
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6 }}>Plan members get this off. 100% (or ₹ ≥ price) makes the ticket free for them.</div>
-      </div>
-      <div style={{ marginTop: 8, background: "#F5F0FF", border: "1px solid #E4D3F5", borderRadius: 10, padding: 10 }}>
+      </div></GwTicketDisclosure>
+      <GwTicketDisclosure title="Who can buy this ticket"><div style={{ marginTop: 8, background: "#F5F0FF", border: "1px solid #E4D3F5", borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: "#7C3AED", fontWeight: 800, marginBottom: 6 }}>⭐ Restrict to a segment (e.g. VIP)</div>
         <select value={seg} onChange={e => setSeg(e.target.value)} style={{ ...ip, width: "100%" }}>
           <option value="">Anyone can buy</option>
           {segsList.map(s => <option key={s.id} value={s.id}>{s.name} only</option>)}
         </select>
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 6, lineHeight: 1.45 }}>Only members of the chosen segment can buy this ticket. Everyone else sees "This ticket is restricted". Leave as "Anyone" for a normal/general ticket.</div>
-      </div>
+      </div></GwTicketDisclosure>
       <button onClick={add} style={{ ...btn(W.teal, "#fff"), width: "100%", justifyContent: "center", marginTop: 8 }}><Plus size={15} />Add ticket type</button>
+      </GwTicketDisclosure>
     </div>
   );
 }
@@ -20488,6 +20496,7 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
   };
   const save = async () => {
     if (!name.trim() || !onUpdate) return;
+    if (price === "") { alert("Enter a ticket price. Use 0 for free entry."); return; }
     setBusy(true);
     await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null, zone: zone.trim() || null, zone_color: zone.trim() ? (GW_ZONES.find(z => z[0].toLowerCase() === zone.trim().toLowerCase()) || [null, null])[1] : null, pass_label: passLabel.trim() || null, admits: Math.min(50, Math.max(1, Number(admits) || 1)), sale_starts_at: saleStart ? new Date(saleStart).toISOString() : null, sale_ends_at: saleEnd ? new Date(saleEnd).toISOString() : null });
     setBusy(false); setEd(false);
@@ -20498,7 +20507,7 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
             <b style={{ fontSize: 15.5, color: W.ink }}>{t.name}</b>
-            <span style={{ fontSize: 15, fontWeight: 800, color: t.price === 0 ? W.teal : W.ink }}>{t.price === 0 ? "Free" : `₹${t.price}`}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: t.price === 0 ? W.teal : W.ink }}>{t.price == null ? "Set price" : t.price === 0 ? "Free" : `₹${t.price}`}</span>
             {audBadge(t.gender_restrict)}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6, fontSize: 13 }}>
@@ -20530,7 +20539,7 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
         <input value={wm} onChange={e => setWm(e.target.value.replace(/[^\d.]/g, ""))} placeholder="♂ % off" title="Discount for men" inputMode="decimal" style={{ ...ip, width: 86 }} />
         <input value={cap} onChange={e => setCap(e.target.value.replace(/\D/g, ""))} placeholder="Qty (∞)" title="How many to sell (blank = unlimited)" inputMode="numeric" style={{ ...ip, width: 82 }} />
       </div>
-      <div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
+      <GwTicketDisclosure title="Inclusions, exclusions &amp; notes"><div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
           <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink }}>Ticket-specific details</div>
           <button type="button" onClick={repeatPrevious} disabled={!previous} title={previous ? `Copy from ${previous.name}` : "This is the first ticket type"} style={{ ...btn(previous ? "#EDE9FE" : "#F2F2F2", previous ? "#6D28D9" : "#999"), border: `1px solid ${previous ? "#C4B5FD" : "#DDD"}`, padding: "6px 10px", fontSize: 11.5, cursor: previous ? "pointer" : "not-allowed" }}>↻ {previous ? "Repeat previous details" : "No previous ticket"}</button>
@@ -20541,8 +20550,8 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
           <label style={{ fontSize: 11.5, fontWeight: 800, color: "#B33A3A" }}>✕ Not included<textarea value={exclusions} onChange={e => setExclusions(e.target.value)} rows={3} placeholder={"Food\nParking\nTransport"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
           <label style={{ fontSize: 11.5, fontWeight: 800, color: "#9A6500" }}>! Important notes<textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder={"Valid for one person\nCarry a photo ID"} style={{ ...ip, width: "100%", resize: "vertical", marginTop: 5, lineHeight: 1.4 }} /></label>
         </div>
-      </div>
-      <div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
+      </div></GwTicketDisclosure>
+      <GwTicketDisclosure title="Member discounts"><div style={{ marginTop: 8, background: W.bg, borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: W.soft, fontWeight: 700, marginBottom: 6 }}>💎 Discount for plan members (optional)</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <select value={dRoom} onChange={e => setDRoom(e.target.value)} style={{ ...ip, flex: "1 1 120px", minWidth: 0 }}>
@@ -20555,8 +20564,8 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
           </select>
           <input value={dVal} onChange={e => setDVal(e.target.value.replace(/\D/g, ""))} placeholder={dKind === "percent" ? "30" : "100"} inputMode="numeric" style={{ ...ip, width: 70 }} />
         </div>
-      </div>
-      <div style={{ marginTop: 8, background: "#FFF8EC", border: "1px solid #F5D9A8", borderRadius: 10, padding: 10 }}>
+      </div></GwTicketDisclosure>
+      <GwTicketDisclosure title="Advanced: zones, group passes &amp; sale dates"><div style={{ marginTop: 8, background: "#FFF8EC", border: "1px solid #F5D9A8", borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: "#92400E", fontWeight: 800, marginBottom: 6 }}>🎪 Festival options (optional)</div>
         <div style={{ fontSize: 11.5, color: "#7C5A00", lineHeight: 1.5, marginBottom: 8, background: "#fff", borderRadius: 8, padding: "6px 8px" }}>For big events only. <b>Zone</b> groups tickets (GA, VIP…). <b>Pass / day label</b> prints on the ticket. <b>People per ticket</b> = group pass (4 = 1 ticket lets in 4). <b>Sale starts/ends</b> = early bird windows. Leave empty for normal events.</div>
         <div style={{ fontSize: 11.5, color: W.ink, fontWeight: 700, marginBottom: 4 }}>Zone</div>
@@ -20574,14 +20583,14 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
           <label style={{ fontSize: 11.5, fontWeight: 700, color: W.ink, flex: "1 1 160px" }}>Sale ends (optional)<input type="datetime-local" value={saleEnd} onChange={e => setSaleEnd(e.target.value)} style={{ ...ip, width: "100%", boxSizing: "border-box", marginTop: 3 }} /></label>
         </div>
         <div style={{ fontSize: 11.5, color: W.soft, marginTop: 5, lineHeight: 1.45 }}>Early bird: create "Early Bird GA" with a low price and a <b>Sale ends</b> time, plus a normal "GA" ticket. Buyers see a countdown, and the early-bird ticket closes itself on time.</div>
-      </div>
-      <div style={{ marginTop: 8, background: "#F5F0FF", border: "1px solid #E4D3F5", borderRadius: 10, padding: 10 }}>
+      </div></GwTicketDisclosure>
+      <GwTicketDisclosure title="Who can buy this ticket"><div style={{ marginTop: 8, background: "#F5F0FF", border: "1px solid #E4D3F5", borderRadius: 10, padding: 10 }}>
         <div style={{ fontSize: 12, color: "#7C3AED", fontWeight: 800, marginBottom: 6 }}>⭐ Restrict to a segment (e.g. VIP)</div>
         <select value={seg} onChange={e => setSeg(e.target.value)} style={{ ...ip, width: "100%" }}>
           <option value="">Anyone can buy</option>
           {segsList.map(s => <option key={s.id} value={s.id}>{s.name} only</option>)}
         </select>
-      </div>
+      </div></GwTicketDisclosure>
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button onClick={() => setEd(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
         <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "✓ Save changes"}</button>
@@ -24006,7 +24015,12 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
     && (fArtist === "all" || (Array.isArray(e.artists) ? e.artists : []).some(a => (a.name || "").trim() === fArtist)));
   const upCount = events.filter(e => (!e.event_at || e.event_at >= todayISO)).length;
   const pastCount = events.filter(e => (e.event_at && e.event_at < todayISO)).length;
-  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", ticketTypes: [], bookingMode: "purchase", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentIds: [] };
+  const blankF = { emoji: privateOnly ? "🔒" : "🎟️", title: "", ticketTypes: [
+    { name: "Men", gender_restrict: "male", admits: 1 },
+    { name: "Women", gender_restrict: "female", admits: 1 },
+    { name: "Couple", gender_restrict: "any", admits: 2 },
+    { name: "Group", gender_restrict: "any", admits: 4 },
+  ].map(t => ({ ...t, id: crypto.randomUUID(), price: null, capacity: null })), bookingMode: "purchase", desc: "", schedule: "", food: "", facilities: "", dress: "", date: "", venue: "", venueLat: null, venueLng: null, category: "", city: lockCity || "", banner: "", bannerType: "image", poster: "", vvideo: "", pvideo: "", lvideo: "", vbanner: "", pbanner: "", tags: {}, terms: "", artists: [], faqs: [], entryBadge: [], repeat: "none", startDate: "", endDate: "", time: "", finishDate: "", endTime: "", dateTbd: false, locType: "physical", onlineUrl: "", aboutMedia: [], customDates: [], addons: [], exclusions: [], memberDisc: "", creditCapPct: "", hostType: "glasswings", hostName: "", hostLogo: "", segmentIds: [] };
   const [amBusy, setAmBusy] = useState(null);
   const [f, setF] = useState(blankF);
   const draftPrivateSegmentIds = Array.isArray(f.segmentIds)
@@ -24071,6 +24085,7 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
   const create = async () => {
     if (savingEvent || !f.title) return;
     if (!(f.kind === "getaway" && !privateOnly) && !f.ticketTypes.length) { setStep(4); alert("Add at least one ticket type. Use price 0 for free entry."); return; }
+    if (!(f.kind === "getaway" && !privateOnly) && f.ticketTypes.some(t => t.price == null || t.price === "")) { setStep(4); alert("Set a price for each ticket type, or remove the types you do not need. Enter 0 explicitly for a free ticket."); return; }
     if (privateOnly && !draftPrivateSegmentIds.length) { setStep(0); alert("Choose at least one invited segment for this private party."); return; }
     const dates = buildDates();
     if (!f.dateTbd && !(f.endTime || "").trim()) { setStep(2); alert("Please set the event END time (end date optional — same day assumed). This is required so the event auto-closes after it finishes."); return; }
@@ -24516,10 +24531,10 @@ function AdminEvents({ canReview = false, events, categories, cities, ticketType
                   </>)}
                   {mSeg === "tickets" && (<>
                     <TicketTypes event={e} eventId={e.id} types={ticketTypes[e.id] || []} rooms={rooms} onAdd={onAddTicketType} onDel={onDelTicketType} onUpdate={onUpdateTicketType} onUpdateEvent={onUpdate} />
-                    <AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} />
-                    <PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} />
-                    <GenderBalance ev={e} onUpdate={onUpdate} />
-                    <CreditCapEditor ev={e} onUpdate={onUpdate} />
+                    <GwTicketDisclosure title="Paid add-ons"><AddonEditor eventId={e.id} list={addonsMap?.[e.id] || []} onAdd={onAddAddon} onDel={onDelAddon} /></GwTicketDisclosure>
+                    <GwTicketDisclosure title="Event exclusions"><PerkPicker kind="exclusion" label="Not included (exclusions)" color="#C0392B" value={e.exclusions || []} onChange={v => onUpdate(e.id, { exclusions: v })} library={(perksList || []).filter(p => p.kind === "exclusion")} onAddPerk={onAddPerk} onDelPerk={onDelPerk} /></GwTicketDisclosure>
+                    <GwTicketDisclosure title="Gender balance rules"><GenderBalance ev={e} onUpdate={onUpdate} /></GwTicketDisclosure>
+                    <GwTicketDisclosure title="Credit payment settings"><CreditCapEditor ev={e} onUpdate={onUpdate} /></GwTicketDisclosure>
                   </>)}
                   {mSeg === "sales" && <><GwGuideTip id="fees" /><EventFeeCard event={e} canEdit={!!(isSuper || canApprove)} /><EventSalesTab event={e} /></>}
                   {mSeg === "pnl" && <EventPnLTab event={e} />}
@@ -28515,6 +28530,7 @@ function ShortsAdmin({ onClose, onChanged, meId, events = [], eventLinks = {}, o
 function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, isTeam = false, isSuper = false, reviewBadge = 0, meetBadge = 0, showSubscribe = false, onSubscribe }) {
   const items = [
     { id: "events", icon: Calendar, label: "Events", c: "#008069" },
+    ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events", c: "#B7791F" }] : []),
     ...(isBookingAdmin ? [{ id: "bookingdash", icon: LayoutDashboard, label: "Bookings", c: "#0E7490" }, { id: "quotes", icon: Printer, label: "Quotations", c: "#7C3AED" }] : []),
     ...(waAccess ? [{id:"wacenter",icon:MessageCircle,label:"WhatsApp",c:"#0F766E"}] : []),
     { id: "private", icon: Lock, label: "Private", c: "#7C3AED" },
@@ -28526,7 +28542,6 @@ function Nav({ tab, setTab, isAdmin, isBookingAdmin = false, waAccess = false, i
     { id: "gallery", icon: ImageIcon, label: "Gallery", c: "#0EA5A3" },
     ...(isTeam ? [{ id: "review", icon: Check, label: "Review", c: "#EA580C", badge: reviewBadge }] : []),
     ...(isSuper ? [{ id: "money", icon: IndianRupee, label: "Money", c: "#047857" }] : []),
-    ...(isAdmin ? [{ id: "adminevents", icon: Calendar, label: "Admin Events", c: "#B7791F" }] : []),
     ...(isAdmin ? [{ id: "coupons", icon: Ticket, label: "Coupons", c: "#D97706" }] : []),
     ...(isAdmin ? [{ id: "door", icon: Ticket, label: "Door", c: "#0F766E" }] : []),
     ...(isAdmin ? [{ id: "admin", icon: Shield, label: "Admin", c: "#DB2777" }] : []),
