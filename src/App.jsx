@@ -4934,7 +4934,7 @@ function Main({ user }) {
   const delAddon = async (id) => { const { error } = await supabase.rpc("del_event_addon", { p_id: id }); if (error) return setNotice(error.message); await load(); };
   const addTicketType = async (eventId, d) => { const { error } = await supabase.from("event_ticket_types").insert({ event_id: eventId, ...d }); if (error) return setNotice(error.message); await load(); };
   const delTicketType = async (id) => { const { error } = await supabase.from("event_ticket_types").delete().eq("id", id); if (error) return setNotice(error.message); await load(); };
-  const updateTicketType = async (id, d) => { const { error } = await supabase.from("event_ticket_types").update(d).eq("id", id); if (error) return setNotice(error.message); await load(); };
+  const updateTicketType = async (id, d) => { const { error } = await supabase.from("event_ticket_types").update(d).eq("id", id); if (error) { setNotice(error.message); return false; } await load(); return true; };
 
   if (!ready) return <Splash />;
   if (profile?.blocked) return (
@@ -20340,7 +20340,7 @@ function TicketTypes({ event, eventId, types, rooms, onAdd, onDel, onUpdate, onU
   return (
     <div>
       <label style={{ fontSize: 13, fontWeight: 600, color: W.soft }}>Ticket types</label>
-      <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity. Choose Anyone / Men only / Women only for every ticket.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Tap Edit on any ticket to change its details later — no need to delete and recreate."]} />
+      <HelpBox title="How ticket types work" tips={["Create different tickets for one event — e.g. Men, Women, Couple, Early bird — each with its own price and quantity. Choose Anyone / Men only / Women only for every ticket.", "Add inclusions, exclusions and important notes separately for every ticket type.", "General paid add-ons remain separate and are selected by the buyer during checkout.", "♀ % off / ♂ % off give women or men a discount on that ticket.", "Set a Qty to cap how many of that ticket sell (blank = unlimited).", "Open a ticket to edit it directly. Repeat copies only the previous ticket’s inclusions, exclusions and notes. Save & collapse when finished."]} />
       <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0" }}>
         {types.map((t, i) => <GwTicketDisclosure key={t.id} group={"ticket-" + (eventId || "draft")} title={`${t.name} · ${t.price == null ? "Set price" : Number(t.price) === 0 ? "Free" : "₹" + t.price} · ${t.capacity == null ? "Unlimited" : "Qty " + t.capacity}`}><EditableTicketRow key={t.id} t={t} previous={i > 0 ? types[i - 1] : null} plansList={plansList} segsList={segsList} roomName={roomName} audBadge={audBadge} ip={ip} onUpdate={onUpdate} onDel={onDel} /></GwTicketDisclosure>)}
         {!draft && types.length === 0 && <div style={{ fontSize: 12, color: W.soft }}>This existing event uses a General ticket. Add ticket types below to replace it.<DefaultTicketDetailsEditor event={event} onUpdate={onUpdateEvent} /></div>}
@@ -20468,7 +20468,8 @@ function DefaultTicketDetailsEditor({ event, onUpdate }) {
 }
 
 function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, audBadge, ip, onUpdate, onDel }) {
-  const [ed, setEd] = useState(false);
+  const editorRef = useRef(null);
+  const collapse = () => { const card = editorRef.current?.closest("details"); if (card) card.open = false; };
   const [seg, setSeg] = useState(t.segment_id || "");
   const [name, setName] = useState(t.name || "");
   const [price, setPrice] = useState(t.price == null ? "" : String(t.price));
@@ -20494,44 +20495,44 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
     setExclusions(previous.exclusions || "");
     setNotes(previous.notes || "");
   };
+  const cancel = () => {
+    setSeg(t.segment_id || "");
+    setName(t.name || "");
+    setPrice(t.price == null ? "" : String(t.price));
+    setCredit(t.credit_price == null ? "" : String(t.credit_price));
+    setWf(t.disc_female_pct == null ? "" : String(t.disc_female_pct));
+    setWm(t.disc_male_pct == null ? "" : String(t.disc_male_pct));
+    setCap(t.capacity == null ? "" : String(t.capacity));
+    setInclusions(t.inclusions || "");
+    setExclusions(t.exclusions || "");
+    setNotes(t.notes || "");
+    setDRoom(t.discount_plan_id ? "plan:" + t.discount_plan_id : (t.discount_room_id || ""));
+    setDKind(t.discount_kind || "percent");
+    setDVal(t.discount_value == null ? "" : String(t.discount_value));
+    setZone(t.zone || "");
+    setPassLabel(t.pass_label || "");
+    setAdmits(String(t.admits || 1));
+    setSaleStart(gwToLocalInput(t.sale_starts_at));
+    setSaleEnd(gwToLocalInput(t.sale_ends_at));
+    collapse();
+  };
   const save = async () => {
     if (!name.trim() || !onUpdate) return;
     if (price === "") { alert("Enter a ticket price. Use 0 for free entry."); return; }
     setBusy(true);
-    await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null, zone: zone.trim() || null, zone_color: zone.trim() ? (GW_ZONES.find(z => z[0].toLowerCase() === zone.trim().toLowerCase()) || [null, null])[1] : null, pass_label: passLabel.trim() || null, admits: Math.min(50, Math.max(1, Number(admits) || 1)), sale_starts_at: saleStart ? new Date(saleStart).toISOString() : null, sale_ends_at: saleEnd ? new Date(saleEnd).toISOString() : null });
-    setBusy(false); setEd(false);
+    try {
+    const result = await onUpdate(t.id, { name: name.trim(), price: Number(price) || 0, capacity: cap === "" ? null : Number(cap), disc_female_pct: wf === "" ? null : Number(wf), disc_male_pct: wm === "" ? null : Number(wm), discount_room_id: dRoom && !dRoom.startsWith("plan:") ? dRoom : null, discount_plan_id: dRoom.startsWith("plan:") ? dRoom.slice(5) : null, discount_kind: dKind, discount_value: Number(dVal) || 0, credit_price: credit === "" ? null : Number(credit), inclusions: inclusions.trim() || null, exclusions: exclusions.trim() || null, notes: notes.trim() || null, segment_id: seg || null, zone: zone.trim() || null, zone_color: zone.trim() ? (GW_ZONES.find(z => z[0].toLowerCase() === zone.trim().toLowerCase()) || [null, null])[1] : null, pass_label: passLabel.trim() || null, admits: Math.min(50, Math.max(1, Number(admits) || 1)), sale_starts_at: saleStart ? new Date(saleStart).toISOString() : null, sale_ends_at: saleEnd ? new Date(saleEnd).toISOString() : null });
+    if (result !== false && !result?.error) collapse();
+    } catch (error) { alert(error.message || "Could not save ticket changes."); }
+    finally { setBusy(false); }
   };
-  if (!ed) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#F1E8FE", border: `1px solid #D6BCFA`, borderLeft: `6px solid #7C3AED`, borderRadius: 12, padding: "13px 14px", boxShadow: "0 2px 8px rgba(124,58,237,.15)" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-            <b style={{ fontSize: 15.5, color: W.ink }}>{t.name}</b>
-            <span style={{ fontSize: 15, fontWeight: 800, color: t.price === 0 ? W.teal : W.ink }}>{t.price == null ? "Set price" : t.price === 0 ? "Free" : `₹${t.price}`}</span>
-            {audBadge(t.gender_restrict)}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 6, fontSize: 13 }}>
-            {t.disc_female_pct != null && <span style={{ color: "#C0246E", fontWeight: 800, background: "#FBE9F2", padding: "2px 9px", borderRadius: 9 }}>♀ {t.disc_female_pct}% off</span>}
-            {t.disc_male_pct != null && <span style={{ color: "#1B6FB8", fontWeight: 800, background: "#E8F2FB", padding: "2px 9px", borderRadius: 9 }}>♂ {t.disc_male_pct}% off</span>}
-            {t.capacity != null && <span style={{ color: W.soft, fontWeight: 700 }}>cap {t.capacity}{gwAdmits(t) > 1 ? " people" : ""}</span>}
-            {t.zone && <span style={{ color: "#fff", fontWeight: 800, background: gwZoneColor(t), padding: "2px 9px", borderRadius: 9 }}>{t.zone}</span>}
-            {t.pass_label && <span style={{ color: "#0369A1", fontWeight: 800, background: "#E0F2FE", padding: "2px 9px", borderRadius: 9 }}>📅 {t.pass_label}</span>}
-            {gwAdmits(t) > 1 && <span style={{ color: "#92400E", fontWeight: 800, background: "#FFF4D6", padding: "2px 9px", borderRadius: 9 }}>👥 admits {gwAdmits(t)}</span>}
-            {(t.sale_starts_at || t.sale_ends_at) && <span style={{ color: "#BE185D", fontWeight: 800, background: "#FCE7F3", padding: "2px 9px", borderRadius: 9 }}>🕒 {t.sale_starts_at ? gwFmtWhen(t.sale_starts_at) : "now"} → {t.sale_ends_at ? gwFmtWhen(t.sale_ends_at) : "event"}</span>}
-            {t.segment_id && <span style={{ color: "#7C3AED", fontWeight: 800, background: "#F3E8FF", padding: "2px 9px", borderRadius: 9 }}>⭐ {(segsList.find(s => s.id === t.segment_id) || {}).name || "segment"} only</span>}
-            {(t.discount_room_id || t.discount_plan_id) && <span style={{ color: t.discount_plan_id ? "#6D28D9" : W.teal, fontWeight: 700 }}>{t.discount_kind === "flat" ? `₹${t.discount_value}` : `${t.discount_value}%`} off for {t.discount_plan_id ? ((plansList.find(pl => pl.id === t.discount_plan_id) || {}).name ? "💎 " + plansList.find(pl => pl.id === t.discount_plan_id).name : "💎 plan") : roomName(t.discount_room_id)}</span>}
-          </div>
-          {(t.inclusions || t.exclusions || t.notes) && <TicketTypeDetails ticket={t} compact />}
-        </div>
-        {previous && onUpdate && <button onClick={() => onUpdate(t.id, { inclusions: previous.inclusions || null, exclusions: previous.exclusions || null, notes: previous.notes || null })} title={`Copy inclusions, exclusions and notes from ${previous.name}`} style={{ ...btn("#EDE9FE", "#6D28D9"), border: "1px solid #C4B5FD", padding: "9px 12px", fontSize: 12.5, fontWeight: 900, flexShrink: 0 }}>↻ Repeat</button>}
-        {onUpdate && <button onClick={() => setEd(true)} style={{ ...btn(W.teal, "#fff"), padding: "9px 16px", fontSize: 13.5, fontWeight: 800, flexShrink: 0 }}>✏️ Edit</button>}
-        <button onClick={() => onDel(t.id)} title="Delete ticket type" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "9px 11px", flexShrink: 0 }}><Trash2 size={15} /></button>
-      </div>
-    );
-  }
+
   return (
-    <div style={{ background: "#fff", border: `1.5px solid ${W.teal}`, borderRadius: 10, padding: 11 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 800, color: W.teal, marginBottom: 9 }}>✏️ Editing “{t.name}”</div>
+    <div ref={editorRef} style={{ background: "#fff", borderRadius: 10, padding: 11 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: W.teal }}>{t.name} {audBadge(t.gender_restrict)}</div>
+        <button type="button" onClick={repeatPrevious} disabled={!previous} title={previous ? `Copy from ${previous.name}` : "This is the first ticket type"} style={{ ...btn(previous ? "#EDE9FE" : "#F2F2F2", previous ? "#6D28D9" : "#999"), border: `1px solid ${previous ? "#C4B5FD" : "#DDD"}`, padding: "6px 10px", fontSize: 11.5, cursor: previous ? "pointer" : "not-allowed" }}>↻ Repeat previous details</button>
+      </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Name" style={{ ...ip, flex: "1 1 110px", minWidth: 0 }} />
         <input value={price} onChange={e => setPrice(e.target.value.replace(/\D/g, ""))} placeholder="₹ 0" inputMode="numeric" style={{ ...ip, width: 80 }} />
@@ -20542,7 +20543,7 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
       <GwTicketDisclosure title="Inclusions, exclusions &amp; notes"><div style={{ marginTop: 10, background: "linear-gradient(145deg,#F8FBFA,#F3F7F6)", border: `1px solid ${W.line}`, borderRadius: 12, padding: 11 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
           <div style={{ fontSize: 12.5, fontWeight: 900, color: W.ink }}>Ticket-specific details</div>
-          <button type="button" onClick={repeatPrevious} disabled={!previous} title={previous ? `Copy from ${previous.name}` : "This is the first ticket type"} style={{ ...btn(previous ? "#EDE9FE" : "#F2F2F2", previous ? "#6D28D9" : "#999"), border: `1px solid ${previous ? "#C4B5FD" : "#DDD"}`, padding: "6px 10px", fontSize: 11.5, cursor: previous ? "pointer" : "not-allowed" }}>↻ {previous ? "Repeat previous details" : "No previous ticket"}</button>
+
         </div>
         <div style={{ fontSize: 11.5, color: W.soft, marginBottom: 9 }}>One item per line. General paid add-ons remain separate.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8 }}>
@@ -20591,9 +20592,10 @@ function EditableTicketRow({ t, previous, plansList, segsList = [], roomName, au
           {segsList.map(s => <option key={s.id} value={s.id}>{s.name} only</option>)}
         </select>
       </div></GwTicketDisclosure>
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button onClick={() => setEd(false)} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
-        <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "✓ Save changes"}</button>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <button type="button" disabled={busy} onClick={() => onDel(t.id)} title="Delete ticket type" style={{ ...btn("#fff", "#C0392B"), border: "1px solid #F2C4C0", padding: "9px 11px" }}><Trash2 size={15} /></button>
+        <button onClick={cancel} disabled={busy} style={{ ...btn("#fff", W.ink), border: `1px solid ${W.line}`, flex: 1, justifyContent: "center" }}>Cancel</button>
+        <button onClick={save} disabled={busy} style={{ ...btn(W.teal, "#fff"), flex: 1, justifyContent: "center", opacity: busy ? .6 : 1 }}>{busy ? "Saving…" : "✓ Save & collapse"}</button>
       </div>
     </div>
   );
